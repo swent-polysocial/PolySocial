@@ -1,5 +1,3 @@
-<!-- Contributors: OpenAI Codex (initial draft); Claude (revised: definition of done, conventions, course rules, project context). A teammate should add their name here after reviewing. -->
-
 # Instructions for coding agents
 
 This repository is PolySocial, an EPFL SwEnt Android team project (team of 6,
@@ -22,18 +20,27 @@ teammate, stop and ask (see "When blocked or unsure").
   and year). The group gets a chat to plan the outing, checks in together at the
   venue via QR code, and shares photos in the event album.
 - Students can also create private events (for example a study-together
-  session). A private event must not appear on the map or be readable by
-  non-members until matches are found and approved.
+  session). A private event never appears on the public map. It is readable
+  only by its creator, its members, and students whose match request the
+  creator has approved. Nobody else can read it at any time.
 - Associations have their own accounts to create and manage their events.
 - Stack: Kotlin, Jetpack Compose, Firestore, Firebase Authentication, Google
-  Maps API. Every user authenticates with an EPFL account; enforce EPFL-only
-  access on the server side (Security Rules), not only in the client.
+  Maps API.
+- Authentication: every user signs in with an EPFL account. Enforce this in
+  Firestore Security Rules, not only in the client: every rule that grants
+  access requires `request.auth != null`,
+  `request.auth.token.email_verified == true`, and an email matching
+  `@epfl.ch`. If the sign-in provider does not guarantee these claims, stop and
+  ask before designing a workaround.
 - Sensors: camera (QR codes to register for events, check in, and add friends;
   photos for the shared album) and GPS (connect people by location, nearby
   events). NFC is not used; do not add it.
-- Offline mode: cached map, registered events, event schedule, and reminders.
-  Use Firestore's built-in offline persistence. Do not remove or weaken offline
-  behavior.
+- Offline mode means: cached event data, registered events, event schedule,
+  and reminders remain available without a network, using Firestore's built-in
+  offline persistence. The map shows cached events on whatever tiles the Maps
+  SDK has already cached. Do not implement map tile prefetching or offline tile
+  storage; the Maps SDK does not support it and the Google Maps terms restrict
+  it. Do not remove or weaken offline behavior.
 - Plan limits: Firebase Authentication and Firestore run on the free Spark
   plan. Cloud Storage and Cloud Functions need the paid Blaze plan. Do not use
   Cloud Storage, Cloud Functions, or any paid service unless the team has
@@ -51,17 +58,17 @@ teammate, stop and ask (see "When blocked or unsure").
   normally one PR. A task may be split into several PRs (for example an
   interface-only PR so a teammate can build against it, or a polished smaller
   part when the task will not fit in the Sprint).
-- Use the feature-branch workflow and push often. Tests for a feature go in the
-  same PR as the feature, possibly in separate commits.
+- Tests for a feature go in the same PR as the feature, possibly in separate
+  commits.
 - Do not over-engineer. Solve the task at hand, and design it so it is easy to
   modify later. No speculative abstractions for hypothetical needs.
 - Git history is used to assess the team's practices. Write meaningful commit
   messages, push small and regular commits, and avoid giant commits and PRs that
   bundle unrelated changes.
 - Every PR gets at least one substantive teammate review, in English.
-- AI use must always be acknowledged, or it counts as plagiarism. Humans must
-  be able to explain and defend everything they submit. Write code and PR
-  descriptions so the design choices are explained and easy to follow.
+- AI use must always be acknowledged, or it counts as plagiarism (see
+  "Acknowledging AI and other sources"). Write code and PR descriptions so the
+  design choices are explained and easy to follow.
 - Do not change course-required repository setup: branch protection, staff and
   coach access, SonarCloud configuration, or the Steve app installation.
 
@@ -94,25 +101,49 @@ teammate, stop and ask (see "When blocked or unsure").
   and run the app. Update it whenever setup changes.
 - `google-services.json` and client API keys may be committed only if they hold
   client configuration. They identify the app; they do not authorize anything.
-  Enforce access with Firestore Security Rules and test the rules for
-  unauthorized access: a student must not read or write another student's
-  private data, private events and group chats are readable only by their
-  members, and only an association may manage its own events.
-- Restrict the Google Maps key to the app's package name and SHA-1 fingerprint,
-  and keep a budget alert on the Google Cloud project. Do not hardcode the key
-  in Kotlin source. Read it through the Gradle Secrets plugin from
-  `local.properties` (git-ignored), with a placeholder default so the project
-  still builds without the key. If `local.properties` or the plugin does not
-  exist yet, ask the team before inventing a scheme.
+  Access control lives in Firestore Security Rules (see next section).
+- Restrict the Google Maps key to the app's package name and the SHA-1
+  fingerprints of every keystore that builds the app: each teammate's debug
+  keystore, the CI keystore, and the release keystore. A missing fingerprint
+  shows up as a blank map; the fix is to register the fingerprint, never to
+  loosen or remove the restriction. Keep a budget alert on the Google Cloud
+  project.
+- Do not hardcode the Maps key in Kotlin source. Read it through the Gradle
+  Secrets plugin from `local.properties` (git-ignored), with a placeholder
+  default so the project still builds without the key. If `local.properties` or
+  the plugin does not exist yet, ask the team before inventing a scheme.
 - Never put private keys, service-account JSON, signing credentials, or the
   Sonar token in the app or repository. Secrets belong in GitHub Actions
   secrets.
 - Use the Firebase Emulator Suite or test doubles for backend tests. Never make
   tests depend on a live production backend.
-- The CI workflow does not start Firebase emulators. Instrumented tests must
-  therefore use fakes or in-memory repositories unless the workflow has been
-  updated to start the emulators. Do not edit `.github/workflows/` without team
-  approval.
+- Do not edit `.github/workflows/` without team approval.
+
+## Firestore Security Rules
+
+- Rules must guarantee at least: a student cannot read or write another
+  student's private data; private events and group chats are readable only by
+  their members (see "Project context"); only an association can manage its
+  own events; every access requires a verified EPFL account.
+- An agent may change the rules file when the issue requires it (for example a
+  new collection or a new access pattern). Every such PR must:
+  1. say "Changes Security Rules" in the PR description, with a short
+     explanation of what access is granted or removed and why;
+  2. include rules tests covering at least one allowed access and one denied
+     access for each rule added or changed;
+  3. request a reviewer's explicit sign-off on the rules change.
+- Never loosen a rule (for example widen a match or remove a condition) to make
+  a feature or test work. If a feature seems to need broader access, stop and
+  ask.
+- Rules tests run against the Firestore emulator, which CI does not start. Run
+  them locally before marking the PR ready, with the command documented in the
+  README (for example
+  `firebase emulators:exec --only firestore,auth "<rules test command>"`), and
+  paste the result in the PR. If the README does not document a rules test
+  command yet, stop and ask; do not substitute fake-based tests, which cannot
+  verify rules.
+- Instrumented tests that run in CI must use fakes or in-memory repositories,
+  since CI has no emulators, unless the team updates the workflow.
 
 ## Code conventions
 
@@ -125,8 +156,10 @@ teammate, stop and ask (see "When blocked or unsure").
   already exists before touching either; never create a baseline to make lint
   pass.
 - User-facing strings go in `strings.xml`. Every Composable that a UI test
-  interacts with gets a `Modifier.testTag`. Public classes and functions get
-  KDoc.
+  interacts with gets a `Modifier.testTag`.
+- Write KDoc for repository and service interfaces, ViewModels, and any
+  non-obvious logic (matching, QR parsing, filtering). Simple Composables and
+  self-explanatory functions do not need it.
 - No commented-out code, no `println` or debug logging left behind, and no TODO
   without an issue number.
 - Do not add or upgrade dependencies unless the issue requires it. Use the
@@ -137,7 +170,10 @@ teammate, stop and ask (see "When blocked or unsure").
 ## Build and test commands
 
 Run from the repository root with the checked-in Gradle wrapper (on Windows
-PowerShell use `./gradlew.bat`). These mirror what CI runs, in the same order:
+PowerShell use `./gradlew.bat`). These mirror what CI runs at the time of
+writing. The workflow is expected to change substantially, so treat
+`.github/workflows/` as the source of truth and flag any mismatch with this
+list in the PR:
 
 ```bash
 ./gradlew ktfmtFormat                  # fix formatting (local only)
@@ -148,9 +184,10 @@ PowerShell use `./gradlew.bat`). These mirror what CI runs, in the same order:
 ./gradlew jacocoTestReport             # CI: coverage report for Sonar
 ```
 
+- Rules tests: see "Firestore Security Rules" (local only, emulator required).
 - `check` does not replace instrumented tests. Start an emulator or device
-  before `connectedCheck`. CI uses an API 34 `google_apis` x86_64 emulator with
-  no back camera, so tests must not depend on a real camera. Use fakes for
+  before `connectedCheck`. Check the workflow for the CI emulator's API level
+  and image; CI emulators have no real camera, so tests must not depend on one. Use fakes for
   camera and GPS.
 - `./gradlew sonar` runs only in CI (it needs a secret token). Do not run it
   locally or try to obtain the token.
@@ -180,21 +217,33 @@ PowerShell use `./gradlew.bat`). These mirror what CI runs, in the same order:
 - Start from the current `main`. Work on one branch per issue or focused
   change, named `feature/<issue>-<slug>`, `fix/<issue>-<slug>`, or
   `chore/<issue>-<slug>` (for example `feature/42-event-map`).
-- Never push directly to `main`. Never force-push a shared branch or rewrite
-  pushed history. Do not squash or amend commits after they are pushed.
 - Commit small, coherent steps and push the branch regularly, not once at the
   end. Do not open a PR only shortly before a Sprint Review.
-- Commit subjects are in English, imperative, capitalized, at most 50
-  characters, with no trailing period (for example `Add offline event cache`).
-  Add a blank line and a body explaining why when the subject is not enough;
-  wrap body lines around 72 characters. Reference the issue when applicable.
-  Do not use lowercase Conventional Commit subjects.
+- Use Conventional Commit subjects: `<type>: <summary>` or
+  `<type>(<scope>): <summary>`, in English, imperative, lowercase after the
+  colon, at most 50 characters in total, with no trailing period. Types:
+  - `feat`: a new user-facing feature
+  - `fix`: a bug fix
+  - `test`: adding or correcting tests only
+  - `refactor`: a code change that neither adds a feature nor fixes a bug
+  - `docs`: documentation only (README, KDoc, this file)
+  - `style`: formatting only (for example a `ktfmtFormat` run)
+  - `build`: Gradle, the version catalog, or dependencies
+  - `ci`: `.github/workflows/`
+  - `chore`: other maintenance that fits none of the above
+
+  Examples: `feat: add offline event cache`,
+  `fix(map): keep markers after rotation`, `test: cover invalid QR payloads`.
+- Add a blank line and a body whenever the subject is not enough on its own.
+  The body explains what changed in behavior and why, not which files were
+  touched (the diff already shows that). Wrap body lines around 72 characters
+  and reference the issue when applicable (for example `Refs #42`).
 - Keep commits under the human team member's existing Git identity. Do not
   change `user.name` or `user.email` to an AI identity, add an AI
   `Co-authored-by` or other contributor trailer, or add "generated by AI"
-  signatures to commit messages. Acknowledge AI contributions in the affected
-  files (see below), not in Git authorship.
-- Do not use `--no-verify` or otherwise skip local hooks or checks.
+  signatures to commit messages. AI contributions are acknowledged in file
+  headers instead (see "Acknowledging AI and other sources").
+- Do not squash or amend commits after they are pushed.
 
 ## Pull requests
 
@@ -204,8 +253,9 @@ PowerShell use `./gradlew.bat`). These mirror what CI runs, in the same order:
   If a PR exceeds about 1000 lines, it should likely be split into smaller PRs.
 - The PR title follows the commit subject convention. The description states
   the issue (`Closes #N`), what changed and why, the design choices a reviewer
-  should know about, the tests added, the commands run with results, and any
-  setup step or known limitation. Note explicitly any check you could not run.
+  should know about, the tests added, the commands run with results, any
+  Security Rules change, and any setup step or known limitation. Note
+  explicitly any check you could not run.
 - Open a draft PR for work in progress or early feedback. Take it out of draft
   only when the definition of done below is met.
 
@@ -225,26 +275,21 @@ PowerShell use `./gradlew.bat`). These mirror what CI runs, in the same order:
    commented-out code, or unexplained suppressions.
 5. Errors, loading, empty states, denied permissions, and offline behavior are
    handled where the feature touches them, and no personal data is logged.
-6. Privacy rules hold: anything touching events, groups, or chats has matching
-   Security Rules and a test for unauthorized access.
+6. If the change adds or changes data access for events, groups, chats, or
+   user data, the Security Rules cover it and the process in "Firestore
+   Security Rules" is followed, including local rules test results in the PR.
 7. Contributor comments are added or updated at the top of every file that AI
    or an external source contributed to.
 8. The README is updated if setup, configuration, or run steps changed.
 9. The PR description is complete as described above.
 
-**A PR may be merged only when all of these hold:**
-
-1. The definition of done above still holds on the latest commit.
-2. CI is green on the latest commit (formatting, build, lint, unit tests,
-   instrumented tests, and the Sonar analysis).
-3. The branch is up to date with `main` and has no conflicts.
-4. At least one teammate (other than the author) has approved after reading
-   and understanding the diff, and all review threads are resolved.
-5. The human author merges with a **merge commit** (not squash), so the
-   individual commits stay in the history, then deletes the branch and closes
-   the issue.
-6. The human author updates the board item: moved to `Done in Si` for the
-   current Sprint, with `Actual Time` filled in.
+**Merging is done by the human author, only when:** the definition of done
+still holds on the latest commit; CI is green on the latest commit; the branch
+is up to date with `main`; at least one other teammate has approved after
+reading the diff (with explicit sign-off on any Security Rules change) and all
+threads are resolved. Merge with a merge commit, not squash, so individual
+commits stay in the history. Board updates, branch deletion, and closing the
+issue are also the human author's job.
 
 ## Reviewing code (when asked to review a PR)
 
@@ -252,6 +297,7 @@ PowerShell use `./gradlew.bat`). These mirror what CI runs, in the same order:
   must be acknowledged.
 - Read the entire diff. Discuss both design and implementation. Look for bugs,
   integration issues, missing tests, error handling, and privacy problems.
+  Check every Security Rules change against the access guarantees above.
 - Write in English. Talk about the code, not the author. Ask when something is
   unclear, and include positive comments where deserved.
 - Prefix comments consistently with one word: `Important`, `Nitpick`, or
@@ -264,8 +310,7 @@ PowerShell use `./gradlew.bat`). These mirror what CI runs, in the same order:
 
 - Every change maps to an issue on the PolySocial `Scrum Board`. Do not start
   work without an issue. If none exists, ask.
-- Agents do not edit the board. The human owner moves the item to
-  `In Development` when work starts and to `In Review` when the PR leaves draft.
+- Agents do not edit the board; the human owner moves items.
 
 ## Acknowledging AI and other sources
 
@@ -287,15 +332,18 @@ PowerShell use `./gradlew.bat`). These mirror what CI runs, in the same order:
 
 ## Never do
 
-- Merge, approve, or dismiss a review on your own PR. The team merges.
+- Merge, approve, or dismiss a review on your own PR.
 - Push to `main`, force-push a shared branch, or rewrite pushed history.
 - Use `--no-verify`, skip or delete tests, weaken assertions, or disable CI
   steps or lint rules to get green.
-- Modify `.github/workflows/`, Firestore Security Rules, authentication logic,
-  or repository settings without team approval and a note in the PR.
+- Loosen a Security Rule, or change rules without following the process in
+  "Firestore Security Rules".
+- Modify `.github/workflows/`, authentication logic, or repository settings
+  without team approval and a note in the PR.
 - Commit secrets, service-account files, or the Sonar token.
 - Use paid Firebase services (Cloud Storage, Cloud Functions) without a team
   decision.
+- Implement map tile prefetching or offline tile storage.
 - Claim a check passed without running it.
 - Guess at an unspecified product or interface decision.
 
@@ -304,8 +352,8 @@ PowerShell use `./gradlew.bat`). These mirror what CI runs, in the same order:
 Stop. Do not choose an interpretation silently. State the question, the options
 you see, and your recommendation in the issue, the PR, or a message to the
 human, and wait for an answer. This covers unclear acceptance criteria, missing
-Gradle tasks or config, conflicting instructions, and any change that would
-touch the "Never do" list.
+Gradle tasks, config, or rules test commands, conflicting instructions, and any
+change that would touch the "Never do" list.
 
 ## Agent workflow
 
@@ -313,8 +361,9 @@ touch the "Never do" list.
    relevant part of the codebase and the existing tests.
 2. Implement one reviewable change consistent with the current architecture and
    the conventions above, with tests in the same change.
-3. Run `ktfmtFormat`, then the commands in "Build and test commands". Inspect
-   failures and fix their causes.
+3. Run `ktfmtFormat`, then the commands in "Build and test commands" (plus the
+   rules tests if Security Rules changed). Inspect failures and fix their
+   causes.
 4. Check the result against the definition of done, including a review of the
    full diff for accidental files, leaked credentials, missing contributor
    comments, error handling, and real test assertions.
