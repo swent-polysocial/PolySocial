@@ -155,9 +155,7 @@ tasks.withType<Test> {
   }
 }
 
-dependencyLocking {
-  lockAllConfigurations()
-}
+dependencyLocking { lockAllConfigurations() }
 
 tasks.register("jacocoTestReport", JacocoReport::class) {
   mustRunAfter("testDebugUnitTest", "connectedDebugAndroidTest")
