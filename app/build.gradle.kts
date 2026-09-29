@@ -13,7 +13,7 @@ android {
   defaultConfig {
     applicationId = "com.android.sample"
     minSdk = 28
-    targetSdk = 36
+    targetSdk = 37
     versionCode = 1
     versionName = "1.0"
 
@@ -152,6 +152,10 @@ tasks.withType<Test> {
     isIncludeNoLocationClasses = true
     excludes = listOf("jdk.internal.*")
   }
+}
+
+dependencyLocking {
+  lockAllConfigurations()
 }
 
 tasks.register("jacocoTestReport", JacocoReport::class) {
