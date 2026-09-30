@@ -3,6 +3,7 @@ plugins {
   alias(libs.plugins.kotlinCompose)
   alias(libs.plugins.ktfmt)
   alias(libs.plugins.sonar)
+  alias(libs.plugins.googleServices)
   id("jacoco")
 }
 
@@ -138,6 +139,11 @@ dependencies {
   // UI Tests
   globalTestImplementation(libs.compose.test.junit)
   debugImplementation(libs.compose.test.manifest)
+
+  // ------------- Firebase ------------------
+  implementation(platform(libs.firebase.bom))
+  implementation(libs.firebase.auth)
+  implementation(libs.firebase.firestore)
 
   // --------- Kaspresso test framework ----------
   globalTestImplementation(libs.kaspresso)

@@ -15,6 +15,8 @@ lifecycleRuntimeKtx = "2.11.0"
 kaspresso = "1.6.1"
 robolectric = "4.17"
 sonar = "7.5.0.8588"
+googleServices = "4.5.0"
+firebaseBom = "34.19.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -41,8 +43,13 @@ kaspresso-compose = { group = "com.kaspersky.android-components", name = "kaspre
 
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 
+firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
+firebase-auth = { group = "com.google.firebase", name = "firebase-auth" }
+firebase-firestore = { group = "com.google.firebase", name = "firebase-firestore" }
+
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }
 kotlinCompose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ktfmt = { id = "com.ncorti.ktfmt.gradle", version.ref = "ktfmt" }
 sonar = { id = "org.sonarqube", version.ref = "sonar" }
+googleServices = { id = "com.google.gms.google-services", version.ref = "googleServices" }
