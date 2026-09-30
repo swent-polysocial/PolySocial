@@ -19,6 +19,6 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "SampleApp"
+rootProject.name = "PolySocial"
 include(":app")
  

@@ -7,11 +7,11 @@ plugins {
 }
 
 android {
-  namespace = "com.android.sample"
+  namespace = "com.polysocial"
   compileSdk = 37
 
   defaultConfig {
-    applicationId = "com.android.sample"
+    applicationId = "com.polysocial"
     minSdk = 28
     targetSdk = 37
     versionCode = 1
