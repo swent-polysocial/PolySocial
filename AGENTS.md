@@ -310,10 +310,10 @@ mismatch with this list in the PR:
 ## Pull requests
 
 - One issue per PR. Never mix features, refactors, and formatting-only changes.
-- Size: at most about 400 changed lines, excluding generated files, resources,
-  and test fixtures. This is the team's guideline for "reviewable in about 30
-  minutes," not a hard wall — but treat approaching it as a signal to split
-  the work into a follow-up PR.
+- Size: at most about 1000 changed lines, excluding generated files,
+  resources, and test fixtures, as in the wiki's review checklist. This is a
+  cap, not a target: aim for a PR a teammate can review in about 30 minutes,
+  and split larger work into several PRs.
 - Every PR has an assignee (the author).
 - The PR title follows the commit subject convention. The description states
   the issue (`Closes #N`), what changed and why, the design choices a reviewer
