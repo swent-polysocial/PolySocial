@@ -1,13 +1,19 @@
+<!-- Contributors: OpenAI Codex (initial draft); Claude (revised: definition of done, conventions, course rules, project context, Security Rules process, team-agreement reconciliation). A teammate should add their name here after reviewing. -->
+
 # Instructions for coding agents
 
 This repository is PolySocial, an EPFL SwEnt Android team project (team of 6,
 public repository). Read this file, the README, the relevant issue, the
-project wiki (team decisions live there), and nearby code before making
-changes. The team owns every change, including code written with AI. Keep each
-change small enough for a teammate to review and understand.
+project wiki (in particular the Team Agreement, where team process decisions
+live), and nearby code before making changes. The team owns every change,
+including code written with AI. Keep each change small enough for a teammate
+to review and understand.
 
 If anything here conflicts with an explicit instruction in the issue or from a
-teammate, stop and ask (see "When blocked or unsure").
+teammate, stop and ask (see "When blocked or unsure"). If this file and the
+wiki's Team Agreement ever disagree, the Team Agreement is the source of truth
+for process, and this file should be updated to match — flag the mismatch
+instead of silently picking one.
 
 ## Project context (fixed decisions)
 
@@ -19,13 +25,42 @@ teammate, stop and ask (see "When blocked or unsure").
   students attending the same event (shared interests, common friends, section
   and year). The group gets a chat to plan the outing, checks in together at the
   venue via QR code, and shares photos in the event album.
+- Group matching: implement it as a deterministic heuristic (for example
+  first-fit / tag overlap) in the early Sprints rather than an optimal solver.
+  Keep the algorithm in a pure, framework-free module with no Android or
+  Firebase dependency, so it is fully unit-testable. It may later move
+  server-side (a Cloud Function or a dedicated background repository worker)
+  as it matures — do not build that until an issue asks for it.
 - Students can also create private events (for example a study-together
   session). A private event never appears on the public map. It is readable
   only by its creator, its members, and students whose match request the
   creator has approved. Nobody else can read it at any time.
-- Associations have their own accounts to create and manage their events.
+- Associations have their own accounts to create and manage their events. An
+  association account must be manually verified/approved before it can manage
+  events; do not let a newly created association account act as verified by
+  default.
+- Content moderation: chats, photo uploads, and association accounts can be
+  misused. Design Security Rules and any Cloud Functions so that report/block
+  and rate-limiting features can be added without a rule rewrite (for example,
+  do not assume every authenticated user may write unlimited messages), but
+  only implement the enforcement itself when its own issue is scheduled.
+- Privacy: students' profiles, photos, chat messages, and locations are
+  personal data under the Swiss nLPD. Collect only what a feature actually
+  needs, support account and data deletion, and do not implement continuous or
+  precise location tracking beyond what the user explicitly shares (GPS use is
+  limited to features like "nearby events" and one-off location checks, not a
+  location history). Keep the in-app privacy notice current when a feature
+  changes what is collected.
 - Stack: Kotlin, Jetpack Compose, Firestore, Firebase Authentication, Google
-  Maps API.
+  Maps API. Nominatim/OpenStreetMap is approved for geocoding, reverse
+  geocoding, and search (not autocomplete/search-as-you-type, which its usage
+  policy forbids): send a custom User-Agent, respect the 1 request/second
+  limit, debounce and cache queries, and show OSM attribution in the UI. Cloud
+  Storage is approved for event/profile photos: compress and resize images
+  client-side before upload, enforce file size and type limits in Storage
+  Security Rules, and cache thumbnails. Firebase Cloud Messaging is not yet in
+  use; evaluate it only once notifications enter the backlog, with an in-app
+  notification list as the fallback.
 - Authentication: every user signs in with an EPFL account. Enforce this in
   Firestore Security Rules, not only in the client: every rule that grants
   access requires `request.auth != null`,
@@ -34,30 +69,33 @@ teammate, stop and ask (see "When blocked or unsure").
   ask before designing a workaround.
 - Sensors: camera (QR codes to register for events, check in, and add friends;
   photos for the shared album) and GPS (connect people by location, nearby
-  events). NFC is not used; do not add it.
+  events, subject to the privacy limit above). NFC is not used; do not add it.
 - Offline mode means: cached event data, registered events, event schedule,
   and reminders remain available without a network, using Firestore's built-in
   offline persistence. The map shows cached events on whatever tiles the Maps
   SDK has already cached. Do not implement map tile prefetching or offline tile
   storage; the Maps SDK does not support it and the Google Maps terms restrict
   it. Do not remove or weaken offline behavior.
-- Plan limits: Firebase Authentication and Firestore run on the free Spark
-  plan. Cloud Storage and Cloud Functions need the paid Blaze plan. Do not use
-  Cloud Storage, Cloud Functions, or any paid service unless the team has
-  explicitly decided to. If a feature needs one (for example event-album photo
-  uploads), stop and ask.
-- Do not add Supabase, a custom backend, a new sensor, or a new third-party
-  service without team approval. A custom backend also needs the instructor's
-  written approval.
+- Plan: Firebase Authentication, Firestore, Cloud Storage, and Cloud Functions
+  run on the Blaze (pay-as-you-go) plan, with a budget alert configured on the
+  Google Cloud project (for example around 5 CHF/month). Expected usage should
+  stay within the free quotas; a feature that would clearly exceed them needs a
+  team decision first.
+- Do not add Supabase, a custom backend, a new sensor, or a third-party service
+  beyond the ones listed above without team approval. A custom backend also
+  needs the instructor's written approval.
 - Users are students and their data is personal. Never log emails, names,
   locations, or photos, and never put real user data in tests or fixtures.
 
 ## Course rules that apply to every change
 
-- Sprints last one week. A Sprint task is one GitHub issue, one branch, and
-  normally one PR. A task may be split into several PRs (for example an
-  interface-only PR so a teammate can build against it, or a polished smaller
-  part when the task will not fit in the Sprint).
+- Sprints last one week, Friday to Friday. A Sprint task is one GitHub issue,
+  one branch, and normally one PR. A task may be split into several PRs (for
+  example an interface-only PR so a teammate can build against it, or a
+  polished smaller part when the task will not fit in the Sprint).
+- A task is only pulled into a Sprint if it meets the team's Definition of
+  Ready: a clear description and acceptance criteria, an estimate, and small
+  enough to finish within one Sprint (see "Scrum board").
 - Tests for a feature go in the same PR as the feature, possibly in separate
   commits.
 - Do not over-engineer. Solve the task at hand, and design it so it is easy to
@@ -76,21 +114,26 @@ teammate, stop and ask (see "When blocked or unsure").
 
 - Follow MVVM: Compose screens display observable UI state and forward user
   actions to a ViewModel. ViewModels own screen state and coordinate
-  operations. Models and repositories own domain data and data access.
+  operations. Models and repositories own domain data and data access. No
+  business logic or direct data access (Firestore, HTTP, location, camera) in
+  a Composable — a Composable talks to a ViewModel, a ViewModel talks to a
+  repository.
 - Inspect the actual package layout under `app/src/main/` and follow its
   structure, naming, navigation setup, and dependency versions. Do not assume a
   class, module, or Gradle task exists; check first.
-- Put Firebase, Google Maps, and persistence code behind repository or service
-  interfaces. Do not import a backend SDK in a ViewModel or a Composable. Inject
-  dependencies so the data layer can be tested with fakes.
+- Put Firebase, Google Maps, Nominatim, and persistence code behind repository
+  or service interfaces. Inject dependencies so the data layer can be tested
+  with fakes.
 - Put device access (GPS, camera, QR decoding) behind interfaces too. Keep
-  logic such as QR payload parsing and validation, group matching, and event
-  filtering in plain Kotlin functions so it is unit-testable without a device.
+  logic such as QR payload parsing and validation, group matching (see
+  "Project context"), and event filtering in plain Kotlin functions so it is
+  unit-testable without a device.
 - Keep long-running work off the main thread. Use coroutines and lifecycle-aware
   observable state (such as `StateFlow`). Represent loading, empty, success,
   and error states where relevant.
 - Handle invalid input, network failures, denied permissions (location,
-  camera), and loss of connectivity.
+  camera), and loss of connectivity, and surface the failure in UI state rather
+  than swallowing it silently.
 - Do not change generated files or Gradle wrapper binaries to make a build or
   test pass. Do not weaken existing tests.
 
@@ -106,8 +149,8 @@ teammate, stop and ask (see "When blocked or unsure").
   fingerprints of every keystore that builds the app: each teammate's debug
   keystore, the CI keystore, and the release keystore. A missing fingerprint
   shows up as a blank map; the fix is to register the fingerprint, never to
-  loosen or remove the restriction. Keep a budget alert on the Google Cloud
-  project.
+  loosen or remove the restriction. Keep the project's budget alert in place
+  (see "Project context").
 - Do not hardcode the Maps key in Kotlin source. Read it through the Gradle
   Secrets plugin from `local.properties` (git-ignored), with a placeholder
   default so the project still builds without the key. If `local.properties` or
@@ -115,16 +158,20 @@ teammate, stop and ask (see "When blocked or unsure").
 - Never put private keys, service-account JSON, signing credentials, or the
   Sonar token in the app or repository. Secrets belong in GitHub Actions
   secrets.
-- Use the Firebase Emulator Suite or test doubles for backend tests. Never make
-  tests depend on a live production backend.
+- No live network calls in automated tests. Test Nominatim and any other
+  external HTTP client with canned JSON responses or MockWebServer. Test
+  Firestore, Firebase Auth, and Cloud Storage against the Firebase Local
+  Emulator Suite, never a live production backend — locally always, and in CI
+  once the workflow starts the emulators (a team decision; see "Firestore
+  Security Rules" for what to do until then).
 - Do not edit `.github/workflows/` without team approval.
 
 ## Firestore Security Rules
 
 - Rules must guarantee at least: a student cannot read or write another
   student's private data; private events and group chats are readable only by
-  their members (see "Project context"); only an association can manage its
-  own events; every access requires a verified EPFL account.
+  their members (see "Project context"); only a verified association can
+  manage its own events; every access requires a verified EPFL account.
 - An agent may change the rules file when the issue requires it (for example a
   new collection or a new access pattern). Every such PR must:
   1. say "Changes Security Rules" in the PR description, with a short
@@ -135,15 +182,17 @@ teammate, stop and ask (see "When blocked or unsure").
 - Never loosen a rule (for example widen a match or remove a condition) to make
   a feature or test work. If a feature seems to need broader access, stop and
   ask.
-- Rules tests run against the Firestore emulator, which CI does not start. Run
-  them locally before marking the PR ready, with the command documented in the
-  README (for example
+- Run rules tests locally against the Firestore emulator before marking the PR
+  ready, with the command documented in the README (for example
   `firebase emulators:exec --only firestore,auth "<rules test command>"`), and
   paste the result in the PR. If the README does not document a rules test
   command yet, stop and ask; do not substitute fake-based tests, which cannot
   verify rules.
-- Instrumented tests that run in CI must use fakes or in-memory repositories,
-  since CI has no emulators, unless the team updates the workflow.
+- The team intends CI to also run Firestore/Auth/Storage tests against the
+  emulator suite. If `.github/workflows/` does not yet start the emulators,
+  treat that as a known setup gap: note it in the PR rather than silently
+  relying only on local runs, and keep using fakes or in-memory repositories
+  for the parts of the suite CI does run.
 
 ## Code conventions
 
@@ -171,9 +220,9 @@ teammate, stop and ask (see "When blocked or unsure").
 
 Run from the repository root with the checked-in Gradle wrapper (on Windows
 PowerShell use `./gradlew.bat`). These mirror what CI runs at the time of
-writing. The workflow is expected to change substantially, so treat
-`.github/workflows/` as the source of truth and flag any mismatch with this
-list in the PR:
+writing. The workflow is expected to change (for example to add emulator
+support), so treat `.github/workflows/` as the source of truth and flag any
+mismatch with this list in the PR:
 
 ```bash
 ./gradlew ktfmtFormat                  # fix formatting (local only)
@@ -184,11 +233,12 @@ list in the PR:
 ./gradlew jacocoTestReport             # CI: coverage report for Sonar
 ```
 
-- Rules tests: see "Firestore Security Rules" (local only, emulator required).
-- `check` does not replace instrumented tests. Start an emulator or device
-  before `connectedCheck`. Check the workflow for the CI emulator's API level
-  and image; CI emulators have no real camera, so tests must not depend on one. Use fakes for
-  camera and GPS.
+- Rules tests: see "Firestore Security Rules" (local always; emulator
+  required).
+- `check` does not replace instrumented tests. Start an Android emulator or
+  device before `connectedCheck`. Check the workflow for the CI emulator's API
+  level and image; CI emulators have no real camera, so tests must not depend
+  on one. Use fakes for camera and GPS.
 - `./gradlew sonar` runs only in CI (it needs a secret token). Do not run it
   locally or try to obtain the token.
 - JVM tests go under `app/src/test/`, device tests under `app/src/androidTest/`.
@@ -199,38 +249,41 @@ list in the PR:
 ## Writing tests
 
 - Tests exist to verify functionality, not to raise the coverage number. Do not
-  write tests only to increase coverage, and do not add assertion-free tests.
+  write tests only to increase coverage, and do not add assertion-free or
+  empty tests.
 - Cover the main behavior, edge cases, and failure paths (empty input, invalid
   QR code, no network, denied permission, unauthorized access).
 - Assert observable behavior (state, output, persisted data, rendered UI), not
   implementation details. A test should fail if the feature breaks.
 - New logic and every bug fix ships with tests in the same PR. A bug fix
   includes a test that fails without the fix.
-- Keep tests deterministic: no real time, network, or randomness without
-  injection.
-- Coverage is measured by Jacoco and reported in SonarCloud. New code should
-  pass the Sonar quality gate, but a meaningful test always beats a coverage
-  gain.
+- Keep tests deterministic: no real time, no live network calls (see
+  "Backend and configuration"), and no unseeded randomness.
+- Coverage, as reported by JaCoCo/SonarCloud in CI: at least 80% line coverage
+  and 65% branch coverage on new code, and overall project coverage must not
+  decrease. A meaningful test always beats a coverage gain — do not pad
+  coverage with tests that don't assert real behavior.
 
 ## Branches and commits
 
-- Start from the current `main`. Work on one branch per issue or focused
-  change, named `feature/<issue>-<slug>`, `fix/<issue>-<slug>`, or
-  `chore/<issue>-<slug>` (for example `feature/42-event-map`).
+- Start from the current `main`. Work on one branch per issue, named after the
+  issue it closes:
+
+  | Type | Pattern | Example |
+  |---|---|---|
+  | Feature | `feature/<issue>-<slug>` | `feature/42-event-map` |
+  | Fix | `fix/<issue>-<slug>` | `fix/57-login-crash` |
+  | Refactor | `refactor/<issue>-<slug>` | `refactor/61-repo-layer` |
+  | Tests | `test/<issue>-<slug>` | `test/63-matching-tests` |
+  | Chore / CI / docs | `chore/<issue>-<slug>` | `chore/12-ci-cache` |
+
 - Commit small, coherent steps and push the branch regularly, not once at the
   end. Do not open a PR only shortly before a Sprint Review.
 - Use Conventional Commit subjects: `<type>: <summary>` or
   `<type>(<scope>): <summary>`, in English, imperative, lowercase after the
   colon, at most 50 characters in total, with no trailing period. Types:
-  - `feat`: a new user-facing feature
-  - `fix`: a bug fix
-  - `test`: adding or correcting tests only
-  - `refactor`: a code change that neither adds a feature nor fixes a bug
-  - `docs`: documentation only (README, KDoc, this file)
-  - `style`: formatting only (for example a `ktfmtFormat` run)
-  - `build`: Gradle, the version catalog, or dependencies
-  - `ci`: `.github/workflows/`
-  - `chore`: other maintenance that fits none of the above
+  `feat`, `fix`, `test`, `refactor`, `docs`, `style`, `build`, `ci`, `chore`
+  (a change that fits none of the others).
 
   Examples: `feat: add offline event cache`,
   `fix(map): keep markers after rotation`, `test: cover invalid QR payloads`.
@@ -238,19 +291,30 @@ list in the PR:
   The body explains what changed in behavior and why, not which files were
   touched (the diff already shows that). Wrap body lines around 72 characters
   and reference the issue when applicable (for example `Refs #42`).
-- Keep commits under the human team member's existing Git identity. Do not
-  change `user.name` or `user.email` to an AI identity, add an AI
-  `Co-authored-by` or other contributor trailer, or add "generated by AI"
-  signatures to commit messages. AI contributions are acknowledged in file
-  headers instead (see "Acknowledging AI and other sources").
-- Do not squash or amend commits after they are pushed.
+- When a commit is genuinely co-written with a teammate (for example paired
+  programming), add one `Co-authored-by: Name <email>` trailer per co-author.
+  Keep commits under the human authors' own Git identities: do not change
+  `user.name` or `user.email` to an AI identity, and never add an AI
+  `Co-authored-by` trailer or a "generated by AI" signature. AI contributions
+  are acknowledged in file headers instead (see "Acknowledging AI and other
+  sources").
+- Do not squash or amend commits after they are pushed, except when rebasing
+  onto `main` to resolve a conflict (below). Force-pushing is allowed only on
+  your own feature branch, using `git push --force-with-lease`. Never
+  force-push `main` or a branch other people are also pushing to.
+- **Merge conflicts:** if your branch conflicts with `main`, rebase onto `main`
+  locally and resolve the conflicts there — do not merge `main` into your
+  branch as a substitute. If resolving a conflict changes logic someone else
+  wrote, ping them for a quick check before pushing the rebased branch.
 
 ## Pull requests
 
 - One issue per PR. Never mix features, refactors, and formatting-only changes.
-- Size: aim for a PR a teammate can review in about 30 minutes, roughly 500
-  changed lines excluding generated files. This is a guideline, not a hard cap.
-  If a PR exceeds about 1000 lines, it should likely be split into smaller PRs.
+- Size: at most about 400 changed lines, excluding generated files, resources,
+  and test fixtures. This is the team's guideline for "reviewable in about 30
+  minutes," not a hard wall — but treat approaching it as a signal to split
+  the work into a follow-up PR.
+- Every PR has an assignee (the author).
 - The PR title follows the commit subject convention. The description states
   the issue (`Closes #N`), what changed and why, the design choices a reviewer
   should know about, the tests added, the commands run with results, any
@@ -258,6 +322,10 @@ list in the PR:
   explicitly any check you could not run.
 - Open a draft PR for work in progress or early feedback. Take it out of draft
   only when the definition of done below is met.
+- After a PR is opened, respond to review comments within 24 hours on working
+  days. If new commits are pushed after a reviewer has approved, the reviewer
+  must re-approve before merge — do not treat the earlier approval as still
+  valid.
 
 ## Definition of done
 
@@ -266,8 +334,9 @@ list in the PR:
 1. It satisfies every acceptance criterion in the issue and does nothing
    outside the issue's scope.
 2. It has meaningful tests for the new behavior, including at least one edge or
-   failure case. Existing tests are unchanged unless the behavior was
-   deliberately changed and the PR says why.
+   failure case, meeting the coverage bar in "Writing tests." Existing tests
+   are unchanged unless the behavior was deliberately changed and the PR says
+   why.
 3. `ktfmtCheck`, `assemble lint`, `check`, and (for UI, Android, or backend
    changes) `connectedCheck` all pass locally, or the PR lists what could not
    be run.
@@ -285,11 +354,12 @@ list in the PR:
 
 **Merging is done by the human author, only when:** the definition of done
 still holds on the latest commit; CI is green on the latest commit; the branch
-is up to date with `main`; at least one other teammate has approved after
-reading the diff (with explicit sign-off on any Security Rules change) and all
-threads are resolved. Merge with a merge commit, not squash, so individual
-commits stay in the history. Board updates, branch deletion, and closing the
-issue are also the human author's job.
+is up to date with `main`; at least one other teammate has approved the
+latest commit (a new commit after approval requires re-approval) after
+reading the diff, with explicit sign-off on any Security Rules change; and all
+review threads are resolved. Merge with GitHub's **squash merge**, so `main`
+keeps one commit per PR. Board updates, branch deletion, and closing the issue
+are also the human author's job.
 
 ## Reviewing code (when asked to review a PR)
 
@@ -310,6 +380,12 @@ issue are also the human author's job.
 
 - Every change maps to an issue on the PolySocial `Scrum Board`. Do not start
   work without an issue. If none exists, ask.
+- A task can only be pulled into a Sprint once it meets the Definition of
+  Ready: a clear description and acceptance criteria, an estimate, and small
+  enough to finish within one Sprint. Estimation uses story points (1, 2, 3, 5,
+  8) agreed at Sprint Planning, alongside the board's Estimated Time
+  (person-hours) field; anything estimated at 8 points should be split before
+  it is pulled in.
 - Agents do not edit the board; the human owner moves items.
 
 ## Acknowledging AI and other sources
@@ -333,17 +409,22 @@ issue are also the human author's job.
 ## Never do
 
 - Merge, approve, or dismiss a review on your own PR.
-- Push to `main`, force-push a shared branch, or rewrite pushed history.
+- Push to `main`, force-push `main`, or force-push a branch other people are
+  also pushing to. (Force-pushing your own feature branch with
+  `--force-with-lease` to rebase onto `main` is fine — see "Branches and
+  commits.")
 - Use `--no-verify`, skip or delete tests, weaken assertions, or disable CI
   steps or lint rules to get green.
 - Loosen a Security Rule, or change rules without following the process in
-  "Firestore Security Rules".
+  "Firestore Security Rules."
 - Modify `.github/workflows/`, authentication logic, or repository settings
   without team approval and a note in the PR.
 - Commit secrets, service-account files, or the Sonar token.
-- Use paid Firebase services (Cloud Storage, Cloud Functions) without a team
-  decision.
+- Add a paid or third-party service beyond the ones approved in "Project
+  context" without a team decision.
 - Implement map tile prefetching or offline tile storage.
+- Implement continuous or precise location tracking beyond what "Project
+  context" allows.
 - Claim a check passed without running it.
 - Guess at an unspecified product or interface decision.
 
