@@ -12,6 +12,12 @@ on:
       - synchronize
       - reopened
 
+# A new push to a PR cancels that PR's previous run. Runs on main get a unique group (their run id),
+# so they are never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
 jobs:
   ci:
     name: CI
