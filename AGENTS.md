@@ -367,8 +367,10 @@ still holds on the latest commit; CI is green on the latest commit; the branch
 is up to date with `main`; at least one other teammate has approved the
 latest commit (a new commit after approval requires re-approval) after
 reading the diff, with explicit sign-off on any Security Rules change; and all
-review threads are resolved. Merge with GitHub's **squash merge**, so `main`
-keeps one commit per PR. Board updates, branch deletion, and closing the issue
+review threads are resolved. Merge with GitHub's **rebase merge**, so `main`
+stays linear and keeps each PR's individual commits (the Git history the
+course assesses), which is why every commit must be small and meaningful on
+its own. Board updates, branch deletion, and closing the issue
 are also the human author's job.
 
 ## Reviewing code (when asked to review a PR)
