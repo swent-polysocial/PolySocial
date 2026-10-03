@@ -6,18 +6,14 @@ This diagram is meant to **stay ahead of the code and drive development**. When 
 
 ## Contents
 
-1. [Legend](#legend)
-2. [Architecture overview](#1-architecture-overview)
-3. [Navigation map](#2-navigation-map)
-4. [Feature slices](#3-feature-slices)
-5. [Key flows](#4-key-flows)
-6. [Data model](#5-data-model)
-7. [Security Rules](#6-security-rules)
-8. [Offline behaviour](#7-offline-behaviour)
-9. [Testability](#8-testability)
-10. [Proposed package layout](#9-proposed-package-layout)
-11. [Backlog traceability](#10-backlog-traceability)
-12. [Open design questions](#11-open-design-questions)
+1. [Architecture overview](#1-architecture-overview)
+2. [Navigation map](#2-navigation-map)
+3. [Feature slices](#3-feature-slices)
+4. [Key flows](#4-key-flows)
+5. [Data model](#5-data-model)
+6. [Security Rules](#6-security-rules)
+7. [Design decisions](#7-design-decisions)
+8. [Backlog traceability](#8-backlog-traceability)
 
 ## Legend
 
@@ -38,328 +34,154 @@ Arrows read "uses" or "calls". A dashed arrow is a planned or optional dependenc
 
 The source is `images/architecture-overview.svg`, a plain SVG kept next to the PNG. Edit it in any vector editor (or as text), then export the PNG again.
 
-**Which screen uses what.** The same relations as the arrows above, as a table:
-
-| Feature (ViewModel) | Domain logic | Repositories and services |
-|---|---|---|
-| 🟩 Authentication (`AuthViewModel`) | EPFL email check | `AuthRepository`, `UserProfileRepository` |
-| 🟩 App shell | — | — (navigation state only) |
-| 🟩 Create Event (`CreateEventViewModel`) | event validation | `UserProfileRepository` (verified-association badge), `EventRepository`, `GeocodingRepository` later |
-| 🟩 Map tab (`MapViewModel`) | haversine distance | `EventRepository`, `LocationService`; renders with the Google Maps SDK |
-| 🟦 Events tab (`EventsViewModel`, `EventDetailViewModel`) | event filtering | `EventRepository`, `ReminderScheduler` |
-| 🟦 Groups and matching (`MatchingViewModel`) | group matching | `MatchRepository`, `GroupRepository` |
-| 🟦 Chats tab (`ChatViewModel`) | — | `ChatRepository` |
-| 🟦 At the venue (`CheckInViewModel`, `AlbumViewModel`) | check-in policy, QR parsing, image resize | `GroupRepository`, `LocationService`, `QrScanner`, `PhotoRepository` |
-| 🟦 Profile tab (`ProfileViewModel`, `FriendsViewModel`) | QR parsing | `UserProfileRepository`, `FriendRepository`, `QrScanner`, `AuthRepository` (log out, delete account) |
-
 **How to read it.**
 - Every screen has exactly one ViewModel. The ViewModel exposes a single immutable UI-state `StateFlow` with loading, empty, success and error variants, and receives user actions as function calls.
-- Repositories are Kotlin interfaces with a Firebase (or device) implementation and a `Fake…` implementation for tests. ViewModels get them through their constructor.
-- Firestore offline persistence is the only cache. There is no Room database and no custom sync layer (see [Offline behaviour](#7-offline-behaviour)).
+- Repositories are Kotlin interfaces with a Firebase (or device) implementation and a `Fake…` implementation for tests. ViewModels get them through their constructor, from a small hand-written provider object (no DI library).
+- **Offline:** Firestore offline persistence is the only cache (no Room, no custom sync). Loaded events, registered events and their schedule stay readable offline. Writes such as chat messages are queued and synced on reconnect. Reminders are scheduled on the device. The map shows cached events on tiles the Maps SDK already cached, with **no tile prefetching**. Sign-up and log-in need a network and show a clear error without one.
 - The Google Maps SDK is a UI component. `MapScreen` renders markers from `MapViewModel` state and never queries data itself.
 
 ## 2. Navigation map
 
 App-start routing (#32) decides between the authentication flow and the main app. The main app is a four-tab shell (#41). Each tab has its own back stack (#42) and starts in the shared loading or placeholder state (#43).
 
+### 2.1 Signing in
+
+```mermaid
+flowchart TB
+  classDef s1 fill:#d3f9d8,stroke:#2b8a3e,color:#000
+  start(["App starts"]) --> gate{"Routing, see 4.3"}:::s1
+  gate -- "not signed in" --> login["Log In"]:::s1
+  gate -- "unverified" --> verify["Verify Email"]:::s1
+  login <-- "Sign up / Log in instead" --> signup["Sign Up"]:::s1
+  signup -- "created" --> verify
+  login -- "unverified" --> verify
+  gate -- "ready" --> main(["Main app: 4 tabs"]):::s1
+  login -- "verified" --> main
+  verify -- "Continue" --> main
+```
+
+### 2.2 Main app (one back stack per tab)
+
 ```mermaid
 flowchart TB
   classDef s1 fill:#d3f9d8,stroke:#2b8a3e,color:#000
   classDef pb fill:#dbe4ff,stroke:#364fc7,color:#000
 
-  subgraph AUTHF["Authentication flow"]
+  subgraph tEvents["Events tab"]
     direction LR
-    launch(("App launch")) --> gate{"App-start routing"}:::s1
-    gate -- "no user" --> login["Log In"]:::s1
-    gate -- "user, unverified" --> verify["Verify Email"]:::s1
-    login -- "Sign up" --> signup["Sign Up"]:::s1
-    signup -- "Log in instead" --> login
-    signup -- "account created" --> verify
-    login -- "unverified" --> verify
+    evList["Event list<br/>+ filters"]:::pb --> evDetail["Event detail"]:::pb --> findGroup["Find a group"]:::pb --> group["My group<br/>check-in"]:::pb --> album["Album"]:::pb
   end
-
-  gate -- "user, verified<br/>profile loaded" --> shell
-  login -- "verified" --> shell
-  verify -- "Continue: verified" --> shell
-
-  subgraph shell["Main app shell: app bar + bottom bar, one back stack per tab"]
+  subgraph tMap["Map tab"]
     direction LR
-    subgraph tEvents["Events tab"]
-      direction TB
-      evList["Event list<br/>+ filters"]:::pb --> evDetail["Event detail"]:::pb
-      evList --> myEvents["My events"]:::pb
-      evList -. "entry point TBD" .-> createEv["Create Event"]:::s1
-      evDetail --> findGroup["Find a group<br/>proposals"]:::pb
-      findGroup --> group["My group<br/>check-in · Find my group"]:::pb
-      group --> album["Event album"]:::pb
-    end
-    subgraph tMap["Map tab"]
-      direction TB
-      map["Map"]:::s1 --> preview["Preview card"]:::s1
-      preview -- "View details" --> evDetailPh["Event detail<br/>placeholder in S1"]:::s1
-    end
-    subgraph tChats["Chats tab"]
-      direction TB
-      chatList["Chat list"]:::pb --> chat["Chat"]:::pb
-    end
-    subgraph tProfile["Profile tab"]
-      direction TB
-      profile["Profile"]:::pb --> matches["Matches list"]:::pb
-      profile --> friends["Friends<br/>add by username / QR"]:::pb
-      profile --> privacy["Privacy notice<br/>delete account"]:::pb
-    end
+    map["Map"]:::s1 --> preview["Preview card"]:::s1 --> detailPh["Event detail<br/>placeholder in S1"]:::s1
   end
-
-  profile -- "Log out" --> login
+  subgraph tCreate["From the + button on Events or Map"]
+    direction LR
+    createEv["Create Event"]:::s1 -- "created" --> newDetail["New event's detail"]:::pb
+  end
+  subgraph tChats["Chats tab"]
+    direction LR
+    chatList["Chat list"]:::pb --> chat["Chat"]:::pb
+  end
+  subgraph tProfile["Profile tab"]
+    direction LR
+    profile["Profile"]:::pb --> matches["Matches"]:::pb
+    profile --> friends["Friends · QR"]:::pb
+    profile --> privacy["Privacy ·<br/>delete account"]:::pb
+  end
+  tEvents ~~~ tMap ~~~ tCreate ~~~ tChats ~~~ tProfile
 ```
 
 Notes:
 - **Back behaviour (#39, #42).** Back pops the current tab's stack first. At a tab root it returns to the previously visited tab. It exits the app only at the true initial state. Switching tabs restores each tab's screen and scroll position (#38).
-- **Create Event.** The issues don't say where the entry point is (see [open question 5](#11-open-design-questions)). After success it navigates back (#46).
+- **Create Event.** A "+" button on the Events and Map tabs opens it. After creating, the app opens the new event's detail screen.
 - **Event detail.** Until the real screen exists, the Map tab's "View details" opens a placeholder route (#50).
 
 ## 3. Feature slices
 
-### 3.1 Authentication and user profile (Sprint 1)
+Each Sprint 1 feature, from screen to data source. The Product Backlog features are already drawn in the [overview](#1-architecture-overview), so they are described in text only.
+
+### 3.1 Authentication and profile (Sprint 1)
 
 ```mermaid
-flowchart LR
+flowchart TB
   classDef s1 fill:#d3f9d8,stroke:#2b8a3e,color:#000
   classDef ext fill:#fff3bf,stroke:#e67700,color:#000
-  classDef fake fill:#ffffff,stroke:#2b8a3e,color:#000,stroke-dasharray:3 3
 
-  subgraph UI["UI layer"]
-    direction TB
-    sSign["SignUpScreen #30"]:::s1
-    sVer["VerifyEmailScreen #31"]:::s1
-    sLog["LoginScreen #32"]:::s1
-    vm["<b>AuthViewModel</b><br/>Idle · Loading · SignedUp<br/>Verified · ResendThrottled · StillUnverified<br/>WrongCredentials · Error<br/>route: Login / VerifyEmail / Main"]:::s1
-    sSign --> vm
-    sVer --> vm
-    sLog --> vm
-  end
+  screens["Sign Up · Verify Email · Log In screens"]:::s1
+  vm["<b>AuthViewModel</b><br/>Idle · Loading · SignedUp · Verified<br/>ResendThrottled · StillUnverified<br/>WrongCredentials · Error"]:::s1
+  val["EPFL email check<br/><i>domain</i>"]:::s1
+  auth["<b>AuthRepository</b><br/>signUp · logIn · logOut · currentUser<br/>sendVerificationEmail<br/>reloadAndCheckVerified"]:::s1
+  prof["<b>UserProfileRepository</b><br/>createProfile · getProfile<br/>updateProfile"]:::s1
+  fa[("Firebase Auth")]:::ext
+  fs[("Firestore<br/>users/{uid}")]:::ext
 
-  subgraph DOM["Domain"]
-    val["EPFL email check<br/>non-@epfl.ch never reaches the repository"]:::s1
-  end
-
-  subgraph DATA["Data layer"]
-    direction TB
-    iAuth["<b>«interface» AuthRepository</b><br/>signUp · logIn · logOut · currentUser<br/>sendVerificationEmail · reloadAndCheckVerified<br/>returns a sealed Result"]:::s1
-    fbAuth["FirebaseAuthRepository"]:::s1
-    fkAuth["FakeAuthRepository<br/>tests"]:::fake
-    iProf["<b>«interface» UserProfileRepository</b><br/>createProfile · getProfile · updateProfile"]:::s1
-    fsProf["FirestoreUserProfileRepository<br/>users/{uid}"]:::s1
-    fkProf["FakeUserProfileRepository<br/>tests"]:::fake
-    fbAuth -. implements .-> iAuth
-    fkAuth -. implements .-> iAuth
-    fsProf -. implements .-> iProf
-    fkProf -. implements .-> iProf
-  end
-
-  xAuth[("Firebase Auth<br/>email + password")]:::ext
-  xFs[("Firestore<br/>users/{uid}")]:::ext
-
+  screens --> vm
   vm --> val
-  vm --> iAuth
-  vm --> iProf
-  fbAuth --> xAuth
-  fsProf --> xFs
+  vm --> auth
+  vm --> prof
+  auth --> fa
+  prof --> fs
 ```
 
 - **Result types (#30–#32).** `signUp` returns success, invalid domain, already in use or network error. `logIn` adds wrong credentials. `sendVerificationEmail` has a distinct *throttled* failure for Firebase's too-many-requests error, which the UI shows differently from a real error.
 - **Profile (#34).** `UserProfile` has at least `uid`, `email` and `createdAt`. #45 adds `isAssociation` and `isAssociationVerified`, both defaulting to `false`. The document ID is always the Auth UID, never a client-generated ID. The profile is created **exactly once, at the first verified entry** (Verify Email "Continue", or app-start routing finding a verified user without a profile), because the Security Rules only allow writes from verified accounts. If account creation fails, no profile is written. If the profile write fails, the user sees an error state. Fields other students may see live in a separate `publicProfiles/{uid}` document (see [5.2](#52-collections-and-key-fields)).
 - **Log out (#8, #32).** Logging out clears the session, and the next launch routes to Log In.
 
-### 3.2 Event creation, discovery and map (Sprint 1)
+### 3.2 Map (Sprint 1)
 
 ```mermaid
-flowchart LR
+flowchart TB
+  classDef s1 fill:#d3f9d8,stroke:#2b8a3e,color:#000
+  classDef ext fill:#fff3bf,stroke:#e67700,color:#000
+
+  mapS["Map screen<br/>markers · preview card"]:::s1 --> mapVM["<b>MapViewModel</b><br/>Loading · Empty · Success · Error<br/>permission granted / denied"]:::s1
+  mapS -. renders .-> maps[("Google Maps SDK")]:::ext
+  mapVM --> dist["Haversine distance<br/><i>domain</i>"]:::s1
+  mapVM --> ev["<b>EventRepository</b><br/>getUpcomingPublicEvents"]:::s1
+  mapVM --> loc["<b>LocationService</b><br/>permission · one-off location"]:::s1
+  ev --> fs[("Firestore<br/>events")]:::ext
+  loc --> gps[("GPS")]:::ext
+```
+
+- **Map (#50, #51).** The map is centred on Lausanne. Location permission is requested once, on first entry to the Map tab. If it's denied, the map stays fully usable without distance badges. Distance is labelled *straight-line*, not walking time. Directions is a billed SKU and out of scope.
+- **Upcoming events query (#49).** The query **must** include `isPrivate == false`. Security Rules are not filters, so a query that could return a private event is rejected as a whole. Combining equality on `isPrivate` with a range on `startTime` needs a composite index, which should be versioned in `firestore.indexes.json` next to the rules.
+
+### 3.3 Create Event (Sprint 1)
+
+```mermaid
+flowchart TB
   classDef s1 fill:#d3f9d8,stroke:#2b8a3e,color:#000
   classDef pb fill:#dbe4ff,stroke:#364fc7,color:#000
   classDef ext fill:#fff3bf,stroke:#e67700,color:#000
-  classDef fake fill:#ffffff,stroke:#2b8a3e,color:#000,stroke-dasharray:3 3
 
-  subgraph UI["UI layer"]
-    direction TB
-    sMap["MapScreen #50<br/>markers · preview card"]:::s1
-    vmMap["<b>MapViewModel</b><br/>Loading · Empty · Success(events) · Error<br/>permission: Granted / Denied<br/>selected event + distance"]:::s1
-    sCreate["CreateEventScreen #46<br/>form · map-pin location picker"]:::s1
-    vmCreate["<b>CreateEventViewModel</b><br/>Editing(field errors)<br/>publish-as-association option<br/>Submitting · Created · Error"]:::s1
-    sMap --> vmMap
-    sCreate --> vmCreate
-  end
-
-  subgraph DOM["Domain"]
-    direction TB
-    dist["haversine distance #51<br/>pure function"]:::s1
-    eVal["event validation #45<br/>title · date not in past"]:::s1
-  end
-
-  subgraph DATA["Data layer"]
-    direction TB
-    iEv["<b>«interface» EventRepository</b><br/>createEvent(event): Result #45<br/>getUpcomingPublicEvents(windowDays) #49"]:::s1
-    fsEv["FirestoreEventRepository<br/>events/{eventId}"]:::s1
-    fkEv["FakeEventRepository<br/>seeded fake events"]:::fake
-    iLoc["<b>«interface» LocationService</b><br/>permission state · one-off current location"]:::s1
-    gpsLoc["Fused location implementation"]:::s1
-    iProf["UserProfileRepository<br/>isAssociation · isAssociationVerified<br/>for the verified badge only"]:::s1
-    iGeo["GeocodingRepository<br/>address search, later"]:::pb
-    fsEv -. implements .-> iEv
-    fkEv -. implements .-> iEv
-    gpsLoc -. implements .-> iLoc
-  end
-
-  xFs[("Firestore<br/>events")]:::ext
-  xGps[("GPS")]:::ext
-  xMaps[("Google Maps SDK")]:::ext
-  xNom[("Nominatim")]:::ext
-
-  vmMap --> iEv
-  vmMap --> iLoc
-  vmMap --> dist
-  sMap -. renders .-> xMaps
-  vmCreate --> eVal
-  vmCreate --> iEv
-  vmCreate --> iProf
-  vmCreate -.-> iGeo
-  fsEv --> xFs
-  gpsLoc --> xGps
-  iGeo -.-> xNom
+  createS["Create Event screen<br/>form · map-pin location"]:::s1 --> createVM["<b>CreateEventViewModel</b><br/>Editing · Submitting · Created · Error"]:::s1
+  createVM --> valid["Event validation<br/><i>domain</i>"]:::s1
+  createVM --> ev["<b>EventRepository</b><br/>createEvent"]:::s1
+  createVM --> prof["<b>UserProfileRepository</b><br/>association badge"]:::s1
+  createVM -.-> geo["<b>GeocodingRepository</b><br/>address search, later"]:::pb
+  ev --> fs[("Firestore<br/>events · users")]:::ext
+  prof --> fs
+  geo -.-> nom[("Nominatim")]:::ext
 ```
 
 - **Event model (#45).** `id`, `title`, `description`, `category`, `location` (lat/lng), `startTime`, `capacity` (nullable), `isPrivate`, `createdBy`, `organizerIds`, `allowedUids` and `isAssociationEvent`. `createdBy` is always the authenticated UID and is always in `organizerIds` and `allowedUids`. The Security Rules enforce this again (#47).
-- **Map (#50, #51).** The map is centred on Lausanne. Location permission is requested once, on first entry to the Map tab. If it's denied, the map stays fully usable without distance badges. Distance is labelled *straight-line*, not walking time. Directions is a billed SKU and out of scope.
-- **Upcoming events query (#49).** The query **must** include `isPrivate == false`. Security Rules are not filters, so a query that could return a private event is rejected as a whole. Combining equality on `isPrivate` with a range on `startTime` needs a composite index, which should be versioned in `firestore.indexes.json` next to the rules.
 - **Create Event access (#46).** **Anyone can create an event** and becomes its **organizer**. An event can have one or several student organizers (`organizerIds`). Only a verified association (`isAssociation && isAssociationVerified`) sees the "publish as <association>" option, which sets `isAssociationEvent` and shows a verified badge. Nominatim address search appears in the Figma task (#44), but the Sprint 1 build task only requires a map pin (#46), so geocoding stays blue. When added, it must follow the Nominatim policy: custom User-Agent, at most 1 request per second, debounced and cached, explicit search only (no search-as-you-type), and OSM attribution in the UI.
 
-### 3.3 Groups, matching and chat (Product Backlog)
+### 3.4 Groups, matching and chat (Product Backlog)
 
-```mermaid
-flowchart LR
-  classDef pb fill:#dbe4ff,stroke:#364fc7,color:#000
-  classDef later fill:#f1f3f5,stroke:#868e96,color:#000,stroke-dasharray:5 5
-  classDef ext fill:#fff3bf,stroke:#e67700,color:#000
-
-  subgraph UI["UI layer"]
-    direction TB
-    sDetail["EventDetailScreen<br/>Find a group #14"]:::pb
-    sProp["Match proposals<br/>accept / decline #26"]:::pb
-    sMatches["Matches list on Profile #28<br/>real-time"]:::pb
-    sChat["ChatListScreen · ChatScreen #25"]:::pb
-    vmMatch["<b>MatchingViewModel</b>"]:::pb
-    vmChat["<b>ChatViewModel</b>"]:::pb
-    sDetail --> vmMatch
-    sProp --> vmMatch
-    sMatches --> vmMatch
-    sChat --> vmChat
-  end
-
-  subgraph DOM["Domain"]
-    eng["<b>Matching engine #24</b><br/>input: requester + candidates<br/>interests · section · year · common friends<br/>output: ranked proposals / group assignment<br/>deterministic, framework-free"]:::pb
-  end
-
-  subgraph DATA["Data layer"]
-    direction TB
-    rMatch["MatchRepository<br/>send request #27 · respond #26<br/>observe matches #28"]:::pb
-    rGroup["GroupRepository<br/>create / join group in a transaction<br/>capacity-safe"]:::pb
-    rChat["ChatRepository<br/>observe messages · send"]:::pb
-  end
-
-  xFs[("Firestore<br/>matchRequests · groups · messages<br/>real-time listeners")]:::ext
-  xFn[("Cloud Function<br/>later")]:::later
-
-  vmMatch --> eng
-  vmMatch --> rMatch
-  vmMatch --> rGroup
-  vmChat --> rChat
-  rMatch --> xFs
-  rGroup --> xFs
-  rChat --> xFs
-  eng -. "same module, run server-side later" .-> xFn
-```
-
-- **Matching starts on the client.** Following the risk plan, matching starts as a simple deterministic heuristic in a pure Kotlin module and runs on the client. Group creation and joining go through a **Firestore transaction**, so two students can't take the last spot at the same time. If it later moves to a Cloud Function, the module moves unchanged. Only the caller changes.
+- **Matching starts on the client.** Following the risk plan, matching starts as a simple deterministic heuristic in a pure Kotlin module and runs on the client. Group creation and joining go through a **Firestore transaction**, so two students can't take the last spot at the same time. We revisit a Cloud Function only if fairness or cheating becomes a problem. The module would move unchanged, and only the caller would change.
 - **Real-time screens.** The matches list (#28) and chat (#25) use Firestore snapshot listeners exposed as `Flow`.
-- **Chat type.** Each group gets a group chat. One-to-one chats between friends or matches use the same message model (see [open question 12](#11-open-design-questions)).
+- **Chat type.** Each group gets a group chat. A one-to-one chat is simply a two-member group, so there is one chat model and one set of rules.
 - **Moderation-ready.** Messages carry `senderId` and `createdAt`, and the rules are written per operation, so report/block and rate limiting can be added later without a rule rewrite.
 
-### 3.4 At the venue and social features (Product Backlog)
-
-```mermaid
-flowchart LR
-  classDef pb fill:#dbe4ff,stroke:#364fc7,color:#000
-  classDef later fill:#f1f3f5,stroke:#868e96,color:#000,stroke-dasharray:5 5
-  classDef ext fill:#fff3bf,stroke:#e67700,color:#000
-
-  subgraph UI["UI layer"]
-    direction TB
-    sGroup["Group screen<br/>check-in #22 · Find my group #20"]:::pb
-    sAlbum["Event album<br/>view · upload photos"]:::pb
-    sFriends["Friends<br/>add by username #16 · scan QR #17<br/>ping friends #15"]:::pb
-    sMy["My events #18 · reminders #21"]:::pb
-    vmCheck["<b>CheckInViewModel</b>"]:::pb
-    vmAlbum["<b>AlbumViewModel</b>"]:::pb
-    vmFriends["<b>FriendsViewModel</b>"]:::pb
-    vmEvents["<b>EventsViewModel</b>"]:::pb
-    sGroup --> vmCheck
-    sAlbum --> vmAlbum
-    sFriends --> vmFriends
-    sMy --> vmEvents
-  end
-
-  subgraph DOM["Domain"]
-    direction TB
-    pol["Check-in policy<br/>inside venue radius during event"]:::pb
-    qr["QR payload parse + validate<br/>check-in · friend"]:::pb
-    img["Image compress + resize<br/>before upload"]:::pb
-  end
-
-  subgraph DATA["Data layer"]
-    direction TB
-    rLoc["LocationService<br/>one-off checks only"]:::pb
-    rQr["QrScanner"]:::pb
-    rGroup["GroupRepository<br/>check-ins · shared locations"]:::pb
-    rPhoto["PhotoRepository"]:::pb
-    rFriend["FriendRepository"]:::pb
-    rEvent["EventRepository<br/>register · my events"]:::pb
-    rRem["ReminderScheduler"]:::pb
-  end
-
-  xGps[("GPS")]:::ext
-  xCam[("Camera")]:::ext
-  xFs[("Firestore")]:::ext
-  xSt[("Cloud Storage<br/>events/{eventId}/album/")]:::ext
-  xNot[("Local notifications")]:::ext
-  xFcm[("FCM, evaluate later")]:::later
-
-  vmCheck --> pol
-  vmCheck --> qr
-  vmCheck --> rLoc
-  vmCheck --> rQr
-  vmCheck --> rGroup
-  vmAlbum --> img
-  vmAlbum --> rPhoto
-  vmFriends --> qr
-  vmFriends --> rQr
-  vmFriends --> rFriend
-  vmEvents --> rEvent
-  vmEvents --> rRem
-  rLoc --> xGps
-  rQr --> xCam
-  rGroup --> xFs
-  rFriend --> xFs
-  rEvent --> xFs
-  rPhoto --> xSt
-  rPhoto --> xFs
-  rRem --> xNot
-  rRem -.-> xFcm
-```
+### 3.5 At the venue and social features (Product Backlog)
 
 - **Check-in (#22).** A one-off location check against the venue during the event window. A QR code at the entrance is the indoor fallback. Only checked-in members can upload to the album (README).
-- **Find my group (#20).** Locations are shared **only with the group and only during the event** (README). This is the only feature that shares location with other users, so its storage and deletion need a team decision first (see [open question 7](#11-open-design-questions)). There is no location history.
+- **Find my group (#20).** Locations are shared **only with the group and only during the event** (README). Each member's position lives in `groups/{groupId}/locations/{uid}`. It is written only during the event window, readable only by group members, and deleted when the event ends. There is no location history.
 - **Album.** Photos are compressed and resized on the device, then stored in Cloud Storage. A Firestore document holds each photo's metadata. Storage Security Rules enforce size and type limits and check-in membership. Thumbnails are cached.
-- **Reminders (#21, #36).** Reminders are scheduled locally when the student registers, so they fire without a network.
+- **Reminders (#21, #36).** WorkManager schedules them when the student registers, so they fire offline and survive reboots. The notification permission (Android 13+) is requested at that moment.
+- **QR codes (#17, #22).** Scanned with CameraX + ML Kit barcode scanning. Payloads are typed strings such as `polysocial://checkin/{eventId}/{token}` and `polysocial://friend/{uid}`, validated by a pure parser.
 
 ## 4. Key flows
 
@@ -368,7 +190,7 @@ Each flow shows who calls whom, top to bottom. "App" is the screen together with
 ### 4.1 Sign up (#30)
 
 ```mermaid
-%%{init: {"sequence": {"mirrorActors": false, "actorFontSize": 15, "messageFontSize": 15, "noteFontSize": 14}}}%%
+%%{init: {"sequence": {"mirrorActors": false, "actorMargin": 30, "width": 135, "actorFontSize": 15, "messageFontSize": 15, "noteFontSize": 14}}}%%
 sequenceDiagram
   autonumber
   actor S as Student
@@ -395,7 +217,7 @@ No profile is written yet. The Security Rules only accept writes from verified a
 ### 4.2 Verify email, then create the profile (#31, #34)
 
 ```mermaid
-%%{init: {"sequence": {"mirrorActors": false, "actorFontSize": 15, "messageFontSize": 15, "noteFontSize": 14}}}%%
+%%{init: {"sequence": {"mirrorActors": false, "actorMargin": 30, "width": 135, "actorFontSize": 15, "messageFontSize": 15, "noteFontSize": 14}}}%%
 sequenceDiagram
   autonumber
   actor S as Student
@@ -434,7 +256,7 @@ flowchart TD
 ### 4.4 Map: public events and distances (#49–#51)
 
 ```mermaid
-%%{init: {"sequence": {"mirrorActors": false, "actorFontSize": 15, "messageFontSize": 15, "noteFontSize": 14}}}%%
+%%{init: {"sequence": {"mirrorActors": false, "actorMargin": 30, "width": 135, "actorFontSize": 15, "messageFontSize": 15, "noteFontSize": 14}}}%%
 sequenceDiagram
   autonumber
   actor S as Student
@@ -443,12 +265,12 @@ sequenceDiagram
   participant LS as LocationService
   S->>App: opens Map tab
   App->>ER: getUpcomingPublicEvents()
-  Note over ER: isPrivate == false, upcoming only
-  ER-->>App: events, from cache if offline
+  Note over ER: public, upcoming
+  ER-->>App: events (cache if offline)
   App-->>S: markers, or empty state
   opt location permission granted
     App->>LS: current location, once
-    App-->>S: straight-line distance on each card
+    App-->>S: distance on each card
   end
   S->>App: taps a marker
   App-->>S: preview card
@@ -457,7 +279,7 @@ sequenceDiagram
 ### 4.5 Find a group (Product Backlog, proposal)
 
 ```mermaid
-%%{init: {"sequence": {"mirrorActors": false, "actorFontSize": 15, "messageFontSize": 15, "noteFontSize": 14}}}%%
+%%{init: {"sequence": {"mirrorActors": false, "actorMargin": 30, "width": 135, "actorFontSize": 15, "messageFontSize": 15, "noteFontSize": 14}}}%%
 sequenceDiagram
   autonumber
   actor S as Student
@@ -466,12 +288,12 @@ sequenceDiagram
   participant ME as Matching engine
   participant GR as GroupRepository
   S->>App: taps Find a group
-  App->>MR: load other students' requests
+  App->>MR: load requests
   App->>ME: propose(me, candidates)
   ME-->>App: ranked proposals
   App-->>S: shows proposals
   S->>App: accepts one
-  App->>GR: join group (transaction, capacity)
+  App->>GR: join (transaction)
   App-->>S: group + group chat
 ```
 
@@ -516,7 +338,8 @@ flowchart LR
 | `publicProfiles/{uid}` | `username`, `displayName`, `section`, `year`, `interests` (always visible), `visibility` (public or private), `bio` | 🟦 new issue |
 | `events/{id}/registrations/{uid}` | `registeredAt` | 🟦 #18 |
 | `matchRequests/{id}` | `eventId`, `fromUid`, `toUid`, `status` | 🟦 #26, #27 |
-| `groups/{groupId}` + `members`, `messages`, `checkIns` | `eventId`, `capacity` · `senderId`, `text`, `createdAt` · `method` (gps or qr) | 🟦 #14, #22, #25 |
+| `groups/{groupId}` + `members`, `messages`, `checkIns` | `eventId`, `capacity` · `senderId`, `text`, `createdAt` · `method` (gps or qr). A one-to-one chat is a two-member group | 🟦 #14, #22, #25 |
+| `groups/{groupId}/locations/{uid}` | position, `updatedAt`. Only during the event, deleted after | 🟦 #20 |
 | `friendships/{id}` | `uidA`, `uidB`, `status` | 🟦 #16 |
 | `events/{id}/photos/{photoId}` | `storagePath`, `uploaderId`, `createdAt`. The file itself is in Cloud Storage. | 🟦 album |
 
@@ -539,58 +362,34 @@ Rules live in `firebase/firestore/firestore.rules` and are tested against the Fi
 
 Every PR that changes rules follows the process in `AGENTS.md`: "Changes Security Rules" in the description, allowed and denied emulator tests, and explicit reviewer sign-off.
 
-## 7. Offline behaviour
+## 7. Design decisions
 
-| Works offline | How |
-|---|---|
-| Events already loaded, registered events and their schedule (#36) | Firestore offline persistence serves cached documents |
-| Event reminders (#21) | scheduled locally on the device at registration |
-| Map | shows cached events on whatever tiles the Maps SDK already cached. **No tile prefetching or offline tile storage.** |
-| Writes such as chat messages and registrations | queued by Firestore and synced on reconnect, with a pending indicator in the UI |
+Decided by the team on 2026-10-03. The issues are being updated to match.
 
-Sign up, log in and verification need a network, and their screens show a clear network-error state. Every ViewModel exposes an error or offline state instead of failing silently.
+| # | Topic | Decision |
+|---|---|---|
+| 1 | Profile creation | Exactly once, at the first verified entry (Verify Email "Continue" or app start), because the rules only accept verified accounts |
+| 2 | Who creates events | Anyone. The creator becomes the organizer, and an event can have several organizers. Verified associations get a badge |
+| 3 | Profiles | Private `users` plus `publicProfiles`, with public or private visibility. Section, year and interests are always visible |
+| 4 | Private events | `allowedUids` access list, checked by the rules |
+| 5 | Create Event entry | "+" button on the Events and Map tabs. Afterwards, open the new event's detail screen |
+| 6 | Matching | On the device: a pure module plus a Firestore transaction. Cloud Functions only if fairness or cheating becomes a problem |
+| 7 | Find my group | `groups/{id}/locations/{uid}`, only during the event, members only, deleted afterwards |
+| 8 | Reminders | WorkManager, scheduled at registration. Notification permission asked then |
+| 9 | QR codes | CameraX + ML Kit. Typed `polysocial://checkin/…` and `polysocial://friend/…` payloads, pure parser |
+| 10 | Section-exclusive events | Deferred. Later `allowedSections` on events, checked in the rules |
+| 11 | Association verification | Manual flag in the Firebase console, documented in the README. In-app flow later |
+| 12 | One-to-one chat | A two-member group (one chat model) |
+| 13 | Dependency injection | Manual constructor injection with a provider object. No Hilt |
 
-## 8. Testability
+**Open questions:** none right now. Add new ones here and in `CONTEXT.md`.
 
-| Seam | Production implementation | Test double | Tested by |
-|---|---|---|---|
-| `AuthRepository` | `FirebaseAuthRepository` | `FakeAuthRepository` | ViewModel unit tests, UI tests |
-| `UserProfileRepository` | `FirestoreUserProfileRepository` | `FakeUserProfileRepository` | ViewModel unit tests, UI tests |
-| `EventRepository` | `FirestoreEventRepository` | `FakeEventRepository` (seeded) | ViewModel unit tests, UI tests |
-| `LocationService` | fused-location implementation | fake fixed location / denied | Map UI tests (CI emulators have no GPS fix) |
-| `QrScanner`, camera | camera implementation | fake payloads | UI tests (CI emulators have no camera) |
-| Domain functions | — | none needed | plain JVM unit tests |
-| Firestore and Storage rules | — | Firebase Local Emulator Suite | rules tests |
-| Nominatim client | HTTP client | canned JSON / MockWebServer | unit tests, never live calls |
-
-## 9. Proposed package layout
-
-The codebase currently only contains the template (`MainActivity`, `SecondActivity`, `SimpleData.kt`, `ui/theme`, `resources/C.kt`). This is the proposed target structure. The first sprint tasks will confirm it.
-
-```
-com.polysocial
-├── MainActivity.kt          entry point, hosts the NavHost
-├── ui/
-│   ├── navigation/          routes, bottom bar, app bar, per-tab back stacks   (#41, #42)
-│   ├── common/              shared LoadingState / EmptyState                    (#43)
-│   ├── auth/                SignUp, VerifyEmail, Login screens + AuthViewModel  (#30–#32)
-│   ├── map/                 MapScreen + MapViewModel                            (#50, #51)
-│   ├── event/               CreateEvent, event list and detail + ViewModels     (#46)
-│   └── theme/               exists
-├── model/                   data layer: data classes, repository interfaces and implementations
-│   ├── auth/                AuthRepository, FirebaseAuthRepository              (#30)
-│   ├── user/                UserProfile, UserProfileRepository, Firestore impl  (#34, #45)
-│   ├── event/               Event, EventRepository, FirestoreEventRepository    (#45, #49)
-│   └── location/            LocationService + implementation                    (#51)
-├── domain/                  pure Kotlin: validation, distance, filtering, matching, QR parsing
-└── resources/C.kt           test tags, exists
-```
-
-Fakes live in the test source sets (`app/src/test/` and `app/src/androidTest/`).
-
-## 10. Backlog traceability
+## 8. Backlog traceability
 
 Every Scrum Board item mapped to the components it touches.
+
+<details>
+<summary>Show the table (every Scrum Board item → components)</summary>
 
 | Item | Epic | Components | Status |
 |---|---|---|---|
@@ -608,7 +407,7 @@ Every Scrum Board item mapped to the components it touches.
 | #13 Filter events | Event Discovery | Events tab, event filtering (domain) | 🟦 |
 | #18 List of chosen events | — | My events, registrations, EventRepository | 🟦 |
 | #36 Offline registered events | — | Firestore offline cache, My events | 🟦 |
-| #19 Section-exclusive event | — | Event audience field, profile `section`, read rule | ⬜ |
+| #19 Section-exclusive event | — | later: `allowedSections` on events, checked in rules | ⬜ deferred |
 | #14 Group for an event | Groups & Matchmaking | Find a group, MatchingViewModel, matching engine, GroupRepository | 🟦 |
 | #24 Match students together | Groups & Matchmaking | matching engine (domain) | 🟦 |
 | #26 Accept or decline match | Groups & Matchmaking | proposals screen, MatchRepository | 🟦 |
@@ -619,24 +418,8 @@ Every Scrum Board item mapped to the components it touches.
 | #16 Adding friends | — | Friends screen, FriendRepository, `username` | 🟦 |
 | #17 Meeting people by QR | — | QrScanner, QR payload parsing, FriendRepository | 🟦 |
 | #22 Automatic check-in | — | check-in policy, LocationService, QR fallback, GroupRepository | 🟦 |
-| #20 Find my group | — | group venue map, shared locations | ⬜ |
+| #20 Find my group | — | group venue map, `groups/{id}/locations` | 🟦 |
 | #21 Event notification | — | ReminderScheduler, local notifications | 🟦 |
 | #1, #53, #55 | — | project setup, PR template, CI. No product architecture impact | — |
 
-## 11. Open design questions
-
-These came up while mapping the backlog onto the architecture. Each needs a team (or PO) decision, and the related issue should be updated once decided.
-
-1. ✅ **Decided: profile creation timing.** The profile is created exactly once, at the first verified entry (Verify Email "Continue" or app-start routing when the profile is missing), so it passes the verified-email rule. Applied to #31, #32 and #34.
-2. ✅ **Decided: anyone can create an event.** The creator becomes its organizer, and an event can have one or several student organizers. A verified association can publish an event under its name with a verified badge. Unverified associations act like normal students. Applied to #12, #44, #45, #46 and #47.
-3. ✅ **Decided: public profile split, with public and private profiles.** `users/{uid}` stays private. `publicProfiles/{uid}` holds the fields others may see, and section, year and interests are always visible because matching needs them. Applied to #34 and #35, plus a new issue for public profiles.
-4. ✅ **Decided: event access list.** Events carry `allowedUids`, and the private-event read rule checks `request.auth.uid in resource.data.allowedUids`. Applied to #45 and #52.
-5. **Create Event entry point** and the "My events" destination after creation (#46).
-6. **Where matching runs and how it stays consistent.** Client-side with transactions now, Cloud Function later. When do we switch?
-7. **Find my group location sharing (#20).** Proposal: an ephemeral `groups/{groupId}/locations/{uid}` document, written only during the event window, deleted at the end, and readable only by group members. Needs a privacy notice update.
-8. **Reminders mechanism (#21).** Local scheduling (WorkManager or AlarmManager) and the Android 13+ notification permission. FCM is evaluated only when notifications enter the backlog.
-9. **QR codes (#17, #22).** The decoding library and the payload format (what a check-in QR and a friend QR contain, and how they are signed or validated).
-10. **Section-exclusive events (#19).** Needs a `section` profile field and an audience field on events, enforced in rules.
-11. **Association verification flow.** #45 notes it is only settable through fixtures for now. A follow-up issue is needed.
-12. **Chat shape (#25).** Is a one-to-one chat a two-member group, or a separate collection?
-13. **Dependency injection.** **Recommendation:** constructor injection with a small hand-written provider object, unless the team chooses a library.
+</details>
