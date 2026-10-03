@@ -24,7 +24,13 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 - **Anyone can create an event** and becomes its organizer. `Event.organizerIds` (always contains `createdBy`) controls who can manage it. Only a verified association (`isAssociation && isAssociationVerified`) may set `isAssociationEvent`, which shows a verified badge. There is no access-denied state on Create Event.
 - **Private events** carry `allowedUids` (organizers, members, approved requesters). Rules check `request.auth.uid in resource.data.allowedUids`.
 - **Profiles are split.** `users/{uid}` is owner-only. `publicProfiles/{uid}` holds visible fields, with a public or private profile (Instagram-style). Section, year and interests are always visible (matching needs them).
-- **Matching** is a deterministic heuristic (tag overlap / first-fit) in a pure module, run on the client. Group joins go through a Firestore transaction (capacity). It may move to a Cloud Function later.
+- **Matching** is a deterministic heuristic (tag overlap / first-fit) in a pure module, run **on the device**. Group joins go through a Firestore transaction (capacity). A Cloud Function only if fairness or cheating becomes a problem.
+- **Create Event** opens from a "+" button on the Events and Map tabs. After creating, the app opens the new event's detail screen.
+- **Chats:** a one-to-one chat is a two-member group (one model, one set of rules).
+- **Find my group:** positions in `groups/{id}/locations/{uid}`, written only during the event, readable by members only, deleted afterwards. No location history.
+- **Approved libraries (not added yet):** WorkManager for reminders (scheduled at registration, notification permission asked then). CameraX + ML Kit barcode scanning for QR codes, with typed payloads `polysocial://checkin/{eventId}/{token}` and `polysocial://friend/{uid}` checked by a pure parser.
+- **DI:** manual constructor injection with a small provider object. No Hilt.
+- **Associations** are verified manually (a flag set in the Firebase console, to be documented in the README). Section-exclusive events are deferred.
 - **Offline** relies only on Firestore's offline cache. No Room, no map tile prefetching.
 
 The issues for the last four points (#12, #31, #32, #34, #35, #44–#47, #52) still describe the old design until they are edited.
@@ -39,12 +45,13 @@ The issues for the last four points (#12, #31, #32, #34, #35, #44–#47, #52) st
 
 ## Open questions (don't guess, ask)
 
-Create Event entry point · where matching runs long-term · Find my group location storage and retention · reminder mechanism (WorkManager vs AlarmManager) · QR library and payload format · section-exclusive events · association verification flow · one-to-one chat shape · DI approach. Details are in the Architecture Diagram, section 11.
+None right now. Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 ## Decision log
 
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 
+- 2026-10-03 · Decisions 5–13: Create Event "+" button, matching on the device, Find my group storage, WorkManager, CameraX + ML Kit, manual association verification, one-to-one chat as a group, manual DI. (#61)
 - 2026-10-03 · Profiles split into `users` (private) and `publicProfiles` (public or private visibility). Events get `organizerIds`, `allowedUids` and `isAssociationEvent`. Anyone can create events. The profile is created at the first verified entry. (#61)
 - 2026-10-03 · This file added. Agents read it first and update it with important decisions only. (this PR)
 - 2026-10-03 · PR size cap of about 1000 changed lines. The backend-SDK import ban in ViewModels and Composables is kept. (#57)
