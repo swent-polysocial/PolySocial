@@ -277,6 +277,8 @@ mismatch with this list in the PR:
   | Tests | `test/<issue>-<slug>` | `test/63-matching-tests` |
   | Chore / CI / docs | `chore/<issue>-<slug>` | `chore/12-ci-cache` |
 
+  Documentation-only changes (see "Scrum board") have no issue, so their
+  branch is `chore/<slug>`, for example `chore/update-agents-md`.
 - Commit small, coherent steps and push the branch regularly, not once at the
   end. Do not open a PR only shortly before a Sprint Review.
 - Use Conventional Commit subjects: `<type>: <summary>` or
@@ -323,8 +325,9 @@ mismatch with this list in the PR:
   and split larger work into several PRs.
 - Every PR has an assignee (the author).
 - The PR title follows the commit subject convention. The description states
-  the issue (`Closes #N`), what changed and why, the design choices a reviewer
-  should know about, the tests added, the commands run with results, any
+  the issue (`Closes #N`, or "No linked issue (docs-only)" for a
+  documentation-only change), what changed and why, the design choices a
+  reviewer should know about, the tests added, the commands run with results, any
   Security Rules change, and any setup step or known limitation. Note
   explicitly any check you could not run.
 - Open a draft PR for work in progress or early feedback. Take it out of draft
@@ -387,6 +390,10 @@ are also the human author's job.
 
 - Every change maps to an issue on the PolySocial `Scrum Board`. Do not start
   work without an issue. If none exists, ask.
+- Exception: documentation-only changes do not need an issue. This covers
+  Markdown docs such as this file or the README, with no change to code, build
+  files, configuration, workflows, or Security Rules. They still go through a
+  branch and a reviewed PR like any other change.
 - A task can only be pulled into a Sprint once it meets the Definition of
   Ready: a clear description and acceptance criteria, an estimate, and small
   enough to finish within one Sprint. Estimation uses story points (1, 2, 3, 5,
