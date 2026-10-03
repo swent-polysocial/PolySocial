@@ -168,7 +168,7 @@ flowchart LR
 ```
 
 - **Result types (#30–#32).** `signUp` returns success, invalid domain, already in use or network error. `logIn` adds wrong credentials. `sendVerificationEmail` has a distinct *throttled* failure for Firebase's too-many-requests error, which the UI shows differently from a real error.
-- **Profile (#34).** `UserProfile` has at least `uid`, `email` and `createdAt`. #45 adds `isAssociation` and `isAssociationVerified`, both defaulting to `false`. The document ID is always the Auth UID, never a client-generated ID. The profile is created **exactly once, at the first verified entry** (Verify Email "Continue", or app-start routing finding a verified user without a profile), because the Security Rules only allow writes from verified accounts. If account creation fails, no profile is written. If the profile write fails, the user sees an error state. Fields other students may see live in a separate `publicProfiles/{uid}` document (see [5.2](#52-firestore-and-storage-product-backlog-proposal)).
+- **Profile (#34).** `UserProfile` has at least `uid`, `email` and `createdAt`. #45 adds `isAssociation` and `isAssociationVerified`, both defaulting to `false`. The document ID is always the Auth UID, never a client-generated ID. The profile is created **exactly once, at the first verified entry** (Verify Email "Continue", or app-start routing finding a verified user without a profile), because the Security Rules only allow writes from verified accounts. If account creation fails, no profile is written. If the profile write fails, the user sees an error state. Fields other students may see live in a separate `publicProfiles/{uid}` document (see [5.2](#52-collections-and-key-fields)).
 - **Log out (#8, #32).** Logging out clears the session, and the next launch routes to Log In.
 
 ### 3.2 Event creation, discovery and map (Sprint 1)
@@ -363,258 +363,164 @@ flowchart LR
 
 ## 4. Key flows
 
-### 4.1 Sign up, verify, then create profile (#30, #31, #34)
+Each flow shows who calls whom, top to bottom. "App" is the screen together with its ViewModel.
+
+### 4.1 Sign up (#30)
 
 ```mermaid
+%%{init: {"sequence": {"mirrorActors": false, "actorFontSize": 15, "messageFontSize": 15, "noteFontSize": 14}}}%%
 sequenceDiagram
   autonumber
   actor S as Student
-  participant UI as SignUp / VerifyEmail screens
-  participant VM as AuthViewModel
+  participant App as Sign Up screen
   participant AR as AuthRepository
-  participant PR as UserProfileRepository
   participant FA as Firebase Auth
-  participant FS as Firestore
-
-  S->>UI: email, password, confirm
-  UI->>VM: onSignUp(email, password)
-  alt email is not @epfl.ch
-    VM-->>UI: Error(invalid domain), no network call
-  else valid EPFL email
-    VM->>AR: signUp(email, password)
-    AR->>FA: createUserWithEmailAndPassword
-    FA-->>AR: uid or error
-    alt failure
-      AR-->>VM: AlreadyInUse or NetworkError
-      VM-->>UI: error state, no profile written
-    else success
-      AR-->>VM: Success(uid)
-      Note over VM,PR: No profile yet. Rules only accept writes from verified accounts.
-      VM->>AR: sendVerificationEmail()
-      VM-->>UI: SignedUp, navigate to Verify Email
-    end
-  end
-  S->>UI: clicks link in EPFL inbox, taps Continue
-  UI->>VM: onContinue()
-  VM->>AR: reloadAndCheckVerified()
-  AR->>FA: reload user, refresh ID token
-  Note over AR,FA: Force an ID-token refresh so Security Rules see email_verified == true
-  alt verified
-    VM->>PR: getProfile(uid)
-    opt no profile yet, first verified entry
-      VM->>PR: createProfile(uid, email), exactly once
-      PR->>FS: set users/uid
-    end
-    VM-->>UI: Verified, navigate to main app
-  else not yet
-    VM-->>UI: StillUnverified, stay on screen
-  end
-```
-
-### 4.2 App start routing (#32, #34)
-
-```mermaid
-sequenceDiagram
-  autonumber
-  participant App as MainActivity / NavHost
-  participant VM as AuthViewModel
-  participant AR as AuthRepository
-  participant PR as UserProfileRepository
-
-  App->>VM: start
-  VM->>AR: currentUser()
-  alt no user
-    VM-->>App: route Login
-  else user, email not verified
-    VM-->>App: route Verify Email
-  else user, verified
-    VM->>PR: getProfile(uid), exactly once
-    alt profile loaded
-      VM-->>App: route Main (Events tab)
-    else no profile yet, first verified entry
-      VM->>PR: createProfile(uid, email), exactly once
-      VM-->>App: route Main (Events tab)
-    else load failed
-      VM-->>App: Error with retry, never a blank screen
+  S->>App: email + password
+  alt not an @epfl.ch email
+    App-->>S: error, nothing sent
+  else EPFL email
+    App->>AR: signUp()
+    AR->>FA: create account
+    alt failed
+      App-->>S: "already in use" or network error
+    else created
+      App->>AR: sendVerificationEmail()
+      App-->>S: go to Verify Email
     end
   end
 ```
 
-### 4.3 Map: load public events and distances (#49, #50, #51)
+No profile is written yet. The Security Rules only accept writes from verified accounts.
+
+### 4.2 Verify email, then create the profile (#31, #34)
 
 ```mermaid
+%%{init: {"sequence": {"mirrorActors": false, "actorFontSize": 15, "messageFontSize": 15, "noteFontSize": 14}}}%%
 sequenceDiagram
   autonumber
   actor S as Student
-  participant M as MapScreen
-  participant VM as MapViewModel
+  participant App as Verify Email screen
+  participant AR as AuthRepository
+  participant PR as UserProfileRepository
+  S->>App: taps Continue
+  App->>AR: reloadAndCheckVerified()
+  Note over AR: also refreshes the ID token
+  alt not verified yet
+    App-->>S: "still not verified"
+  else verified
+    App->>PR: getProfile()
+    opt first verified entry
+      App->>PR: createProfile(), once
+    end
+    App-->>S: enter the main app
+  end
+```
+
+### 4.3 App start routing (#32)
+
+```mermaid
+flowchart TD
+  classDef s1 fill:#d3f9d8,stroke:#2b8a3e,color:#000
+  start(["App starts"]) --> q1{"Signed in?"}
+  q1 -- no --> login["Log In screen"]:::s1
+  q1 -- yes --> q2{"Email verified?"}
+  q2 -- no --> verify["Verify Email screen"]:::s1
+  q2 -- yes --> q3{"Profile exists?"}
+  q3 -- no --> create["createProfile(), once"]:::s1 --> main["Main app, Events tab"]:::s1
+  q3 -- yes --> main
+  q3 -- "load failed" --> err["Error + Retry<br/>never a blank screen"]:::s1
+```
+
+### 4.4 Map: public events and distances (#49–#51)
+
+```mermaid
+%%{init: {"sequence": {"mirrorActors": false, "actorFontSize": 15, "messageFontSize": 15, "noteFontSize": 14}}}%%
+sequenceDiagram
+  autonumber
+  actor S as Student
+  participant App as Map screen
   participant ER as EventRepository
   participant LS as LocationService
-  participant D as haversine distance
-  participant FS as Firestore
-
-  S->>M: opens Map tab
-  M->>VM: onEnter()
-  VM-->>M: Loading
-  VM->>ER: getUpcomingPublicEvents(windowDays)
-  ER->>FS: query events where isPrivate == false and startTime in window
-  FS-->>ER: documents, from cache when offline
-  ER-->>VM: List of Event
-  VM-->>M: Success(events) or Empty
-  M->>S: location permission prompt, first entry only
-  alt permission granted
-    VM->>LS: currentLocation(), one-off
-    LS-->>VM: lat, lng
-    VM->>D: distance(user, event) for each event
-    VM-->>M: events with straight-line distance badges
-  else permission denied
-    VM-->>M: markers without distance, map still usable
+  S->>App: opens Map tab
+  App->>ER: getUpcomingPublicEvents()
+  Note over ER: isPrivate == false, upcoming only
+  ER-->>App: events, from cache if offline
+  App-->>S: markers, or empty state
+  opt location permission granted
+    App->>LS: current location, once
+    App-->>S: straight-line distance on each card
   end
-  S->>M: taps marker
-  M->>VM: onMarkerSelected(eventId)
-  VM-->>M: preview card with title, distance, View details
+  S->>App: taps a marker
+  App-->>S: preview card
 ```
 
-### 4.4 Find a group (Product Backlog, proposal)
+### 4.5 Find a group (Product Backlog, proposal)
 
 ```mermaid
+%%{init: {"sequence": {"mirrorActors": false, "actorFontSize": 15, "messageFontSize": 15, "noteFontSize": 14}}}%%
 sequenceDiagram
   autonumber
   actor S as Student
-  participant UI as Event detail / proposals
-  participant VM as MatchingViewModel
+  participant App as Event detail
   participant MR as MatchRepository
   participant ME as Matching engine
   participant GR as GroupRepository
-  participant FS as Firestore
-
-  S->>UI: taps Find a group
-  UI->>VM: onFindGroup(eventId)
-  VM->>MR: open match request for eventId
-  MR->>FS: write matchRequests doc
-  VM->>MR: load open requests and candidate profiles for eventId
-  VM->>ME: propose(me, candidates)
-  ME-->>VM: ranked proposals, deterministic
-  VM-->>UI: show proposals
-  S->>UI: accept or decline
-  UI->>VM: onRespond(proposal, accepted)
-  opt accepted
-    VM->>GR: createOrJoinGroup(eventId), transaction with capacity check
-    GR->>FS: groups doc + membership + group chat
-    VM-->>UI: group joined, chat available
-  end
+  S->>App: taps Find a group
+  App->>MR: load other students' requests
+  App->>ME: propose(me, candidates)
+  ME-->>App: ranked proposals
+  App-->>S: shows proposals
+  S->>App: accepts one
+  App->>GR: join group (transaction, capacity)
+  App-->>S: group + group chat
 ```
 
 ## 5. Data model
 
-### 5.1 Firestore, Sprint 1 (fixed by issues #34 and #45)
+### 5.1 How the collections relate
 
 ```mermaid
-erDiagram
-  USER }|--o{ EVENT : "organizes"
-  USER {
-    string uid PK "Firebase Auth UID, document ID"
-    string email "@epfl.ch"
-    timestamp createdAt
-    boolean isAssociation "default false"
-    boolean isAssociationVerified "default false, set manually"
-  }
-  EVENT {
-    string id PK "document ID"
-    string title
-    string description
-    string category
-    geopoint location "lat and lng"
-    timestamp startTime
-    int capacity "nullable"
-    boolean isPrivate
-    string createdBy FK "must equal auth uid"
-    list organizerIds "UIDs, always contains createdBy"
-    list allowedUids "who may read a private event"
-    boolean isAssociationEvent "verified associations only"
-  }
+flowchart LR
+  classDef s1 fill:#d3f9d8,stroke:#2b8a3e,color:#000
+  classDef pb fill:#dbe4ff,stroke:#364fc7,color:#000
+  classDef ext fill:#fff3bf,stroke:#e67700,color:#000
+
+  users["users/{uid}<br/>private"]:::s1
+  pub["publicProfiles/{uid}<br/>visible to others"]:::pb
+  events["events/{eventId}"]:::s1
+  reg["registrations"]:::pb
+  photos["photos"]:::pb
+  groups["groups/{groupId}"]:::pb
+  sub["members · messages<br/>check-ins"]:::pb
+  mreq["matchRequests"]:::pb
+  friends["friendships"]:::pb
+  storage[("Cloud Storage<br/>photo files")]:::ext
+
+  users --- |"same uid"| pub
+  users -->|"organizes"| events
+  events --> reg
+  events --> photos
+  photos -.-> storage
+  events --> groups
+  groups --> sub
+  users --> mreq
+  users --> friends
 ```
 
-| Path | Holds | Issue |
+### 5.2 Collections and key fields
+
+| Collection | Key fields | Status |
 |---|---|---|
-| `users/{uid}` | `UserProfile` | #34, #45 |
-| `events/{eventId}` | `Event` | #45, #49 |
+| `users/{uid}` | `uid`, `email`, `createdAt`, `isAssociation`, `isAssociationVerified` | 🟩 #34, #45 |
+| `events/{eventId}` | `title`, `description`, `category`, `location`, `startTime`, `capacity?`, `isPrivate`, `createdBy`, `organizerIds`, `allowedUids`, `isAssociationEvent` | 🟩 #45 |
+| `publicProfiles/{uid}` | `username`, `displayName`, `section`, `year`, `interests` (always visible), `visibility` (public or private), `bio` | 🟦 new issue |
+| `events/{id}/registrations/{uid}` | `registeredAt` | 🟦 #18 |
+| `matchRequests/{id}` | `eventId`, `fromUid`, `toUid`, `status` | 🟦 #26, #27 |
+| `groups/{groupId}` + `members`, `messages`, `checkIns` | `eventId`, `capacity` · `senderId`, `text`, `createdAt` · `method` (gps or qr) | 🟦 #14, #22, #25 |
+| `friendships/{id}` | `uidA`, `uidB`, `status` | 🟦 #16 |
+| `events/{id}/photos/{photoId}` | `storagePath`, `uploaderId`, `createdAt`. The file itself is in Cloud Storage. | 🟦 album |
 
-### 5.2 Firestore and Storage, Product Backlog (proposal)
-
-These shapes are **proposals** to help discuss the backlog. Each one is fixed by the issue that implements it.
-
-**Profiles are split, Instagram-style.** `users/{uid}` stays private to its owner. `publicProfiles/{uid}` holds what other students may see to send a match or message request: username, display name, section, year and interests, which every EPFL user can read because matching needs them. Each student picks a **public** or **private** profile. A public profile also shows friends, events attended, photos and the full bio to every EPFL user. A private profile shows those only to approved connections.
-
-```mermaid
-erDiagram
-  USER ||--|| PUBLIC_PROFILE : "public face"
-  USER ||--o{ REGISTRATION : "registers for"
-  EVENT ||--o{ REGISTRATION : "has attendees"
-  USER ||--o{ FRIENDSHIP : "has"
-  USER ||--o{ MATCH_REQUEST : "sends or receives"
-  EVENT ||--o{ GROUP : "has"
-  GROUP ||--|{ GROUP_MEMBER : "has"
-  USER ||--o{ GROUP_MEMBER : "is"
-  GROUP ||--o{ MESSAGE : "chat"
-  GROUP ||--o{ CHECK_IN : "records"
-  EVENT ||--o{ PHOTO : "album"
-
-  PUBLIC_PROFILE {
-    string uid PK "same as users doc"
-    string username "for adding friends"
-    string displayName
-    string section "matching, always visible"
-    int year "matching, always visible"
-    list interests "matching, always visible"
-    string visibility "public or private"
-    string bio "full bio: public profiles or approved connections"
-  }
-  REGISTRATION {
-    string eventId FK
-    string uid FK
-    timestamp registeredAt
-  }
-  FRIENDSHIP {
-    string uidA FK
-    string uidB FK
-    string status "pending or accepted"
-  }
-  MATCH_REQUEST {
-    string eventId FK
-    string fromUid FK
-    string toUid "student or group"
-    string status "pending, accepted, declined"
-  }
-  GROUP {
-    string id PK
-    string eventId FK
-    int capacity
-    timestamp createdAt
-  }
-  GROUP_MEMBER {
-    string uid FK
-    timestamp joinedAt
-    boolean checkedIn
-  }
-  MESSAGE {
-    string senderId FK
-    string text
-    timestamp createdAt
-  }
-  CHECK_IN {
-    string uid FK
-    string method "gps or qr"
-    timestamp at
-  }
-  PHOTO {
-    string storagePath "events/eventId/album/photoId.jpg"
-    string uploaderId FK
-    timestamp createdAt
-  }
-```
-
-Proposed paths: `publicProfiles/{uid}`, `events/{eventId}/registrations/{uid}`, `friendships/{id}`, `matchRequests/{id}`, `groups/{groupId}` with `members/{uid}`, `messages/{messageId}` and `checkIns/{uid}` subcollections, `events/{eventId}/photos/{photoId}` with files in Storage at `events/{eventId}/album/`.
+**Profiles are split, Instagram-style.** `users/{uid}` is private to its owner. `publicProfiles/{uid}` is what other students see. Section, year and interests are always visible because matching needs them. A **public** profile also shows friends, events attended, photos and the full bio to everyone. A **private** profile shows those only to approved connections.
 
 ## 6. Security Rules
 
