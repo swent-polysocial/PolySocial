@@ -62,8 +62,10 @@ jobs:
       # this means that one would need to re-download and re-process gradle files for every run. Which is very time consuming.
       #
       # To avoid that, we cache the the gradle folder to reuse it later.
+      # v3 no longer works with GitHub's cache service. v6+ moves caching into a proprietary
+      # component with separate terms of use, so stay on v5 unless the team accepts them.
       - name: Gradle cache
-        uses: gradle/actions/setup-gradle@v3
+        uses: gradle/actions/setup-gradle@v5
 
       # Cache the Emulator, if the cache does not hit, create the emulator
       - name: AVD cache
