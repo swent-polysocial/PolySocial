@@ -1,11 +1,12 @@
-<!-- Contributors: OpenAI Codex (initial draft); Claude (revised: definition of done, conventions, course rules, project context, Security Rules process, team-agreement reconciliation). A teammate should add their name here after reviewing. -->
+<!-- Contributors: OpenAI Codex (initial draft); Claude (revised: definition of done, conventions, course rules, project context, Security Rules process, team-agreement reconciliation, session context). A teammate should add their name here after reviewing. -->
 
 # Instructions for coding agents
 
 This repository is PolySocial, an EPFL SwEnt Android team project (team of 6,
-public repository). Read this file, the README, the relevant issue, the
-project wiki (in particular the Team Agreement, where team process decisions
-live), and nearby code before making changes. The team owns every change,
+public repository). At the start of every session, read this file and
+`CONTEXT.md` (see "Session context"). Before making changes, also read the
+README, the relevant issue, the project wiki (in particular the Team
+Agreement, where team process decisions live), and nearby code. The team owns every change,
 including code written with AI. Keep each change small enough for a teammate
 to review and understand.
 
@@ -14,6 +15,32 @@ teammate, stop and ask (see "When blocked or unsure"). If this file and the
 wiki's Team Agreement ever disagree, the Team Agreement is the source of truth
 for process, and this file should be updated to match — flag the mismatch
 instead of silently picking one.
+
+## Session context (`CONTEXT.md`)
+
+`CONTEXT.md` at the repository root is the team's short, current record of
+what an agent can't easily get from the code: the current state of the
+codebase and tooling, the architectural and design decisions in force
+(including ones the issues don't reflect yet), known traps, open questions,
+and a one-line decision log. It lets every session start from the team's
+latest decisions instead of re-deriving them from code, issues, and chat, or
+guessing. It also shows how the design evolved.
+
+- Read it at the start of every session, after this file.
+- Update it **in the same PR** whenever the change makes or changes an
+  important decision (architecture, data model, Security Rules, dependencies,
+  setup, or process), discovers a non-obvious trap, or resolves or raises an
+  open question. Edit "Current state" and "Decided design" in place, and add
+  one dated line, with a link, to the top of the decision log.
+- Keep it concise. Do not log routine progress, task status, or anything the
+  code, an issue, or this file already says clearly. Point to it instead.
+  Remove log lines that are fully reflected above and older than a Sprint;
+  git history keeps them.
+- If `CONTEXT.md` disagrees with the code, an issue, or a teammate, it may be
+  stale: flag the mismatch and ask instead of silently picking one. For
+  process, this file and the Team Agreement win.
+- If `CONTEXT.md` conflicts while rebasing onto `main`, keep both sides'
+  entries.
 
 ## Project context (fixed decisions)
 
@@ -360,7 +387,9 @@ mismatch with this list in the PR:
 7. Contributor comments are added or updated at the top of every file that AI
    or an external source contributed to.
 8. The README is updated if setup, configuration, or run steps changed.
-9. The PR description is complete as described above.
+9. `CONTEXT.md` is updated if the change makes or changes an important
+   decision (see "Session context").
+10. The PR description is complete as described above.
 
 **Merging is done by the human author, only when:** the definition of done
 still holds on the latest commit; CI is green on the latest commit; the branch
@@ -454,8 +483,8 @@ change that would touch the "Never do" list.
 
 ## Agent workflow
 
-1. Restate the issue's goal and acceptance criteria. Inspect the smallest
-   relevant part of the codebase and the existing tests.
+1. Read `CONTEXT.md`. Restate the issue's goal and acceptance criteria.
+   Inspect the smallest relevant part of the codebase and the existing tests.
 2. Implement one reviewable change consistent with the current architecture and
    the conventions above, with tests in the same change.
 3. Run `ktfmtFormat`, then the commands in "Build and test commands" (plus the
@@ -463,6 +492,7 @@ change that would touch the "Never do" list.
    causes.
 4. Check the result against the definition of done, including a review of the
    full diff for accidental files, leaked credentials, missing contributor
-   comments, error handling, and real test assertions.
+   comments, error handling, and real test assertions. Update `CONTEXT.md` if
+   the change made an important decision.
 5. Open or update the PR with the required description. Leave code review,
    approval, and the merge decision to the team.
