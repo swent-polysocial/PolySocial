@@ -122,8 +122,8 @@ instead of silently picking one.
   structure, naming, navigation setup, and dependency versions. Do not assume a
   class, module, or Gradle task exists; check first.
 - Put Firebase, Google Maps, Nominatim, and persistence code behind repository
-  or service interfaces. Inject dependencies so the data layer can be tested
-  with fakes.
+  or service interfaces. Do not import a backend SDK in a ViewModel or a
+  Composable. Inject dependencies so the data layer can be tested with fakes.
 - Put device access (GPS, camera, QR decoding) behind interfaces too. Keep
   logic such as QR payload parsing and validation, group matching (see
   "Project context"), and event filtering in plain Kotlin functions so it is
@@ -282,8 +282,15 @@ mismatch with this list in the PR:
 - Use Conventional Commit subjects: `<type>: <summary>` or
   `<type>(<scope>): <summary>`, in English, imperative, lowercase after the
   colon, at most 50 characters in total, with no trailing period. Types:
-  `feat`, `fix`, `test`, `refactor`, `docs`, `style`, `build`, `ci`, `chore`
-  (a change that fits none of the others).
+  - `feat`: a new user-facing feature
+  - `fix`: a bug fix
+  - `test`: adding or correcting tests only
+  - `refactor`: a code change that neither adds a feature nor fixes a bug
+  - `docs`: documentation only (README, KDoc, this file)
+  - `style`: formatting only (for example a `ktfmtFormat` run)
+  - `build`: Gradle, the version catalog, or dependencies
+  - `ci`: `.github/workflows/`
+  - `chore`: other maintenance that fits none of the above
 
   Examples: `feat: add offline event cache`,
   `fix(map): keep markers after rotation`, `test: cover invalid QR payloads`.
