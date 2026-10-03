@@ -44,7 +44,7 @@ The source is `images/architecture-overview.svg`, a plain SVG kept next to the P
 |---|---|---|
 | 🟩 Authentication (`AuthViewModel`) | EPFL email check | `AuthRepository`, `UserProfileRepository` |
 | 🟩 App shell | — | — (navigation state only) |
-| 🟩 Create Event (`CreateEventViewModel`) | event validation | `UserProfileRepository` (association check), `EventRepository`, `GeocodingRepository` later |
+| 🟩 Create Event (`CreateEventViewModel`) | event validation | `UserProfileRepository` (verified-association badge), `EventRepository`, `GeocodingRepository` later |
 | 🟩 Map tab (`MapViewModel`) | haversine distance | `EventRepository`, `LocationService`; renders with the Google Maps SDK |
 | 🟦 Events tab (`EventsViewModel`, `EventDetailViewModel`) | event filtering | `EventRepository`, `ReminderScheduler` |
 | 🟦 Groups and matching (`MatchingViewModel`) | group matching | `MatchRepository`, `GroupRepository` |
@@ -168,7 +168,7 @@ flowchart LR
 ```
 
 - **Result types (#30–#32).** `signUp` returns success, invalid domain, already in use or network error. `logIn` adds wrong credentials. `sendVerificationEmail` has a distinct *throttled* failure for Firebase's too-many-requests error, which the UI shows differently from a real error.
-- **Profile (#34).** `UserProfile` has at least `uid`, `email` and `createdAt`. #45 adds `isAssociation` and `isAssociationVerified`, both defaulting to `false`. The document ID is always the Auth UID, never a client-generated ID. If account creation fails, no profile is written. If the profile write fails, the user sees an error state.
+- **Profile (#34).** `UserProfile` has at least `uid`, `email` and `createdAt`. #45 adds `isAssociation` and `isAssociationVerified`, both defaulting to `false`. The document ID is always the Auth UID, never a client-generated ID. The profile is created **exactly once, at the first verified entry** (Verify Email "Continue", or app-start routing finding a verified user without a profile), because the Security Rules only allow writes from verified accounts. If account creation fails, no profile is written. If the profile write fails, the user sees an error state. Fields other students may see live in a separate `publicProfiles/{uid}` document (see [5.2](#52-firestore-and-storage-product-backlog-proposal)).
 - **Log out (#8, #32).** Logging out clears the session, and the next launch routes to Log In.
 
 ### 3.2 Event creation, discovery and map (Sprint 1)
@@ -185,7 +185,7 @@ flowchart LR
     sMap["MapScreen #50<br/>markers · preview card"]:::s1
     vmMap["<b>MapViewModel</b><br/>Loading · Empty · Success(events) · Error<br/>permission: Granted / Denied<br/>selected event + distance"]:::s1
     sCreate["CreateEventScreen #46<br/>form · map-pin location picker"]:::s1
-    vmCreate["<b>CreateEventViewModel</b><br/>AccessDenied · Editing(field errors)<br/>Submitting · Created · Error"]:::s1
+    vmCreate["<b>CreateEventViewModel</b><br/>Editing(field errors)<br/>publish-as-association option<br/>Submitting · Created · Error"]:::s1
     sMap --> vmMap
     sCreate --> vmCreate
   end
@@ -203,7 +203,7 @@ flowchart LR
     fkEv["FakeEventRepository<br/>seeded fake events"]:::fake
     iLoc["<b>«interface» LocationService</b><br/>permission state · one-off current location"]:::s1
     gpsLoc["Fused location implementation"]:::s1
-    iProf["UserProfileRepository<br/>isAssociation · isAssociationVerified"]:::s1
+    iProf["UserProfileRepository<br/>isAssociation · isAssociationVerified<br/>for the verified badge only"]:::s1
     iGeo["GeocodingRepository<br/>address search, later"]:::pb
     fsEv -. implements .-> iEv
     fkEv -. implements .-> iEv
@@ -228,10 +228,10 @@ flowchart LR
   iGeo -.-> xNom
 ```
 
-- **Event model (#45).** `id`, `title`, `description`, `category`, `location` (lat/lng), `startTime`, `capacity` (nullable), `isPrivate` and `createdBy`. `createdBy` is always the authenticated UID, and the Security Rules enforce it again (#47).
+- **Event model (#45).** `id`, `title`, `description`, `category`, `location` (lat/lng), `startTime`, `capacity` (nullable), `isPrivate`, `createdBy`, `organizerIds`, `allowedUids` and `isAssociationEvent`. `createdBy` is always the authenticated UID and is always in `organizerIds` and `allowedUids`. The Security Rules enforce this again (#47).
 - **Map (#50, #51).** The map is centred on Lausanne. Location permission is requested once, on first entry to the Map tab. If it's denied, the map stays fully usable without distance badges. Distance is labelled *straight-line*, not walking time. Directions is a billed SKU and out of scope.
 - **Upcoming events query (#49).** The query **must** include `isPrivate == false`. Security Rules are not filters, so a query that could return a private event is rejected as a whole. Combining equality on `isPrivate` with a range on `startTime` needs a composite index, which should be versioned in `firestore.indexes.json` next to the rules.
-- **Create Event access (#46).** The form is rendered only when `isAssociation && isAssociationVerified`. Otherwise the screen shows the access-denied state. Nominatim address search appears in the Figma task (#44), but the Sprint 1 build task only requires a map pin (#46), so geocoding stays blue. When added, it must follow the Nominatim policy: custom User-Agent, at most 1 request per second, debounced and cached, explicit search only (no search-as-you-type), and OSM attribution in the UI.
+- **Create Event access (#46).** **Anyone can create an event** and becomes its **organizer**. An event can have one or several student organizers (`organizerIds`). Only a verified association (`isAssociation && isAssociationVerified`) sees the "publish as <association>" option, which sets `isAssociationEvent` and shows a verified badge. Nominatim address search appears in the Figma task (#44), but the Sprint 1 build task only requires a map pin (#46), so geocoding stays blue. When added, it must follow the Nominatim policy: custom User-Agent, at most 1 request per second, debounced and cached, explicit search only (no search-as-you-type), and OSM attribution in the UI.
 
 ### 3.3 Groups, matching and chat (Product Backlog)
 
@@ -363,7 +363,7 @@ flowchart LR
 
 ## 4. Key flows
 
-### 4.1 Sign up, verify, create profile (#30, #31, #34)
+### 4.1 Sign up, verify, then create profile (#30, #31, #34)
 
 ```mermaid
 sequenceDiagram
@@ -389,9 +389,7 @@ sequenceDiagram
       VM-->>UI: error state, no profile written
     else success
       AR-->>VM: Success(uid)
-      VM->>PR: createProfile(uid, email)
-      PR->>FS: set users/uid
-      Note over PR,FS: Rules from 35 require email_verified, which is still false here. See open question 1.
+      Note over VM,PR: No profile yet. Rules only accept writes from verified accounts.
       VM->>AR: sendVerificationEmail()
       VM-->>UI: SignedUp, navigate to Verify Email
     end
@@ -402,6 +400,11 @@ sequenceDiagram
   AR->>FA: reload user, refresh ID token
   Note over AR,FA: Force an ID-token refresh so Security Rules see email_verified == true
   alt verified
+    VM->>PR: getProfile(uid)
+    opt no profile yet, first verified entry
+      VM->>PR: createProfile(uid, email), exactly once
+      PR->>FS: set users/uid
+    end
     VM-->>UI: Verified, navigate to main app
   else not yet
     VM-->>UI: StillUnverified, stay on screen
@@ -427,6 +430,9 @@ sequenceDiagram
   else user, verified
     VM->>PR: getProfile(uid), exactly once
     alt profile loaded
+      VM-->>App: route Main (Events tab)
+    else no profile yet, first verified entry
+      VM->>PR: createProfile(uid, email), exactly once
       VM-->>App: route Main (Events tab)
     else load failed
       VM-->>App: Error with retry, never a blank screen
@@ -505,7 +511,7 @@ sequenceDiagram
 
 ```mermaid
 erDiagram
-  USER ||--o{ EVENT : "creates if verified association"
+  USER }|--o{ EVENT : "organizes"
   USER {
     string uid PK "Firebase Auth UID, document ID"
     string email "@epfl.ch"
@@ -523,6 +529,9 @@ erDiagram
     int capacity "nullable"
     boolean isPrivate
     string createdBy FK "must equal auth uid"
+    list organizerIds "UIDs, always contains createdBy"
+    list allowedUids "who may read a private event"
+    boolean isAssociationEvent "verified associations only"
   }
 ```
 
@@ -535,8 +544,11 @@ erDiagram
 
 These shapes are **proposals** to help discuss the backlog. Each one is fixed by the issue that implements it.
 
+**Profiles are split, Instagram-style.** `users/{uid}` stays private to its owner. `publicProfiles/{uid}` holds what other students may see to send a match or message request: username, display name, section, year and interests, which every EPFL user can read because matching needs them. Each student picks a **public** or **private** profile. A public profile also shows friends, events attended, photos and the full bio to every EPFL user. A private profile shows those only to approved connections.
+
 ```mermaid
 erDiagram
+  USER ||--|| PUBLIC_PROFILE : "public face"
   USER ||--o{ REGISTRATION : "registers for"
   EVENT ||--o{ REGISTRATION : "has attendees"
   USER ||--o{ FRIENDSHIP : "has"
@@ -548,11 +560,15 @@ erDiagram
   GROUP ||--o{ CHECK_IN : "records"
   EVENT ||--o{ PHOTO : "album"
 
-  USER {
+  PUBLIC_PROFILE {
+    string uid PK "same as users doc"
     string username "for adding friends"
-    string section
-    int year
-    list interests "matching"
+    string displayName
+    string section "matching, always visible"
+    int year "matching, always visible"
+    list interests "matching, always visible"
+    string visibility "public or private"
+    string bio "full bio: public profiles or approved connections"
   }
   REGISTRATION {
     string eventId FK
@@ -598,7 +614,7 @@ erDiagram
   }
 ```
 
-Proposed paths: `events/{eventId}/registrations/{uid}`, `friendships/{id}`, `matchRequests/{id}`, `groups/{groupId}` with `members/{uid}`, `messages/{messageId}` and `checkIns/{uid}` subcollections, `events/{eventId}/photos/{photoId}` with files in Storage at `events/{eventId}/album/`.
+Proposed paths: `publicProfiles/{uid}`, `events/{eventId}/registrations/{uid}`, `friendships/{id}`, `matchRequests/{id}`, `groups/{groupId}` with `members/{uid}`, `messages/{messageId}` and `checkIns/{uid}` subcollections, `events/{eventId}/photos/{photoId}` with files in Storage at `events/{eventId}/album/`.
 
 ## 6. Security Rules
 
@@ -608,8 +624,9 @@ Rules live in `firebase/firestore/firestore.rules` and are tested against the Fi
 |---|---|---|---|---|---|
 | *every rule* | requires `isEpflUser()`: signed in, `email_verified == true`, email ends with `@epfl.ch` | | | #33 | 🟩 S1 |
 | `users/{uid}` | own document only | own document only | own document only | #35 | 🟩 S1 |
-| `events/{id}`, public | any EPFL user | verified association, `createdBy == auth.uid` | creator only | #47, #52 | 🟩 S1 |
-| `events/{id}`, private | creator, members, approved match requesters | as above | creator only | #52, #23 | 🟩 S1 |
+| `events/{id}`, public | any EPFL user | any EPFL user, `createdBy == auth.uid` and in `organizerIds`. `isAssociationEvent` only for a verified association | organizers only | #47, #52 | 🟩 S1 |
+| `events/{id}`, private | `auth.uid in allowedUids` (organizers, members, approved match requesters) | as above | organizers only | #52, #23 | 🟩 S1 |
+| `publicProfiles/{uid}` | any EPFL user. Fields beyond the public set only for public profiles or approved connections | owner only | owner only | new issue | 🟦 PB |
 | `groups/**`, `messages` | group members only | members, rate-limit ready | sender only | #25 | 🟦 PB |
 | `matchRequests` | sender and recipient | sender | recipient responds | #26, #27 | 🟦 PB |
 | Storage `events/{id}/album/**` | event group members | checked-in members, size and type limits | uploader | album | 🟦 PB |
@@ -704,10 +721,10 @@ Every Scrum Board item mapped to the components it touches.
 
 These came up while mapping the backlog onto the architecture. Each needs a team (or PO) decision, and the related issue should be updated once decided.
 
-1. **Profile creation vs the verified-email rule.** #34 creates `users/{uid}` right after sign-up, but #35 requires `isEpflUser()`, which needs `email_verified == true`, so that write is denied. Options: (a) create the profile at the first *verified* entry (Verify Email "Continue" or app-start routing when the profile is missing), keeping it created exactly once; (b) a narrow create-only exception for an unverified user's own document, which would be loosening a rule and needs explicit team approval. **Recommendation:** (a), and update #34's acceptance criteria.
-2. **Who can create events?** #12, #46 and #47 allow only verified associations. The README and the project description say students can create private events (for example a study session, #23). **Recommendation:** decide whether students get a "private event" path with its own rule, and update the issues.
-3. **Reading other students' data.** #35 restricts `users/{uid}` to its owner, but matching, friends, the matches list and chat need some fields of other students (name, section, interests). **Recommendation:** split into a private `users/{uid}` and a readable `publicProfiles/{uid}` that holds only what those features need.
-4. **Private-event access list.** #52 says members and approved match requesters can read a private event, but the event model (#45) has no field for them. **Recommendation:** add an `allowedUids` (or members) array to private events, which the rules can check with `request.auth.uid in resource.data.allowedUids`.
+1. ✅ **Decided: profile creation timing.** The profile is created exactly once, at the first verified entry (Verify Email "Continue" or app-start routing when the profile is missing), so it passes the verified-email rule. Applied to #31, #32 and #34.
+2. ✅ **Decided: anyone can create an event.** The creator becomes its organizer, and an event can have one or several student organizers. A verified association can publish an event under its name with a verified badge. Unverified associations act like normal students. Applied to #12, #44, #45, #46 and #47.
+3. ✅ **Decided: public profile split, with public and private profiles.** `users/{uid}` stays private. `publicProfiles/{uid}` holds the fields others may see, and section, year and interests are always visible because matching needs them. Applied to #34 and #35, plus a new issue for public profiles.
+4. ✅ **Decided: event access list.** Events carry `allowedUids`, and the private-event read rule checks `request.auth.uid in resource.data.allowedUids`. Applied to #45 and #52.
 5. **Create Event entry point** and the "My events" destination after creation (#46).
 6. **Where matching runs and how it stays consistent.** Client-side with transactions now, Cloud Function later. When do we switch?
 7. **Find my group location sharing (#20).** Proposal: an ephemeral `groups/{groupId}/locations/{uid}` document, written only during the event window, deleted at the end, and readable only by group members. Needs a privacy notice update.
