@@ -1,0 +1,205 @@
+<!-- Contributors: Claude (drafted the overview layout and contents). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1720" height="856" viewBox="0 0 1720 856" font-family="Segoe UI, Helvetica, Arial, sans-serif" fill="#212529">
+<title>PolySocial architecture overview</title>
+<defs><marker id="a0" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#555"/></marker><marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#2b8a3e"/></marker><marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#c2255c"/></marker><marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#1971c2"/></marker><marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#e8590c"/></marker><marker id="a5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#7048e8"/></marker><marker id="a6" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#0c8599"/></marker><marker id="a7" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5c940d"/></marker><marker id="a8" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#9c36b5"/></marker><marker id="a-ext" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#e67700"/></marker></defs>
+<rect width="1720" height="856" fill="#ffffff"/>
+<rect x="116" y="66" width="1594" height="196" rx="12" fill="#fff0f6" stroke="#ced4da" stroke-width="1"/>
+<text x="12" y="88.0" font-size="13" text-anchor="start" font-weight="700">UI layer</text>
+<text x="12" y="108" font-size="10.5" text-anchor="start">Compose screens</text>
+<text x="12" y="122" font-size="10.5" text-anchor="start">+ ViewModels</text>
+<text x="12" y="136" font-size="10.5" text-anchor="start">(StateFlow UI state)</text>
+<rect x="116" y="278" width="1594" height="92" rx="12" fill="#e6fcf5" stroke="#ced4da" stroke-width="1"/>
+<text x="12" y="300.0" font-size="13" text-anchor="start" font-weight="700">Domain layer</text>
+<text x="12" y="320" font-size="10.5" text-anchor="start">pure Kotlin</text>
+<text x="12" y="334" font-size="10.5" text-anchor="start">no Android /</text>
+<text x="12" y="348" font-size="10.5" text-anchor="start">Firebase imports</text>
+<rect x="116" y="476" width="1594" height="92" rx="12" fill="#fff4e6" stroke="#ced4da" stroke-width="1"/>
+<text x="12" y="498.0" font-size="13" text-anchor="start" font-weight="700">Data layer</text>
+<text x="12" y="518" font-size="10.5" text-anchor="start">interfaces +</text>
+<text x="12" y="532" font-size="10.5" text-anchor="start">Firebase / device</text>
+<text x="12" y="546" font-size="10.5" text-anchor="start">impls + Fakes</text>
+<rect x="116" y="588" width="1594" height="216" rx="12" fill="#f8f9fa" stroke="#ced4da" stroke-width="1"/>
+<text x="12" y="610.0" font-size="13" text-anchor="start" font-weight="700">External</text>
+<text x="12" y="630" font-size="10.5" text-anchor="start">services and</text>
+<text x="12" y="644" font-size="10.5" text-anchor="start">device APIs</text>
+<rect x="130" y="84" width="158" height="162" rx="8" fill="#d3f9d8" stroke="#2b8a3e" stroke-width="1.6"/>
+<text x="209.0" y="138.66666666666666" font-size="11" text-anchor="middle" font-weight="700">App shell</text>
+<text x="209.0" y="153.66666666666666" font-size="11" text-anchor="middle">bottom bar: Events · Map</text>
+<text x="209.0" y="168.66666666666666" font-size="11" text-anchor="middle">Chats · Profile · app bar</text>
+<text x="209.0" y="183.66666666666666" font-size="11" text-anchor="middle">per-tab back stacks</text>
+<text x="209.0" y="198.66666666666666" font-size="11" text-anchor="middle">Loading / Empty state</text>
+<rect x="302" y="84" width="158" height="162" rx="8" fill="#d3f9d8" stroke="#2b8a3e" stroke-width="1.6"/>
+<text x="381.0" y="138.66666666666666" font-size="11" text-anchor="middle" font-weight="700">Authentication</text>
+<text x="381.0" y="153.66666666666666" font-size="11" text-anchor="middle">Sign Up · Verify Email</text>
+<text x="381.0" y="168.66666666666666" font-size="11" text-anchor="middle">Log In</text>
+<text x="381.0" y="183.66666666666666" font-size="11" text-anchor="middle">app-start routing</text>
+<text x="381.0" y="198.66666666666666" font-size="11" text-anchor="middle" font-style="italic">AuthViewModel</text>
+<rect x="474" y="84" width="158" height="162" rx="8" fill="#d3f9d8" stroke="#2b8a3e" stroke-width="1.6"/>
+<text x="553.0" y="146.16666666666666" font-size="11" text-anchor="middle" font-weight="700">Create Event</text>
+<text x="553.0" y="161.16666666666666" font-size="11" text-anchor="middle">form · map-pin location</text>
+<text x="553.0" y="176.16666666666666" font-size="11" text-anchor="middle">access-denied state</text>
+<text x="553.0" y="191.16666666666666" font-size="11" text-anchor="middle" font-style="italic">CreateEventViewModel</text>
+<rect x="646" y="84" width="158" height="162" rx="8" fill="#d3f9d8" stroke="#2b8a3e" stroke-width="1.6"/>
+<text x="725.0" y="138.66666666666666" font-size="11" text-anchor="middle" font-weight="700">Map tab</text>
+<text x="725.0" y="153.66666666666666" font-size="11" text-anchor="middle">Lausanne map · markers</text>
+<text x="725.0" y="168.66666666666666" font-size="11" text-anchor="middle">preview card</text>
+<text x="725.0" y="183.66666666666666" font-size="11" text-anchor="middle">straight-line distance</text>
+<text x="725.0" y="198.66666666666666" font-size="11" text-anchor="middle" font-style="italic">MapViewModel</text>
+<rect x="818" y="84" width="158" height="162" rx="8" fill="#dbe4ff" stroke="#364fc7" stroke-width="1.6"/>
+<text x="897.0" y="131.16666666666666" font-size="11" text-anchor="middle" font-weight="700">Events tab</text>
+<text x="897.0" y="146.16666666666666" font-size="11" text-anchor="middle">list + filters · detail</text>
+<text x="897.0" y="161.16666666666666" font-size="11" text-anchor="middle">my events (offline)</text>
+<text x="897.0" y="176.16666666666666" font-size="11" text-anchor="middle">reminders</text>
+<text x="897.0" y="191.16666666666666" font-size="11" text-anchor="middle" font-style="italic">EventsViewModel</text>
+<text x="897.0" y="206.16666666666666" font-size="11" text-anchor="middle" font-style="italic">EventDetailViewModel</text>
+<rect x="990" y="84" width="158" height="162" rx="8" fill="#dbe4ff" stroke="#364fc7" stroke-width="1.6"/>
+<text x="1069.0" y="138.66666666666666" font-size="11" text-anchor="middle" font-weight="700">Groups &amp; matching</text>
+<text x="1069.0" y="153.66666666666666" font-size="11" text-anchor="middle">Find a group</text>
+<text x="1069.0" y="168.66666666666666" font-size="11" text-anchor="middle">proposals: accept/decline</text>
+<text x="1069.0" y="183.66666666666666" font-size="11" text-anchor="middle">matches list</text>
+<text x="1069.0" y="198.66666666666666" font-size="11" text-anchor="middle" font-style="italic">MatchingViewModel</text>
+<rect x="1162" y="84" width="158" height="162" rx="8" fill="#dbe4ff" stroke="#364fc7" stroke-width="1.6"/>
+<text x="1241.0" y="146.16666666666666" font-size="11" text-anchor="middle" font-weight="700">Chats tab</text>
+<text x="1241.0" y="161.16666666666666" font-size="11" text-anchor="middle">chat list</text>
+<text x="1241.0" y="176.16666666666666" font-size="11" text-anchor="middle">group / 1-1 chat</text>
+<text x="1241.0" y="191.16666666666666" font-size="11" text-anchor="middle" font-style="italic">ChatViewModel</text>
+<rect x="1334" y="84" width="158" height="162" rx="8" fill="#dbe4ff" stroke="#364fc7" stroke-width="1.6"/>
+<text x="1413.0" y="131.16666666666666" font-size="11" text-anchor="middle" font-weight="700">At the venue</text>
+<text x="1413.0" y="146.16666666666666" font-size="11" text-anchor="middle">check-in (GPS / QR)</text>
+<text x="1413.0" y="161.16666666666666" font-size="11" text-anchor="middle">Find my group</text>
+<text x="1413.0" y="176.16666666666666" font-size="11" text-anchor="middle">event album</text>
+<text x="1413.0" y="191.16666666666666" font-size="11" text-anchor="middle" font-style="italic">CheckInViewModel</text>
+<text x="1413.0" y="206.16666666666666" font-size="11" text-anchor="middle" font-style="italic">AlbumViewModel</text>
+<rect x="1506" y="84" width="158" height="162" rx="8" fill="#dbe4ff" stroke="#364fc7" stroke-width="1.6"/>
+<text x="1585.0" y="131.16666666666666" font-size="11" text-anchor="middle" font-weight="700">Profile tab</text>
+<text x="1585.0" y="146.16666666666666" font-size="11" text-anchor="middle">profile · friends · my QR</text>
+<text x="1585.0" y="161.16666666666666" font-size="11" text-anchor="middle">log out</text>
+<text x="1585.0" y="176.16666666666666" font-size="11" text-anchor="middle">delete account</text>
+<text x="1585.0" y="191.16666666666666" font-size="11" text-anchor="middle" font-style="italic">ProfileViewModel</text>
+<text x="1585.0" y="206.16666666666666" font-size="11" text-anchor="middle" font-style="italic">FriendsViewModel</text>
+<rect x="650" y="8" width="150" height="40" rx="8" fill="#fff3bf" stroke="#e67700" stroke-width="1.6"/>
+<text x="725.0" y="24.5" font-size="10.5" text-anchor="middle" font-weight="700">Google Maps SDK</text>
+<text x="725.0" y="38.5" font-size="10.5" text-anchor="middle">maps-compose, UI only</text>
+<line x1="725.0" y1="48" x2="725.0" y2="82" stroke="#e67700" stroke-width="1.6" marker-end="url(#a-ext)"/>
+<text x="731.0" y="64.0" font-size="9.5" text-anchor="start">renders markers</text>
+<rect x="308" y="300" width="100" height="48" rx="8" fill="#d3f9d8" stroke="#2b8a3e" stroke-width="1.6"/>
+<text x="358.0" y="320.5" font-size="10.5" text-anchor="middle">EPFL email</text>
+<text x="358.0" y="334.5" font-size="10.5" text-anchor="middle">check</text>
+<line x1="358.0" y1="246" x2="358.0" y2="298" stroke="#2b8a3e" stroke-width="1.6" marker-end="url(#a1)"/>
+<rect x="480" y="300" width="100" height="48" rx="8" fill="#d3f9d8" stroke="#2b8a3e" stroke-width="1.6"/>
+<text x="530.0" y="320.5" font-size="10.5" text-anchor="middle">Event</text>
+<text x="530.0" y="334.5" font-size="10.5" text-anchor="middle">validation</text>
+<line x1="530.0" y1="246" x2="530.0" y2="298" stroke="#c2255c" stroke-width="1.6" marker-end="url(#a2)"/>
+<rect x="652" y="300" width="100" height="48" rx="8" fill="#d3f9d8" stroke="#2b8a3e" stroke-width="1.6"/>
+<text x="702.0" y="320.5" font-size="10.5" text-anchor="middle">Haversine</text>
+<text x="702.0" y="334.5" font-size="10.5" text-anchor="middle">distance</text>
+<line x1="702.0" y1="246" x2="702.0" y2="298" stroke="#1971c2" stroke-width="1.6" marker-end="url(#a3)"/>
+<rect x="824" y="300" width="100" height="48" rx="8" fill="#dbe4ff" stroke="#364fc7" stroke-width="1.6"/>
+<text x="874.0" y="320.5" font-size="10.5" text-anchor="middle">Event</text>
+<text x="874.0" y="334.5" font-size="10.5" text-anchor="middle">filtering</text>
+<line x1="874.0" y1="246" x2="874.0" y2="298" stroke="#e8590c" stroke-width="1.6" marker-end="url(#a4)"/>
+<rect x="996" y="300" width="100" height="48" rx="8" fill="#dbe4ff" stroke="#364fc7" stroke-width="1.6"/>
+<text x="1046.0" y="320.5" font-size="10.5" text-anchor="middle">Group matching</text>
+<text x="1046.0" y="334.5" font-size="10.5" text-anchor="middle">heuristic</text>
+<line x1="1046.0" y1="246" x2="1046.0" y2="298" stroke="#7048e8" stroke-width="1.6" marker-end="url(#a5)"/>
+<rect x="1340" y="300" width="100" height="48" rx="8" fill="#dbe4ff" stroke="#364fc7" stroke-width="1.6"/>
+<text x="1390.0" y="320.5" font-size="10.5" text-anchor="middle">Check-in policy</text>
+<text x="1390.0" y="334.5" font-size="10.5" text-anchor="middle">QR parsing</text>
+<line x1="1390.0" y1="246" x2="1390.0" y2="298" stroke="#5c940d" stroke-width="1.6" marker-end="url(#a7)"/>
+<path d="M1546,246 V332.0 H1442" fill="none" stroke="#9c36b5" stroke-width="1.6" marker-end="url(#a8)"/>
+<rect x="130.0" y="494" width="116.0" height="52" rx="8" fill="#d3f9d8" stroke="#2b8a3e" stroke-width="1.6"/>
+<text x="188.0" y="523.5" font-size="10.5" text-anchor="middle" font-weight="700">AuthRepository</text>
+<rect x="258.0" y="494" width="116.0" height="52" rx="8" fill="#d3f9d8" stroke="#2b8a3e" stroke-width="1.6"/>
+<text x="316.0" y="516.5" font-size="10.5" text-anchor="middle" font-weight="700">UserProfile</text>
+<text x="316.0" y="530.5" font-size="10.5" text-anchor="middle" font-weight="700">Repository</text>
+<rect x="386.0" y="494" width="116.0" height="52" rx="8" fill="#dbe4ff" stroke="#364fc7" stroke-width="1.6"/>
+<text x="444.0" y="516.5" font-size="10.5" text-anchor="middle" font-weight="700">Geocoding</text>
+<text x="444.0" y="530.5" font-size="10.5" text-anchor="middle" font-weight="700">Repository</text>
+<rect x="514.0" y="494" width="116.0" height="52" rx="8" fill="#d3f9d8" stroke="#2b8a3e" stroke-width="1.6"/>
+<text x="572.0" y="523.5" font-size="10.5" text-anchor="middle" font-weight="700">LocationService</text>
+<rect x="642.0" y="494" width="116.0" height="52" rx="8" fill="#d3f9d8" stroke="#2b8a3e" stroke-width="1.6"/>
+<text x="700.0" y="523.5" font-size="10.5" text-anchor="middle" font-weight="700">EventRepository</text>
+<rect x="770.0" y="494" width="116.0" height="52" rx="8" fill="#dbe4ff" stroke="#364fc7" stroke-width="1.6"/>
+<text x="828.0" y="523.5" font-size="10.5" text-anchor="middle" font-weight="700">ReminderScheduler</text>
+<rect x="898.0" y="494" width="116.0" height="52" rx="8" fill="#dbe4ff" stroke="#364fc7" stroke-width="1.6"/>
+<text x="956.0" y="523.5" font-size="10.5" text-anchor="middle" font-weight="700">MatchRepository</text>
+<rect x="1026.0" y="494" width="116.0" height="52" rx="8" fill="#dbe4ff" stroke="#364fc7" stroke-width="1.6"/>
+<text x="1084.0" y="523.5" font-size="10.5" text-anchor="middle" font-weight="700">GroupRepository</text>
+<rect x="1154.0" y="494" width="116.0" height="52" rx="8" fill="#dbe4ff" stroke="#364fc7" stroke-width="1.6"/>
+<text x="1212.0" y="523.5" font-size="10.5" text-anchor="middle" font-weight="700">ChatRepository</text>
+<rect x="1282.0" y="494" width="116.0" height="52" rx="8" fill="#dbe4ff" stroke="#364fc7" stroke-width="1.6"/>
+<text x="1340.0" y="523.5" font-size="10.5" text-anchor="middle" font-weight="700">PhotoRepository</text>
+<rect x="1410.0" y="494" width="116.0" height="52" rx="8" fill="#dbe4ff" stroke="#364fc7" stroke-width="1.6"/>
+<text x="1468.0" y="523.5" font-size="10.5" text-anchor="middle" font-weight="700">QrScanner</text>
+<rect x="1538.0" y="494" width="116.0" height="52" rx="8" fill="#dbe4ff" stroke="#364fc7" stroke-width="1.6"/>
+<text x="1596.0" y="523.5" font-size="10.5" text-anchor="middle" font-weight="700">FriendRepository</text>
+<path d="M1625.6,246 V378.4 H204.0 V492" fill="none" stroke="#9c36b5" stroke-width="1.5" marker-end="url(#a8)"/>
+<path d="M1633.2,246 V383.4 H340.0 V492" fill="none" stroke="#9c36b5" stroke-width="1.5" marker-end="url(#a8)"/>
+<path d="M1453.6,246 V388.2 H588.0 V492" fill="none" stroke="#5c940d" stroke-width="1.5" marker-end="url(#a7)"/>
+<path d="M1461.2,246 V393.1 H1100.0 V492" fill="none" stroke="#5c940d" stroke-width="1.5" marker-end="url(#a7)"/>
+<path d="M595.5,246 V398.1 H316.0 V492" fill="none" stroke="#c2255c" stroke-width="1.5" marker-end="url(#a2)"/>
+<path d="M426.7,246 V402.9 H172.0 V492" fill="none" stroke="#2b8a3e" stroke-width="1.5" marker-end="url(#a1)"/>
+<path d="M942.7,246 V407.9 H724.0 V492" fill="none" stroke="#e8590c" stroke-width="1.5" marker-end="url(#a4)"/>
+<path d="M770.7,246 V412.8 H556.0 V492" fill="none" stroke="#1971c2" stroke-width="1.5" marker-end="url(#a3)"/>
+<path d="M605.0,246 V417.6 H444.0 V492" fill="none" stroke="#c2255c" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#a2)"/>
+<path d="M1114.7,246 V422.6 H956.0 V492" fill="none" stroke="#7048e8" stroke-width="1.5" marker-end="url(#a5)"/>
+<path d="M1640.8,246 V427.4 H1484.0 V492" fill="none" stroke="#9c36b5" stroke-width="1.5" marker-end="url(#a8)"/>
+<path d="M439.3,246 V432.4 H292.0 V492" fill="none" stroke="#2b8a3e" stroke-width="1.5" marker-end="url(#a1)"/>
+<path d="M1468.8,246 V437.2 H1340.0 V492" fill="none" stroke="#5c940d" stroke-width="1.5" marker-end="url(#a7)"/>
+<path d="M955.3,246 V442.1 H828.0 V492" fill="none" stroke="#e8590c" stroke-width="1.5" marker-end="url(#a4)"/>
+<path d="M783.3,246 V447.1 H700.0 V492" fill="none" stroke="#1971c2" stroke-width="1.5" marker-end="url(#a3)"/>
+<path d="M1293.0,246 V451.9 H1212.0 V492" fill="none" stroke="#0c8599" stroke-width="1.5" marker-end="url(#a6)"/>
+<path d="M1127.3,246 V456.9 H1068.0 V492" fill="none" stroke="#7048e8" stroke-width="1.5" marker-end="url(#a5)"/>
+<path d="M1648.4,246 V461.8 H1596.0 V492" fill="none" stroke="#9c36b5" stroke-width="1.5" marker-end="url(#a8)"/>
+<path d="M1476.4,246 V466.6 H1452.0 V492" fill="none" stroke="#5c940d" stroke-width="1.5" marker-end="url(#a7)"/>
+<path d="M614.5,246 V471.6 H676.0 V492" fill="none" stroke="#c2255c" stroke-width="1.5" marker-end="url(#a2)"/>
+<rect x="130.0" y="612" width="104.0" height="50" rx="8" fill="#fff3bf" stroke="#e67700" stroke-width="1.6"/>
+<text x="182.0" y="633.5" font-size="10.5" text-anchor="middle" font-weight="700">Firebase</text>
+<text x="182.0" y="647.5" font-size="10.5" text-anchor="middle">Authentication</text>
+<line x1="182.0" y1="546" x2="182.0" y2="610" stroke="#e67700" stroke-width="1.6" marker-end="url(#a-ext)"/>
+<rect x="386.0" y="612" width="104.0" height="50" rx="8" fill="#fff3bf" stroke="#e67700" stroke-width="1.6"/>
+<text x="438.0" y="633.5" font-size="10.5" text-anchor="middle" font-weight="700">Nominatim / OSM</text>
+<text x="438.0" y="647.5" font-size="10.5" text-anchor="middle">geocoding</text>
+<line x1="438.0" y1="546" x2="438.0" y2="610" stroke="#e67700" stroke-width="1.6" marker-end="url(#a-ext)"/>
+<rect x="514.0" y="612" width="104.0" height="50" rx="8" fill="#fff3bf" stroke="#e67700" stroke-width="1.6"/>
+<text x="566.0" y="633.5" font-size="10.5" text-anchor="middle" font-weight="700">GPS</text>
+<text x="566.0" y="647.5" font-size="10.5" text-anchor="middle">one-off location</text>
+<line x1="566.0" y1="546" x2="566.0" y2="610" stroke="#e67700" stroke-width="1.6" marker-end="url(#a-ext)"/>
+<rect x="770.0" y="612" width="104.0" height="50" rx="8" fill="#fff3bf" stroke="#e67700" stroke-width="1.6"/>
+<text x="822.0" y="633.5" font-size="10.5" text-anchor="middle" font-weight="700">Local</text>
+<text x="822.0" y="647.5" font-size="10.5" text-anchor="middle">notifications</text>
+<line x1="822.0" y1="546" x2="822.0" y2="610" stroke="#e67700" stroke-width="1.6" marker-end="url(#a-ext)"/>
+<rect x="1282.0" y="612" width="104.0" height="50" rx="8" fill="#fff3bf" stroke="#e67700" stroke-width="1.6"/>
+<text x="1334.0" y="633.5" font-size="10.5" text-anchor="middle" font-weight="700">Cloud Storage</text>
+<text x="1334.0" y="647.5" font-size="10.5" text-anchor="middle">photos</text>
+<line x1="1334.0" y1="546" x2="1334.0" y2="610" stroke="#e67700" stroke-width="1.6" marker-end="url(#a-ext)"/>
+<rect x="1410.0" y="612" width="104.0" height="50" rx="8" fill="#fff3bf" stroke="#e67700" stroke-width="1.6"/>
+<text x="1462.0" y="633.5" font-size="10.5" text-anchor="middle" font-weight="700">Camera</text>
+<text x="1462.0" y="647.5" font-size="10.5" text-anchor="middle">QR decoding</text>
+<line x1="1462.0" y1="546" x2="1462.0" y2="610" stroke="#e67700" stroke-width="1.6" marker-end="url(#a-ext)"/>
+<rect x="130" y="694" width="1534" height="48" rx="8" fill="#fff3bf" stroke="#e67700" stroke-width="1.6"/>
+<text x="897.0" y="714.0" font-size="12" text-anchor="middle" font-weight="700">Cloud Firestore</text>
+<text x="897.0" y="731.0" font-size="10.5" text-anchor="middle">users · events · matchRequests · groups · messages · friendships · photo metadata  —  with offline persistence (the app&#x27;s only cache)</text>
+<line x1="316.0" y1="546" x2="316.0" y2="692" stroke="#e67700" stroke-width="1.6" marker-end="url(#a-ext)"/>
+<line x1="700.0" y1="546" x2="700.0" y2="692" stroke="#e67700" stroke-width="1.6" marker-end="url(#a-ext)"/>
+<line x1="956.0" y1="546" x2="956.0" y2="692" stroke="#e67700" stroke-width="1.6" marker-end="url(#a-ext)"/>
+<line x1="1084.0" y1="546" x2="1084.0" y2="692" stroke="#e67700" stroke-width="1.6" marker-end="url(#a-ext)"/>
+<line x1="1212.0" y1="546" x2="1212.0" y2="692" stroke="#e67700" stroke-width="1.6" marker-end="url(#a-ext)"/>
+<line x1="1596.0" y1="546" x2="1596.0" y2="692" stroke="#e67700" stroke-width="1.6" marker-end="url(#a-ext)"/>
+<line x1="1386.0" y1="546" x2="1386.0" y2="692" stroke="#e67700" stroke-width="1.6" marker-end="url(#a-ext)"/>
+<rect x="130" y="758" width="330" height="36" rx="8" fill="#f1f3f5" stroke="#868e96" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="295.0" y="773.0" font-size="10.5" text-anchor="middle" font-weight="700">Cloud Functions (later)</text>
+<text x="295.0" y="786.0" font-size="10.5" text-anchor="middle">matching may move server-side, same module</text>
+<rect x="474" y="758" width="330" height="36" rx="8" fill="#f1f3f5" stroke="#868e96" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="639.0" y="773.0" font-size="10.5" text-anchor="middle" font-weight="700">Firebase Cloud Messaging (evaluate later)</text>
+<text x="639.0" y="786.0" font-size="10.5" text-anchor="middle">only once notifications enter the backlog</text>
+<rect x="130" y="822" width="26" height="16" rx="4" fill="#d3f9d8" stroke="#2b8a3e" stroke-width="1.6"/>
+<text x="164" y="834.0" font-size="11" text-anchor="start">Sprint 1 backlog</text>
+<rect x="340" y="822" width="26" height="16" rx="4" fill="#dbe4ff" stroke="#364fc7" stroke-width="1.6"/>
+<text x="374" y="834.0" font-size="11" text-anchor="start">Product Backlog (planned)</text>
+<rect x="550" y="822" width="26" height="16" rx="4" fill="#f1f3f5" stroke="#868e96" stroke-width="1.6" stroke-dasharray="6 4"/>
+<text x="584" y="834.0" font-size="11" text-anchor="start">later / to decide</text>
+<rect x="760" y="822" width="26" height="16" rx="4" fill="#fff3bf" stroke="#e67700" stroke-width="1.6"/>
+<text x="794" y="834.0" font-size="11" text-anchor="start">external service / device</text>
+<text x="980" y="834.0" font-size="11" text-anchor="start">Arrows: “uses / calls”, coloured by the screen that owns the dependency · dashed arrow = optional or later</text>
+</svg>
