@@ -120,13 +120,13 @@
 <text x="808.0" y="245.5" font-size="12" font-weight="600" font-style="normal" text-anchor="middle" fill="#212529">GPS</text>
 <line x1="712" y1="241.0" x2="740" y2="241.0" stroke="#e67700" stroke-width="1.6" marker-end="url(#mx)"/>
 <rect x="742" y="332" width="132" height="34" rx="6" fill="#fff3bf" stroke="#e67700" stroke-width="1.6"/>
-<text x="808.0" y="353.5" font-size="12" font-weight="600" font-style="normal" text-anchor="middle" fill="#212529">Local notifications</text>
+<text x="808.0" y="353.5" font-size="12" font-weight="600" font-style="normal" text-anchor="middle" fill="#212529">WorkManager</text>
 <line x1="712" y1="349.0" x2="740" y2="349.0" stroke="#e67700" stroke-width="1.6" marker-end="url(#mx)"/>
 <rect x="742" y="548" width="132" height="34" rx="6" fill="#fff3bf" stroke="#e67700" stroke-width="1.6"/>
 <text x="808.0" y="569.5" font-size="12" font-weight="600" font-style="normal" text-anchor="middle" fill="#212529">Cloud Storage</text>
 <line x1="712" y1="565.0" x2="740" y2="565.0" stroke="#e67700" stroke-width="1.6" marker-end="url(#mx)"/>
 <rect x="742" y="602" width="132" height="34" rx="6" fill="#fff3bf" stroke="#e67700" stroke-width="1.6"/>
-<text x="808.0" y="623.5" font-size="12" font-weight="600" font-style="normal" text-anchor="middle" fill="#212529">Camera</text>
+<text x="808.0" y="623.5" font-size="12" font-weight="600" font-style="normal" text-anchor="middle" fill="#212529">CameraX · ML Kit</text>
 <line x1="712" y1="619.0" x2="740" y2="619.0" stroke="#e67700" stroke-width="1.6" marker-end="url(#mx)"/>
 <rect x="900" y="116" width="96" height="574" rx="7" fill="#fff3bf" stroke="#e67700" stroke-width="1.6"/>
 <text x="948.0" y="351.0" font-size="13" font-weight="700" font-style="normal" text-anchor="middle" fill="#212529">Cloud</text>
