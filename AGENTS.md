@@ -35,10 +35,15 @@ instead of silently picking one.
   session). A private event never appears on the public map. It is readable
   only by its creator, its members, and students whose match request the
   creator has approved. Nobody else can read it at any time.
-- Associations have their own accounts to create and manage their events. An
-  association account must be manually verified/approved before it can manage
-  events; do not let a newly created association account act as verified by
-  default.
+- Anyone can create an event and becomes its organizer; an event can have one
+  or several student organizers, and only its organizers can manage it.
+  Associations have their own accounts. Only a manually verified association
+  may publish an event under its name (with a verified badge); do not let a
+  newly created association account act as verified by default.
+- Profiles are split: `users/{uid}` is private to its owner, and the fields
+  other students may see live in a separate public profile. Students choose a
+  public or private profile (Instagram-style); section, year, and interests
+  are always visible because matching needs them.
 - Content moderation: chats, photo uploads, and association accounts can be
   misused. Design Security Rules and any Cloud Functions so that report/block
   and rate-limiting features can be added without a rule rewrite (for example,
@@ -170,8 +175,9 @@ instead of silently picking one.
 
 - Rules must guarantee at least: a student cannot read or write another
   student's private data; private events and group chats are readable only by
-  their members (see "Project context"); only a verified association can
-  manage its own events; every access requires a verified EPFL account.
+  their members (see "Project context"); only an event's organizers can
+  manage it, and only a verified association can publish an event under its
+  name; every access requires a verified EPFL account.
 - An agent may change the rules file when the issue requires it (for example a
   new collection or a new access pattern). Every such PR must:
   1. say "Changes Security Rules" in the PR description, with a short
