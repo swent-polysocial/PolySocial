@@ -1,4 +1,4 @@
-<!-- Contributors: OpenAI Codex (initial draft); Claude (revised: definition of done, conventions, course rules, project context, Security Rules process, team-agreement reconciliation, session context). A teammate should add their name here after reviewing. -->
+<!-- Contributors: OpenAI Codex (initial draft); Claude (revised: definition of done, conventions, course rules, project context, Security Rules process, team-agreement reconciliation, session context). -->
 
 # Instructions for coding agents
 
@@ -27,7 +27,7 @@ latest decisions instead of re-deriving them from code, issues, and chat, or
 guessing. It also shows how the design evolved.
 
 - Read it at the start of every session, after this file.
-- Update it **in the same PR** whenever the change makes or changes an
+- Update it **in the same branch/PR** whenever the change makes or changes an
   important decision (architecture, data model, Security Rules, dependencies,
   setup, or process), discovers a non-obvious trap, or resolves or raises an
   open question. Edit "Current state" and "Decided design" in place, and add
