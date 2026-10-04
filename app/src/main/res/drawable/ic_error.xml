@@ -1,0 +1,6 @@
+<!-- Error marker for field messages, exact path from the Figma Log in error state. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="14dp" android:height="14dp" android:viewportWidth="14" android:viewportHeight="14">
+    <path android:pathData="M7,4.66667V7M7,9.33333H7.00583M7,12.8333C8.5471,12.8333 10.0308,12.2188 11.1248,11.1248C12.2188,10.0308 12.8333,8.5471 12.8333,7C12.8333,5.4529 12.2188,3.96917 11.1248,2.87521C10.0308,1.78125 8.5471,1.16667 7,1.16667C5.4529,1.16667 3.96917,1.78125 2.87521,2.87521C1.78125,3.96917 1.16667,5.4529 1.16667,7C1.16667,8.5471 1.78125,10.0308 2.87521,11.1248C3.96917,12.2188 5.4529,12.8333 7,12.8333Z"
+        android:strokeColor="#B3202A" android:strokeWidth="1.4" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

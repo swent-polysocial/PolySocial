@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (Log in screen texts from the Figma "First proposal revamped" frames). -->
+<resources>
+    <string name="login_back">Back</string>
+    <string name="login_title">Welcome back</string>
+    <string name="login_subtitle">Log in with the account you signed up with.</string>
+    <string name="login_google_initial">G</string>
+    <string name="login_continue_with_google">Continue with Google</string>
+    <string name="login_or_with_email">or with email</string>
+    <string name="login_email_label">EPFL email</string>
+    <string name="login_email_placeholder">name@epfl.ch</string>
+    <string name="login_password_label">Password</string>
+    <string name="login_show_password">Show password</string>
+    <string name="login_wrong_credentials">Email or password is wrong.</string>
+    <string name="login_cant_connect">Couldn\'t log in. Check your connection and try again.</string>
+    <string name="login_forgot_password">Forgot password?</string>
+    <string name="login_unverified">Your email isn\'t verified yet. Taking you to the verification screen…</string>
+    <string name="login_log_in">Log in</string>
+    <string name="login_logging_in">Logging in…</string>
+    <string name="login_redirecting">Redirecting…</string>
+    <string name="login_new_here">New here?</string>
+    <string name="login_create_account">Create an account</string>
+    <string name="not_available_yet">Not available yet</string>
+</resources>

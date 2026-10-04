@@ -1,0 +1,9 @@
+<!-- Info marker for banners, exact paths from the Figma Log in unverified state. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="18dp" android:height="18dp" android:viewportWidth="18" android:viewportHeight="18">
+    <path android:pathData="M9,16C12.866,16 16,12.866 16,9C16,5.13401 12.866,2 9,2C5.13401,2 2,5.13401 2,9C2,12.866 5.13401,16 9,16Z"
+        android:strokeColor="#2F5FD0" android:strokeWidth="1.5" />
+    <path android:pathData="M9,8V12.2" android:strokeColor="#2F5FD0" android:strokeWidth="1.5" android:strokeLineCap="round" />
+    <path android:pathData="M9,6.5C9.49706,6.5 9.9,6.09706 9.9,5.6C9.9,5.10294 9.49706,4.7 9,4.7C8.50294,4.7 8.1,5.10294 8.1,5.6C8.1,6.09706 8.50294,6.5 9,6.5Z"
+        android:fillColor="#2F5FD0" />
+</vector>
