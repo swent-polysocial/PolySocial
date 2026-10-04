@@ -30,7 +30,8 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 - **Chats:** a one-to-one chat is a two-member group (one model, one set of rules).
 - **Find my group:** positions in `groups/{id}/locations/{uid}`, written only during the event, readable by members only, deleted afterwards. No location history.
 - **Approved libraries (not added yet):** WorkManager for reminders (scheduled at registration, notification permission asked then). CameraX + ML Kit barcode scanning for QR codes, with typed payloads `polysocial://checkin/{eventId}/{token}` and `polysocial://friend/{uid}` checked by a pure parser.
-- **DI:** manual constructor injection with a small provider object. No Hilt.
+- **DI: Hilt** (`@HiltViewModel`, constructor injection). Tests replace repositories with the `Fake…` versions through Hilt test modules. It's an approved dependency, not added yet. Chosen after review over manual DI because it scales as repositories grow.
+- **Back button:** at the root of the Map, Chats or Profile tab, back goes to the Events (home) tab, and at the Events root it exits (Android's standard). This overrides #42's current text.
 - **Associations** are verified manually (a flag set in the Firebase console, to be documented in the README). Section-exclusive events are deferred.
 - **Offline** relies only on Firestore's offline cache. No Room, no map tile prefetching.
 
@@ -41,17 +42,21 @@ The issues for the last four points (#12, #31, #32, #34, #35, #44–#47, #52) st
 - **Security Rules are not filters.** A query that could return a document the user can't read fails entirely. Public events need `where isPrivate == false`. Private events need `array-contains` on `allowedUids`.
 - `isPrivate == false` combined with a `startTime` range needs a **composite index**. Version it in `firestore.indexes.json`, which doesn't exist yet.
 - After the email is verified, **force an ID-token refresh** (`getIdToken(true)`), or the rules still see `email_verified == false`.
-- Distance on the map is **straight-line** (haversine), labelled as such. The Directions API is a billed SKU and out of scope.
-- Nominatim allows **explicit search only** (no search-as-you-type), at most 1 request per second, with a custom User-Agent and OSM attribution.
+- Distance on the map is **straight-line** (haversine), labelled as such. Route-based distances are out of scope.
+- **Map and geocoding providers may change** (Mapbox is under consideration), so keep them behind the repository and service interfaces. If Nominatim is used, its policy allows explicit search only, at most 1 request per second, with a custom User-Agent and OSM attribution.
 
 ## Open questions (don't guess, ask)
 
-None right now. Add new ones here and in the Architecture Diagram's "Design decisions" section.
+- **Map provider:** Google Maps (current default) or Mapbox (recommended by the coaches)?
+- **Sign-in providers:** add Google or Microsoft sign-in next to email/password? Every account still needs a verified `@epfl.ch` email (checked by the rules). Only email/password needs our Verify Email screen, because Google and Microsoft deliver already-verified emails.
+
+Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 ## Decision log
 
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 
+- 2026-10-04 · After review: DI is Hilt, back goes to the home tab then exits, the map provider may switch to Mapbox. (#61, #62)
 - 2026-10-04 · Board reorganised: Product Backlog stories became drafts, custom Priority P0–P2, Task Type / Epic dropdowns, time fields in hours, default labels only. (Scrum Board, no PR)
 - 2026-10-03 · Decisions 5–13: Create Event "+" button, matching on the device, Find my group storage, WorkManager, CameraX + ML Kit, manual association verification, one-to-one chat as a group, manual DI. (#61)
 - 2026-10-03 · Profiles split into `users` (private) and `publicProfiles` (public or private visibility). Events get `organizerIds`, `allowedUids` and `isAssociationEvent`. Anyone can create events. The profile is created at the first verified entry. (#61)
