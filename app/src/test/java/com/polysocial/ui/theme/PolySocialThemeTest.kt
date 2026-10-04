@@ -44,6 +44,27 @@ class PolySocialThemeTest {
     composeTestRule.waitForIdle()
   }
 
+  private fun allStyles(): Map<String, TextStyle> =
+      with(typography) {
+        mapOf(
+            "displayLarge" to displayLarge,
+            "displayMedium" to displayMedium,
+            "displaySmall" to displaySmall,
+            "headlineLarge" to headlineLarge,
+            "headlineMedium" to headlineMedium,
+            "headlineSmall" to headlineSmall,
+            "titleLarge" to titleLarge,
+            "titleMedium" to titleMedium,
+            "titleSmall" to titleSmall,
+            "bodyLarge" to bodyLarge,
+            "bodyMedium" to bodyMedium,
+            "bodySmall" to bodySmall,
+            "labelLarge" to labelLarge,
+            "labelMedium" to labelMedium,
+            "labelSmall" to labelSmall,
+        )
+      }
+
   private fun assertStyle(
       style: TextStyle,
       weight: FontWeight,
@@ -99,6 +120,13 @@ class PolySocialThemeTest {
     assertEquals(Bg, colors.onError)
     assertEquals(AccentSoft, colors.errorContainer)
     assertEquals(AccentText, colors.onErrorContainer)
+  }
+
+  @Test
+  fun everyTextStyle_usesPlusJakartaSans() {
+    val otherFont = allStyles().filterValues { it.fontFamily != PlusJakartaSans }.keys
+
+    assertEquals("Text styles not using Plus Jakarta Sans", emptySet<String>(), otherFont)
   }
 
   @Test
