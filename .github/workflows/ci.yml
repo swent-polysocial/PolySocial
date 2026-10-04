@@ -19,37 +19,22 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  ci:
-    name: CI
-    # Execute the CI on the course's runners
+  build-and-test:
+    name: Build and test
     runs-on: ubuntu-latest
 
     steps:
-      # First step : Checkout the repository on the runner
       - name: Checkout
         uses: actions/checkout@v7
         with:
           submodules: recursive
-          fetch-depth: 0 # Shallow clones should be disabled for a better relevancy of Sonar analysis (if we use Sonar Later)
+          fetch-depth: 0 # Shallow clones should be disabled for a better relevancy of Sonar analysis
 
-      # This has been taken from the SwEnt bootcamp, credit goes to the team at CS-311
       - name: Decode secrets
         env:
           GOOGLE_SERVICES: ${{ secrets.GOOGLE_SERVICES }}
           LOCAL_PROPERTIES: ${{ secrets.LOCAL_PROPERTIES }}
-        run: |
-          if [ -n "$GOOGLE_SERVICES" ]; then
-            echo "$GOOGLE_SERVICES" | base64 --decode > ./app/google-services.json
-          else
-            echo "::warning::GOOGLE_SERVICES secret is not set. google-services.json will not be created."
-          fi
-          
-          if [ -n "$LOCAL_PROPERTIES" ]; then
-            echo "$LOCAL_PROPERTIES" | base64 --decode > ./local.properties
-          else
-            echo "::warning::LOCAL_PROPERTIES secret is not set. local.properties will not be created."
-          fi
-
+        run: bash .github/scripts/decode-secrets.sh
 
       # Kernel-based Virtual Machine (KVM) is an open source virtualization technology built into Linux. Enabling it allows the Android emulator to run faster.
       - name: Enable KVM group perms
@@ -73,23 +58,25 @@ jobs:
       - name: Gradle cache
         uses: gradle/actions/setup-gradle@v5
 
-      - name: Grant execute permission for gradlew
-        run: |
-          chmod +x ./gradlew
-
       - name: Check formatting (ktfmt)
         run: |
           ./gradlew ktfmtCheck
 
-      - name: Build and lint
+      # This job only builds the debug variant, which the tests and Sonar use. The release variant
+      # is built by the "Release build" job.
+      - name: Build debug app
         run: |
           # To run the CI with debug information, add --info
-          ./gradlew assemble lint --parallel --build-cache
+          ./gradlew assembleDebug --parallel --build-cache
 
+      - name: Lint
+        run: |
+          ./gradlew lint --parallel --build-cache
+
+      # Not check: the rest of check (ktfmt and lint) already has its own step
       - name: Unit tests
         run: |
-          # To run the CI with debug information, add --info
-          ./gradlew check --parallel --build-cache
+          ./gradlew testDebugUnitTest --parallel --build-cache
 
       # The emulator boots from scratch (~30 s). A cached snapshot is rejected as soon as the
       # runner installs a newer emulator, and restoring the 1.9 GB cache took as long as a cold boot.
@@ -113,3 +100,56 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: ./gradlew sonar --parallel --build-cache
+
+  # The release build (R8 shrinking) feeds neither the tests nor Sonar, so it runs in parallel with
+  # "Build and test" instead of adding roughly 50 seconds to it.
+  release-build:
+    name: Release build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Decode secrets
+        env:
+          GOOGLE_SERVICES: ${{ secrets.GOOGLE_SERVICES }}
+          LOCAL_PROPERTIES: ${{ secrets.LOCAL_PROPERTIES }}
+        run: bash .github/scripts/decode-secrets.sh
+
+      - name: Setup JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      # See "Gradle cache" in the "Build and test" job
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Build release app
+        run: |
+          ./gradlew assembleRelease --parallel --build-cache
+
+  # The main ruleset requires a single status check named "CI". This job reports the result of the
+  # jobs above, so jobs can be added or split without changing the ruleset.
+  ci:
+    name: CI
+    needs: [build-and-test, release-build]
+    # Run even when a job failed or was cancelled. If this job were skipped instead, GitHub would
+    # count the required check as passed.
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check job results
+        env:
+          BUILD_AND_TEST: ${{ needs.build-and-test.result }}
+          RELEASE_BUILD: ${{ needs.release-build.result }}
+        run: |
+          echo "Build and test: $BUILD_AND_TEST"
+          echo "Release build: $RELEASE_BUILD"
+          if [ "$BUILD_AND_TEST" != success ] || [ "$RELEASE_BUILD" != success ]; then
+            echo "::error::Build and test or Release build did not succeed."
+            exit 1
+          fi
