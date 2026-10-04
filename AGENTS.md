@@ -283,7 +283,7 @@ as the source of truth and flag any mismatch with this list in the PR:
 
 - Locally, `./gradlew assemble lint` builds both variants and runs lint, and
   `./gradlew check` runs `ktfmtCheck`, `lint`, and `testDebugUnitTest`.
-  Together they cover every CI step above except the instrumented tests.
+  Together they run every CI check above except the instrumented tests.
 - CI skips the build and tests for PRs that only change Markdown files or
   `docs/`. Every other PR runs all the steps above.
 - Rules tests: see "Firestore Security Rules" (local always; emulator
