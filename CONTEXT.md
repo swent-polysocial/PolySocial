@@ -44,6 +44,7 @@ The issues for the last four points (#12, #31, #32, #34, #35, #44–#47, #52) st
 - `isPrivate == false` combined with a `startTime` range needs a **composite index**. Version it in `firestore.indexes.json`, which doesn't exist yet.
 - After the email is verified, **force an ID-token refresh** (`getIdToken(true)`), or the rules still see `email_verified == false`.
 - Distance on the map is **straight-line** (haversine), labelled as such. Route-based distances are out of scope.
+- **Hilt rewrites the bytecode** of `@AndroidEntryPoint` and `@HiltAndroidApp` classes, so `jacocoTestReport` reads the rewritten classes (`transformDebugClassesWithAsm`) and excludes Hilt's generated ones. Reading the compiler output instead makes those classes show 0% and fails SonarCloud. (#71)
 - **Map and geocoding providers may change** (Mapbox is under consideration), so keep them behind the repository and service interfaces. If Nominatim is used, its policy allows explicit search only, at most 1 request per second, with a custom User-Agent and OSM attribution.
 
 ## Open questions (don't guess, ask)
