@@ -127,6 +127,37 @@ class AppStartViewModelTest {
   }
 
   @Test
+  fun retryWhileTheProfileIsLoading_doesNotLoadItTwice() = runTest {
+    auth.user = verified
+    profiles.getProfileResult = found
+    profiles.gate = CompletableDeferred()
+    val viewModel = AppStartViewModel(auth, profiles)
+    advanceUntilIdle()
+
+    viewModel.retry()
+    viewModel.retry()
+    profiles.gate?.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals(1, profiles.getProfileCalls)
+    assertEquals(StartDestination.Main, viewModel.destination.value)
+  }
+
+  @Test
+  fun retryAfterReachingADestination_changesNothing() = runTest {
+    auth.user = verified
+    profiles.getProfileResult = found
+    val viewModel = AppStartViewModel(auth, profiles)
+    advanceUntilIdle()
+
+    viewModel.retry()
+    advanceUntilIdle()
+
+    assertEquals(1, profiles.getProfileCalls)
+    assertEquals(StartDestination.Main, viewModel.destination.value)
+  }
+
+  @Test
   fun logOut_nextLaunchRoutesToLogin() = runTest {
     auth.user = verified
     profiles.getProfileResult = found
