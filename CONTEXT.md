@@ -58,6 +58,7 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 
+- 2026-10-04 · Coverage bar 95% lines on new code (wiki). The ~1000-line PR cap counts production code only; tests ship in the same PR, and a fix goes in the same commit as its regression test. (this PR)
 - 2026-10-04 · CI split into parallel "Build and test" and "Release build" jobs behind the single required `CI` check. Docs-only PRs skip the build. (#67)
 - 2026-10-04 · Secrets and machine files git-ignored, README setup section added, and a pre-commit secrets check required in `AGENTS.md`. (#64)
 - 2026-10-04 · After review: DI is Hilt, back goes to the home tab then exits, the map provider may switch to Mapbox. (#61, #62)
