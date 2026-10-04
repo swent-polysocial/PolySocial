@@ -1,4 +1,4 @@
-<!-- Contributors: OpenAI Codex (initial draft); Claude (revised: definition of done, conventions, course rules, project context, Security Rules process, team-agreement reconciliation, session context). -->
+<!-- Contributors: OpenAI Codex (initial draft); Claude (revised: definition of done, conventions, course rules, project context, Security Rules process, team-agreement reconciliation, session context, secrets check). -->
 
 # Instructions for coding agents
 
@@ -174,9 +174,22 @@ guessing. It also shows how the design evolved.
 - The repository is public. Anything committed is world-readable, forever.
 - Keep setup instructions in the README so every teammate can clone, configure,
   and run the app. Update it whenever setup changes.
-- `google-services.json` and client API keys may be committed only if they hold
-  client configuration. They identify the app; they do not authorize anything.
-  Access control lives in Firestore Security Rules (see next section).
+- `app/google-services.json` and `local.properties` are git-ignored and never
+  committed: each teammate gets them as the README's Setup section describes,
+  and CI creates them from GitHub Actions secrets. Client keys identify the app
+  and do not authorize anything (access control lives in Firestore Security
+  Rules, see next section), but we still keep them out of the public repo.
+- **Secrets check, every session and every PR.** At the start of a session,
+  audit the remote for anything that should be private: list every file ever
+  committed (`git log --all --name-only`) and look for `google-services.json`,
+  `local.properties`, `secrets.properties`, keystores (`*.jks`, `*.keystore`,
+  `*.p12`), `.env` files and service-account JSON, then search for key patterns
+  such as `AIza…` and `-----BEGIN … PRIVATE KEY`. Before every commit, read
+  `git status` and confirm each sensitive file is covered with
+  `git check-ignore -v <file>`. Extend `.gitignore` first if one is not
+  covered. Never stage with `git add -A` or `git add .` without reviewing what
+  it includes. If a secret is already public, stop and tell the human: the key
+  must be rotated, and deleting the file does not remove it from history.
 - Restrict the Google Maps key to the app's package name and the SHA-1
   fingerprints of every keystore that builds the app: each teammate's debug
   keystore, the CI keystore, and the release keystore. A missing fingerprint
@@ -384,7 +397,9 @@ mismatch with this list in the PR:
    changes) `connectedCheck` all pass locally, or the PR lists what could not
    be run.
 4. The diff contains no secrets, generated files, stray files, debug code,
-   commented-out code, or unexplained suppressions.
+   commented-out code, or unexplained suppressions, and `.gitignore` covers
+   every sensitive file in the working tree (see the secrets check in
+   "Backend and configuration").
 5. Errors, loading, empty states, denied permissions, and offline behavior are
    handled where the feature touches them, and no personal data is logged.
 6. If the change adds or changes data access for events, groups, chats, or
@@ -489,7 +504,8 @@ change that would touch the "Never do" list.
 
 ## Agent workflow
 
-1. Read `CONTEXT.md`. Restate the issue's goal and acceptance criteria.
+1. Read `CONTEXT.md` and run the secrets check on the remote (see "Backend and
+   configuration"). Restate the issue's goal and acceptance criteria.
    Inspect the smallest relevant part of the codebase and the existing tests.
 2. Implement one reviewable change consistent with the current architecture and
    the conventions above, with tests in the same change.
