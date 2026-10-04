@@ -40,6 +40,21 @@ The insight is that the barrier to campus life is social rather than information
  
 
 
+## Setup
+
+<!-- Contributors: Claude (drafted the Setup section). -->
+
+The app needs two private files that are **not in the repository**. Both are git-ignored and must never be committed, because the repository is public.
+
+| File | What it holds | How to get it |
+|---|---|---|
+| `local.properties` (repository root) | The Android SDK path: `sdk.dir=/path/to/Android/Sdk`. Later also the Maps API key. | Android Studio creates it when you open the project. Otherwise, write that one line yourself. |
+| `app/google-services.json` | The Firebase configuration for `com.polysocial` | Firebase console → Project settings → *Your apps* → Android app `com.polysocial` → download `google-services.json`. Or ask a teammate. |
+
+Then build with `./gradlew assembleDebug` (on Windows, `./gradlew.bat assembleDebug`). CI creates both files from GitHub secrets.
+
+Before every commit, check that `git status` never lists these files. If it does, fix `.gitignore` first and don't commit them.
+
 ## Design
 
 Figma mockups: [PolySocial App Mockup](https://www.figma.com/design/7Gt7tmy1ikpNyNBh1P6QdY/App-Mockup?node-id=0-1)
