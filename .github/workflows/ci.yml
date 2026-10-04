@@ -19,8 +19,37 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A PR that only changes documentation (Markdown files and docs/) cannot break the build, so the
+  # build and test jobs skip it. Pushes on main always run everything.
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      docs-only: ${{ steps.filter.outputs.docs-only }}
+
+    steps:
+      - name: Check whether only documentation changed
+        id: filter
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --jq '.[].filename')
+          # grep -v succeeds if at least one file is neither Markdown nor in docs/
+          if grep -qvE '\.md$|^docs/' <<< "$files"; then
+            echo "docs-only=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Only documentation changed, so the build and test jobs are skipped."
+            echo "docs-only=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build-and-test:
     name: Build and test
+    needs: changes
+    if: needs.changes.outputs.docs-only != 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -105,6 +134,8 @@ jobs:
   # "Build and test" instead of adding roughly 50 seconds to it.
   release-build:
     name: Release build
+    needs: changes
+    if: needs.changes.outputs.docs-only != 'true'
     runs-on: ubuntu-latest
 
     steps:
@@ -135,7 +166,7 @@ jobs:
   # jobs above, so jobs can be added or split without changing the ruleset.
   ci:
     name: CI
-    needs: [build-and-test, release-build]
+    needs: [changes, build-and-test, release-build]
     # Run even when a job failed or was cancelled. If this job were skipped instead, GitHub would
     # count the required check as passed.
     if: always()
@@ -144,11 +175,23 @@ jobs:
     steps:
       - name: Check job results
         env:
+          DETECT_CHANGES: ${{ needs.changes.result }}
+          DOCS_ONLY: ${{ needs.changes.outputs.docs-only }}
           BUILD_AND_TEST: ${{ needs.build-and-test.result }}
           RELEASE_BUILD: ${{ needs.release-build.result }}
         run: |
+          echo "Detect changes: $DETECT_CHANGES"
           echo "Build and test: $BUILD_AND_TEST"
           echo "Release build: $RELEASE_BUILD"
+          # If detection failed, the build jobs were skipped without checking anything
+          if [ "$DETECT_CHANGES" != success ]; then
+            echo "::error::Could not detect which files changed."
+            exit 1
+          fi
+          if [ "$DOCS_ONLY" = true ]; then
+            echo "Documentation-only change: nothing to build or test."
+            exit 0
+          fi
           if [ "$BUILD_AND_TEST" != success ] || [ "$RELEASE_BUILD" != success ]; then
             echo "::error::Build and test or Release build did not succeed."
             exit 1
