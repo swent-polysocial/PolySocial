@@ -1,4 +1,4 @@
-<!-- Contributors: OpenAI Codex (initial draft); Claude (revised: definition of done, conventions, course rules, project context, Security Rules process, team-agreement reconciliation, session context, secrets check). -->
+<!-- Contributors: OpenAI Codex (initial draft); Claude (revised: definition of done, conventions, course rules, project context, Security Rules process, team-agreement reconciliation, session context, secrets check, test and PR-size rules). -->
 
 # Instructions for coding agents
 
@@ -128,8 +128,9 @@ guessing. It also shows how the design evolved.
 - A task is only pulled into a Sprint if it meets the team's Definition of
   Ready: a clear description and acceptance criteria, an estimate, and small
   enough to finish within one Sprint (see "Scrum board").
-- Tests for a feature go in the same PR as the feature, possibly in separate
-  commits.
+- Tests for a feature (including fakes and test helpers) go in the same PR as
+  the feature, possibly in separate commits. A bug fix and its regression test
+  go in the same commit.
 - Do not over-engineer. Solve the task at hand, and design it so it is easy to
   modify later. No speculative abstractions for hypothetical needs.
 - Git history is used to assess the team's practices. Write meaningful commit
@@ -312,7 +313,7 @@ as the source of truth and flag any mismatch with this list in the PR:
   includes a test that fails without the fix.
 - Keep tests deterministic: no real time, no live network calls (see
   "Backend and configuration"), and no unseeded randomness.
-- Coverage, as reported by JaCoCo/SonarCloud in CI: at least 80% line coverage
+- Coverage, as reported by JaCoCo/SonarCloud in CI: at least 95% line coverage
   and 65% branch coverage on new code, and overall project coverage must not
   decrease. A meaningful test always beats a coverage gain — do not pad
   coverage with tests that don't assert real behavior.
@@ -372,10 +373,13 @@ as the source of truth and flag any mismatch with this list in the PR:
 ## Pull requests
 
 - One issue per PR. Never mix features, refactors, and formatting-only changes.
-- Size: at most about 1000 changed lines, excluding generated files,
-  resources, and test fixtures, as in the wiki's review checklist. This is a
-  cap, not a target: aim for a PR a teammate can review in about 30 minutes,
-  and split larger work into several PRs.
+- Size: at most about 1000 changed lines of **production code**
+  (`app/src/main` and build files), as in the wiki's review checklist. Tests,
+  fakes, fixtures, resources, and generated files don't count, so tests are
+  never trimmed to fit the cap; reviewers still read the tests in full. This
+  is a cap, not a target: aim for a PR a teammate can review in about 30
+  minutes, and split larger work into several PRs. Even under the cap, split a
+  PR along a natural seam when it does two things.
 - Every PR has an assignee (the author).
 - The PR title follows the commit subject convention. The description states
   the issue (`Closes #N`, or "No linked issue (docs-only)" for a

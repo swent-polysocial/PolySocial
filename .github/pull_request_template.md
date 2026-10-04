@@ -17,8 +17,8 @@ Closes #
 - [ ] Linked to its issue (`Closes #N` above) and has an assignee
 - [ ] CI is green: build, lint and all tests pass
 - [ ] New logic comes with tests that assert behavior (no assertion-free tests)
-- [ ] Coverage on new code is at least 80% lines and 65% branches, and overall coverage does not decrease
-- [ ] At most ~1000 changed lines, excluding generated files, resources and test fixtures
+- [ ] Coverage on new code is at least 95% lines and 65% branches, and overall coverage does not decrease
+- [ ] At most ~1000 changed lines of production code (tests, fakes, fixtures, resources and generated files excluded); tests for the change are in this PR
 - [ ] Failures (network, Firestore, permissions, invalid input) are handled and surfaced in the UI state
 - [ ] MVVM is respected: no business logic or data access in composables
 - [ ] No live network calls in tests
