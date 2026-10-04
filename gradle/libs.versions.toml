@@ -1,4 +1,5 @@
-# Contributors: Claude (Hilt, KSP and Hilt testing entries, #70; Navigation Compose entry, #41).
+# Contributors: Claude (Hilt, KSP and Hilt testing entries, #70; Navigation Compose entry, #41;
+# MockK, #32).
 [versions]
 agp = "9.3.3"
 kotlin = "2.4.20"
@@ -16,6 +17,7 @@ lifecycleRuntimeKtx = "2.11.0"
 navigationCompose = "2.10.2"
 kaspresso = "1.6.1"
 robolectric = "4.17"
+mockk = "1.14.11"
 sonar = "7.5.0.8588"
 googleServices = "4.5.0"
 firebaseBom = "34.19.0"
@@ -48,6 +50,7 @@ kaspresso = { group = "com.kaspersky.android-components", name = "kaspresso", ve
 kaspresso-compose = { group = "com.kaspersky.android-components", name = "kaspresso-compose-support", version.ref = "kaspresso" }
 
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
 
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-auth = { group = "com.google.firebase", name = "firebase-auth" }
