@@ -130,6 +130,19 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: ./gradlew sonar --parallel --build-cache
 
+      # Lint, unit test and instrumented test reports (with the emulator's logcat), to debug a failed
+      # run. Download them from the run's summary page.
+      - name: Upload reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: reports
+          path: |
+            app/build/reports/
+            app/build/outputs/androidTest-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
   # The release build (R8 shrinking) feeds neither the tests nor Sonar, so it runs in parallel with
   # "Build and test" instead of adding roughly 50 seconds to it.
   release-build:
