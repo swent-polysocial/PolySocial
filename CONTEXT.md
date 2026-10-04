@@ -7,7 +7,7 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 ## Current state
 
 - **Code is still the course template.** `MainActivity` (greeting), `SecondActivity`, `SimpleData.kt` (`Point`, Euclidean, not the haversine distance we need), `ui/theme`, `resources/C.kt` (test tags). No navigation, ViewModel, repository or Maps code exists yet. Sprint 1 issues #29–#52 build the first real code.
-- **Package** `com.polysocial`, minSdk 28, compile/target SDK 37, JVM 17. Dependencies use the version catalog `gradle/libs.versions.toml`. Today it has Compose, Firebase Auth + Firestore, Kaspresso and Robolectric. **Maps Compose, Compose Navigation and location services are not added yet.**
+- **Package** `com.polysocial`, minSdk 28, compile/target SDK 37, JVM 17. Dependencies use the version catalog `gradle/libs.versions.toml`. Today it has Compose, Firebase Auth + Firestore, Hilt (with KSP), Kaspresso and Robolectric. **Maps Compose, Compose Navigation and location services are not added yet.**
 - **Security Rules** `firebase/firestore/firestore.rules` currently allow **any signed-in user to do anything**. #33, #35, #47 and #52 replace this. Emulator config is in `firebase.json` (Auth 9099, Firestore 8080).
 - **Setup:** the README's "Setup" section lists the two private, git-ignored files every clone needs: `local.properties` (SDK path) and `app/google-services.json` (Firebase config). CI creates both from GitHub secrets. `.gitignore` also covers keystores, `secrets.properties`, `.env` files and service-account JSON. Check that `git status` never lists them before committing.
 - **Missing setup (stop and ask, per `AGENTS.md`):** no rules-test command is documented, and there is no Maps key or Secrets Gradle plugin.
@@ -31,7 +31,7 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 - **Chats:** a one-to-one chat is a two-member group (one model, one set of rules).
 - **Find my group:** positions in `groups/{id}/locations/{uid}`, written only during the event, readable by members only, deleted afterwards. No location history.
 - **Approved libraries (not added yet):** WorkManager for reminders (scheduled at registration, notification permission asked then). CameraX + ML Kit barcode scanning for QR codes, with typed payloads `polysocial://checkin/{eventId}/{token}` and `polysocial://friend/{uid}` checked by a pure parser.
-- **DI: Hilt** (`@HiltViewModel`, constructor injection). Tests replace repositories with the `Fake…` versions through Hilt test modules. It's an approved dependency, not added yet. Chosen after review over manual DI because it scales as repositories grow.
+- **DI: Hilt** (`@HiltViewModel`, constructor injection). Tests replace repositories with the `Fake…` versions through Hilt test modules. Set up in #70: `PolySocialApp` is the `@HiltAndroidApp` class, `MainActivity` is an `@AndroidEntryPoint`, and Compose gets ViewModels with `hiltViewModel()` (no navigation dependency needed). Each feature adds its own Hilt module for its repositories. Chosen after review over manual DI because it scales as repositories grow.
 - **Back button:** at the root of the Map, Chats or Profile tab, back goes to the Events (home) tab, and at the Events root it exits (Android's standard). This overrides #42's current text.
 - **Associations** are verified manually (a flag set in the Firebase console, to be documented in the README). Section-exclusive events are deferred.
 - **Offline** relies only on Firestore's offline cache. No Room, no map tile prefetching.
