@@ -12,6 +12,7 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 - **Missing setup (stop and ask, per `AGENTS.md`):** the README has no setup steps yet. No rules-test command is documented, and there is no Maps key or Secrets Gradle plugin.
 - **CI** (`.github/workflows/ci.yml`): ktfmt check, assemble, unit tests, and instrumented tests on an API 34 `google_apis` emulator with **no camera**, then JaCoCo and Sonar. It does **not** start the Firebase emulators.
 - **PRs** must use `.github/pull_request_template.md`. Merges are **rebase merges**, so every commit lands on `main` as-is.
+- **Scrum Board:** Product Backlog user stories are **draft items**, with no issue number. A Sprint task becomes a real **issue** when it is planned (course rule), so issue-numbered branches and `Closes #N` exist only for Sprint tasks. The fields are Task Type (Frontend / Backend / Figma, multi-select), Epic (dropdown), Priority (P0 high, P1 medium, P2 low) and Estimated / Actual Time (h) as numbers. Labels are GitHub's defaults only. The old user-story issues (#3–#28, #36) are closed, and their stories live on as drafts.
 
 ## Decided design (follow this, even where an issue still says otherwise)
 
@@ -51,6 +52,7 @@ None right now. Add new ones here and in the Architecture Diagram's "Design deci
 
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 
+- 2026-10-04 · Board reorganised: Product Backlog stories became drafts, custom Priority P0–P2, Task Type / Epic dropdowns, time fields in hours, default labels only. (Scrum Board, no PR)
 - 2026-10-03 · Decisions 5–13: Create Event "+" button, matching on the device, Find my group storage, WorkManager, CameraX + ML Kit, manual association verification, one-to-one chat as a group, manual DI. (#61)
 - 2026-10-03 · Profiles split into `users` (private) and `publicProfiles` (public or private visibility). Events get `organizerIds`, `allowedUids` and `isAssociationEvent`. Anyone can create events. The profile is created at the first verified entry. (#61)
 - 2026-10-03 · This file added. Agents read it first and update it with important decisions only. (this PR)
