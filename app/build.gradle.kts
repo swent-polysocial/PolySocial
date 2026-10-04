@@ -205,6 +205,7 @@ tasks.register("jacocoTestReport", JacocoReport::class) {
             "**/Dagger*",
             "**/*_Hilt*",
             "**/*_Factory*",
+            "**/*Module_*Factory*",
             "**/*_MembersInjector*",
             "**/*_GeneratedInjector*",
             "**/*_ComponentTreeDeps*",
