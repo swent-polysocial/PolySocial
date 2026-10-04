@@ -6,4 +6,24 @@
 /captures
 .externalNativeBuild
 .cxx
+.kotlin/
 local.properties
+
+# Secrets and machine-specific config: never commit them, the repository is public.
+# Contributors: Claude (drafted this section).
+# Firebase client config (CI creates it from a GitHub secret)
+google-services.json
+# Secrets Gradle plugin values, e.g. the Maps API key (local.defaults.properties stays committed)
+secrets.properties
+# Signing keys and certificates
+*.jks
+*.keystore
+*.p12
+*.pem
+# Environment files and service-account credentials
+.env
+.env.*
+*service-account*.json
+# Firebase Local Emulator Suite logs and cache
+*-debug.log
+.firebase/
