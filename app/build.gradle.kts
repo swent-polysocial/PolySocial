@@ -1,4 +1,4 @@
-// Contributors: Claude (Hilt, KSP and Hilt testing setup, #70).
+// Contributors: Claude (Hilt, KSP and Hilt testing setup, JaCoCo on Hilt-rewritten classes, #70).
 plugins {
   alias(libs.plugins.androidApplication)
   alias(libs.plugins.kotlinCompose)
@@ -191,11 +191,24 @@ tasks.register("jacocoTestReport", JacocoReport::class) {
           "android/**/*.*",
       )
 
+  // Read the classes after Hilt's bytecode rewrite: those are the ones the tests run, so
+  // @AndroidEntryPoint and @HiltAndroidApp classes match the coverage data. Hilt's generated
+  // classes are excluded.
   val debugTree =
       fileTree(
-          "${project.layout.buildDirectory.get()}/intermediates/built_in_kotlinc/debug/compileDebugKotlin/classes"
+          "${project.layout.buildDirectory.get()}/intermediates/classes/debug/transformDebugClassesWithAsm/dirs"
       ) {
+        include("com/polysocial/**")
         exclude(fileFilter)
+        exclude(
+            "**/Hilt_*",
+            "**/Dagger*",
+            "**/*_Hilt*",
+            "**/*_Factory*",
+            "**/*_MembersInjector*",
+            "**/*_GeneratedInjector*",
+            "**/*_ComponentTreeDeps*",
+        )
       }
 
   val mainSrc = "${project.layout.projectDirectory}/src/main/java"
