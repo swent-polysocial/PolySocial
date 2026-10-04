@@ -1,4 +1,5 @@
-// Contributors: Claude (test fake shared by #30, #31 and #32).
+// Contributors: Claude (test fake shared by #30, #31 and #32); Claude Opus 5.5 (recorded the
+// logIn arguments).
 package com.polysocial.model.auth
 
 /**
@@ -18,6 +19,13 @@ class FakeAuthRepository(var user: AuthUser? = null) : AuthRepository {
   var logInCalls = 0
     private set
 
+  /** The email and password of the last [logIn] call, to check what the caller sends. */
+  var lastLogInEmail: String? = null
+    private set
+
+  var lastLogInPassword: String? = null
+    private set
+
   var logOutCalls = 0
     private set
 
@@ -34,6 +42,8 @@ class FakeAuthRepository(var user: AuthUser? = null) : AuthRepository {
 
   override suspend fun logIn(email: String, password: String): LogInResult {
     logInCalls++
+    lastLogInEmail = email
+    lastLogInPassword = password
     return logInResult.also { if (it is LogInResult.Success) user = it.user }
   }
 
