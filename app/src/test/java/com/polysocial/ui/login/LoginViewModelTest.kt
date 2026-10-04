@@ -102,6 +102,30 @@ class LoginViewModelTest {
   }
 
   @Test
+  fun logInWhileRedirectingToVerifyEmail_doesNotCallTheRepositoryAgain() = runTest {
+    logInWith(LogInResult.Success(verifiedUser.copy(isEmailVerified = false)))
+
+    assertFalse(viewModel.uiState.value.canSubmit)
+    viewModel.onLogIn()
+    advanceUntilIdle()
+
+    assertEquals(1, auth.logInCalls)
+    assertEquals(LoginStatus.Unverified, status())
+  }
+
+  @Test
+  fun logInAfterLoggedIn_doesNotCallTheRepositoryAgain() = runTest {
+    logInWith(LogInResult.Success(verifiedUser))
+
+    assertFalse(viewModel.uiState.value.canSubmit)
+    viewModel.onLogIn()
+    advanceUntilIdle()
+
+    assertEquals(1, auth.logInCalls)
+    assertEquals(LoginStatus.LoggedIn, status())
+  }
+
+  @Test
   fun emptyFields_doNotCallTheRepository() = runTest {
     viewModel.onLogIn()
     advanceUntilIdle()

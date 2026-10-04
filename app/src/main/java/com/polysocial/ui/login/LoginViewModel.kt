@@ -1,4 +1,5 @@
-// Contributors: Claude (Log in screen state for #32).
+// Contributors: Claude (Log in screen state for #32); Claude Opus 5.5 (block Log in while
+// redirecting).
 package com.polysocial.ui.login
 
 import androidx.lifecycle.ViewModel
@@ -37,9 +38,17 @@ data class LoginUiState(
     val passwordVisible: Boolean = false,
     val status: LoginStatus = LoginStatus.Idle,
 ) {
-  /** Log in is enabled only when both fields are filled and no attempt is running. */
+  /**
+   * Log in is enabled only when both fields are filled and no attempt is running or redirecting
+   * (after a successful login the screen is leaving, so a second attempt must not start).
+   */
   val canSubmit: Boolean
-    get() = email.isNotBlank() && password.isNotBlank() && status != LoginStatus.Loading
+    get() =
+        email.isNotBlank() &&
+            password.isNotBlank() &&
+            status != LoginStatus.Loading &&
+            status != LoginStatus.Unverified &&
+            status != LoginStatus.LoggedIn
 }
 
 /** Holds the Log in form and runs the login attempt through [AuthRepository]. */
