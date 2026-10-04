@@ -1,50 +1,53 @@
+// Contributors: Claude (v2 colour scheme, shapes and light-only theme).
 package com.polysocial.ui.theme
 
-import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 
-private val DarkColorScheme =
-    darkColorScheme(primary = Purple80, secondary = PurpleGrey80, tertiary = Pink80)
-
-private val LightColorScheme =
+private val ColorScheme =
     lightColorScheme(
-        primary = Purple40,
-        secondary = PurpleGrey40,
-        tertiary = Pink40,
-
-        /* Other default colors to override
-        background = Color(0xFFFFFBFE),
-        surface = Color(0xFFFFFBFE),
-        onPrimary = Color.White,
-        onSecondary = Color.White,
-        onTertiary = Color.White,
-        onBackground = Color(0xFF1C1B1F),
-        onSurface = Color(0xFF1C1B1F),
-        */
+        primary = Ink,
+        onPrimary = Bg,
+        secondary = Accent,
+        onSecondary = Bg,
+        tertiary = Info,
+        onTertiary = Bg,
+        background = Bg,
+        onBackground = Ink,
+        surface = Bg,
+        onSurface = Ink,
+        surfaceVariant = Surface,
+        onSurfaceVariant = Ink2,
+        outline = Border,
+        outlineVariant = Border,
+        error = Accent,
+        onError = Bg,
+        errorContainer = AccentSoft,
+        onErrorContainer = AccentText,
     )
 
+/** v2 corner radii: fields (12), cards (16), buttons (26, fully rounded). */
+val PolySocialShapes =
+    Shapes(
+        small = RoundedCornerShape(12.dp),
+        medium = RoundedCornerShape(16.dp),
+        large = RoundedCornerShape(26.dp),
+    )
+
+/**
+ * App theme with the v2 design system. Light only and without dynamic colour, so every screen
+ * matches the Figma design exactly.
+ */
 @Composable
-fun PolySocialTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
-    content: @Composable () -> Unit,
-) {
-  val colorScheme =
-      when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-          val context = LocalContext.current
-          if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-      }
-  MaterialTheme(colorScheme = colorScheme, typography = Typography, content = content)
+fun PolySocialTheme(content: @Composable () -> Unit) {
+  MaterialTheme(
+      colorScheme = ColorScheme,
+      typography = Typography,
+      shapes = PolySocialShapes,
+      content = content,
+  )
 }
