@@ -4,6 +4,8 @@ plugins {
   alias(libs.plugins.ktfmt)
   alias(libs.plugins.sonar)
   alias(libs.plugins.googleServices)
+  alias(libs.plugins.ksp)
+  alias(libs.plugins.hilt)
   id("jacoco")
 }
 
@@ -144,6 +146,11 @@ dependencies {
   implementation(platform(libs.firebase.bom))
   implementation(libs.firebase.auth)
   implementation(libs.firebase.firestore)
+
+  // ------------- Hilt (dependency injection) ------------------
+  implementation(libs.hilt.android)
+  ksp(libs.hilt.compiler)
+  implementation(libs.hilt.lifecycle.viewmodel.compose)
 
   // --------- Kaspresso test framework ----------
   globalTestImplementation(libs.kaspresso)
