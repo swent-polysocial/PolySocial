@@ -1,5 +1,8 @@
-// Contributors: Claude (test fake for #32); Claude Opus 5.5 (recorded the logIn arguments).
+// Contributors: Claude (test fake for #32); Claude Opus 5.5 (recorded the logIn arguments,
+// added the logIn gate).
 package com.polysocial.model.auth
+
+import kotlinx.coroutines.CompletableDeferred
 
 /**
  * In-memory [AuthRepository] for tests. Set the next result of each operation, read the signed-in
@@ -8,6 +11,11 @@ package com.polysocial.model.auth
  */
 class FakeAuthRepository(var user: AuthUser? = null) : AuthRepository {
   var logInResult: LogInResult = LogInResult.UnexpectedError
+
+  /**
+   * When set, [logIn] stays suspended until the test completes it, to observe the loading state.
+   */
+  var logInGate: CompletableDeferred<Unit>? = null
 
   var logInCalls = 0
     private set
@@ -26,6 +34,7 @@ class FakeAuthRepository(var user: AuthUser? = null) : AuthRepository {
     logInCalls++
     lastLogInEmail = email
     lastLogInPassword = password
+    logInGate?.await()
     return logInResult.also { if (it is LogInResult.Success) user = it.user }
   }
 
