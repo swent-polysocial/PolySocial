@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (removed the template colours the v2 theme replaces, #66). -->
 <resources>
     <color name="white">#FFFFFFFF</color>
 </resources>
