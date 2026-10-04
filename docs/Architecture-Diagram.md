@@ -1,6 +1,6 @@
 <!-- Contributors: Claude (drafted this page and its diagrams from the README, the Scrum Board and the issue descriptions). -->
 
-How PolySocial is built, as we currently envision it. The page follows the [Android App Architecture guide](https://developer.android.com/topic/architecture/intro): a **UI layer** (Compose screens and ViewModels), a **domain layer** of pure Kotlin logic, and a **data layer** of repositories in front of Firebase, Google Maps, Nominatim and the device sensors.
+How PolySocial is built, as we currently envision it. The page follows the [Android App Architecture guide](https://developer.android.com/topic/architecture/intro): a **UI layer** (Compose screens and ViewModels), a **domain layer** of pure Kotlin logic, and a **data layer** of repositories in front of Firebase, the map and geocoding services, and the device sensors.
 
 This diagram is meant to **stay ahead of the code and drive development**. When a sprint task changes the design, update this page in the same PR. The Markdown source is versioned in the repository at `docs/Architecture-Diagram.md`, and this wiki page mirrors it.
 
@@ -36,9 +36,9 @@ The source is `images/architecture-overview.svg`, a plain SVG kept next to the P
 
 **How to read it.**
 - Every screen has exactly one ViewModel. The ViewModel exposes a single immutable UI-state `StateFlow` with loading, empty, success and error variants, and receives user actions as function calls.
-- Repositories are Kotlin interfaces with a Firebase (or device) implementation and a `Fake…` implementation for tests. ViewModels get them through their constructor, from a small hand-written provider object (no DI library).
+- Repositories are Kotlin interfaces with a Firebase (or device) implementation and a `Fake…` implementation for tests. ViewModels get them through their constructor, injected by **Hilt** (`@HiltViewModel`). Tests swap in the fakes with Hilt's test modules.
 - **Offline:** Firestore offline persistence is the only cache (no Room, no custom sync). Loaded events, registered events and their schedule stay readable offline. Writes such as chat messages are queued and synced on reconnect. Reminders are scheduled on the device. The map shows cached events on tiles the Maps SDK already cached, with **no tile prefetching**. Sign-up and log-in need a network and show a clear error without one.
-- The Google Maps SDK is a UI component. `MapScreen` renders markers from `MapViewModel` state and never queries data itself.
+- **Map provider:** Google Maps today, but it may switch to Mapbox (recommended by the coaches). Either way the map SDK is a UI component, so switching only touches the Map screen. `MapScreen` renders markers from `MapViewModel` state and never queries data itself.
 
 ## 2. Navigation map
 
@@ -93,7 +93,7 @@ flowchart TB
 ```
 
 Notes:
-- **Back behaviour (#39, #42).** Back pops the current tab's stack first. At a tab root it returns to the previously visited tab. It exits the app only at the true initial state. Switching tabs restores each tab's screen and scroll position (#38).
+- **Back behaviour (#39, #42).** Back pops the current tab's stack first. At the root of the Map, Chats or Profile tab it goes to the **Events** (home) tab, and at the Events root it exits the app. This is Android's standard bottom-navigation behaviour. Switching tabs restores each tab's screen and scroll position (#38).
 - **Create Event.** A "+" button on the Events and Map tabs opens it. After creating, the app opens the new event's detail screen.
 - **Event detail.** Until the real screen exists, the Map tab's "View details" opens a placeholder route (#50).
 
@@ -126,6 +126,7 @@ flowchart TB
 
 - **Result types (#30–#32).** `signUp` returns success, invalid domain, already in use or network error. `logIn` adds wrong credentials. `sendVerificationEmail` has a distinct *throttled* failure for Firebase's too-many-requests error, which the UI shows differently from a real error.
 - **Profile (#34).** `UserProfile` has at least `uid`, `email` and `createdAt`. #45 adds `isAssociation` and `isAssociationVerified`, both defaulting to `false`. The document ID is always the Auth UID, never a client-generated ID. The profile is created **exactly once, at the first verified entry** (Verify Email "Continue", or app-start routing finding a verified user without a profile), because the Security Rules only allow writes from verified accounts. If account creation fails, no profile is written. If the profile write fails, the user sees an error state. Fields other students may see live in a separate `publicProfiles/{uid}` document (see [5.2](#52-collections-and-key-fields)).
+- **Email verification.** Every account must have a verified `@epfl.ch` email, and the Security Rules check this whatever the sign-in method. Sprint 1 uses email/password, where Firebase marks the email unverified until the student clicks the link we send, hence the Verify Email screen. Google or Microsoft sign-in, if added later, deliver already-verified emails, so those users would skip that screen. The rules would not change.
 - **Log out (#8, #32).** Logging out clears the session, and the next launch routes to Log In.
 
 ### 3.2 Map (Sprint 1)
@@ -136,7 +137,7 @@ flowchart TB
   classDef ext fill:#fff3bf,stroke:#e67700,color:#000
 
   mapS["Map screen<br/>markers · preview card"]:::s1 --> mapVM["<b>MapViewModel</b><br/>Loading · Empty · Success · Error<br/>permission granted / denied"]:::s1
-  mapS -. renders .-> maps[("Google Maps SDK")]:::ext
+  mapS -. renders .-> maps[("Map SDK<br/>Google Maps, or Mapbox")]:::ext
   mapVM --> dist["Haversine distance<br/><i>domain</i>"]:::s1
   mapVM --> ev["<b>EventRepository</b><br/>getUpcomingPublicEvents"]:::s1
   mapVM --> loc["<b>LocationService</b><br/>permission · one-off location"]:::s1
@@ -144,7 +145,7 @@ flowchart TB
   loc --> gps[("GPS")]:::ext
 ```
 
-- **Map (#50, #51).** The map is centred on Lausanne. Location permission is requested once, on first entry to the Map tab. If it's denied, the map stays fully usable without distance badges. Distance is labelled *straight-line*, not walking time. Directions is a billed SKU and out of scope.
+- **Map (#50, #51).** The map is centred on Lausanne. Location permission is requested once, on first entry to the Map tab. If it's denied, the map stays fully usable without distance badges. Distance is labelled *straight-line*, not walking time. Route-based distances are out of scope.
 - **Upcoming events query (#49).** The query **must** include `isPrivate == false`. Security Rules are not filters, so a query that could return a private event is rejected as a whole. Combining equality on `isPrivate` with a range on `startTime` needs a composite index, which should be versioned in `firestore.indexes.json` next to the rules.
 
 ### 3.3 Create Event (Sprint 1)
@@ -162,11 +163,11 @@ flowchart TB
   createVM -.-> geo["<b>GeocodingRepository</b><br/>address search, later"]:::pb
   ev --> fs[("Firestore<br/>events · users")]:::ext
   prof --> fs
-  geo -.-> nom[("Nominatim")]:::ext
+  geo -.-> nom[("Geocoding service<br/>Nominatim by default")]:::ext
 ```
 
 - **Event model (#45).** `id`, `title`, `description`, `category`, `location` (lat/lng), `startTime`, `capacity` (nullable), `isPrivate`, `createdBy`, `organizerIds`, `allowedUids` and `isAssociationEvent`. `createdBy` is always the authenticated UID and is always in `organizerIds` and `allowedUids`. The Security Rules enforce this again (#47).
-- **Create Event access (#46).** **Anyone can create an event** and becomes its **organizer**. An event can have one or several student organizers (`organizerIds`). Only a verified association (`isAssociation && isAssociationVerified`) sees the "publish as <association>" option, which sets `isAssociationEvent` and shows a verified badge. Nominatim address search appears in the Figma task (#44), but the Sprint 1 build task only requires a map pin (#46), so geocoding stays blue. When added, it must follow the Nominatim policy: custom User-Agent, at most 1 request per second, debounced and cached, explicit search only (no search-as-you-type), and OSM attribution in the UI.
+- **Create Event access (#46).** **Anyone can create an event** and becomes its **organizer**. An event can have one or several student organizers (`organizerIds`). Only a verified association (`isAssociation && isAssociationVerified`) sees the "publish as <association>" option, which sets `isAssociationEvent` and shows a verified badge. Address search appears in the Figma task (#44), but the Sprint 1 build task only requires a map pin (#46), so geocoding stays blue. Its provider follows the map choice: Nominatim (approved in the API evaluation, with its usage policy) or Mapbox's own geocoding if we switch.
 
 ### 3.4 Groups, matching and chat (Product Backlog)
 
@@ -364,7 +365,7 @@ Every PR that changes rules follows the process in `AGENTS.md`: "Changes Securit
 
 ## 7. Design decisions
 
-Decided by the team on 2026-10-03. The issues are being updated to match.
+Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after review. The issues are being updated to match.
 
 | # | Topic | Decision |
 |---|---|---|
@@ -380,9 +381,12 @@ Decided by the team on 2026-10-03. The issues are being updated to match.
 | 10 | Section-exclusive events | Deferred. Later `allowedSections` on events, checked in the rules |
 | 11 | Association verification | Manual flag in the Firebase console, documented in the README. In-app flow later |
 | 12 | One-to-one chat | A two-member group (one chat model) |
-| 13 | Dependency injection | Manual constructor injection with a provider object. No Hilt |
+| 13 | Dependency injection | **Hilt** (changed after review). It is Android's recommended DI library, scales as repositories grow, and Hilt test modules swap in the fakes cleanly. The cost is some setup and slower builds |
+| 14 | Back button | At a non-home tab root, go to the Events tab. At the Events root, exit. This is Android's standard pattern (changed after review) |
 
-**Open questions:** none right now. Add new ones here and in `CONTEXT.md`.
+**Open questions** (add new ones here and in `CONTEXT.md`):
+- **Map provider:** keep Google Maps or switch to Mapbox, as the coaches recommended? It affects the map SDK, the API key setup and the geocoding service.
+- **Sign-in providers:** add Google or Microsoft sign-in next to email/password? EPFL addresses are Microsoft accounts, so Microsoft sign-in would prove EPFL membership directly. Either way, the rules keep requiring a verified `@epfl.ch` email.
 
 ## 8. Backlog traceability
 
