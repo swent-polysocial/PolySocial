@@ -1,3 +1,4 @@
+// Contributors: Claude (Hilt, KSP and Hilt testing setup, #70).
 plugins {
   alias(libs.plugins.androidApplication)
   alias(libs.plugins.kotlinCompose)
