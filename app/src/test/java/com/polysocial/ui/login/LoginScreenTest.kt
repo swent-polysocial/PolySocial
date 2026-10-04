@@ -23,6 +23,7 @@ import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.auth.LogInResult
 import com.polysocial.ui.theme.PolySocialTheme
+import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -144,6 +145,30 @@ class LoginScreenTest {
 
     assertEquals(1, loggedInCalls)
     assertEquals(0, needsVerificationCalls)
+  }
+
+  @Test
+  fun submit_showsLoadingWhileTheAttemptIsInProgress() {
+    auth.logInResult = LogInResult.Success(verifiedUser)
+    val gate = CompletableDeferred<Unit>()
+    auth.logInGate = gate
+    setScreen()
+    typeCredentials()
+
+    node(LoginScreenTestTags.LOG_IN).performClick()
+
+    node(LoginScreenTestTags.LOG_IN)
+        .assert(shows(string(R.string.login_logging_in)))
+        .assertIsNotEnabled()
+    node(LoginScreenTestTags.EMAIL).assertIsNotEnabled()
+    node(LoginScreenTestTags.PASSWORD).assertIsNotEnabled()
+    assertEquals(1, auth.logInCalls)
+    assertEquals(0, loggedInCalls)
+
+    gate.complete(Unit)
+    composeTestRule.waitForIdle()
+
+    assertEquals(1, loggedInCalls)
   }
 
   @Test
