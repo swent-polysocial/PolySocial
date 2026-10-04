@@ -11,7 +11,7 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 - **Security Rules** `firebase/firestore/firestore.rules` currently allow **any signed-in user to do anything**. #33, #35, #47 and #52 replace this. Emulator config is in `firebase.json` (Auth 9099, Firestore 8080).
 - **Setup:** the README's "Setup" section lists the two private, git-ignored files every clone needs: `local.properties` (SDK path) and `app/google-services.json` (Firebase config). CI creates both from GitHub secrets. `.gitignore` also covers keystores, `secrets.properties`, `.env` files and service-account JSON. Check that `git status` never lists them before committing.
 - **Missing setup (stop and ask, per `AGENTS.md`):** no rules-test command is documented, and there is no Maps key or Secrets Gradle plugin.
-- **CI** (`.github/workflows/ci.yml`): ktfmt check, assemble, unit tests, and instrumented tests on an API 34 `google_apis` emulator with **no camera**, then JaCoCo and Sonar. It does **not** start the Firebase emulators.
+- **CI** (`.github/workflows/ci.yml`): the "Build and test" job runs ktfmt, the debug build, lint, unit tests and instrumented tests on an API 34 `google_apis` emulator with **no camera**, then JaCoCo and Sonar. "Release build" runs in parallel. The required check `CI` passes only if both succeed, so a new job must be added to its `needs`. PRs that only change Markdown or `docs/` skip both jobs. CI does **not** start the Firebase emulators.
 - **PRs** must use `.github/pull_request_template.md`. Merges are **rebase merges**, so every commit lands on `main` as-is.
 - **Scrum Board:** Product Backlog user stories are **draft items**, with no issue number. A Sprint task becomes a real **issue** when it is planned (course rule), so issue-numbered branches and `Closes #N` exist only for Sprint tasks. The fields are Task Type (Frontend / Backend / Figma, multi-select), Epic (dropdown), Priority (P0 high, P1 medium, P2 low) and Estimated / Actual Time (h) as numbers. Labels are GitHub's defaults only. The old user-story issues (#3–#28, #36) are closed, and their stories live on as drafts.
 
@@ -57,6 +57,7 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 
+- 2026-10-04 · CI split into parallel "Build and test" and "Release build" jobs behind the single required `CI` check. Docs-only PRs skip the build. (#67)
 - 2026-10-04 · Secrets and machine files git-ignored, README setup section added, and a pre-commit secrets check required in `AGENTS.md`. (#64)
 - 2026-10-04 · After review: DI is Hilt, back goes to the home tab then exits, the map provider may switch to Mapbox. (#61, #62)
 - 2026-10-04 · Board reorganised: Product Backlog stories became drafts, custom Priority P0–P2, Task Type / Epic dropdowns, time fields in hours, default labels only. (Scrum Board, no PR)
