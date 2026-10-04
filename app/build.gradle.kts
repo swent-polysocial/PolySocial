@@ -1,5 +1,5 @@
 // Contributors: Claude (Hilt, KSP and Hilt testing setup, JaCoCo on Hilt-rewritten classes, #70;
-// Navigation Compose dependency, #41).
+// Navigation Compose dependency, #41; MockK, #32).
 plugins {
   alias(libs.plugins.androidApplication)
   alias(libs.plugins.kotlinCompose)
@@ -164,6 +164,9 @@ dependencies {
 
   // ----------       Robolectric     ------------
   testImplementation(libs.robolectric)
+
+  // ----------         MockK         ------------
+  testImplementation(libs.mockk)
 }
 
 tasks.withType<Test> {
