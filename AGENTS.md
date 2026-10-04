@@ -265,20 +265,27 @@ guessing. It also shows how the design evolved.
 ## Build and test commands
 
 Run from the repository root with the checked-in Gradle wrapper (on Windows
-PowerShell use `./gradlew.bat`). These mirror what CI runs at the time of
-writing. The workflow is expected to change (for example to add emulator
-support), so treat `.github/workflows/` as the source of truth and flag any
-mismatch with this list in the PR:
+PowerShell use `./gradlew.bat`). The commands marked `CI` below are the steps
+the CI workflow runs at the time of writing. The workflow is expected to
+change (for example to add emulator support), so treat `.github/workflows/`
+as the source of truth and flag any mismatch with this list in the PR:
 
 ```bash
 ./gradlew ktfmtFormat                  # fix formatting (local only)
 ./gradlew ktfmtCheck                   # CI: formatting check
-./gradlew assemble lint                # CI: build and lint
-./gradlew check                        # CI: unit tests and local checks
+./gradlew assembleDebug                # CI: debug build
+./gradlew lint                         # CI: lint
+./gradlew testDebugUnitTest            # CI: unit tests
 ./gradlew connectedCheck               # CI: instrumented tests (emulator)
 ./gradlew jacocoTestReport             # CI: coverage report for Sonar
+./gradlew assembleRelease              # CI: release build (separate job)
 ```
 
+- Locally, `./gradlew assemble lint` builds both variants and runs lint, and
+  `./gradlew check` runs `ktfmtCheck`, `lint`, and `testDebugUnitTest`.
+  Together they cover every CI step above except the instrumented tests.
+- CI skips the build and tests for PRs that only change Markdown files or
+  `docs/`. Every other PR runs all the steps above.
 - Rules tests: see "Firestore Security Rules" (local always; emulator
   required).
 - `check` does not replace instrumented tests. Start an Android emulator or
