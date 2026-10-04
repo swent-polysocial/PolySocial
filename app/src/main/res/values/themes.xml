@@ -1,3 +1,4 @@
+<!-- Contributors: Claude (light-only v2 window theme, #66). -->
 <resources>
     <!-- Light-only window theme matching the v2 design (Compose draws the UI with PolySocialTheme). -->
     <style name="Theme.PolySocial" parent="Theme.MaterialComponents.Light.NoActionBar">
