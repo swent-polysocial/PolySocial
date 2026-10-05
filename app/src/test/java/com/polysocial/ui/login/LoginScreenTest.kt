@@ -1,4 +1,4 @@
-// Contributors: Claude Opus 5.5 (wrote these tests).
+// Contributors: Claude Opus 5.5 (wrote these tests; exact redirect delay after review).
 package com.polysocial.ui.login
 
 import android.app.Application
@@ -126,7 +126,8 @@ class LoginScreenTest {
         .assert(shows(string(R.string.login_unverified)))
     node(LoginScreenTestTags.LOG_IN).assert(shows(string(R.string.login_redirecting)))
 
-    composeTestRule.mainClock.advanceTimeBy(UNVERIFIED_REDIRECT_DELAY_MS - 200, true)
+    // The redirect waits 1.5 s, the time the banner stays readable.
+    composeTestRule.mainClock.advanceTimeBy(1_300, true)
     assertEquals(0, needsVerificationCalls)
 
     composeTestRule.mainClock.advanceTimeBy(400, true)
