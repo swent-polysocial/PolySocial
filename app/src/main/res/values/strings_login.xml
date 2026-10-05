@@ -11,6 +11,7 @@
     <string name="login_email_placeholder">name@epfl.ch</string>
     <string name="login_password_label">Password</string>
     <string name="login_show_password">Show password</string>
+    <string name="login_hide_password">Hide password</string>
     <string name="login_wrong_credentials">Email or password is wrong.</string>
     <string name="login_cant_connect">Couldn\'t log in. Check your connection and try again.</string>
     <string name="login_forgot_password">Forgot password?</string>
