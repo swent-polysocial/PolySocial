@@ -125,7 +125,7 @@ flowchart TB
 ```
 
 - **Result types (#30–#32).** `signUp` returns success, invalid domain, already in use or network error. `logIn` adds wrong credentials. `sendVerificationEmail` has a distinct *throttled* failure for Firebase's too-many-requests error, which the UI shows differently from a real error.
-- **Profile (#34).** `UserProfile` has at least `uid`, `email` and `createdAt`. #45 adds `isAssociation` and `isAssociationVerified`, both defaulting to `false`. The document ID is always the Auth UID, never a client-generated ID. The profile is created **exactly once, at the first verified entry** (Verify Email "Continue", or app-start routing finding a verified user without a profile), because the Security Rules only allow writes from verified accounts. If account creation fails, no profile is written. If the profile write fails, the user sees an error state. Fields other students may see live in a separate `publicProfiles/{uid}` document (see [5.2](#52-collections-and-key-fields)).
+- **Profile (#34).** `UserProfile` has at least `uid`, `email` and `createdAt`. #45 adds `accountType` (`student` or `association`, default `student`) and `isAssociationVerified` (default `false`). The document ID is always the Auth UID, never a client-generated ID. The profile is created **exactly once, at the first verified entry** (Verify Email "Continue", or app-start routing finding a verified user without a profile), because the Security Rules only allow writes from verified accounts. If account creation fails, no profile is written. If the profile write fails, the user sees an error state. Fields other students may see live in a separate `publicProfiles/{uid}` document (see [5.2](#52-collections-and-key-fields)).
 - **Email verification.** Every student account must have a verified `@epfl.ch` email, and the Security Rules check this whatever the sign-in method. **Associations** have no EPFL email, so they sign up with their own verified email, and they get no access beyond their own `users/{uid}` until a PolySocial admin verifies them (decision 11). Sprint 1 uses email/password, where Firebase marks the email unverified until the student clicks the link we send, hence the Verify Email screen. Google or Microsoft sign-in, if added later, deliver already-verified emails, so those users would skip that screen. The rules would not change.
 - **Log out (#8, #32).** Logging out clears the session, and the next launch routes to Log In.
 
@@ -167,7 +167,7 @@ flowchart TB
 ```
 
 - **Event model (#45).** `id`, `title`, `description`, `category` (Study, Sports, Culture or Party), `location` (lat/lng), `startTime`, `endTime` (nullable, after `startTime`), `capacity` (nullable, at least 2), `isPrivate`, `createdBy`, `organizerIds`, `allowedUids` and `isAssociationEvent`. `createdBy` is always the authenticated UID and is always in `organizerIds` and `allowedUids`. The Security Rules enforce this again (#47).
-- **Create Event access (#46).** **Anyone can create an event** and becomes its **organizer**. An event can have one or several student organizers (`organizerIds`). Only a verified association (`isAssociation && isAssociationVerified`) sees the "publish as <association>" option, which sets `isAssociationEvent` and shows a verified badge. Address search appears in the Figma task (#44), but the Sprint 1 build task only requires a map pin (#46), so geocoding stays blue. Its provider follows the map choice: Nominatim (approved in the API evaluation, with its usage policy) or Mapbox's own geocoding if we switch.
+- **Create Event access (#46).** **Anyone can create an event** and becomes its **organizer**. An event can have one or several student organizers (`organizerIds`). Only a verified association (`accountType == "association"` and `isAssociationVerified`) publishes under its name: its events get `isAssociationEvent` and show a verified badge. An unverified association account can't create events until it's verified, so the form has no access-denied state. Address search appears in the Figma task (#44), but the Sprint 1 build task only requires a map pin (#46), so geocoding stays blue. Its provider follows the map choice: Nominatim (approved in the API evaluation, with its usage policy) or Mapbox's own geocoding if we switch.
 
 ### 3.4 Groups, matching and chat (Product Backlog)
 
@@ -334,7 +334,7 @@ flowchart LR
 
 | Collection | Key fields | Status |
 |---|---|---|
-| `users/{uid}` | `uid`, `email`, `createdAt`, `isAssociation`, `isAssociationVerified` | 🟩 #34, #45 |
+| `users/{uid}` | `uid`, `email`, `createdAt`, `accountType`, `isAssociationVerified` | 🟩 #34, #45 |
 | `events/{eventId}` | `title`, `description`, `category`, `location`, `startTime`, `endTime?`, `capacity?`, `isPrivate`, `createdBy`, `organizerIds`, `allowedUids`, `isAssociationEvent` | 🟩 #45 |
 | `publicProfiles/{uid}` | `username`, `displayName`, `section`, `year`, `interests` (always visible), `visibility` (public or private), `bio` | 🟦 new issue |
 | `events/{id}/registrations/{uid}` | `registeredAt` | 🟦 #18 |
