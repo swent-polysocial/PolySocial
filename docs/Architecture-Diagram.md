@@ -166,7 +166,7 @@ flowchart TB
   geo -.-> nom[("Geocoding service<br/>Nominatim by default")]:::ext
 ```
 
-- **Event model (#45).** `id`, `title`, `description`, `category`, `location` (lat/lng), `startTime`, `capacity` (nullable), `isPrivate`, `createdBy`, `organizerIds`, `allowedUids` and `isAssociationEvent`. `createdBy` is always the authenticated UID and is always in `organizerIds` and `allowedUids`. The Security Rules enforce this again (#47).
+- **Event model (#45).** `id`, `title`, `description`, `category` (Study, Sports, Culture or Party), `location` (lat/lng), `startTime`, `endTime` (nullable, after `startTime`), `capacity` (nullable, at least 2), `isPrivate`, `createdBy`, `organizerIds`, `allowedUids` and `isAssociationEvent`. `createdBy` is always the authenticated UID and is always in `organizerIds` and `allowedUids`. The Security Rules enforce this again (#47).
 - **Create Event access (#46).** **Anyone can create an event** and becomes its **organizer**. An event can have one or several student organizers (`organizerIds`). Only a verified association (`isAssociation && isAssociationVerified`) sees the "publish as <association>" option, which sets `isAssociationEvent` and shows a verified badge. Address search appears in the Figma task (#44), but the Sprint 1 build task only requires a map pin (#46), so geocoding stays blue. Its provider follows the map choice: Nominatim (approved in the API evaluation, with its usage policy) or Mapbox's own geocoding if we switch.
 
 ### 3.4 Groups, matching and chat (Product Backlog)
@@ -335,7 +335,7 @@ flowchart LR
 | Collection | Key fields | Status |
 |---|---|---|
 | `users/{uid}` | `uid`, `email`, `createdAt`, `isAssociation`, `isAssociationVerified` | 🟩 #34, #45 |
-| `events/{eventId}` | `title`, `description`, `category`, `location`, `startTime`, `capacity?`, `isPrivate`, `createdBy`, `organizerIds`, `allowedUids`, `isAssociationEvent` | 🟩 #45 |
+| `events/{eventId}` | `title`, `description`, `category`, `location`, `startTime`, `endTime?`, `capacity?`, `isPrivate`, `createdBy`, `organizerIds`, `allowedUids`, `isAssociationEvent` | 🟩 #45 |
 | `publicProfiles/{uid}` | `username`, `displayName`, `section`, `year`, `interests` (always visible), `visibility` (public or private), `bio` | 🟦 new issue |
 | `events/{id}/registrations/{uid}` | `registeredAt` | 🟦 #18 |
 | `matchRequests/{id}` | `eventId`, `fromUid`, `toUid`, `status` | 🟦 #26, #27 |
@@ -390,6 +390,8 @@ Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after re
 - **Map provider:** keep Google Maps or switch to Mapbox, as the coaches recommended? It affects the map SDK, the API key setup and the geocoding service.
 - **Sign-in providers:** add Google or Microsoft sign-in next to email/password? EPFL addresses are Microsoft accounts, so Microsoft sign-in would prove EPFL membership directly. Either way, the rules keep requiring a verified `@epfl.ch` email for students.
 - **Association members and event drafts:** Figma has them, but there is no data model yet. How does an association find and add a student as a member, and what can each role do? Drafts are not in the `Event` model.
+- **Events without an end time:** `endTime` is optional, but check-in and Find my group only work during the event. Which time window applies when it is not set?
+- **Place name:** the Create Event form shows the picked place's name, but the event stores only coordinates. Should it also store a place name or address?
 
 ## 8. Backlog traceability
 

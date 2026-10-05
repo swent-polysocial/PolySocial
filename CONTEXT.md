@@ -24,6 +24,7 @@ What a coding agent (or a new teammate) needs to know before starting a session 
   - `EventRepository` (`createEvent`, `getUpcomingPublicEvents(windowDays)`) on `events/{id}` (#45, #49).
 - **Profile created at the first verified entry**, not at sign-up. The rules require `email_verified`, so a write right after sign-up is denied. Create it exactly once, on Verify Email "Continue" or when app-start routing finds a verified user without a profile.
 - **Anyone can create an event** and becomes its organizer. `Event.organizerIds` (always contains `createdBy`) controls who can manage it. Only a verified association (`isAssociation && isAssociationVerified`) may set `isAssociationEvent`, which shows a verified badge. There is no access-denied state on Create Event.
+- **Event fields** (`model/event`, #45): `endTime` is optional and must be after `startTime` when set. `capacity` is optional and at least 2 when set. `category` is one of Study, Sports, Culture or Party (the Figma chips). `location` is plain lat/lng (`Coordinates`), not a map SDK type. Validation is the pure `validateNewEvent`, and `withCreator` stamps the signed-in user into `createdBy`, `organizerIds` and `allowedUids`.
 - **Private events** carry `allowedUids` (organizers, members, approved requesters). Rules check `request.auth.uid in resource.data.allowedUids`.
 - **Profiles are split.** `users/{uid}` is owner-only. `publicProfiles/{uid}` holds visible fields, with a public or private profile (Instagram-style). Section, year and interests are always visible (matching needs them).
 - **Matching** is a deterministic heuristic (tag overlap / first-fit) in a pure module, run **on the device**. Group joins go through a Firestore transaction (capacity). A Cloud Function only if fairness or cheating becomes a problem.
@@ -58,6 +59,8 @@ The issues for the last four points (#12, #31, #32, #34, #35, #44–#47, #52) st
 - **Map provider:** Google Maps (current default) or Mapbox (recommended by the coaches)?
 - **Sign-in providers:** add Google or Microsoft sign-in next to email/password? Every student account still needs a verified `@epfl.ch` email (checked by the rules). Only email/password needs our Verify Email screen, because Google and Microsoft deliver already-verified emails.
 - **Association members and event drafts:** Figma has them, but there is no data model yet. How does an association find and add a student as a member, and what can each role do? Drafts are not in the `Event` model.
+- **Events without an end time:** check-in (#22) and Find my group (#20) only work during the event. Which time window applies when `endTime` is not set?
+- **Place name:** the Create Event form shows the picked place ("Rolex Learning Center"), but the event stores only coordinates. Should it also store a place name or address?
 
 Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
@@ -67,6 +70,7 @@ Newest first, one line each, with a link. Remove a line once its content lives i
 
 - 2026-10-06 · Association accounts use their own (non-EPFL) email and get no access until a PolySocial admin verifies them. A verified association only reaches its own association, members and events. The association rule lands with #35, after the catch-all rule is gone. (#80)
 - 2026-10-05 · App shell with Navigation Compose: one `NavHost`, string routes in the `Tab` enum. (#75)
+- 2026-10-05 · Event model: optional `endTime`, capacity of at least 2, four categories from Figma, creator stamped by the repository. (#45)
 - 2026-10-04 · Coverage bar 95% lines on new code (wiki). The ~1000-line PR cap counts production code only; tests ship in the same PR, and a fix goes in the same commit as its regression test. (this PR)
 - 2026-10-04 · CI split into parallel "Build and test" and "Release build" jobs behind the single required `CI` check. Docs-only PRs skip the build. (#67)
 - 2026-10-04 · Secrets and machine files git-ignored, README setup section added, and a pre-commit secrets check required in `AGENTS.md`. (#64)
