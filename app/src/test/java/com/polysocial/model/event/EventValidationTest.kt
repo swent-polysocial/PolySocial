@@ -35,6 +35,20 @@ class EventValidationTest {
   }
 
   @Test
+  fun startEarlierInTheCurrentMinute_isAccepted() {
+    val now = TEST_NOW.plusSeconds(40)
+    val event = validEvent(startTime = TEST_NOW)
+    assertEquals(emptyList<EventValidationError>(), validateNewEvent(event, now))
+  }
+
+  @Test
+  fun startInThePreviousMinute_isRejected() {
+    val now = TEST_NOW.plusSeconds(40)
+    val event = validEvent(startTime = TEST_NOW.minusSeconds(1))
+    assertEquals(listOf(EventValidationError.START_IN_PAST), validateNewEvent(event, now))
+  }
+
+  @Test
   fun noEndTime_isAccepted() {
     assertEquals(emptyList<EventValidationError>(), errorsFor(validEvent(endTime = null)))
   }
