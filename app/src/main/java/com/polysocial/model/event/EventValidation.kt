@@ -1,0 +1,34 @@
+// Contributors: Claude (drafted the event validation rules).
+package com.polysocial.model.event
+
+import java.time.Instant
+
+/** Smallest allowed [Event.capacity]: an event is meant for a group, so at least two people. */
+const val MIN_CAPACITY = 2
+
+/** A rule that a new [Event] breaks. The Create Event form shows one message per error. */
+enum class EventValidationError {
+  BLANK_TITLE,
+  START_IN_PAST,
+  END_NOT_AFTER_START,
+  CAPACITY_TOO_SMALL,
+}
+
+/**
+ * Returns every rule that [event] breaks, or an empty list if it can be created.
+ *
+ * An event needs a non-blank title and a start time that is not before [now]. If it has an end
+ * time, it must be after the start time, and if it has a capacity, it must allow at least
+ * [MIN_CAPACITY] people. [now] is a parameter so that callers decide the clock and tests stay
+ * deterministic.
+ */
+fun validateNewEvent(event: Event, now: Instant): List<EventValidationError> = buildList {
+  if (event.title.isBlank()) add(EventValidationError.BLANK_TITLE)
+  if (event.startTime.isBefore(now)) add(EventValidationError.START_IN_PAST)
+  if (event.endTime != null && !event.endTime.isAfter(event.startTime)) {
+    add(EventValidationError.END_NOT_AFTER_START)
+  }
+  if (event.capacity != null && event.capacity < MIN_CAPACITY) {
+    add(EventValidationError.CAPACITY_TOO_SMALL)
+  }
+}
