@@ -1,3 +1,5 @@
+# Contributors: Claude (split the jobs, added docs-only detection and the CI summary job, #67).
+
 name: CI - Test Runner
 
 # Run the workflow when commits are pushed on main or when a PR is modified

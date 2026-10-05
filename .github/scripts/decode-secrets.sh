@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# Contributors: Claude (moved this logic from ci.yml into a script both build jobs share, #67).
+#
 # Writes google-services.json and local.properties from the base64-encoded GitHub Actions secrets
 # GOOGLE_SERVICES and LOCAL_PROPERTIES. Used by every CI job that builds the app.
 #
