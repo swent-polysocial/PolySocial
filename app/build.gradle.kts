@@ -1,4 +1,5 @@
-// Contributors: Claude (Hilt, KSP and Hilt testing setup, JaCoCo on Hilt-rewritten classes, #70).
+// Contributors: Claude (Hilt, KSP and Hilt testing setup, JaCoCo on Hilt-rewritten classes, #70;
+// Navigation Compose dependency, #41).
 plugins {
   alias(libs.plugins.androidApplication)
   alias(libs.plugins.kotlinCompose)
@@ -136,6 +137,8 @@ dependencies {
   implementation(libs.compose.activity)
   // Integration with ViewModels
   implementation(libs.compose.viewmodel)
+  // Navigation between screens and tabs
+  implementation(libs.compose.navigation)
   // Android Studio Preview support
   implementation(libs.compose.preview)
   debugImplementation(libs.compose.tooling)
