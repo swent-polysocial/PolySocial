@@ -1,5 +1,12 @@
+<!-- Contributors: Claude (tab names and placeholder text, #41). -->
 <resources>
     <string name="app_name">PolySocial</string>
     <string name="title_activity_main">MainActivity</string>
     <string name="title_activity_second">SecondActivity</string>
+
+    <string name="tab_events">Events</string>
+    <string name="tab_map">Map</string>
+    <string name="tab_chats">Chats</string>
+    <string name="tab_profile">Profile</string>
+    <string name="placeholder_coming_soon">%1$s — coming soon</string>
 </resources>
