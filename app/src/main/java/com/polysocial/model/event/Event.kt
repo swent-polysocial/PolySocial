@@ -19,14 +19,15 @@ enum class EventCategory {
  *
  * Anyone can create an event and becomes its organizer. [organizerIds] lists who can manage the
  * event and always contains [createdBy]. A private event is readable only by [allowedUids]: its
- * organizers, members and the students whose match request an organizer approved.
- * [isAssociationEvent] is true only for an event published by a verified association account, and
- * shows a verified badge.
+ * organizers, members and approved match requesters. [isAssociationEvent] is true only for an event
+ * published by a verified association account, and shows a verified badge.
  *
- * [EventRepository.createEvent] sets [id] and [createdBy], so a new event from the form leaves them
- * empty.
+ * [EventRepository.createEvent] sets [id], [createdBy], [organizerIds], [allowedUids] and
+ * [isAssociationEvent] (see [withCreator]), so a new event from the form leaves them at their
+ * defaults.
  *
- * @property endTime when the event ends, or null if the organizer didn't say.
+ * @property endTime when the event ends, or null if the organizer didn't say. Always after
+ *   [startTime]: the form treats an end time earlier than the start time as the next day.
  * @property capacity the maximum number of attendees, or null for no limit.
  */
 data class Event(
@@ -46,18 +47,17 @@ data class Event(
 )
 
 /**
- * Returns this event as created by [uid]: [uid] becomes [Event.createdBy] and is added to
- * [Event.organizerIds], and every organizer is added to [Event.allowedUids] so that they can read
- * the event if it is private. No UID is listed twice.
+ * Returns this event as newly created by [uid]: [uid] becomes [Event.createdBy], the only organizer
+ * and the only allowed reader, and [Event.isAssociationEvent] is true only if the creator
+ * [isVerifiedAssociation]. The caller's values for these fields are replaced, so the form can't add
+ * organizers or readers, or give itself the verified badge.
  *
- * Repositories call this with the signed-in user's UID, so a creator chosen by the caller is never
- * trusted.
+ * Repositories call this with the signed-in user's UID and the creator's profile.
  */
-fun Event.withCreator(uid: String): Event {
-  val organizers = (listOf(uid) + organizerIds).distinct()
-  return copy(
-      createdBy = uid,
-      organizerIds = organizers,
-      allowedUids = (organizers + allowedUids).distinct(),
-  )
-}
+fun Event.withCreator(uid: String, isVerifiedAssociation: Boolean): Event =
+    copy(
+        createdBy = uid,
+        organizerIds = listOf(uid),
+        allowedUids = listOf(uid),
+        isAssociationEvent = isVerifiedAssociation,
+    )
