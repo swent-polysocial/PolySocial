@@ -25,8 +25,8 @@ permissions:
   contents: read
 
 jobs:
-  # A PR that only changes documentation (Markdown files and docs/) cannot break the build, so the
-  # build and test jobs skip it. Pushes on main always run everything.
+  # A PR that only changes documentation (docs/ and Markdown outside app/) cannot break the build,
+  # so the build and test jobs skip it. Pushes on main always run everything.
   changes:
     name: Detect changes
     runs-on: ubuntu-latest
@@ -44,9 +44,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --jq '.[].filename')
-          # grep -v succeeds if at least one file is neither Markdown nor in docs/
-          if grep -qvE '\.md$|^docs/' <<< "$files"; then
+          # A renamed file is listed under its new name only, so add its old name too
+          files=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" \
+            --jq '.[] | .filename, (.previous_filename // empty)')
+          # Markdown in app/ is not documentation: it can be a packaged resource.
+          # Each grep succeeds if it finds a file that is not documentation.
+          if grep -qvE '\.md$|^docs/' <<< "$files" || grep -qE '^app/.*\.md$' <<< "$files"; then
             echo "docs-only=false" >> "$GITHUB_OUTPUT"
           else
             echo "Only documentation changed, so the build and test jobs are skipped."
