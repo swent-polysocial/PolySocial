@@ -2,13 +2,15 @@
 package com.polysocial.model.event
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EventTest {
 
   @Test
   fun withCreator_makesTheCreatorOrganizerAndAllowedReader() {
-    val event = validEvent().withCreator("creator")
+    val event = validEvent().withCreator("creator", isVerifiedAssociation = false)
 
     assertEquals("creator", event.createdBy)
     assertEquals(listOf("creator"), event.organizerIds)
@@ -17,42 +19,51 @@ class EventTest {
 
   @Test
   fun withCreator_replacesACreatorSetByTheCaller() {
-    val event = validEvent().copy(createdBy = "someone-else").withCreator("creator")
+    val event =
+        validEvent()
+            .copy(createdBy = "someone-else")
+            .withCreator("creator", isVerifiedAssociation = false)
 
     assertEquals("creator", event.createdBy)
     assertEquals(listOf("creator"), event.organizerIds)
   }
 
   @Test
-  fun withCreator_keepsCoOrganizersAndLetsThemReadTheEvent() {
+  fun withCreator_dropsOrganizersAndReadersSetByTheCaller() {
     val event =
         validEvent()
-            .copy(organizerIds = listOf("co-organizer"), allowedUids = listOf("member"))
-            .withCreator("creator")
-
-    assertEquals(listOf("creator", "co-organizer"), event.organizerIds)
-    assertEquals(listOf("creator", "co-organizer", "member"), event.allowedUids)
-  }
-
-  @Test
-  fun withCreator_doesNotListTheCreatorTwice() {
-    val event =
-        validEvent()
-            .copy(organizerIds = listOf("creator"), allowedUids = listOf("creator"))
-            .withCreator("creator")
+            .copy(organizerIds = listOf("someone-else"), allowedUids = listOf("intruder"))
+            .withCreator("creator", isVerifiedAssociation = false)
 
     assertEquals(listOf("creator"), event.organizerIds)
     assertEquals(listOf("creator"), event.allowedUids)
   }
 
   @Test
+  fun withCreator_givesTheBadgeOnlyToAVerifiedAssociation() {
+    val claimedBadge = validEvent().copy(isAssociationEvent = true)
+
+    assertFalse(
+        claimedBadge.withCreator("student", isVerifiedAssociation = false).isAssociationEvent
+    )
+    assertTrue(
+        validEvent().withCreator("association", isVerifiedAssociation = true).isAssociationEvent
+    )
+  }
+
+  @Test
   fun withCreator_leavesTheEventDetailsUnchanged() {
     val original = validEvent()
-    val created = original.withCreator("creator")
+    val created = original.withCreator("creator", isVerifiedAssociation = true)
 
     assertEquals(
         original,
-        created.copy(createdBy = "", organizerIds = emptyList(), allowedUids = emptyList()),
+        created.copy(
+            createdBy = "",
+            organizerIds = emptyList(),
+            allowedUids = emptyList(),
+            isAssociationEvent = false,
+        ),
     )
   }
 }
