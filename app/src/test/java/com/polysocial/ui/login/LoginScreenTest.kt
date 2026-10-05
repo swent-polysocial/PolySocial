@@ -1,4 +1,5 @@
-// Contributors: Claude Opus 5.5 (wrote these tests; exact redirect delay after review).
+// Contributors: Claude Opus 5.5 (wrote these tests; eye icon label and exact redirect delay
+// after review).
 package com.polysocial.ui.login
 
 import android.app.Application
@@ -9,6 +10,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -267,14 +269,19 @@ class LoginScreenTest {
     node(LoginScreenTestTags.PASSWORD).performTextInput("secret")
     val password = node(LoginScreenTestTags.PASSWORD)
 
+    val eye = node(LoginScreenTestTags.PASSWORD_VISIBILITY)
+
     password.assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Password))
     password.assert(displaysText("••••••"))
+    eye.assert(hasAnyDescendant(hasContentDescription(string(R.string.login_show_password))))
 
-    node(LoginScreenTestTags.PASSWORD_VISIBILITY).performClick()
+    eye.performClick()
     password.assert(displaysText("secret"))
+    eye.assert(hasAnyDescendant(hasContentDescription(string(R.string.login_hide_password))))
 
-    node(LoginScreenTestTags.PASSWORD_VISIBILITY).performClick()
+    eye.performClick()
     password.assert(displaysText("••••••"))
+    eye.assert(hasAnyDescendant(hasContentDescription(string(R.string.login_show_password))))
   }
 
   // ---- LoginContent per status ----

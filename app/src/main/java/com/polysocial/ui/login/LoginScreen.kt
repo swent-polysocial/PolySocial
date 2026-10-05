@@ -1,5 +1,5 @@
 // Contributors: Claude (Log in screen for #32, built from the Figma "First proposal revamped"
-// frames).
+// frames); Claude Opus 5.5 (eye icon label after review).
 package com.polysocial.ui.login
 
 import androidx.annotation.StringRes
@@ -198,7 +198,10 @@ fun LoginContent(
             ) {
               Image(
                   painterResource(R.drawable.ic_eye),
-                  stringResource(R.string.login_show_password),
+                  stringResource(
+                      if (state.passwordVisible) R.string.login_hide_password
+                      else R.string.login_show_password
+                  ),
               )
             }
           },
