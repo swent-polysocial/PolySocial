@@ -6,8 +6,8 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 
 ## Current state
 
-- **Code is still the course template.** `MainActivity` (greeting), `SecondActivity`, `SimpleData.kt` (`Point`, Euclidean, not the haversine distance we need), `ui/theme`, `resources/C.kt` (test tags). No navigation, ViewModel, repository or Maps code exists yet. Sprint 1 issues #29–#52 build the first real code.
-- **Package** `com.polysocial`, minSdk 28, compile/target SDK 37, JVM 17. Dependencies use the version catalog `gradle/libs.versions.toml`. Today it has Compose, Firebase Auth + Firestore, Hilt (with KSP), Kaspresso and Robolectric. **Maps Compose, Compose Navigation and location services are not added yet.**
+- **Code is mostly the course template.** `MainActivity` shows the app shell (`ui/navigation/AppShell.kt`): app bar, bottom bar with the four tabs, a placeholder screen per tab (#41). Still from the template: `SecondActivity`, `SimpleData.kt` (`Point`, Euclidean, not the haversine distance we need), `ui/theme`. Test tags live in `resources/C.kt`. No ViewModel, repository or Maps code exists yet. Sprint 1 issues #29–#52 build the first real code.
+- **Package** `com.polysocial`, minSdk 28, compile/target SDK 37, JVM 17. Dependencies use the version catalog `gradle/libs.versions.toml`. Today it has Compose, Navigation Compose, Firebase Auth + Firestore, Hilt (with KSP), Kaspresso and Robolectric. **Maps Compose and location services are not added yet.**
 - **Security Rules** `firebase/firestore/firestore.rules` currently allow **any signed-in user to do anything**. #33, #35, #47 and #52 replace this. Emulator config is in `firebase.json` (Auth 9099, Firestore 8080).
 - **Setup:** the README's "Setup" section lists the two private, git-ignored files every clone needs: `local.properties` (SDK path) and `app/google-services.json` (Firebase config). CI creates both from GitHub secrets. `.gitignore` also covers keystores, `secrets.properties`, `.env` files and service-account JSON. Check that `git status` never lists them before committing.
 - **Missing setup (stop and ask, per `AGENTS.md`):** no rules-test command is documented, and there is no Maps key or Secrets Gradle plugin.
@@ -31,6 +31,7 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 - **Chats:** a one-to-one chat is a two-member group (one model, one set of rules).
 - **Find my group:** positions in `groups/{id}/locations/{uid}`, written only during the event, readable by members only, deleted afterwards. No location history.
 - **Approved libraries (not added yet):** WorkManager for reminders (scheduled at registration, notification permission asked then). CameraX + ML Kit barcode scanning for QR codes, with typed payloads `polysocial://checkin/{eventId}/{token}` and `polysocial://friend/{uid}` checked by a pure parser.
+- **Navigation:** one `NavHost` in `AppShell`, with string routes defined in the `Tab` enum (no typed routes, so no serialization plugin). Switching tabs uses `popUpTo(start)` + `launchSingleTop` + `restoreState`. Per-tab back stacks (#42) build on this.
 - **DI: Hilt** (`@HiltViewModel`, constructor injection). Tests replace repositories with the `Fake…` versions through Hilt test modules. Set up in #70: `PolySocialApp` is the `@HiltAndroidApp` class, `MainActivity` is an `@AndroidEntryPoint`, and Compose gets ViewModels with `hiltViewModel()` (no navigation dependency needed). Each feature adds its own Hilt module for its repositories. Chosen after review over manual DI because it scales as repositories grow.
 - **Back button:** at the root of the Map, Chats or Profile tab, back goes to the Events (home) tab, and at the Events root it exits (Android's standard). This overrides #42's current text.
 - **Associations have no EPFL email** (SIC, Fréquence Banane… use their own domain, often from Google for nonprofits). They sign up with their own verified email and get **no access** until a PolySocial admin verifies them by setting `isAssociationVerified` by hand in the Firebase console (to be documented in the README). An in-app admin verification flow is in the backlog, not a current priority.
@@ -65,6 +66,7 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 
 - 2026-10-06 · Association accounts use their own (non-EPFL) email and get no access until a PolySocial admin verifies them. A verified association only reaches its own association, members and events. The association rule lands with #35, after the catch-all rule is gone. (#80)
+- 2026-10-05 · App shell with Navigation Compose: one `NavHost`, string routes in the `Tab` enum. (#75)
 - 2026-10-04 · Coverage bar 95% lines on new code (wiki). The ~1000-line PR cap counts production code only; tests ship in the same PR, and a fix goes in the same commit as its regression test. (this PR)
 - 2026-10-04 · CI split into parallel "Build and test" and "Release build" jobs behind the single required `CI` check. Docs-only PRs skip the build. (#67)
 - 2026-10-04 · Secrets and machine files git-ignored, README setup section added, and a pre-commit secrets check required in `AGENTS.md`. (#64)
