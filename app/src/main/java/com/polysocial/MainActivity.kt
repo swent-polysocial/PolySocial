@@ -1,8 +1,11 @@
-// Contributors: Claude (Hilt @AndroidEntryPoint annotation).
+// Contributors: Claude (Hilt @AndroidEntryPoint annotation; light system-bar icons for the
+// light-only theme, #66).
 package com.polysocial
 
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
@@ -23,7 +26,11 @@ import dagger.hilt.android.AndroidEntryPoint
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
-    enableEdgeToEdge()
+    // The app is light only: keep dark system-bar icons even when the phone is in dark mode.
+    enableEdgeToEdge(
+        statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+        navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
+    )
     setContent {
       PolySocialTheme {
         // A surface container using the 'background' color from the theme
