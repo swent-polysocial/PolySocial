@@ -1,4 +1,4 @@
-<!-- Contributors: Claude (drafted the initial content from the repository, the wiki and the Scrum Board; association accounts without an EPFL email; Security Rules and rules-test entries for #33; Create Event design update, #44; tab loading state, #43; per-tab back stacks, #42). -->
+<!-- Contributors: Claude (drafted the initial content from the repository, the wiki and the Scrum Board; association accounts without an EPFL email; Security Rules and rules-test entries for #33; Create Event design update, #44; tab loading state, #43; per-tab back stacks, #42; ViewModel rule wording). -->
 
 # Project context
 
@@ -18,7 +18,7 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 
 ## Decided design (follow this, even where an issue still says otherwise)
 
-- **Layers:** Compose screen → ViewModel (one `StateFlow` UI state) → repository interface → Firebase/device implementation, with a `Fake…` implementation for tests. Pure logic (validation, haversine distance, filtering, matching, QR parsing) goes in plain Kotlin with no Android/Firebase imports.
+- **Layers:** Compose screen → ViewModel (one `StateFlow` UI state; every screen that holds state has one, but the app shell has none because the `NavController` owns navigation state) → repository interface → Firebase/device implementation, with a `Fake…` implementation for tests. Pure logic (validation, haversine distance, filtering, matching, QR parsing) goes in plain Kotlin with no Android/Firebase imports.
 - **Names fixed by Sprint 1 issues:**
   - `AuthRepository`, returning a sealed Result per method: `logIn`, `logOut`, `currentUser` (#32); each issue adds its own methods, `signUp` (#30) and `sendVerificationEmail`, `reloadAndCheckVerified` (#31). **One ViewModel per screen** (e.g. `LoginViewModel`), not a shared `AuthViewModel` as the issues first said.
   - `UserProfileRepository` (`createProfile`, `getProfile`, `updateProfile`) on `users/{uid}` (#34).
@@ -88,6 +88,7 @@ Newest first, one line each, with a link. Remove a line once its content lives i
 - 2026-10-06 · Create Event follows the Figma: "Event created" confirmation instead of opening the detail screen, "+1 day" for overnight end times, offline and location-off states. The model side is #45's line below. (#44)
 - 2026-10-06 · Tab roots show a shared loading state, driven by a ViewModel per tab, with no artificial delay. (#43)
 - 2026-10-06 · Association accounts use their own (non-EPFL) email and get no access until a PolySocial admin verifies them. A verified association only reaches its own association, members and events. The association rule lands with #35, after the catch-all rule is gone. (#80)
+- 2026-10-06 · ViewModel rule worded as "every screen that holds state": the app shell has none, since the `NavController` owns navigation state. (#75 review)
 - 2026-10-05 · Every rule requires a verified `@epfl.ch` user (`isEpflUser()`). Rules tests use `@firebase/rules-unit-testing` with Node's test runner, in `firebase/`. (#33)
 - 2026-10-05 · App shell with Navigation Compose: one `NavHost`, string routes in the `Tab` enum. (#75)
 - 2026-10-05 · Association accounts use `accountType` (student or association), not `isAssociation`. Unverified associations can't create events or add members. (#45)
