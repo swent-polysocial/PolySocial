@@ -1,5 +1,5 @@
-// Contributors: Claude Opus 5.5 (wrote these tests; eye icon label, exact redirect delay and
-// compact-height scrolling after review).
+// Contributors: Claude Opus 5.5 (wrote these tests; eye icon label, exact redirect delay,
+// compact-height scrolling and locked fields while redirecting after review).
 package com.polysocial.ui.login
 
 import android.app.Application
@@ -359,6 +359,14 @@ class LoginScreenTest {
         .assert(shows(string(R.string.login_redirecting)))
         .assertIsNotEnabled()
     node(LoginScreenTestTags.ERROR).assertDoesNotExist()
+  }
+
+  @Test
+  fun unverified_locksTheFields() {
+    setContent(filled.copy(status = LoginStatus.Unverified))
+
+    node(LoginScreenTestTags.EMAIL).assertIsNotEnabled()
+    node(LoginScreenTestTags.PASSWORD).assertIsNotEnabled()
   }
 
   @Test

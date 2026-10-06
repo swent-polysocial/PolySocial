@@ -1,5 +1,6 @@
 // Contributors: Claude (Log in screen for #32, built from the Figma "First proposal revamped"
-// frames); Claude Opus 5.5 (eye icon label and scrolling on short screens, after review).
+// frames); Claude Opus 5.5 (eye icon label, scrolling on short screens and locked fields while
+// redirecting, after review).
 package com.polysocial.ui.login
 
 import androidx.annotation.StringRes
@@ -140,6 +141,9 @@ fun LoginContent(
     scope.launch { snackbarHostState.showSnackbar(notAvailable) }
   }
   val busy = state.status == LoginStatus.Loading || state.status == LoginStatus.LoggedIn
+  // While redirecting to Verify Email the account is already fixed, so the fields are locked too,
+  // but Figma's redirect state keeps them at full opacity (only loading fades them).
+  val fieldsLocked = busy || state.status == LoginStatus.Unverified
   val typography = MaterialTheme.typography
 
   Box(Modifier.fillMaxSize().background(Bg).testTag(LoginScreenTestTags.SCREEN)) {
@@ -181,7 +185,8 @@ fun LoginContent(
               value = state.email,
               onValueChange = onEmailChange,
               height = 50.dp,
-              enabled = !busy,
+              enabled = !fieldsLocked,
+              faded = busy,
               placeholder = stringResource(R.string.login_email_placeholder),
               keyboardType = KeyboardType.Email,
               modifier = Modifier.testTag(LoginScreenTestTags.EMAIL),
@@ -193,7 +198,8 @@ fun LoginContent(
               value = state.password,
               onValueChange = onPasswordChange,
               height = 48.dp,
-              enabled = !busy,
+              enabled = !fieldsLocked,
+              faded = busy,
               isError = state.status == LoginStatus.WrongCredentials,
               keyboardType = KeyboardType.Password,
               visualTransformation =
@@ -343,6 +349,7 @@ private fun LoginField(
     onValueChange: (String) -> Unit,
     height: Dp,
     enabled: Boolean,
+    faded: Boolean,
     keyboardType: KeyboardType,
     modifier: Modifier = Modifier,
     isError: Boolean = false,
@@ -351,7 +358,7 @@ private fun LoginField(
     trailing: (@Composable () -> Unit)? = null,
 ) {
   // While loading, Figma fades the field (border and text) to 45%; the eye icon stays opaque.
-  val fade = if (enabled) 1f else 0.45f
+  val fade = if (faded) 0.45f else 1f
   val textStyle =
       MaterialTheme.typography.bodyLarge.copy(lineHeight = 20.sp, color = Ink.copy(alpha = fade))
   val shape = MaterialTheme.shapes.small
