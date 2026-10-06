@@ -1,5 +1,5 @@
 // Contributors: Claude (Log in screen for #32, built from the Figma "First proposal revamped"
-// frames); Claude Opus 5.5 (eye icon label after review).
+// frames); Claude Opus 5.5 (eye icon label and scrolling on short screens, after review).
 package com.polysocial.ui.login
 
 import androidx.annotation.StringRes
@@ -9,6 +9,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,15 +17,18 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Snackbar
@@ -139,119 +143,134 @@ fun LoginContent(
   val typography = MaterialTheme.typography
 
   Box(Modifier.fillMaxSize().background(Bg).testTag(LoginScreenTestTags.SCREEN)) {
-    Column(
-        Modifier.fillMaxSize()
-            .windowInsetsPadding(WindowInsets.safeDrawing)
-            .padding(horizontal = 20.dp)
-    ) {
-      // Back arrow: 22 dp icon at (19, 23), inside a 44 dp touch target.
-      Box(
-          Modifier.padding(top = 12.dp)
-              .offset(x = (-12).dp)
-              .size(44.dp)
-              .clickable(onClick = onBack)
-              .testTag(LoginScreenTestTags.BACK),
-          contentAlignment = Alignment.Center,
+    // When the screen is too short (small phone, large text, keyboard open), the form scrolls so
+    // Log in stays reachable. Otherwise the bottom group sits at the bottom, as in Figma.
+    BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+      Column(
+          Modifier.fillMaxSize()
+              .verticalScroll(rememberScrollState())
+              .heightIn(min = maxHeight)
+              .padding(horizontal = 20.dp),
+          verticalArrangement = Arrangement.SpaceBetween,
       ) {
-        Image(painterResource(R.drawable.ic_back), stringResource(R.string.login_back))
-      }
-      Spacer(Modifier.height(11.5.dp))
-      Text(stringResource(R.string.login_title), style = typography.headlineMedium, color = Ink)
-      Spacer(Modifier.height(6.dp))
-      Text(stringResource(R.string.login_subtitle), style = typography.bodyLarge, color = Ink2)
-      Spacer(Modifier.height(20.5.dp))
-      GoogleButton(onClick = showNotAvailable)
-      Spacer(Modifier.height(19.5.dp))
-      OrWithEmailDivider()
-      Spacer(Modifier.height(20.dp))
+        Column(Modifier.fillMaxWidth()) {
+          // Back arrow: 22 dp icon at (19, 23), inside a 44 dp touch target.
+          Box(
+              Modifier.padding(top = 12.dp)
+                  .offset(x = (-12).dp)
+                  .size(44.dp)
+                  .clickable(onClick = onBack)
+                  .testTag(LoginScreenTestTags.BACK),
+              contentAlignment = Alignment.Center,
+          ) {
+            Image(painterResource(R.drawable.ic_back), stringResource(R.string.login_back))
+          }
+          Spacer(Modifier.height(11.5.dp))
+          Text(stringResource(R.string.login_title), style = typography.headlineMedium, color = Ink)
+          Spacer(Modifier.height(6.dp))
+          Text(stringResource(R.string.login_subtitle), style = typography.bodyLarge, color = Ink2)
+          Spacer(Modifier.height(20.5.dp))
+          GoogleButton(onClick = showNotAvailable)
+          Spacer(Modifier.height(19.5.dp))
+          OrWithEmailDivider()
+          Spacer(Modifier.height(20.dp))
 
-      FieldLabel(R.string.login_email_label)
-      Spacer(Modifier.height(6.dp))
-      LoginField(
-          value = state.email,
-          onValueChange = onEmailChange,
-          height = 50.dp,
-          enabled = !busy,
-          placeholder = stringResource(R.string.login_email_placeholder),
-          keyboardType = KeyboardType.Email,
-          modifier = Modifier.testTag(LoginScreenTestTags.EMAIL),
-      )
-      Spacer(Modifier.height(13.5.dp))
-      FieldLabel(R.string.login_password_label)
-      Spacer(Modifier.height(6.dp))
-      LoginField(
-          value = state.password,
-          onValueChange = onPasswordChange,
-          height = 48.dp,
-          enabled = !busy,
-          isError = state.status == LoginStatus.WrongCredentials,
-          keyboardType = KeyboardType.Password,
-          visualTransformation =
-              if (state.passwordVisible) VisualTransformation.None
-              else PasswordVisualTransformation(),
-          trailing = {
-            Box(
-                Modifier.size(44.dp)
-                    .clickable(onClick = onTogglePasswordVisibility)
-                    .testTag(LoginScreenTestTags.PASSWORD_VISIBILITY),
-                contentAlignment = Alignment.Center,
-            ) {
-              Image(
-                  painterResource(R.drawable.ic_eye),
-                  stringResource(
-                      if (state.passwordVisible) R.string.login_hide_password
-                      else R.string.login_show_password
-                  ),
-              )
-            }
-          },
-          modifier = Modifier.testTag(LoginScreenTestTags.PASSWORD),
-      )
+          FieldLabel(R.string.login_email_label)
+          Spacer(Modifier.height(6.dp))
+          LoginField(
+              value = state.email,
+              onValueChange = onEmailChange,
+              height = 50.dp,
+              enabled = !busy,
+              placeholder = stringResource(R.string.login_email_placeholder),
+              keyboardType = KeyboardType.Email,
+              modifier = Modifier.testTag(LoginScreenTestTags.EMAIL),
+          )
+          Spacer(Modifier.height(13.5.dp))
+          FieldLabel(R.string.login_password_label)
+          Spacer(Modifier.height(6.dp))
+          LoginField(
+              value = state.password,
+              onValueChange = onPasswordChange,
+              height = 48.dp,
+              enabled = !busy,
+              isError = state.status == LoginStatus.WrongCredentials,
+              keyboardType = KeyboardType.Password,
+              visualTransformation =
+                  if (state.passwordVisible) VisualTransformation.None
+                  else PasswordVisualTransformation(),
+              trailing = {
+                Box(
+                    Modifier.size(44.dp)
+                        .clickable(onClick = onTogglePasswordVisibility)
+                        .testTag(LoginScreenTestTags.PASSWORD_VISIBILITY),
+                    contentAlignment = Alignment.Center,
+                ) {
+                  Image(
+                      painterResource(R.drawable.ic_eye),
+                      stringResource(
+                          if (state.passwordVisible) R.string.login_hide_password
+                          else R.string.login_show_password
+                      ),
+                  )
+                }
+              },
+              modifier = Modifier.testTag(LoginScreenTestTags.PASSWORD),
+          )
 
-      // 48 dp between the password field and "Forgot password?"; the error message sits inside it.
-      Box(Modifier.fillMaxWidth().height(48.dp)) {
-        val error =
-            when (state.status) {
-              LoginStatus.WrongCredentials -> R.string.login_wrong_credentials
-              LoginStatus.CantConnect -> R.string.login_cant_connect
-              else -> null
-            }
-        if (error != null) ErrorMessage(error, Modifier.padding(top = 5.5.dp))
+          // 48 dp between the password field and "Forgot password?"; the error message sits inside
+          // it.
+          Box(Modifier.fillMaxWidth().height(48.dp)) {
+            val error =
+                when (state.status) {
+                  LoginStatus.WrongCredentials -> R.string.login_wrong_credentials
+                  LoginStatus.CantConnect -> R.string.login_cant_connect
+                  else -> null
+                }
+            if (error != null) ErrorMessage(error, Modifier.padding(top = 5.5.dp))
+          }
+          Text(
+              stringResource(R.string.login_forgot_password),
+              style = typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+              color = AccentText,
+              textDecoration = TextDecoration.Underline,
+              modifier =
+                  Modifier.align(Alignment.End)
+                      .clickable(onClick = showNotAvailable)
+                      .testTag(LoginScreenTestTags.FORGOT_PASSWORD),
+          )
+          if (state.status == LoginStatus.Unverified) {
+            Spacer(Modifier.height(23.4.dp))
+            UnverifiedBanner()
+          }
+        }
+        Column(Modifier.fillMaxWidth()) {
+          // Keeps a gap above Log in when the form scrolls; hidden in the free space otherwise.
+          Spacer(Modifier.height(24.dp))
+          LogInButton(state = state, onClick = onLogIn)
+          Spacer(Modifier.height(17.dp))
+          Row(
+              Modifier.fillMaxWidth(),
+              horizontalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterHorizontally),
+          ) {
+            Text(
+                stringResource(R.string.login_new_here),
+                style = typography.bodyMedium,
+                color = Ink2,
+            )
+            Text(
+                stringResource(R.string.login_create_account),
+                style = typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                color = AccentText,
+                textDecoration = TextDecoration.Underline,
+                modifier =
+                    Modifier.clickable(onClick = onCreateAccount)
+                        .testTag(LoginScreenTestTags.CREATE_ACCOUNT),
+            )
+          }
+          Spacer(Modifier.height(41.4.dp))
+        }
       }
-      Text(
-          stringResource(R.string.login_forgot_password),
-          style = typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-          color = AccentText,
-          textDecoration = TextDecoration.Underline,
-          modifier =
-              Modifier.align(Alignment.End)
-                  .clickable(onClick = showNotAvailable)
-                  .testTag(LoginScreenTestTags.FORGOT_PASSWORD),
-      )
-      if (state.status == LoginStatus.Unverified) {
-        Spacer(Modifier.height(23.4.dp))
-        UnverifiedBanner()
-      }
-
-      Spacer(Modifier.weight(1f))
-      LogInButton(state = state, onClick = onLogIn)
-      Spacer(Modifier.height(17.dp))
-      Row(
-          Modifier.fillMaxWidth(),
-          horizontalArrangement = Arrangement.spacedBy(3.dp, Alignment.CenterHorizontally),
-      ) {
-        Text(stringResource(R.string.login_new_here), style = typography.bodyMedium, color = Ink2)
-        Text(
-            stringResource(R.string.login_create_account),
-            style = typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-            color = AccentText,
-            textDecoration = TextDecoration.Underline,
-            modifier =
-                Modifier.clickable(onClick = onCreateAccount)
-                    .testTag(LoginScreenTestTags.CREATE_ACCOUNT),
-        )
-      }
-      Spacer(Modifier.height(41.4.dp))
     }
     SnackbarHost(
         snackbarHostState,
