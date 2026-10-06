@@ -47,9 +47,13 @@ private val ColorScheme =
         onErrorContainer = AccentText,
     )
 
-/** v2 corner radii: fields (12), cards (16), buttons (26, fully rounded). */
+/**
+ * v2 corner radii: fields (12), cards (16), buttons (26, fully rounded). Material text fields read
+ * [Shapes.extraSmall] and cards [Shapes.medium]; buttons are fully rounded by default.
+ */
 val PolySocialShapes =
     Shapes(
+        extraSmall = RoundedCornerShape(12.dp),
         small = RoundedCornerShape(12.dp),
         medium = RoundedCornerShape(16.dp),
         large = RoundedCornerShape(26.dp),
