@@ -1,0 +1,126 @@
+// Contributors: Claude (drafted the Create Event form logic).
+package com.polysocial.ui.event.create
+
+import com.polysocial.model.event.Coordinates
+import com.polysocial.model.event.Event
+import com.polysocial.model.event.EventCategory
+import com.polysocial.model.event.EventValidationError
+import com.polysocial.model.event.validateNewEvent
+import java.time.Instant
+import java.time.LocalDate
+import java.time.LocalTime
+import java.time.ZoneId
+
+/** A place picked on the map: its coordinates and the name the form shows. */
+data class PickedLocation(val coordinates: Coordinates, val name: String)
+
+/** What the organizer has entered on the Create Event form so far. */
+data class CreateEventForm(
+    val title: String = "",
+    val description: String = "",
+    val category: EventCategory? = null,
+    val date: LocalDate? = null,
+    val startTime: LocalTime? = null,
+    val endTime: LocalTime? = null,
+    val location: PickedLocation? = null,
+    val capacityText: String = "",
+    val isPrivate: Boolean = true,
+)
+
+/** A problem the form shows next to a field. */
+enum class CreateEventFormError {
+  MISSING_TITLE,
+  MISSING_CATEGORY,
+  TITLE_TOO_LONG,
+  DESCRIPTION_TOO_LONG,
+  MISSING_DATE,
+  START_IN_PAST,
+  END_SAME_AS_START,
+  MISSING_LOCATION,
+  INVALID_CAPACITY,
+}
+
+/** True when the end time is earlier than the start time, so the event ends the next day. */
+val CreateEventForm.endsNextDay: Boolean
+  get() = startTime != null && endTime != null && endTime < startTime
+
+/**
+ * Builds the [Event] to create, or returns null while a required field (category, date, start time,
+ * location) is missing or the capacity isn't a number. Times are read in [zone], and an end time
+ * earlier than the start time is the next day.
+ */
+fun CreateEventForm.toEvent(zone: ZoneId): Event? {
+  val kind = category ?: return null
+  val start = date?.let { d -> startTime?.let { d.atTime(it).atZone(zone) } } ?: return null
+  val place = location ?: return null
+  val capacity =
+      parseCapacity(capacityText).getOrElse {
+        return null
+      }
+  val end = endTime?.let {
+    val endDate = if (endsNextDay) start.toLocalDate().plusDays(1) else start.toLocalDate()
+    endDate.atTime(it).atZone(zone).toInstant()
+  }
+  return Event(
+      title = title,
+      description = description,
+      category = kind,
+      location = place.coordinates,
+      startTime = start.toInstant(),
+      endTime = end,
+      capacity = capacity,
+      isPrivate = isPrivate,
+  )
+}
+
+/**
+ * Returns every problem with the form at [now]: missing required fields, a capacity that isn't a
+ * whole number, and the rules of [validateNewEvent].
+ */
+fun CreateEventForm.errors(now: Instant, zone: ZoneId): Set<CreateEventFormError> {
+  val errors = mutableSetOf<CreateEventFormError>()
+  if (date == null || startTime == null) errors += CreateEventFormError.MISSING_DATE
+  if (location == null) errors += CreateEventFormError.MISSING_LOCATION
+  if (parseCapacity(capacityText).isFailure) errors += CreateEventFormError.INVALID_CAPACITY
+  if (title.isBlank()) errors += CreateEventFormError.MISSING_TITLE
+  if (category == null) errors += CreateEventFormError.MISSING_CATEGORY
+  val event = toEvent(zone)
+  val rules =
+      if (event != null) validateNewEvent(event, now)
+      else validateNewEvent(placeholderFor(now), now)
+  errors += rules.map { it.toFormError() }
+  return errors
+}
+
+/** Empty means no limit; anything else must be a whole number (the minimum is a model rule). */
+private fun parseCapacity(text: String): Result<Int?> {
+  val trimmed = text.trim()
+  if (trimmed.isEmpty()) return Result.success(null)
+  return trimmed.toIntOrNull()?.let { Result.success(it) }
+      ?: Result.failure(NumberFormatException(trimmed))
+}
+
+/**
+ * The form's text and capacity in an event that otherwise passes, so their rules can be checked
+ * before the date and location are picked.
+ */
+private fun CreateEventForm.placeholderFor(now: Instant) =
+    Event(
+        title = title,
+        description = description,
+        category = EventCategory.OTHER,
+        location = Coordinates(0.0, 0.0),
+        startTime = now,
+        capacity = parseCapacity(capacityText).getOrNull(),
+        isPrivate = isPrivate,
+    )
+
+private fun EventValidationError.toFormError() =
+    when (this) {
+      EventValidationError.BLANK_TITLE -> CreateEventFormError.MISSING_TITLE
+      EventValidationError.TITLE_TOO_LONG -> CreateEventFormError.TITLE_TOO_LONG
+      EventValidationError.DESCRIPTION_TOO_LONG -> CreateEventFormError.DESCRIPTION_TOO_LONG
+      EventValidationError.START_IN_PAST -> CreateEventFormError.START_IN_PAST
+      EventValidationError.END_NOT_AFTER_START -> CreateEventFormError.END_SAME_AS_START
+      EventValidationError.CAPACITY_TOO_SMALL -> CreateEventFormError.INVALID_CAPACITY
+    }
