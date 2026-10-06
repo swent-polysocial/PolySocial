@@ -1,4 +1,4 @@
-// Contributors: Claude (drafted the EventRepository interface).
+// Contributors: Claude (drafted the EventRepository interface); Mohamed Khellaf (reviewed).
 package com.polysocial.model.event
 
 /** Outcome of [EventRepository.createEvent]. */
