@@ -32,7 +32,7 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 - **Matching** is a deterministic heuristic (tag overlap / first-fit) in a pure module, run **on the device**. Group joins go through a Firestore transaction (capacity). A Cloud Function only if fairness or cheating becomes a problem.
 - **Create Event** opens from a "+" button on the Events and Map tabs and follows the Figma (section 04, #44):
   - Fields: title, description, category, date with **start and end time**, location (search or map pin), optional capacity, private or public.
-  - Validation errors inline: missing title, past date, missing location, invalid capacity.
+  - Validation errors inline: missing title, past date, missing location, invalid capacity. Capacity is optional, and when set it is **at least 2** (team decision, 2026-10-06).
   - After creating, an **"Event created" confirmation** offers *View event* and *Back to map* (team decision, 2026-10-06).
   - Creating offline shows an error with *Try again* and keeps the form. If location access is denied, the picker still works with search and the map pin.
 - **Chats:** a one-to-one chat is a two-member group (one model, one set of rules).
@@ -81,7 +81,7 @@ Newest first, one line each, with a link. Remove a line once its content lives i
 
 - 2026-10-07 · Events are written to Firestore through a hand-written map, in a transaction, after a `NetworkMonitor` online check. (#45)
 - 2026-10-07 · One ViewModel per screen instead of `AuthViewModel`. `AuthRepository` grows per issue instead of declaring stubs up front, and Firebase Tasks use the library's `Task.await()`. #32 is split: auth layer and `LoginViewModel` (#72), app-start routing (separate PR), Log in screen (#76). (#72)
-- 2026-10-06 · Create Event follows the Figma: "Event created" confirmation instead of opening the detail screen, events get an `endTime`, offline and location-off states. (#44)
+- 2026-10-06 · Create Event follows the Figma: "Event created" confirmation instead of opening the detail screen, events get an `endTime`, capacity is at least 2, offline and location-off states. (#44)
 - 2026-10-06 · Association accounts use their own (non-EPFL) email and get no access until a PolySocial admin verifies them. A verified association only reaches its own association, members and events. The association rule lands with #35, after the catch-all rule is gone. (#80)
 - 2026-10-05 · Every rule requires a verified `@epfl.ch` user (`isEpflUser()`). Rules tests use `@firebase/rules-unit-testing` with Node's test runner, in `firebase/`. (#33)
 - 2026-10-05 · App shell with Navigation Compose: one `NavHost`, string routes in the `Tab` enum. (#75)
