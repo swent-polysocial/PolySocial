@@ -1,3 +1,4 @@
+// Contributors: Claude (Hilt @AndroidEntryPoint annotation).
 package com.polysocial
 
 import android.os.Bundle
@@ -16,7 +17,9 @@ import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.tooling.preview.Preview
 import com.polysocial.resources.C
 import com.polysocial.ui.theme.PolySocialTheme
+import dagger.hilt.android.AndroidEntryPoint
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
