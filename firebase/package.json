@@ -1,0 +1,9 @@
+{
+  "name": "polysocial-firebase",
+  "private": true,
+  "description": "Firestore Security Rules tests, run against the Firebase emulator (see the README).",
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "5.0.2",
+    "firebase": "12.19.0"
+  }
+}
