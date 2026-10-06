@@ -1,4 +1,4 @@
-<!-- Contributors: OpenAI Codex (initial draft); Claude (revised: definition of done, conventions, course rules, project context, Security Rules process, team-agreement reconciliation, session context, secrets check, test and PR-size rules). -->
+<!-- Contributors: OpenAI Codex (initial draft); Claude (revised: definition of done, conventions, course rules, project context, Security Rules process, team-agreement reconciliation, session context, secrets check, test and PR-size rules; association accounts without an EPFL email). -->
 
 # Instructions for coding agents
 
@@ -64,7 +64,8 @@ guessing. It also shows how the design evolved.
   creator has approved. Nobody else can read it at any time.
 - Anyone can create an event and becomes its organizer; an event can have one
   or several student organizers, and only its organizers can manage it.
-  Associations have their own accounts. Only a manually verified association
+  Associations have their own accounts, usually with a non-EPFL email (see
+  "Authentication"). Only an association that a PolySocial admin has verified
   may publish an event under its name (with a verified badge); do not let a
   newly created association account act as verified by default.
 - Profiles are split: `users/{uid}` is private to its owner, and the fields
@@ -93,12 +94,16 @@ guessing. It also shows how the design evolved.
   Security Rules, and cache thumbnails. Firebase Cloud Messaging is not yet in
   use; evaluate it only once notifications enter the backlog, with an in-app
   notification list as the fallback.
-- Authentication: every user signs in with an EPFL account. Enforce this in
-  Firestore Security Rules, not only in the client: every rule that grants
-  access requires `request.auth != null`,
-  `request.auth.token.email_verified == true`, and an email matching
-  `@epfl.ch`. If the sign-in provider does not guarantee these claims, stop and
-  ask before designing a workaround.
+- Authentication: every student signs in with an EPFL account. Associations
+  have no EPFL email, so they sign in with their own email address and get no
+  access until a PolySocial admin verifies them (`isAssociationVerified`, set
+  by hand in the Firebase console; no client may ever write it). Before that,
+  an association account can only read and write its own `users/{uid}`
+  profile. Enforce this in Firestore Security Rules, not only in the client:
+  every rule that grants access requires `request.auth != null`,
+  `request.auth.token.email_verified == true`, and either an email matching
+  `@epfl.ch` or a verified association account. If the sign-in provider does
+  not guarantee these claims, stop and ask before designing a workaround.
 - Sensors: camera (QR codes to register for events, check in, and add friends;
   photos for the shared album) and GPS (connect people by location, nearby
   events, subject to the privacy limit above). NFC is not used; do not add it.
@@ -218,7 +223,8 @@ guessing. It also shows how the design evolved.
   student's private data; private events and group chats are readable only by
   their members (see "Project context"); only an event's organizers can
   manage it, and only a verified association can publish an event under its
-  name; every access requires a verified EPFL account.
+  name; every access requires a verified EPFL account or an association
+  account verified by a PolySocial admin.
 - An agent may change the rules file when the issue requires it (for example a
   new collection or a new access pattern). Every such PR must:
   1. say "Changes Security Rules" in the PR description, with a short
