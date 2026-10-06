@@ -1,4 +1,4 @@
-// Contributors: Claude (wrote this fake for tests).
+// Contributors: Claude (wrote this fake for tests); Mohamed Khellaf (reviewed).
 package com.polysocial.model.event
 
 import java.time.Instant

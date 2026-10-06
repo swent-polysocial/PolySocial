@@ -1,4 +1,4 @@
-// Contributors: Claude (wrote these tests).
+// Contributors: Claude (wrote these tests); Mohamed Khellaf (reviewed).
 package com.polysocial.model.event
 
 import org.junit.Assert.assertEquals

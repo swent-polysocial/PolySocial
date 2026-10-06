@@ -1,4 +1,4 @@
-// Contributors: Claude (wrote these test fixtures).
+// Contributors: Claude (wrote these test fixtures); Mohamed Khellaf (reviewed).
 package com.polysocial.model.event
 
 import java.time.Instant
