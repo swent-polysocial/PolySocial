@@ -167,6 +167,7 @@ class PolySocialThemeTest {
 
   @Test
   fun shapes_useTheV2Radii() {
+    assertEquals(RoundedCornerShape(12.dp), shapes.extraSmall) // Text fields
     assertEquals(RoundedCornerShape(12.dp), shapes.small)
     assertEquals(RoundedCornerShape(16.dp), shapes.medium)
     assertEquals(RoundedCornerShape(26.dp), shapes.large)
