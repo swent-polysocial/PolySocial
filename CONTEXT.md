@@ -1,4 +1,4 @@
-<!-- Contributors: Claude (drafted the initial content from the repository, the wiki and the Scrum Board; association accounts without an EPFL email; Security Rules and rules-test entries for #33; Create Event design update, #44). -->
+<!-- Contributors: Claude (drafted the initial content from the repository, the wiki and the Scrum Board; association accounts without an EPFL email; Security Rules and rules-test entries for #33; Create Event design update, #44; tab loading state, #43). -->
 
 # Project context
 
@@ -39,6 +39,7 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 - **Find my group:** positions in `groups/{id}/locations/{uid}`, written only during the event, readable by members only, deleted afterwards. No location history.
 - **Approved libraries (not added yet):** WorkManager for reminders (scheduled at registration, notification permission asked then). CameraX + ML Kit barcode scanning for QR codes, with typed payloads `polysocial://checkin/{eventId}/{token}` and `polysocial://friend/{uid}` checked by a pure parser.
 - **Navigation:** one `NavHost` in `AppShell`, with string routes defined in the `Tab` enum (no typed routes, so no serialization plugin). Switching tabs uses `popUpTo(start)` + `launchSingleTop` + `restoreState`. Per-tab back stacks (#42) build on this.
+- **Tab loading state:** each tab root shows the shared `LoadingState` (`ui/common`) until its content is ready, then its content. Placeholder tabs use `PlaceholderTabViewModel` (`Loading` → `Placeholder`), one per tab, scoped to its navigation entry, so the loading state shows only on a tab's first visit. No artificial delay. An error state with Retry (Figma "Tab · couldn't load") comes with the first feature that loads real data.
 - **DI: Hilt** (`@HiltViewModel`, constructor injection). Tests replace repositories with the `Fake…` versions through Hilt test modules. Set up in #70: `PolySocialApp` is the `@HiltAndroidApp` class, `MainActivity` is an `@AndroidEntryPoint`, and Compose gets ViewModels with `hiltViewModel()` (no navigation dependency needed). Each feature adds its own Hilt module for its repositories. Chosen after review over manual DI because it scales as repositories grow.
 - **Back button:** at the root of the Map, Chats or Profile tab, back goes to the Events (home) tab, and at the Events root it exits (Android's standard). This overrides #42's current text.
 - **Associations have no EPFL email** (SIC, Fréquence Banane… use their own domain, often from Google for nonprofits). They sign up with their own verified email and get **no access** until a PolySocial admin verifies them by setting `isAssociationVerified` by hand in the Firebase console (to be documented in the README). An in-app admin verification flow is in the backlog, not a current priority.
@@ -82,6 +83,7 @@ Newest first, one line each, with a link. Remove a line once its content lives i
 - 2026-10-07 · Events are written to Firestore through a hand-written map, in a transaction, after a `NetworkMonitor` online check. (#45)
 - 2026-10-07 · One ViewModel per screen instead of `AuthViewModel`. `AuthRepository` grows per issue instead of declaring stubs up front, and Firebase Tasks use the library's `Task.await()`. #32 is split: auth layer and `LoginViewModel` (#72), app-start routing (separate PR), Log in screen (#76). (#72)
 - 2026-10-06 · Create Event follows the Figma: "Event created" confirmation instead of opening the detail screen, "+1 day" for overnight end times, offline and location-off states. The model side is #45's line below. (#44)
+- 2026-10-06 · Tab roots show a shared loading state, driven by a ViewModel per tab, with no artificial delay. (#43)
 - 2026-10-06 · Association accounts use their own (non-EPFL) email and get no access until a PolySocial admin verifies them. A verified association only reaches its own association, members and events. The association rule lands with #35, after the catch-all rule is gone. (#80)
 - 2026-10-05 · Every rule requires a verified `@epfl.ch` user (`isEpflUser()`). Rules tests use `@firebase/rules-unit-testing` with Node's test runner, in `firebase/`. (#33)
 - 2026-10-05 · App shell with Navigation Compose: one `NavHost`, string routes in the `Tab` enum. (#75)
