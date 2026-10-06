@@ -59,4 +59,70 @@
     <string name="welcome_avatar_tr">TR</string>
     <string name="welcome_avatar_ak">AK</string>
     <string name="welcome_group_size">Group of 4</string>
+
+    <!-- Create Event (#46), copy from Figma section 04 -->
+    <string name="create_event_title">New event</string>
+    <string name="create_event_close">Close</string>
+    <string name="create_event_organized_by_you">Organized by you</string>
+    <string name="create_event_title_label">Title</string>
+    <string name="create_event_title_placeholder">e.g. Study together · Analysis III</string>
+    <string name="create_event_description_label">Description</string>
+    <string name="create_event_category_label">Category</string>
+    <string name="create_event_category_study">Study</string>
+    <string name="create_event_category_sports">Sports</string>
+    <string name="create_event_category_culture">Culture</string>
+    <string name="create_event_category_party">Party</string>
+    <string name="create_event_category_other">Other</string>
+    <string name="create_event_date_label">Date</string>
+    <string name="create_event_starts_label">Starts</string>
+    <string name="create_event_ends_label">Ends</string>
+    <string name="create_event_pick_date">Pick</string>
+    <string name="create_event_ends_optional">Optional</string>
+    <string name="create_event_ends_next_day">+1 day</string>
+    <string name="create_event_clear_end_time">Clear</string>
+    <string name="create_event_location_label">Location</string>
+    <string name="create_event_location_placeholder">Search or drop a pin</string>
+    <string name="create_event_capacity_label">Capacity (optional)</string>
+    <string name="create_event_capacity_suffix">people</string>
+    <string name="create_event_visibility_label">Visibility</string>
+    <string name="create_event_private">Private</string>
+    <string name="create_event_private_hint">Not on the map. People ask to join, you approve each one.</string>
+    <string name="create_event_public">Public</string>
+    <string name="create_event_public_hint">Shown on the map to every student.</string>
+    <string name="create_event_submit_private">Create private event</string>
+    <string name="create_event_submit_public">Create public event</string>
+    <string name="create_event_saving">Creating event…</string>
+    <string name="create_event_try_again">Try again</string>
+    <string name="create_event_ok">OK</string>
+    <string name="create_event_cancel">Cancel</string>
+
+    <string name="create_event_error_missing_title">Add a title</string>
+    <string name="create_event_error_missing_category">Pick a category</string>
+    <string name="create_event_error_missing_date">Pick a date and a start time</string>
+    <string name="create_event_error_start_in_past">Pick a date in the future</string>
+    <string name="create_event_error_end_same_as_start">The end time must differ from the start time</string>
+    <string name="create_event_error_missing_location">Pick a location</string>
+    <plurals name="create_event_error_title_too_long">
+        <item quantity="one">Use at most %1$d character</item>
+        <item quantity="other">Use at most %1$d characters</item>
+    </plurals>
+    <plurals name="create_event_error_description_too_long">
+        <item quantity="one">Use at most %1$d character</item>
+        <item quantity="other">Use at most %1$d characters</item>
+    </plurals>
+    <string name="create_event_error_capacity_not_a_number">Enter a whole number</string>
+    <plurals name="create_event_error_capacity_too_small">
+        <item quantity="one">Enter at least %1$d person</item>
+        <item quantity="other">Enter at least %1$d people</item>
+    </plurals>
+
+    <string name="create_event_offline_title">Couldn\'t create your event</string>
+    <string name="create_event_offline_body">You\'re offline. Your details are kept, so try again once you\'re back online.</string>
+    <string name="create_event_unexpected_body">Something went wrong. Your details are kept, so try again.</string>
+
+    <string name="event_created_title">Event created</string>
+    <string name="event_created_private_message">%1$s is ready. As its organizer you can edit it and approve who joins.</string>
+    <string name="event_created_public_message">%1$s is ready and shows on the map. As its organizer you can edit it.</string>
+    <string name="event_created_view_event">View event</string>
+    <string name="event_created_back_to_map">Back to map</string>
 </resources>
