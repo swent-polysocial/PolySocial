@@ -1,4 +1,4 @@
-// Contributors: Claude Opus 5.5 (wrote these tests).
+// Contributors: Claude Opus 5.5 (wrote these tests, incl. container roles and field shape).
 package com.polysocial.ui.theme
 
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -90,6 +90,7 @@ class PolySocialThemeTest {
     assertEquals(Color(0xFFD6303A), Accent)
     assertEquals(Color(0xFFFDECEC), AccentSoft)
     assertEquals(Color(0xFFB3202A), AccentText)
+    assertEquals(Color(0xFFFFB3B7), AccentOnInk)
     assertEquals(Color(0xFF1A7046), Success)
     assertEquals(Color(0xFFE3F4EA), SuccessSoft)
     assertEquals(Color(0xFF2F5FD0), Info)
@@ -106,14 +107,32 @@ class PolySocialThemeTest {
   fun colorScheme_mapsTheV2ColorsWithoutDynamicColor() {
     assertEquals(Ink, colors.primary)
     assertEquals(Bg, colors.onPrimary)
+    assertEquals(Ink, colors.primaryContainer)
+    assertEquals(Bg, colors.onPrimaryContainer)
     assertEquals(Accent, colors.secondary)
+    assertEquals(Bg, colors.onSecondary)
+    assertEquals(AccentSoft, colors.secondaryContainer)
+    assertEquals(AccentText, colors.onSecondaryContainer)
     assertEquals(Info, colors.tertiary)
+    assertEquals(Bg, colors.onTertiary)
+    assertEquals(InfoSoft, colors.tertiaryContainer)
+    assertEquals(Info, colors.onTertiaryContainer)
     assertEquals(Bg, colors.background)
     assertEquals(Ink, colors.onBackground)
     assertEquals(Bg, colors.surface)
     assertEquals(Ink, colors.onSurface)
     assertEquals(Surface, colors.surfaceVariant)
     assertEquals(Ink2, colors.onSurfaceVariant)
+    assertEquals(Bg, colors.surfaceTint)
+    assertEquals(Bg, colors.surfaceBright)
+    assertEquals(Bg, colors.surfaceContainerLowest)
+    assertEquals(Bg, colors.surfaceContainerLow)
+    assertEquals(Bg, colors.surfaceContainer)
+    assertEquals(Bg, colors.surfaceContainerHigh)
+    assertEquals(Bg, colors.surfaceContainerHighest)
+    assertEquals(Ink, colors.inverseSurface)
+    assertEquals(Bg, colors.inverseOnSurface)
+    assertEquals(AccentOnInk, colors.inversePrimary)
     assertEquals(Border, colors.outline)
     assertEquals(Border, colors.outlineVariant)
     assertEquals(Accent, colors.error)
