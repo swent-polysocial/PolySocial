@@ -1,4 +1,4 @@
-<!-- Contributors: Claude (drafted this page and its diagrams from the README, the Scrum Board and the issue descriptions; association accounts without an EPFL email). -->
+<!-- Contributors: Claude (drafted this page and its diagrams from the README, the Scrum Board and the issue descriptions; association accounts without an EPFL email; Create Event design update, #44). -->
 
 How PolySocial is built, as we currently envision it. The page follows the [Android App Architecture guide](https://developer.android.com/topic/architecture/intro): a **UI layer** (Compose screens and ViewModels), a **domain layer** of pure Kotlin logic, and a **data layer** of repositories in front of Firebase, the map and geocoding services, and the device sensors.
 
@@ -77,7 +77,7 @@ flowchart TB
   end
   subgraph tCreate["From the + button on Events or Map"]
     direction LR
-    createEv["Create Event"]:::s1 -- "created" --> newDetail["New event's detail"]:::pb
+    createEv["Create Event"]:::s1 -- "created" --> created["Event created<br/>confirmation"]:::s1 -- "View event" --> newDetail["New event's detail"]:::pb
   end
   subgraph tChats["Chats tab"]
     direction LR
@@ -94,7 +94,7 @@ flowchart TB
 
 Notes:
 - **Back behaviour (#39, #42).** Back pops the current tab's stack first. At the root of the Map, Chats or Profile tab it goes to the **Events** (home) tab, and at the Events root it exits the app. This is Android's standard bottom-navigation behaviour. Switching tabs restores each tab's screen and scroll position (#38).
-- **Create Event.** A "+" button on the Events and Map tabs opens it. After creating, the app opens the new event's detail screen.
+- **Create Event.** A "+" button on the Events and Map tabs opens it. After creating, an "Event created" confirmation offers *View event* (the new event's detail) and *Back to map*, as in the Figma (#44).
 - **Event detail.** Until the real screen exists, the Map tab's "View details" opens a placeholder route (#50).
 
 ## 3. Feature slices
@@ -168,6 +168,7 @@ flowchart TB
 
 - **Event model (#45).** `id`, `title` (at most 80 characters), `description` (may be blank, at most 5000), `category` (Study, Sports, Culture, Party or Other; an unknown stored category reads as Other), `location` (lat/lng), `startTime`, `endTime` (nullable, after `startTime`), `capacity` (nullable, at least 2), `isPrivate`, `createdBy`, `organizerIds`, `allowedUids` and `isAssociationEvent`. `createdBy` is always the authenticated UID and is always in `organizerIds` and `allowedUids`. At creation the repository makes the creator the only organizer and allowed reader and sets `isAssociationEvent` from the creator's profile, ignoring the form's values. The Security Rules enforce this again (#47). An end time earlier than the start time on the form means the next day.
 - **Create Event access (#46).** **Anyone can create an event** and becomes its **organizer**. An event can have one or several student organizers (`organizerIds`). Only a verified association (`accountType == "association"` and `isAssociationVerified`) publishes under its name: its events get `isAssociationEvent` and show a verified badge. An unverified association account can't create events or add members until it's verified, so the form has no access-denied state. Address search appears in the Figma task (#44), but the Sprint 1 build task only requires a map pin (#46), so geocoding stays blue. Its provider follows the map choice: Nominatim (approved in the API evaluation, with its usage policy) or Mapbox's own geocoding if we switch.
+- **Create Event screen (#44, #46).** The form follows the Figma (section 04): date with start and end time, inline errors for a missing title, a past date, a missing location or an invalid capacity, and a disabled *Create* button while they remain. `endTime` tells check-in and "Find my group" when the event is over. Creating offline shows an error with *Try again* and keeps the form: Firestore queues offline writes instead of failing them, so the ViewModel checks connectivity before creating. If location access is denied, the location picker still works with search and the map pin.
 
 ### 3.4 Groups, matching and chat (Product Backlog)
 
@@ -367,7 +368,7 @@ Every PR that changes rules follows the process in `AGENTS.md`: "Changes Securit
 
 ## 7. Design decisions
 
-Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after review and 11 revised on 2026-10-06. The issues are being updated to match.
+Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after review, and 5 and 11 revised on 2026-10-06. The issues are being updated to match.
 
 | # | Topic | Decision |
 |---|---|---|
@@ -375,7 +376,7 @@ Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after re
 | 2 | Who creates events | Anyone. The creator becomes the organizer, and an event can have several organizers. Verified associations get a badge |
 | 3 | Profiles | Private `users` plus `publicProfiles`, with public or private visibility. Section, year and interests are always visible |
 | 4 | Private events | `allowedUids` access list, checked by the rules |
-| 5 | Create Event entry | "+" button on the Events and Map tabs. Afterwards, open the new event's detail screen |
+| 5 | Create Event entry | "+" button on the Events and Map tabs. Afterwards, an "Event created" confirmation with *View event* and *Back to map*, as in the Figma (changed on 2026-10-06) |
 | 6 | Matching | On the device: a pure module plus a Firestore transaction. Cloud Functions only if fairness or cheating becomes a problem |
 | 7 | Find my group | `groups/{id}/locations/{uid}`, only during the event, members only, deleted afterwards |
 | 8 | Reminders | WorkManager, scheduled at registration. Notification permission asked then |
@@ -387,6 +388,8 @@ Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after re
 | 14 | Back button | At a non-home tab root, go to the Events tab. At the Events root, exit. This is Android's standard pattern (changed after review) |
 
 **Open questions** (add new ones here and in `CONTEXT.md`):
+- **Create Event capacity:** the Figma rejects a capacity below 2. Is 2 the minimum?
+- **Events past midnight:** is an end time before the start time the next day, or do we add an end date?
 - **Map provider:** keep Google Maps or switch to Mapbox, as the coaches recommended? It affects the map SDK, the API key setup and the geocoding service.
 - **Sign-in providers:** add Google or Microsoft sign-in next to email/password? EPFL addresses are Microsoft accounts, so Microsoft sign-in would prove EPFL membership directly. Either way, the rules keep requiring a verified `@epfl.ch` email for students.
 - **Association members and event drafts:** Figma has them, but there is no data model yet. How does an association find and add a student as a member, and what can each role do? Drafts are not in the `Event` model.
