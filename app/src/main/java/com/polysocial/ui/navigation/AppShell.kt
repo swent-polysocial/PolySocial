@@ -1,5 +1,5 @@
 // Contributors: Claude (app shell with bottom navigation and app bar, #41; theme title style after
-// review; bottom bar matched to the Figma).
+// review; bottom bar matched to the Figma; loading state, #43).
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.layout.Box
@@ -37,7 +37,8 @@ import com.polysocial.ui.theme.Ink3
 
 /**
  * Root of the signed-in app: an app bar with the current tab's title, the current tab's screen, and
- * the bottom navigation bar. Each tab shows a placeholder until its feature is built.
+ * the bottom navigation bar. Each tab shows the shared loading state, then a placeholder until its
+ * feature is built.
  */
 @Composable
 fun AppShell(
@@ -63,7 +64,7 @@ fun AppShell(
         startDestination = Tab.EVENTS.route,
         modifier = Modifier.padding(padding),
     ) {
-      Tab.entries.forEach { tab -> composable(tab.route) { PlaceholderScreen(tab) } }
+      Tab.entries.forEach { tab -> composable(tab.route) { TabRootScreen(tab) } }
     }
   }
 }
