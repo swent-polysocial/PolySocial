@@ -1,13 +1,17 @@
-// Contributors: Claude Opus 5.5 (wrote these tests; eye icon label and exact redirect delay
-// after review).
+// Contributors: Claude Opus 5.5 (wrote these tests; eye icon label, exact redirect delay and
+// compact-height scrolling after review).
 package com.polysocial.ui.login
 
 import android.app.Application
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasContentDescription
@@ -16,8 +20,10 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
@@ -353,6 +359,32 @@ class LoginScreenTest {
         .assert(shows(string(R.string.login_redirecting)))
         .assertIsNotEnabled()
     node(LoginScreenTestTags.ERROR).assertDoesNotExist()
+  }
+
+  @Test
+  fun compactHeight_logInCanBeScrolledToAndTapped() {
+    var logInCalls = 0
+    composeTestRule.setContent {
+      PolySocialTheme {
+        // Shorter than the form, like a small phone with the keyboard open.
+        Box(Modifier.size(width = 360.dp, height = 320.dp)) {
+          LoginContent(
+              state = filled,
+              onBack = {},
+              onEmailChange = {},
+              onPasswordChange = {},
+              onTogglePasswordVisibility = {},
+              onLogIn = { logInCalls++ },
+              onCreateAccount = {},
+          )
+        }
+      }
+    }
+
+    node(LoginScreenTestTags.LOG_IN).assertIsNotDisplayed()
+    node(LoginScreenTestTags.LOG_IN).performScrollTo().assertIsDisplayed().performClick()
+    node(LoginScreenTestTags.CREATE_ACCOUNT).performScrollTo().assertIsDisplayed()
+    assertEquals(1, logInCalls)
   }
 
   @Test
