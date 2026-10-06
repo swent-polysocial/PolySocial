@@ -79,7 +79,14 @@ Run from the repository root:
 ./gradlew jacocoTestReport     # coverage report, as uploaded to SonarCloud
 ```
 
-Firestore Security Rules are tested against the Firebase Local Emulator Suite. The exact command will be documented here with the first rules task.
+Firestore Security Rules (`firebase/firestore/firestore.rules`) are tested against the Firebase Local Emulator Suite, with Firebase's `@firebase/rules-unit-testing` library. This needs [Node.js](https://nodejs.org) 20 or newer, the [Firebase CLI](https://firebase.google.com/docs/cli) and Java 21 or newer (for the emulator). Install the test packages once, then run the tests from the repository root:
+
+```bash
+npm ci --prefix firebase
+firebase emulators:exec --project demo-polysocial --only firestore "node firebase/firestore/firestore.rules.test.js"
+```
+
+The `demo-` project ID keeps everything on the local emulator, never a real Firebase project. CI doesn't run these tests yet, so paste their output in any PR that changes the rules.
 
 ## Project links
 

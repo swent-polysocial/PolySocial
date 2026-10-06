@@ -1,4 +1,4 @@
-<!-- Contributors: Claude (drafted the initial content from the repository, the wiki and the Scrum Board; association accounts without an EPFL email). -->
+<!-- Contributors: Claude (drafted the initial content from the repository, the wiki and the Scrum Board; association accounts without an EPFL email; Security Rules and rules-test entries for #33). -->
 
 # Project context
 
@@ -8,9 +8,10 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 
 - **Code** is mostly the course template: `SecondActivity`, `SimpleData.kt` (`Point`, Euclidean, not the haversine distance we need). `MainActivity` shows the app shell (`ui/navigation/AppShell.kt`: app bar, bottom bar with the four tabs, a placeholder screen per tab, #41), `ui/theme` holds the v2 design system (#66), Hilt is set up (`PolySocialApp`, see "DI: Hilt" below), and `model/event` holds the `Event` model, its validation and the `EventRepository` interface (#45 part 1). The Log in auth layer from #32 is `AuthRepository` (`logIn`, `logOut`, `currentUser`) with its Firebase version, and `LoginViewModel`; nothing uses it in the running app yet, since connecting screens to navigation is #74. Test tags live in `resources/C.kt`. Sprint 1 issues #29–#52 build the rest, so check `app/src/main` for what has landed.
 - **Package** `com.polysocial`, minSdk 28, compile/target SDK 37, JVM 17. Dependencies use the version catalog `gradle/libs.versions.toml`. Today it has Compose, Navigation Compose, Firebase Auth + Firestore, `kotlinx-coroutines-play-services` (`Task.await()` for Firebase calls, so don't write your own bridge), Hilt (with KSP), Kaspresso, Robolectric and MockK. **Maps Compose and location services are not added yet.**
-- **Security Rules** `firebase/firestore/firestore.rules` currently allow **any signed-in user to do anything**. #33, #35, #47 and #52 replace this. Emulator config is in `firebase.json` (Auth 9099, Firestore 8080).
+- **Security Rules** `firebase/firestore/firestore.rules` currently allow **any signed-in user with a verified `@epfl.ch` email (`isEpflUser()`) to do anything**. #35, #47 and #52 narrow this per collection. Emulator config is in `firebase.json` (Auth 9099, Firestore 8080).
 - **Setup:** the README's "Setup" section lists the two private, git-ignored files every clone needs: `local.properties` (SDK path) and `app/google-services.json` (Firebase config). CI creates both from GitHub secrets. `.gitignore` also covers keystores, `secrets.properties`, `.env` files and service-account JSON. Check that `git status` never lists them before committing.
-- **Missing setup (stop and ask, per `AGENTS.md`):** no rules-test command is documented, and there is no Maps key or Secrets Gradle plugin.
+- **Rules tests** live next to the rules (`firebase/firestore/firestore.rules.test.js`). They use `@firebase/rules-unit-testing` and Node's built-in test runner, with the npm packages pinned in `firebase/package.json` and its lockfile. The README has the command. CI doesn't run them (that needs a workflow change), so rules PRs paste the local output.
+- **Missing setup (stop and ask, per `AGENTS.md`):** there is no Maps key or Secrets Gradle plugin.
 - **CI** (`.github/workflows/ci.yml`): the "Build and test" job runs ktfmt, the debug build, lint, unit tests and instrumented tests on an API 34 `google_apis` emulator with **no camera**, then JaCoCo and Sonar. "Release build" runs in parallel. The required check `CI` passes only if both succeed, so a new job must be added to its `needs`. PRs that only change Markdown or `docs/` skip both jobs. CI does **not** start the Firebase emulators.
 - **PRs** must use `.github/pull_request_template.md`. Merges are **rebase merges**, so every commit lands on `main` as-is.
 - **Scrum Board:** Product Backlog user stories are **draft items**, with no issue number. A Sprint task becomes a real **issue** when it is planned (course rule), so issue-numbered branches and `Closes #N` exist only for Sprint tasks. The fields are Task Type (Frontend / Backend / Figma, multi-select), Epic (dropdown), Priority (P0 high, P1 medium, P2 low) and Estimated / Actual Time (h) as numbers. Labels are GitHub's defaults only. The old user-story issues (#3–#28, #36) are closed, and their stories live on as drafts.
@@ -54,6 +55,8 @@ The issues for the last four points (#12, #31, #32, #34, #35, #44–#47, #52) st
 - After the email is verified, **force an ID-token refresh** (`getIdToken(true)`), or the rules still see `email_verified == false`.
 - Distance on the map is **straight-line** (haversine), labelled as such. Route-based distances are out of scope.
 - **Hilt rewrites the bytecode** of `@AndroidEntryPoint` and `@HiltAndroidApp` classes, so `jacocoTestReport` reads the rewritten classes (`transformDebugClassesWithAsm`) and excludes Hilt's generated ones. Reading the compiler output instead makes those classes show 0% and fails SonarCloud. (#71)
+- **Remove or narrow the catch-all rule** (`match /{document=**}`) when adding per-collection rules (#35, #47, #52). Firestore allows access if any matching rule allows it, so while the catch-all stays, every EPFL user can still read and write everything.
+- **Rules tests are CommonJS and run with `node` directly**, not through `npm` or as ES modules: the standalone Firebase CLI binary puts its own `node`/`npm` shims first in `PATH` inside `emulators:exec`, and they reject Node flags, npm scripts and ES modules.
 - **Map and geocoding providers may change** (Mapbox is under consideration), so keep them behind the repository and service interfaces. If Nominatim is used, its policy allows explicit search only, at most 1 request per second, with a custom User-Agent and OSM attribution.
 
 ## Open questions (don't guess, ask)
@@ -63,6 +66,7 @@ The issues for the last four points (#12, #31, #32, #34, #35, #44–#47, #52) st
 - **Association members and event drafts:** Figma has them, but there is no data model yet. How does an association find and add a student as a member, and what can each role do? Drafts are not in the `Event` model.
 - **Events without an end time:** check-in (#22) and Find my group (#20) only work during the event. Which time window applies when `endTime` is not set?
 - **Place name:** the Create Event form shows the picked place ("Rolex Learning Center"), but the event stores only coordinates. Should it also store a place name or address?
+- **Uppercase or subdomain emails:** the rules deny `student@EPFL.CH` and `student@sub.epfl.ch` (#33). Revisit lowercasing the email (`.lower()`) if Google or Microsoft sign-in is added.
 
 Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
@@ -72,6 +76,7 @@ Newest first, one line each, with a link. Remove a line once its content lives i
 
 - 2026-10-07 · One ViewModel per screen instead of `AuthViewModel`. `AuthRepository` grows per issue instead of declaring stubs up front, and Firebase Tasks use the library's `Task.await()`. #32 is split: auth layer and `LoginViewModel` (#72), app-start routing (separate PR), Log in screen (#76). (#72)
 - 2026-10-06 · Association accounts use their own (non-EPFL) email and get no access until a PolySocial admin verifies them. A verified association only reaches its own association, members and events. The association rule lands with #35, after the catch-all rule is gone. (#80)
+- 2026-10-05 · Every rule requires a verified `@epfl.ch` user (`isEpflUser()`). Rules tests use `@firebase/rules-unit-testing` with Node's test runner, in `firebase/`. (#33)
 - 2026-10-05 · App shell with Navigation Compose: one `NavHost`, string routes in the `Tab` enum. (#75)
 - 2026-10-05 · Association accounts use `accountType` (student or association), not `isAssociation`. Unverified associations can't create events or add members. (#45)
 - 2026-10-05 · Event model: optional `endTime` (overnight ends roll to the next day), capacity of at least 2, title at most 80 and description at most 5000 characters, five categories (the Figma four plus Other). The repository sets the creator, organizers, readers and badge itself, and fails offline instead of queuing. (#45)
