@@ -14,11 +14,14 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
 import com.polysocial.resources.C
 import com.polysocial.ui.theme.PolySocialTheme
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -31,11 +34,16 @@ class AppShellTest {
 
   private val context = ApplicationProvider.getApplicationContext<Context>()
 
+  private lateinit var navController: NavHostController
+
   private fun label(tab: Tab) = context.getString(tab.label)
 
   @Before
   fun setUp() {
-    composeTestRule.setContent { PolySocialTheme { AppShell() } }
+    composeTestRule.setContent {
+      navController = rememberNavController()
+      PolySocialTheme { AppShell(navController = navController) }
+    }
   }
 
   private fun assertOnTab(tab: Tab) {
@@ -73,11 +81,21 @@ class AppShellTest {
   }
 
   @Test
-  fun tappingTheCurrentTabAgainKeepsASingleScreen() {
-    composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).performClick()
-    composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).performClick()
+  fun tappingTheCurrentTabAgainKeepsTheSameScreen() {
+    Tab.entries.forEach { tab ->
+      composeTestRule.onNodeWithTag(tab.navItemTag).performClick()
+      val entryId = composeTestRule.runOnIdle { navController.currentBackStackEntry?.id }
 
-    composeTestRule.onAllNodesWithTag(Tab.MAP.screenTag).assertCountEquals(1)
-    assertOnTab(Tab.MAP)
+      composeTestRule.onNodeWithTag(tab.navItemTag).performClick()
+
+      composeTestRule.runOnIdle {
+        // Same back stack entry id: the screen is not recreated and keeps its state
+        assertEquals(entryId, navController.currentBackStackEntry?.id)
+        // Only the Events tab can sit below a tab, so back never shows a duplicate
+        val below = navController.previousBackStackEntry?.destination?.route
+        assertEquals(if (tab == Tab.EVENTS) null else Tab.EVENTS.route, below)
+      }
+      assertOnTab(tab)
+    }
   }
 }
