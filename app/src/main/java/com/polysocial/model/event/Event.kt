@@ -1,4 +1,4 @@
-// Contributors: Claude (drafted the Event model and withCreator).
+// Contributors: Claude (drafted the Event model and withCreator); Mohamed Khellaf (reviewed).
 package com.polysocial.model.event
 
 import java.time.Instant
@@ -6,12 +6,16 @@ import java.time.Instant
 /** A point on the map in degrees (WGS 84), independent of the map SDK. */
 data class Coordinates(val latitude: Double, val longitude: Double)
 
-/** The kind of event, picked from the chips on the Create Event form. */
+/**
+ * The kind of event, picked from the chips on the Create Event form. [OTHER] is for events that fit
+ * none of the others, and it is also how the app shows a stored category it doesn't know.
+ */
 enum class EventCategory {
   STUDY,
   SPORTS,
   CULTURE,
   PARTY,
+  OTHER,
 }
 
 /**
