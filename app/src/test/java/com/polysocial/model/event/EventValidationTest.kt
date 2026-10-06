@@ -1,4 +1,4 @@
-// Contributors: Claude (wrote these tests).
+// Contributors: Claude (wrote these tests); Mohamed Khellaf (reviewed).
 package com.polysocial.model.event
 
 import org.junit.Assert.assertEquals
@@ -21,6 +21,36 @@ class EventValidationTest {
   @Test
   fun whitespaceOnlyTitle_isRejected() {
     assertEquals(listOf(EventValidationError.BLANK_TITLE), errorsFor(validEvent(title = "  \n ")))
+  }
+
+  @Test
+  fun titleAtMaximumLength_isAccepted() {
+    val event = validEvent(title = "a".repeat(MAX_TITLE_LENGTH))
+    assertEquals(emptyList<EventValidationError>(), errorsFor(event))
+  }
+
+  @Test
+  fun titleOverMaximumLength_isRejected() {
+    val event = validEvent(title = "a".repeat(MAX_TITLE_LENGTH + 1))
+    assertEquals(listOf(EventValidationError.TITLE_TOO_LONG), errorsFor(event))
+  }
+
+  @Test
+  fun blankDescription_isAccepted() {
+    val event = validEvent().copy(description = "")
+    assertEquals(emptyList<EventValidationError>(), errorsFor(event))
+  }
+
+  @Test
+  fun descriptionAtMaximumLength_isAccepted() {
+    val event = validEvent().copy(description = "a".repeat(MAX_DESCRIPTION_LENGTH))
+    assertEquals(emptyList<EventValidationError>(), errorsFor(event))
+  }
+
+  @Test
+  fun descriptionOverMaximumLength_isRejected() {
+    val event = validEvent().copy(description = "a".repeat(MAX_DESCRIPTION_LENGTH + 1))
+    assertEquals(listOf(EventValidationError.DESCRIPTION_TOO_LONG), errorsFor(event))
   }
 
   @Test
