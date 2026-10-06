@@ -1,4 +1,4 @@
-// Contributors: Claude (v2 colour scheme, shapes and light-only theme).
+// Contributors: Claude (v2 colour scheme, shapes, light-only theme, container roles).
 package com.polysocial.ui.theme
 
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -12,16 +12,33 @@ private val ColorScheme =
     lightColorScheme(
         primary = Ink,
         onPrimary = Bg,
+        primaryContainer = Ink,
+        onPrimaryContainer = Bg,
         secondary = Accent,
         onSecondary = Bg,
+        secondaryContainer = AccentSoft,
+        onSecondaryContainer = AccentText,
         tertiary = Info,
         onTertiary = Bg,
+        tertiaryContainer = InfoSoft,
+        onTertiaryContainer = Info,
         background = Bg,
         onBackground = Ink,
         surface = Bg,
         onSurface = Ink,
         surfaceVariant = Surface,
         onSurfaceVariant = Ink2,
+        // Figma surfaces (fields, cards, nav, sheets) are white with a border, never tinted.
+        surfaceTint = Bg,
+        surfaceBright = Bg,
+        surfaceContainerLowest = Bg,
+        surfaceContainerLow = Bg,
+        surfaceContainer = Bg,
+        surfaceContainerHigh = Bg,
+        surfaceContainerHighest = Bg,
+        inverseSurface = Ink,
+        inverseOnSurface = Bg,
+        inversePrimary = AccentOnInk,
         outline = Border,
         outlineVariant = Border,
         error = Accent,
