@@ -168,6 +168,16 @@ test("a student can read, update and delete their own users/{uid}", async () => 
   await assertSucceeds(deleteDoc(doc(db, "users/u1")));
 });
 
+test("a student can read their own users/{uid} before it exists", async () => {
+  // The profile step's create-once transaction reads the document first (#34).
+  const snapshot = await assertSucceeds(getDoc(doc(studentDb("u3"), "users/u3")));
+  if (snapshot.exists()) throw new Error("users/u3 should not exist yet");
+});
+
+test("a student can't read another student's users/{uid} that doesn't exist", async () => {
+  await assertFails(getDoc(doc(studentDb("u1"), "users/u9")));
+});
+
 test("a student can create their own users/{uid}", async () => {
   await assertSucceeds(setDoc(doc(studentDb("u3"), "users/u3"), { uid: "u3", section: "IN" }));
 });
