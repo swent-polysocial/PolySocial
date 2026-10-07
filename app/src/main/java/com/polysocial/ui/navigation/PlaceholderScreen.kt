@@ -1,4 +1,5 @@
-// Contributors: Claude (tab placeholder screen from the Figma "App shell" section, #41).
+// Contributors: Claude (tab placeholder screen from the Figma "App shell" section, #41; placeholder
+// detail screen, #42).
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.background
@@ -42,6 +43,22 @@ fun PlaceholderScreen(tab: Tab, modifier: Modifier = Modifier) {
     }
     Text(
         text = stringResource(R.string.placeholder_coming_soon, stringResource(tab.label)),
+        style = MaterialTheme.typography.titleMedium,
+    )
+  }
+}
+
+/**
+ * Stand-in for a screen one level below a tab's root (e.g. an event's detail) until it is built.
+ */
+@Composable
+fun PlaceholderDetailScreen(tab: Tab, modifier: Modifier = Modifier) {
+  Box(
+      modifier = modifier.fillMaxSize().testTag(tab.detailTag),
+      contentAlignment = Alignment.Center,
+  ) {
+    Text(
+        text = stringResource(R.string.placeholder_detail_coming_soon),
         style = MaterialTheme.typography.titleMedium,
     )
   }
