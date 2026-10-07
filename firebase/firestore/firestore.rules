@@ -1,17 +1,35 @@
-// Contributors: Claude (isEpflUser helper, #33).
+// Contributors: Claude (isEpflUser helper, #33; own users/{uid} rule and no catch-all, #35).
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Signed in with a verified email address (a student or an association).
+    function hasVerifiedEmail() {
+      return request.auth != null
+          && request.auth.token.email_verified == true;
+    }
+
     // Signed in with a verified @epfl.ch email address.
     function isEpflUser() {
-      return request.auth != null
-          && request.auth.token.email_verified == true
+      return hasVerifiedEmail()
           && request.auth.token.email.matches('[^@]+@epfl[.]ch');
     }
 
-    match /{document=**} {
-      allow read, write: if isEpflUser();
+    // Each account's private profile. The only rule open to any verified email (associations
+    // have none at EPFL), so an unverified association reaches nothing else. Only an admin sets
+    // isAssociationVerified, in the Firebase console.
+    match /users/{uid} {
+      function isOwner() {
+        return hasVerifiedEmail() && request.auth.uid == uid;
+      }
+
+      allow read, delete: if isOwner();
+      allow create: if isOwner()
+          && (!('isAssociationVerified' in request.resource.data)
+              || request.resource.data.isAssociationVerified == false);
+      allow update: if isOwner()
+          && !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['isAssociationVerified']);
     }
   }
 }

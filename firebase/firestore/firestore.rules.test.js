@@ -1,4 +1,4 @@
-// Contributors: Claude (rules tests for #33; also firebase/package.json, which can't hold a comment); Claude Opus 5.5 (testing agent: added edge-case, operation and path coverage tests).
+// Contributors: Claude (rules tests for #33; also firebase/package.json, which can't hold a comment); Claude Opus 5.5 (testing agent: added edge-case, operation and path coverage tests; users/{uid} tests and no catch-all, #35).
 const { after, before, beforeEach, test } = require("node:test");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
@@ -42,16 +42,17 @@ after(async () => {
   await env.cleanup();
 });
 
-/** Firestore as a signed-in user with the given email claims. */
-function firestoreAs(email, emailVerified) {
+/** Firestore as the signed-in user [uid] with the given email claims. */
+function firestoreAs(email, emailVerified, uid = "u1") {
   return env
-    .authenticatedContext("u1", { email, email_verified: emailVerified })
+    .authenticatedContext(uid, { email, email_verified: emailVerified })
     .firestore();
 }
 
 /**
- * Every kind of access the catch-all rule governs, on a top-level collection and on a
- * subcollection. Each entry is run on its own so a test names the access that broke.
+ * Every kind of access to a collection no rule covers yet (#47 adds the events rules), on a
+ * top-level collection and on a subcollection. Since #35 there is no catch-all rule, so all of
+ * them are denied. Each entry is run on its own so a test names the access that broke.
  */
 const ACCESSES = {
   get: (db) => getDoc(doc(db, "events/e1")),
@@ -71,13 +72,6 @@ async function assertAllAccessDenied(db) {
   }
 }
 
-test("a verified @epfl.ch user can read and write", async () => {
-  const db = firestoreAs("student@epfl.ch", true);
-
-  await assertSucceeds(getDoc(doc(db, "events/e1")));
-  await assertSucceeds(setDoc(doc(db, "events/e2"), { title: "New" }));
-});
-
 test("an unverified @epfl.ch user can't read or write", async () => {
   const db = firestoreAs("student@epfl.ch", false);
 
@@ -92,11 +86,9 @@ test("a verified non-EPFL user can't read or write", async () => {
   await assertFails(setDoc(doc(db, "events/e2"), { title: "New" }));
 });
 
-for (const [name, access] of Object.entries(ACCESSES)) {
-  test(`a verified @epfl.ch user is allowed: ${name}`, async () => {
-    await assertSucceeds(access(firestoreAs("student@epfl.ch", true)));
-  });
-}
+test("a verified @epfl.ch user is denied every access outside users/{uid}", async () => {
+  await assertAllAccessDenied(firestoreAs("student@epfl.ch", true));
+});
 
 test("a signed-out user is denied every access", async () => {
   await assertAllAccessDenied(env.unauthenticatedContext().firestore());
