@@ -1,4 +1,5 @@
-// Contributors: Claude Opus 5.5 (wrote these tests; testing agent: the lock after saving, no
+// Contributors: Claude Opus 5.5 (wrote these tests; unverified account refused; testing agent: the
+// lock after saving, no
 // signed-in user).
 package com.polysocial.ui.profile
 
@@ -229,6 +230,18 @@ class ProfileSetupViewModelTest {
     val vm = viewModel()
     vm.fill()
     auth.user = null
+
+    vm.continueAndSettle()
+
+    assertTrue(profiles.createdProfiles.isEmpty())
+    assertEquals(ProfileSetupStatus.CouldNotSave, vm.status())
+  }
+
+  @Test
+  fun unverifiedUser_neverGetsAProfile() {
+    auth.user = user.copy(isEmailVerified = false)
+    val vm = viewModel()
+    vm.fill()
 
     vm.continueAndSettle()
 
