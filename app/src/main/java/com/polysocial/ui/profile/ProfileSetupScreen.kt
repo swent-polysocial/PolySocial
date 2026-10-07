@@ -1,5 +1,5 @@
 // Contributors: Claude (profile step screen for #34, built from the Figma "First proposal
-// revamped" Profile frames).
+// revamped" Profile frames; layout that grows with large text after review).
 package com.polysocial.ui.profile
 
 import androidx.annotation.StringRes
@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -157,21 +158,31 @@ fun ProfileSetupContent(
       ) {
         // Each element sits at its y in the Figma frame.
         AtFigmaY(
-            listOf(0.dp, 67.5.dp, 107.dp, 168.dp, 239.5.dp, 262.dp, 325.5.dp, 348.dp, 409.5.dp)
+            listOf(
+                FigmaSlot(0.dp, 56.dp), // top bar
+                FigmaSlot(67.5.dp, 32.dp), // title
+                FigmaSlot(107.dp, 44.dp), // subtitle
+                FigmaSlot(168.dp, 56.dp), // avatar
+                FigmaSlot(239.5.dp, 17.dp), // "Full name"
+                FigmaSlot(262.dp, 50.dp), // name field
+                FigmaSlot(325.5.dp, 17.dp), // "EPFL email"
+                FigmaSlot(348.dp, 48.dp), // email field
+                FigmaSlot(409.5.dp, 70.5.dp), // section and year: label, 5.5 dp, field
+            )
         ) {
           TopBar(onBack)
           Text(
               stringResource(R.string.profile_title),
               style = typography.headlineMedium.figmaLines(),
               color = Ink,
-              modifier = Modifier.height(32.dp),
+              modifier = Modifier.heightIn(min = 32.dp),
           )
           Text(
               stringResource(R.string.profile_subtitle),
               style = typography.bodyLarge.figmaLines(),
               color = Ink2,
               // Figma's text box is narrower than the column, which sets where the line breaks.
-              modifier = Modifier.width(293.5.dp).height(44.dp),
+              modifier = Modifier.widthIn(max = 293.5.dp).fillMaxWidth().heightIn(min = 44.dp),
           )
           Initials(state.displayName)
           FieldLabel(R.string.profile_full_name)
@@ -214,13 +225,15 @@ fun ProfileSetupContent(
           // Offsets from the privacy note's top (Figma y 674, or 599 with the error at 640 and
           // Continue at 720).
           if (state.status == ProfileSetupStatus.CouldNotSave) {
-            AtFigmaY(listOf(0.dp, 41.dp, 121.dp)) {
+            AtFigmaY(
+                listOf(FigmaSlot(0.dp, 35.dp), FigmaSlot(41.dp, 30.dp), FigmaSlot(121.dp, 52.dp))
+            ) {
               PrivacyNote()
               ErrorMessage()
               ContinueButton(state = state, onClick = onContinue)
             }
           } else {
-            AtFigmaY(listOf(0.dp, 46.dp)) {
+            AtFigmaY(listOf(FigmaSlot(0.dp, 35.dp), FigmaSlot(46.dp, 52.dp))) {
               PrivacyNote()
               ContinueButton(state = state, onClick = onContinue)
             }
@@ -287,17 +300,30 @@ private fun TextStyle.figmaLines(): TextStyle =
                 LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None)
         )
 
+/** Where an element sits in the Figma frame: its top [y] and its [height] there. */
+private data class FigmaSlot(val y: Dp, val height: Dp)
+
 /**
- * Places its children top to bottom at the given distances from its top, the y positions in the
- * Figma frame. Chained spacers would round each half-dp gap to whole pixels and add up the error;
- * here each position is rounded once.
+ * Places its children top to bottom at their Figma [slots]. Chained spacers would round each
+ * half-dp gap to whole pixels and add up the error; here each position is rounded once. A child
+ * taller than its Figma height (larger font size, narrow screen) pushes the ones below down by the
+ * difference, so nothing overlaps or is clipped; at the default font size the layout is Figma's.
  */
 @Composable
-private fun AtFigmaY(ys: List<Dp>, content: @Composable () -> Unit) {
+private fun AtFigmaY(slots: List<FigmaSlot>, content: @Composable () -> Unit) {
   Layout(content, Modifier.fillMaxWidth()) { measurables, constraints ->
     // Each child keeps its own size (the avatar is 56 dp wide, not the column's width).
     val placeables = measurables.map { it.measure(constraints.copy(minWidth = 0, minHeight = 0)) }
-    val tops = ys.map { it.roundToPx() }
+    // Android lays some texts out 1-2 px taller than Figma's box at the default font size; that
+    // isn't growth. Every Figma gap is at least 5.5 dp, so it can't make elements overlap.
+    val tolerance = 2.dp.roundToPx()
+    var pushedDown = 0
+    val tops = placeables.mapIndexed { i, placeable ->
+      val top = slots[i].y.roundToPx() + pushedDown
+      val grown = placeable.height - slots[i].height.roundToPx()
+      if (grown > tolerance) pushedDown += grown
+      top
+    }
     layout(constraints.maxWidth, tops.last() + placeables.last().height) {
       placeables.forEachIndexed { i, placeable -> placeable.place(0, tops[i]) }
     }
@@ -333,7 +359,7 @@ private fun FieldLabel(@StringRes text: Int) {
       stringResource(text),
       style = MaterialTheme.typography.labelMedium.exact(),
       color = Ink2,
-      modifier = Modifier.height(17.dp),
+      modifier = Modifier.heightIn(min = 17.dp),
   )
 }
 
@@ -366,7 +392,7 @@ private fun NameField(
       decorationBox = { innerTextField ->
         Box(
             Modifier.fillMaxWidth()
-                .height(50.dp)
+                .heightIn(min = 50.dp)
                 .background(Bg, shape)
                 .border(1.dp, Border, shape)
                 .padding(horizontal = 15.dp),
@@ -381,7 +407,10 @@ private fun NameField(
 @Composable
 private fun EmailLabel() {
   // "Verified" with its check mark ends 62.5 dp before the right margin, as in Figma.
-  Row(Modifier.fillMaxWidth().height(17.dp), verticalAlignment = Alignment.CenterVertically) {
+  Row(
+      Modifier.fillMaxWidth().heightIn(min = 17.dp),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
     FieldLabel(R.string.profile_email)
     Spacer(Modifier.weight(1f))
     Image(painterResource(R.drawable.ic_check), contentDescription = null)
@@ -401,7 +430,7 @@ private fun EmailField(email: String) {
   val shape = MaterialTheme.shapes.small
   Row(
       Modifier.fillMaxWidth()
-          .height(48.dp)
+          .heightIn(min = 48.dp)
           .background(Surface, shape)
           .border(1.dp, Border, shape)
           .padding(start = 15.dp, end = 14.dp)
@@ -436,7 +465,7 @@ private fun Picker(
     Box(Modifier.onGloballyPositioned { fieldBottom = it.boundsInWindow().bottom.roundToInt() }) {
       Row(
           Modifier.fillMaxWidth()
-              .height(48.dp)
+              .heightIn(min = 48.dp)
               .alpha(if (faded) 0.45f else 1f)
               .background(Bg, shape)
               .border(if (expanded) 2.dp else 1.dp, if (expanded) Ink else Border, shape)
@@ -567,7 +596,7 @@ private fun MenuItem(
   Row(
       modifier
           .fillMaxWidth()
-          .height(40.dp)
+          .heightIn(min = 40.dp)
           .background(if (selected) Surface else Bg, RoundedCornerShape(8.dp))
           .clickable(onClick = onClick)
           .padding(start = 12.dp, end = 10.dp),
@@ -606,7 +635,7 @@ private fun PrivacyNote() {
                 .copy(fontWeight = FontWeight.Normal, lineHeight = 17.sp)
                 .figmaLines(),
         color = Ink3,
-        modifier = Modifier.padding(top = 1.dp).height(34.dp),
+        modifier = Modifier.padding(top = 1.dp).heightIn(min = 34.dp),
     )
   }
 }
@@ -626,7 +655,7 @@ private fun ErrorMessage() {
         stringResource(R.string.profile_could_not_save),
         style = MaterialTheme.typography.bodySmall.exact(),
         color = AccentText,
-        modifier = Modifier.height(30.dp),
+        modifier = Modifier.heightIn(min = 30.dp),
     )
   }
 }
@@ -638,7 +667,7 @@ private fun ContinueButton(state: ProfileSetupUiState, onClick: () -> Unit) {
   val shape = MaterialTheme.shapes.large
   Row(
       Modifier.fillMaxWidth()
-          .height(52.dp)
+          .heightIn(min = 52.dp)
           .background(
               when {
                 saving -> Bg

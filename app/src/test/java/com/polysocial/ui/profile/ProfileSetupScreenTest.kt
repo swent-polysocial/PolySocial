@@ -1,13 +1,19 @@
-// Contributors: Claude Opus 5.5 (wrote these tests; testing agent: double tap, blocked Continue,
+// Contributors: Claude Opus 5.5 (wrote these tests; large font scale; testing agent: double tap,
+// blocked Continue,
 // existing profile, error retry and picker menu behaviour).
 package com.polysocial.ui.profile
 
 import android.app.Application
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -29,6 +35,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
@@ -43,6 +50,7 @@ import com.polysocial.model.user.YEARS
 import com.polysocial.ui.theme.PolySocialTheme
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -448,5 +456,58 @@ class ProfileSetupScreenTest {
     node(ProfileSetupTestTags.CONTINUE).assertIsNotDisplayed()
     node(ProfileSetupTestTags.CONTINUE).performScrollTo().assertIsDisplayed().performClick()
     assertEquals(1, continueCalls)
+  }
+
+  // ---- Large font size ----
+
+  /** Whether the node's text is taller than the space it was given (so it would be clipped). */
+  private fun SemanticsNode.textOverflows(): Boolean {
+    val layouts = mutableListOf<TextLayoutResult>()
+    config.getOrNull(SemanticsActions.GetTextLayoutResult)?.action?.invoke(layouts)
+    return layouts.any { it.didOverflowHeight }
+  }
+
+  private fun SemanticsNodeInteraction.node() = fetchSemanticsNode()
+
+  @Test
+  fun doubleFontSize_textsFitAndNothingOverlaps() {
+    composeTestRule.setContent {
+      val density = LocalDensity.current
+      CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 2f)) {
+        PolySocialTheme {
+          ProfileSetupContent(
+              state = filled.copy(status = ProfileSetupStatus.CouldNotSave),
+              onBack = {},
+              onDisplayNameChange = {},
+              onSectionChange = {},
+              onYearChange = {},
+              onContinue = {},
+          )
+        }
+      }
+    }
+    fun text(id: Int) = composeTestRule.onNodeWithText(string(id), useUnmergedTree = true).node()
+    // Top to bottom, as on screen.
+    val column =
+        listOf(
+            "title" to text(R.string.profile_title),
+            "subtitle" to text(R.string.profile_subtitle),
+            "full name label" to text(R.string.profile_full_name),
+            "name field" to node(ProfileSetupTestTags.FULL_NAME).node(),
+            "email label" to text(R.string.profile_email),
+            "email field" to node(ProfileSetupTestTags.EMAIL).node(),
+            "section label" to text(R.string.profile_section),
+            "section field" to node(ProfileSetupTestTags.SECTION).node(),
+            "privacy note" to text(R.string.profile_privacy),
+            "error" to node(ProfileSetupTestTags.ERROR).node(),
+            "continue" to node(ProfileSetupTestTags.CONTINUE).node(),
+        )
+    for ((name, node) in column) assertTrue("$name text is clipped", !node.textOverflows())
+    column.zipWithNext().forEach { (above, below) ->
+      assertTrue(
+          "${below.first} overlaps ${above.first}",
+          below.second.boundsInRoot.top >= above.second.boundsInRoot.bottom - 1,
+      )
+    }
   }
 }
