@@ -1,6 +1,7 @@
 // Contributors: Claude (app shell with bottom navigation and app bar, #41; theme title style after
 // review; bottom bar matched to the Figma; loading state, #43; per-tab back stacks, #42; Events
 // list, #105).
+// Contributors: OpenAI Codex (map route and detail placeholder, #50).
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.layout.Box
@@ -18,6 +19,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -34,23 +36,28 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
+import com.polysocial.R
 import com.polysocial.resources.C
 import com.polysocial.ui.event.list.EventsRoute
+import com.polysocial.ui.map.MapRoute
 import com.polysocial.ui.theme.Ink3
 
 /**
  * Root of the signed-in app: an app bar with the current tab's title, the current tab's screen, and
  * the bottom navigation bar. The Events tab shows the upcoming events; the other tabs show the
- * shared loading state, then a placeholder until their feature is built.
+ * shared loading state, then a placeholder until their feature is built. The map uses floating
+ * overlays instead of the app bar.
  *
  * @param eventsContent the Events tab's root screen. Tests replace it, because the real one needs
  *   Hilt.
+ * @param mapContent the Map tab root. Tests replace its Hilt and native renderer boundary.
  */
 @Composable
 fun AppShell(
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
     eventsContent: @Composable () -> Unit = { EventsRoute() },
+    mapContent: @Composable ((String) -> Unit) -> Unit = { onDetails -> MapRoute(onDetails) },
 ) {
   val backStackEntry by navController.currentBackStackEntryAsState()
   val destination = backStackEntry?.destination
@@ -61,7 +68,7 @@ fun AppShell(
 
   Scaffold(
       modifier = modifier.testTag(C.Tag.app_shell),
-      topBar = { AppBar(title = stringResource(currentTab.label)) },
+      topBar = { if (currentTab != Tab.MAP) AppBar(title = stringResource(currentTab.label)) },
       bottomBar = {
         BottomNavBar(currentTab = currentTab, onTabSelected = { navController.navigateToTab(it) })
       },
@@ -75,14 +82,39 @@ fun AppShell(
       Tab.entries.forEach { tab ->
         navigation(startDestination = tab.rootRoute, route = tab.route) {
           composable(tab.rootRoute) {
-            if (tab == Tab.EVENTS) eventsContent() else TabRootScreen(tab)
+            if (tab == Tab.MAP) {
+              mapContent { id -> navController.navigate("map/event/${android.net.Uri.encode(id)}") }
+            } else if (tab == Tab.EVENTS) {
+              eventsContent()
+            } else {
+              TabRootScreen(tab)
+            }
           }
           composable(tab.detailRoute) { PlaceholderDetailScreen(tab) }
+          if (tab == Tab.MAP) {
+            composable(MAP_DETAIL_ROUTE) {
+              Column(Modifier.padding(20.dp).testTag("event_detail_placeholder")) {
+                Text(
+                    stringResource(R.string.event_detail_title),
+                    style = MaterialTheme.typography.titleLarge,
+                )
+                Text(stringResource(R.string.event_detail_placeholder))
+                TextButton(
+                    onClick = { navController.popBackStack() },
+                    modifier = Modifier.testTag("event_detail_back"),
+                ) {
+                  Text(stringResource(R.string.event_detail_back))
+                }
+              }
+            }
+          }
         }
       }
     }
   }
 }
+
+private const val MAP_DETAIL_ROUTE = "map/event/{eventId}"
 
 /**
  * Shows [tab] with the screen it was on. The other tabs' stacks are saved and removed, so the back
