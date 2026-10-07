@@ -65,6 +65,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
@@ -118,7 +119,9 @@ object ProfileSetupTestTags {
 
 /**
  * The profile step after email verification. Reports where to go next through the callbacks, so the
- * app's navigation (#74) decides how to get there.
+ * app's navigation (#74) decides how to get there. [onProfileSaved] is called once per visit, when
+ * the profile exists: the caller must then leave this step and remove it from the back stack, or
+ * the user could come back to a finished, locked form.
  */
 @Composable
 fun ProfileSetupScreen(
@@ -367,13 +370,13 @@ private fun Initials(displayName: String) {
 }
 
 @Composable
-private fun FieldLabel(@StringRes text: Int) {
+private fun FieldLabel(@StringRes text: Int, modifier: Modifier = Modifier) {
   // 17 dp: the height of Figma's label box, so the field below starts exactly where Figma's does.
   Text(
       stringResource(text),
       style = MaterialTheme.typography.labelMedium.exact(),
       color = Ink2,
-      modifier = Modifier.heightIn(min = 17.dp),
+      modifier = modifier.heightIn(min = 17.dp),
   )
 }
 
@@ -476,7 +479,8 @@ private fun Picker(
   val labelText = stringResource(label)
   val shownValue = value ?: stringResource(R.string.profile_choose)
   Column(modifier) {
-    FieldLabel(label)
+    // The field announces its label itself, so screen readers don't read it twice.
+    FieldLabel(label, Modifier.semantics { hideFromAccessibility() })
     Spacer(Modifier.height(5.5.dp))
     Box(Modifier.onGloballyPositioned { fieldBottom = it.boundsInWindow().bottom.roundToInt() }) {
       Row(

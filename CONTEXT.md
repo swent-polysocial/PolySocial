@@ -83,7 +83,6 @@ The issues for the last four points (#12, #31, #32, #34, #35, #44–#47, #52) st
 - **Events without an end time:** check-in (#22) and Find my group (#20) only work during the event. Which time window applies when `endTime` is not set?
 - **Place name:** the Create Event form shows the picked place ("Rolex Learning Center"), but the event stores only coordinates. Should it also store a place name or address?
 - **Uppercase or subdomain emails:** the rules deny `student@EPFL.CH` and `student@sub.epfl.ch` (#33). Revisit lowercasing the email (`.lower()`) if Google or Microsoft sign-in is added.
-
 - **Year field values:** the profile step offers BA1–BA6 and MA1–MA4 under "Year" (as in Figma and #34), but these are EPFL semesters, and there is no option for exchange or PhD students. Rename to "Semester" and/or add options?
 
 Add new ones here and in the Architecture Diagram's "Design decisions" section.
