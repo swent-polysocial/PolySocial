@@ -1,4 +1,5 @@
-// Contributors: Claude Opus 5.5 (wrote these tests).
+// Contributors: Claude Opus 5.5 (wrote these tests; testing agent: the lock after saving, no
+// signed-in user).
 package com.polysocial.ui.profile
 
 import com.polysocial.model.auth.AuthUser
@@ -233,6 +234,34 @@ class ProfileSetupViewModelTest {
 
     assertTrue(profiles.createdProfiles.isEmpty())
     assertEquals(ProfileSetupStatus.CouldNotSave, vm.status())
+  }
+
+  @Test
+  fun afterSaving_continueAndEditsAreIgnored() {
+    val vm = viewModel()
+    vm.fill()
+    vm.continueAndSettle()
+
+    vm.onDisplayNameChange("Other")
+    vm.onSectionChange("SC")
+    vm.onYearChange("MA1")
+    vm.continueAndSettle()
+
+    assertEquals(1, profiles.createdProfiles.size)
+    assertEquals(ProfileSetupStatus.Saved, vm.status())
+    assertEquals("Test Student", vm.uiState.value.displayName)
+    assertEquals("IN", vm.uiState.value.section)
+    assertEquals("BA3", vm.uiState.value.year)
+  }
+
+  @Test
+  fun noSignedInUser_startsWithAnEmptyNameAndEmail() {
+    auth.user = null
+
+    val state = viewModel().uiState.value
+
+    assertEquals("", state.displayName)
+    assertEquals("", state.email)
   }
 
   @Test
