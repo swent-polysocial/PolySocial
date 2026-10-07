@@ -12,14 +12,20 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 
 class MapViewModelTest {
   @get:Rule val mainDispatcherRule = MainDispatcherRule()
   private val result = MutableStateFlow<MapEventResult>(MapEventResult.Loading)
-  private val vm = MapViewModel(MapEventSource { result })
+  private lateinit var vm: MapViewModel
   private val event = validEvent().copy(id = "one")
+
+  @Before
+  fun setUp() {
+    vm = MapViewModel(MapEventSource { result })
+  }
 
   private fun emit(value: MapEventResult) {
     result.value = value
