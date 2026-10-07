@@ -6,8 +6,8 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 
 ## Current state
 
-- **Code** is mostly the course template: `SecondActivity`, `SimpleData.kt` (`Point`, Euclidean, not the haversine distance we need). `MainActivity` shows the app shell (`ui/navigation/AppShell.kt`: app bar, bottom bar with the four tabs, a placeholder screen per tab, #41), `ui/theme` holds the v2 design system (#66), Hilt is set up (`PolySocialApp`, see "DI: Hilt" below), and `model/event` holds the `Event` model, its validation and the `EventRepository` interface (#45 part 1). Test tags live in `resources/C.kt`. Sprint 1 issues #29–#52 build the rest, so check `app/src/main` for what has landed.
-- **Package** `com.polysocial`, minSdk 28, compile/target SDK 37, JVM 17. Dependencies use the version catalog `gradle/libs.versions.toml`. Today it has Compose, Navigation Compose, Firebase Auth + Firestore, Hilt (with KSP), Kaspresso and Robolectric. **Maps Compose and location services are not added yet.**
+- **Code** is mostly the course template: `SecondActivity`, `SimpleData.kt` (`Point`, Euclidean, not the haversine distance we need). `MainActivity` shows the app shell (`ui/navigation/AppShell.kt`: app bar, bottom bar with the four tabs, a placeholder screen per tab, #41), `ui/theme` holds the v2 design system (#66), Hilt is set up (`PolySocialApp`, see "DI: Hilt" below), and `model/event` holds the `Event` model, its validation and the `EventRepository` interface (#45 part 1). The Log in auth layer from #32 is `AuthRepository` (`logIn`, `logOut`, `currentUser`) with its Firebase version, and `LoginViewModel`; nothing uses it in the running app yet, since connecting screens to navigation is #74. Test tags live in `resources/C.kt`. Sprint 1 issues #29–#52 build the rest, so check `app/src/main` for what has landed.
+- **Package** `com.polysocial`, minSdk 28, compile/target SDK 37, JVM 17. Dependencies use the version catalog `gradle/libs.versions.toml`. Today it has Compose, Navigation Compose, Firebase Auth + Firestore, `kotlinx-coroutines-play-services` (`Task.await()` for Firebase calls, so don't write your own bridge), Hilt (with KSP), Kaspresso, Robolectric and MockK. **Maps Compose and location services are not added yet.**
 - **Security Rules** `firebase/firestore/firestore.rules` currently allow **any signed-in user to do anything**. #33, #35, #47 and #52 replace this. Emulator config is in `firebase.json` (Auth 9099, Firestore 8080).
 - **Setup:** the README's "Setup" section lists the two private, git-ignored files every clone needs: `local.properties` (SDK path) and `app/google-services.json` (Firebase config). CI creates both from GitHub secrets. `.gitignore` also covers keystores, `secrets.properties`, `.env` files and service-account JSON. Check that `git status` never lists them before committing.
 - **Missing setup (stop and ask, per `AGENTS.md`):** no rules-test command is documented, and there is no Maps key or Secrets Gradle plugin.
@@ -19,7 +19,7 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 
 - **Layers:** Compose screen → ViewModel (one `StateFlow` UI state) → repository interface → Firebase/device implementation, with a `Fake…` implementation for tests. Pure logic (validation, haversine distance, filtering, matching, QR parsing) goes in plain Kotlin with no Android/Firebase imports.
 - **Names fixed by Sprint 1 issues:**
-  - `AuthRepository` (`signUp`, `logIn`, `logOut`, `currentUser`, `sendVerificationEmail`, `reloadAndCheckVerified`, returning a sealed Result) and `AuthViewModel` (#30–#32).
+  - `AuthRepository`, returning a sealed Result per method: `logIn`, `logOut`, `currentUser` (#32); each issue adds its own methods, `signUp` (#30) and `sendVerificationEmail`, `reloadAndCheckVerified` (#31). **One ViewModel per screen** (e.g. `LoginViewModel`), not a shared `AuthViewModel` as the issues first said.
   - `UserProfileRepository` (`createProfile`, `getProfile`, `updateProfile`) on `users/{uid}` (#34).
   - `EventRepository` (`createEvent`, `getUpcomingPublicEvents(windowDays)`) on `events/{id}` (#45, #49).
 - **Profile created at the first verified entry**, not at sign-up. The rules require `email_verified`, so a write right after sign-up is denied. Create it exactly once, on Verify Email "Continue" or when app-start routing finds a verified user without a profile.
@@ -70,6 +70,7 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 
+- 2026-10-07 · One ViewModel per screen instead of `AuthViewModel`. `AuthRepository` grows per issue instead of declaring stubs up front, and Firebase Tasks use the library's `Task.await()`. #32 is split: auth layer and `LoginViewModel` (#72), app-start routing (separate PR), Log in screen (#76). (#72)
 - 2026-10-06 · Association accounts use their own (non-EPFL) email and get no access until a PolySocial admin verifies them. A verified association only reaches its own association, members and events. The association rule lands with #35, after the catch-all rule is gone. (#80)
 - 2026-10-05 · App shell with Navigation Compose: one `NavHost`, string routes in the `Tab` enum. (#75)
 - 2026-10-05 · Association accounts use `accountType` (student or association), not `isAssociation`. Unverified associations can't create events or add members. (#45)
