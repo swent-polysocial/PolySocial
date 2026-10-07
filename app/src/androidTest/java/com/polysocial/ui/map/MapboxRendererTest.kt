@@ -129,32 +129,31 @@ class MapboxRendererTest {
     val map = nativeMap()
     val points = renderedPoints(map, events.size)
     assertEquals(events.size, points.size)
-    events.forEach { event ->
-      assertTrue(
-          points.any {
-            kotlin.math.abs(it.longitude() - event.location.longitude) < 0.000001 &&
-                kotlin.math.abs(it.latitude() - event.location.latitude) < 0.000001
-          }
-      )
-    }
     compose.runOnIdle {
       assertEquals(6.6323, map.mapboxMap.cameraState.center.longitude(), 0.000001)
       assertEquals(46.5197, map.mapboxMap.cameraState.center.latitude(), 0.000001)
       assertEquals(12.0, map.mapboxMap.cameraState.zoom, 0.000001)
     }
     assertConsentDisabled(map)
-    val pixel = compose.runOnIdle {
-      map.mapboxMap.pixelForCoordinate(Point.fromLngLat(6.6410, 46.5260))
+    events.forEach { event ->
+      val pixel = compose.runOnIdle {
+        map.mapboxMap.pixelForCoordinate(
+            Point.fromLngLat(event.location.longitude, event.location.latitude)
+        )
+      }
+      // Rendered GeoJSON is decoded from tiles, rather than the original source coordinates.
+      // Query and tap the exact projected input point to check placement and event identity.
+      assertEquals(1, renderedPoints(map, 1, RenderedQueryGeometry(pixel)).size)
+      compose.onNodeWithTag(MapTags.CANVAS).performTouchInput {
+        click(Offset(pixel.x.toFloat(), pixel.y.toFloat()))
+      }
+      compose.waitUntil(TIMEOUT) { state.value.selectedEvent?.id == event.id }
+      compose.onNodeWithTag(MapTags.TITLE).assertTextEquals(event.title)
+      compose.onNodeWithTag(MapTags.DETAILS).performClick()
+      compose.runOnIdle { assertEquals(event.id, viewedEvent) }
+      compose.onNodeWithTag(MapTags.CLOSE).performClick()
+      compose.onNodeWithTag(MapTags.PREVIEW).assertDoesNotExist()
     }
-    compose.onNodeWithTag(MapTags.CANVAS).performTouchInput {
-      click(Offset(pixel.x.toFloat(), pixel.y.toFloat()))
-    }
-    compose.waitUntil(TIMEOUT) { state.value.selectedEvent?.id == "second" }
-    compose.onNodeWithTag(MapTags.TITLE).assertTextEquals("Campus concert")
-    compose.onNodeWithTag(MapTags.DETAILS).performClick()
-    compose.runOnIdle { assertEquals("second", viewedEvent) }
-    compose.onNodeWithTag(MapTags.CLOSE).performClick()
-    compose.onNodeWithTag(MapTags.PREVIEW).assertDoesNotExist()
     assertTrue(http.styleRequests.get() > 0)
   }
 
@@ -218,7 +217,11 @@ class MapboxRendererTest {
     checkNotNull(find(compose.activity.window.decorView))
   }
 
-  private fun renderedPoints(map: MapView, expectedCount: Int): List<Point> {
+  private fun renderedPoints(
+      map: MapView,
+      expectedCount: Int,
+      geometry: RenderedQueryGeometry? = null,
+  ): List<Point> {
     val pending = AtomicBoolean(false)
     val points = AtomicReference<List<Point>>(emptyList())
     val error = AtomicReference<String?>(null)
@@ -228,12 +231,13 @@ class MapboxRendererTest {
         if (pending.compareAndSet(false, true)) {
           compose.runOnUiThread {
             map.mapboxMap.queryRenderedFeatures(
-                RenderedQueryGeometry(
-                    ScreenBox(
-                        ScreenCoordinate(0.0, 0.0),
-                        ScreenCoordinate(map.width.toDouble(), map.height.toDouble()),
-                    )
-                ),
+                geometry
+                    ?: RenderedQueryGeometry(
+                        ScreenBox(
+                            ScreenCoordinate(0.0, 0.0),
+                            ScreenCoordinate(map.width.toDouble(), map.height.toDouble()),
+                        )
+                    ),
                 RenderedQueryOptions(null, null),
             ) { result ->
               error.set(result.error)
