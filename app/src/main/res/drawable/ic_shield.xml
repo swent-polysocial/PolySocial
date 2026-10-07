@@ -1,0 +1,7 @@
+<!-- Contributors: Claude (vector drawn from the Figma profile step, #34). -->
+<!-- Shield before the privacy note, exact path from the Figma "Profile · after email sign-up" frame. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="16dp" android:height="16dp" android:viewportWidth="16" android:viewportHeight="16">
+    <path android:pathData="M8.00008,14.6668C8.00008,14.6668 13.3334,12.0002 13.3334,8.00016V3.3335L8.00008,1.3335L2.66675,3.3335V8.00016C2.66675,12.0002 8.00008,14.6668 8.00008,14.6668Z" android:strokeColor="#6B6B76"
+        android:strokeWidth="1.33333" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

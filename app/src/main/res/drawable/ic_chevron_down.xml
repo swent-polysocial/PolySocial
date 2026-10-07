@@ -1,0 +1,7 @@
+<!-- Contributors: Claude (vector drawn from the Figma profile step, #34). -->
+<!-- Chevron of the section and year pickers, exact path from the Figma "Profile · after email sign-up" frame. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="16dp" android:height="16dp" android:viewportWidth="16" android:viewportHeight="16">
+    <path android:pathData="M4,6L8,10L12,6" android:strokeColor="#4A4A55"
+        android:strokeWidth="1.33333" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>
