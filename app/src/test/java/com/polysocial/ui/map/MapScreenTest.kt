@@ -31,6 +31,7 @@ import com.polysocial.utils.MainDispatcherRule
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -46,10 +47,15 @@ class MapScreenTest {
           .copy(id = "two", category = EventCategory.SPORTS)
   private val source =
       MutableStateFlow<MapEventResult>(MapEventResult.Events(listOf(first, second)))
-  private val vm = MapViewModel(MapEventSource { source })
+  private lateinit var vm: MapViewModel
   private var detailId: String? = null
   private var rendererCalled = false
   private var renderedEvents = emptyList<com.polysocial.model.event.Event>()
+
+  @Before
+  fun setUp() {
+    vm = MapViewModel(MapEventSource { source })
+  }
 
   private fun show(token: Boolean = true, renderStatus: MapRenderStatus = MapRenderStatus.READY) {
     vm.onRenderStatus(renderStatus)
