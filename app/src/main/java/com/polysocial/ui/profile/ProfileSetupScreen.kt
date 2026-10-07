@@ -3,7 +3,6 @@
 package com.polysocial.ui.profile
 
 import androidx.annotation.StringRes
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -19,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -32,31 +32,50 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.dropShadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.shadow.Shadow
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.text.style.TextMotion
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.polysocial.R
 import com.polysocial.model.user.SECTIONS
@@ -71,6 +90,7 @@ import com.polysocial.ui.theme.Ink3
 import com.polysocial.ui.theme.Success
 import com.polysocial.ui.theme.SuccessSoft
 import com.polysocial.ui.theme.Surface
+import kotlin.math.roundToInt
 
 /** Test tags of the profile step. */
 object ProfileSetupTestTags {
@@ -135,36 +155,29 @@ fun ProfileSetupContent(
               .padding(horizontal = 20.dp),
           verticalArrangement = Arrangement.SpaceBetween,
       ) {
-        Column(Modifier.fillMaxWidth()) {
+        // Each element sits at its y in the Figma frame.
+        AtFigmaY(
+            listOf(0.dp, 67.5.dp, 107.dp, 168.dp, 239.5.dp, 262.dp, 325.5.dp, 348.dp, 409.5.dp)
+        ) {
           TopBar(onBack)
-          Spacer(Modifier.height(11.5.dp))
           Text(
               stringResource(R.string.profile_title),
-              style = typography.headlineMedium,
+              style = typography.headlineMedium.figmaLines(),
               color = Ink,
+              modifier = Modifier.height(32.dp),
           )
-          Spacer(Modifier.height(7.5.dp))
           Text(
               stringResource(R.string.profile_subtitle),
-              style = typography.bodyLarge,
+              style = typography.bodyLarge.figmaLines(),
               color = Ink2,
               // Figma's text box is narrower than the column, which sets where the line breaks.
-              modifier = Modifier.width(293.5.dp),
+              modifier = Modifier.width(293.5.dp).height(44.dp),
           )
-          Spacer(Modifier.height(17.dp))
           Initials(state.displayName)
-          Spacer(Modifier.height(15.5.dp))
-
           FieldLabel(R.string.profile_full_name)
-          Spacer(Modifier.height(5.5.dp))
           NameField(state.displayName, onDisplayNameChange, enabled = editable, faded = saving)
-          Spacer(Modifier.height(13.5.dp))
-
           EmailLabel()
-          Spacer(Modifier.height(5.5.dp))
           EmailField(state.email)
-          Spacer(Modifier.height(13.5.dp))
-
           Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Picker(
                 label = R.string.profile_section,
@@ -175,6 +188,8 @@ fun ProfileSetupContent(
                 faded = saving,
                 fieldTag = ProfileSetupTestTags.SECTION,
                 optionTag = ProfileSetupTestTags::sectionOption,
+                // Figma places the section value 14 dp and the year value 13 dp inside the field.
+                textStart = 14.dp,
                 modifier = Modifier.weight(1f),
             )
             Picker(
@@ -186,6 +201,7 @@ fun ProfileSetupContent(
                 faded = saving,
                 fieldTag = ProfileSetupTestTags.YEAR,
                 optionTag = ProfileSetupTestTags::yearOption,
+                textStart = 13.dp,
                 modifier = Modifier.weight(1f),
             )
           }
@@ -195,15 +211,20 @@ fun ProfileSetupContent(
           // Keeps a gap above the privacy note when the form scrolls; hidden in the free space
           // otherwise.
           Spacer(Modifier.height(24.dp))
-          PrivacyNote()
+          // Offsets from the privacy note's top (Figma y 674, or 599 with the error at 640 and
+          // Continue at 720).
           if (state.status == ProfileSetupStatus.CouldNotSave) {
-            Spacer(Modifier.height(6.dp))
-            ErrorMessage()
-            Spacer(Modifier.height(50.dp))
+            AtFigmaY(listOf(0.dp, 41.dp, 121.dp)) {
+              PrivacyNote()
+              ErrorMessage()
+              ContinueButton(state = state, onClick = onContinue)
+            }
           } else {
-            Spacer(Modifier.height(11.dp))
+            AtFigmaY(listOf(0.dp, 46.dp)) {
+              PrivacyNote()
+              ContinueButton(state = state, onClick = onContinue)
+            }
           }
-          ContinueButton(state = state, onClick = onContinue)
           Spacer(Modifier.height(28.dp))
         }
       }
@@ -213,12 +234,9 @@ fun ProfileSetupContent(
 
 @Composable
 private fun TopBar(onBack: () -> Unit) {
-  // Back arrow: 22 dp icon at (19, 23), inside a 44 dp touch target; "Step 1 of 2" and the two
-  // progress bars end at the right margin, centred on the arrow.
-  Row(
-      Modifier.fillMaxWidth().padding(top = 12.dp),
-      verticalAlignment = Alignment.CenterVertically,
-  ) {
+  // Back arrow: 22 dp icon at (19, 23), inside a 44 dp touch target. "Step 1 of 2" (y 26) and the
+  // two progress bars (y 32) end at the right margin.
+  Row(Modifier.fillMaxWidth().padding(top = 12.dp)) {
     Box(
         Modifier.offset(x = (-12).dp)
             .size(44.dp)
@@ -231,13 +249,58 @@ private fun TopBar(onBack: () -> Unit) {
     Spacer(Modifier.weight(1f))
     Text(
         stringResource(R.string.profile_step),
-        style = MaterialTheme.typography.bodySmall,
+        style = MaterialTheme.typography.bodySmall.exact(),
         color = Ink2,
+        modifier = Modifier.padding(top = 14.dp),
     )
-    Spacer(Modifier.width(8.5.dp))
-    Box(Modifier.size(width = 20.dp, height = 4.dp).background(Ink, RoundedCornerShape(2.dp)))
+    Spacer(Modifier.width(9.5.dp))
+    ProgressBar(Ink)
     Spacer(Modifier.width(4.dp))
-    Box(Modifier.size(width = 20.dp, height = 4.dp).background(Border, RoundedCornerShape(2.dp)))
+    ProgressBar(Border)
+  }
+}
+
+@Composable
+private fun ProgressBar(color: Color) {
+  Box(
+      Modifier.padding(top = 20.dp)
+          .size(width = 20.dp, height = 4.dp)
+          .background(color, RoundedCornerShape(2.dp))
+  )
+}
+
+/**
+ * Positions glyphs at fractional pixels, like Figma. By default Android rounds each glyph to a
+ * whole pixel, which made long texts about 1 dp narrower than in Figma.
+ */
+private fun TextStyle.exact(): TextStyle = copy(textMotion = TextMotion.Animated)
+
+/**
+ * [exact], and lays lines out like Figma: each line takes its full line height, with the text
+ * centred in it, and nothing is trimmed above the first line or below the last (Compose trims by
+ * default).
+ */
+private fun TextStyle.figmaLines(): TextStyle =
+    exact()
+        .copy(
+            lineHeightStyle =
+                LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None)
+        )
+
+/**
+ * Places its children top to bottom at the given distances from its top, the y positions in the
+ * Figma frame. Chained spacers would round each half-dp gap to whole pixels and add up the error;
+ * here each position is rounded once.
+ */
+@Composable
+private fun AtFigmaY(ys: List<Dp>, content: @Composable () -> Unit) {
+  Layout(content, Modifier.fillMaxWidth()) { measurables, constraints ->
+    // Each child keeps its own size (the avatar is 56 dp wide, not the column's width).
+    val placeables = measurables.map { it.measure(constraints.copy(minWidth = 0, minHeight = 0)) }
+    val tops = ys.map { it.roundToPx() }
+    layout(constraints.maxWidth, tops.last() + placeables.last().height) {
+      placeables.forEachIndexed { i, placeable -> placeable.place(0, tops[i]) }
+    }
   }
 }
 
@@ -251,30 +314,33 @@ private fun Initials(displayName: String) {
     Text(
         initialsOf(displayName),
         style =
-            MaterialTheme.typography.bodyLarge.copy(
-                fontSize = 18.sp,
-                fontWeight = FontWeight.ExtraBold,
-                lineHeight = TextUnit.Unspecified,
-            ),
+            MaterialTheme.typography.bodyLarge
+                .copy(
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    lineHeight = TextUnit.Unspecified,
+                )
+                .exact(),
         color = Success,
     )
   }
 }
 
 @Composable
-private fun FieldLabel(@StringRes text: Int, modifier: Modifier = Modifier) {
+private fun FieldLabel(@StringRes text: Int) {
+  // 17 dp: the height of Figma's label box, so the field below starts exactly where Figma's does.
   Text(
       stringResource(text),
-      style = MaterialTheme.typography.labelMedium,
+      style = MaterialTheme.typography.labelMedium.exact(),
       color = Ink2,
-      modifier = modifier,
+      modifier = Modifier.height(17.dp),
   )
 }
 
 /** The field text style: Body with Figma's 20 px line height inside fields. */
 @Composable
 private fun fieldTextStyle(): TextStyle =
-    MaterialTheme.typography.bodyLarge.copy(lineHeight = 20.sp)
+    MaterialTheme.typography.bodyLarge.copy(lineHeight = 20.sp).exact()
 
 @Composable
 private fun NameField(
@@ -315,14 +381,14 @@ private fun NameField(
 @Composable
 private fun EmailLabel() {
   // "Verified" with its check mark ends 62.5 dp before the right margin, as in Figma.
-  Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+  Row(Modifier.fillMaxWidth().height(17.dp), verticalAlignment = Alignment.CenterVertically) {
     FieldLabel(R.string.profile_email)
     Spacer(Modifier.weight(1f))
     Image(painterResource(R.drawable.ic_check), contentDescription = null)
     Spacer(Modifier.width(4.dp))
     Text(
         stringResource(R.string.profile_verified),
-        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold).exact(),
         color = Success,
     )
     Spacer(Modifier.width(62.5.dp))
@@ -358,14 +424,16 @@ private fun Picker(
     faded: Boolean,
     fieldTag: String,
     optionTag: (String) -> String,
+    textStart: Dp,
     modifier: Modifier = Modifier,
 ) {
   var expanded by remember { mutableStateOf(false) }
+  var fieldBottom by remember { mutableIntStateOf(0) }
   val shape = MaterialTheme.shapes.small
   Column(modifier) {
     FieldLabel(label)
     Spacer(Modifier.height(5.5.dp))
-    Box {
+    Box(Modifier.onGloballyPositioned { fieldBottom = it.boundsInWindow().bottom.roundToInt() }) {
       Row(
           Modifier.fillMaxWidth()
               .height(48.dp)
@@ -373,7 +441,7 @@ private fun Picker(
               .background(Bg, shape)
               .border(if (expanded) 2.dp else 1.dp, if (expanded) Ink else Border, shape)
               .clickable(enabled = enabled) { expanded = true }
-              .padding(start = 14.dp, end = 14.dp)
+              .padding(start = textStart, end = 14.dp)
               .testTag(fieldTag),
           verticalAlignment = Alignment.CenterVertically,
       ) {
@@ -385,31 +453,108 @@ private fun Picker(
         )
         Image(painterResource(R.drawable.ic_chevron_down), contentDescription = null)
       }
-      DropdownMenu(
-          expanded = expanded,
-          onDismissRequest = { expanded = false },
-          offset = DpOffset(0.dp, 8.dp),
-          shape = shape,
-          containerColor = Bg,
-          border = BorderStroke(1.dp, Border),
-          shadowElevation = 8.dp,
-          // Seven 40 dp items are visible at once; the rest scroll.
-          modifier = Modifier.width(154.dp).heightIn(max = 296.dp),
+      if (expanded) {
+        OptionsMenu(
+            options = options,
+            selected = value,
+            onPick = {
+              expanded = false
+              onPick(it)
+            },
+            onDismiss = { expanded = false },
+            optionTag = optionTag,
+            fieldBottom = fieldBottom,
+        )
+      }
+    }
+  }
+}
+
+/** Room around the menu inside its popup window, so the Figma shadow (blur 24, y 8) isn't cut. */
+private val ShadowRoom = 32.dp
+
+/**
+ * The open picker, drawn like the Figma "choosing" frames: 8 dp below the field, 154 x 298 dp, with
+ * the chosen value scrolled to the fourth of the seven visible items. It always opens below the
+ * field, as in Figma; when the screen is too short for 298 dp, it ends above the navigation bar and
+ * scrolls. (Material's DropdownMenu would open above the field instead.)
+ *
+ * @param fieldBottom the bottom of the field, in window pixels.
+ */
+@Composable
+private fun OptionsMenu(
+    options: List<String>,
+    selected: String?,
+    onPick: (String) -> Unit,
+    onDismiss: () -> Unit,
+    optionTag: (String) -> String,
+    fieldBottom: Int,
+) {
+  val density = LocalDensity.current
+  val gap = with(density) { 8.dp.roundToPx() }
+  val room = with(density) { ShadowRoom.roundToPx() }
+  val itemHeight = with(density) { 40.dp.toPx() }
+  val spaceBelow =
+      LocalWindowInfo.current.containerSize.height -
+          WindowInsets.navigationBars.getBottom(density) -
+          fieldBottom -
+          gap
+  // At least one item (40 dp plus the 9 dp padding above and below) stays visible.
+  val maxHeight = with(density) { spaceBelow.toDp().coerceIn(58.dp, 298.dp) }
+  val scroll = rememberScrollState()
+  LaunchedEffect(Unit) {
+    val index = options.indexOf(selected)
+    if (index > 3) scroll.scrollTo(((index - 3) * itemHeight).toInt())
+  }
+  val shape = MaterialTheme.shapes.small
+  Popup(
+      popupPositionProvider = BelowAnchor(gap, room),
+      onDismissRequest = onDismiss,
+      // Not clipped to the window: the shadow room may start left of the screen edge.
+      properties = PopupProperties(focusable = true, clippingEnabled = false),
+  ) {
+    Box(Modifier.padding(ShadowRoom)) {
+      Column(
+          Modifier.width(154.dp)
+              .heightIn(max = maxHeight)
+              .dropShadow(
+                  shape,
+                  Shadow(
+                      radius = 24.dp,
+                      color = Ink.copy(alpha = 0.12f),
+                      offset = DpOffset(0.dp, 8.dp),
+                  ),
+              )
+              .background(Bg, shape)
+              .border(1.dp, Border, shape)
+              .clip(shape)
+              .verticalScroll(scroll)
+              .padding(horizontal = 5.dp, vertical = 9.dp)
       ) {
         options.forEach { option ->
           MenuItem(
               text = option,
-              selected = option == value,
-              onClick = {
-                expanded = false
-                onPick(option)
-              },
+              selected = option == selected,
+              onClick = { onPick(option) },
               modifier = Modifier.testTag(optionTag(option)),
           )
         }
       }
     }
   }
+}
+
+/**
+ * Puts the menu [gap] px below its anchor, left-aligned with it. The popup is [room] px larger than
+ * the menu on every side (for the shadow), so it is shifted back by [room].
+ */
+private class BelowAnchor(private val gap: Int, private val room: Int) : PopupPositionProvider {
+  override fun calculatePosition(
+      anchorBounds: IntRect,
+      windowSize: IntSize,
+      layoutDirection: LayoutDirection,
+      popupContentSize: IntSize,
+  ): IntOffset = IntOffset(anchorBounds.left - room, anchorBounds.bottom + gap - room)
 }
 
 @Composable
@@ -421,7 +566,6 @@ private fun MenuItem(
 ) {
   Row(
       modifier
-          .padding(horizontal = 4.dp)
           .fillMaxWidth()
           .height(40.dp)
           .background(if (selected) Surface else Bg, RoundedCornerShape(8.dp))
@@ -432,8 +576,12 @@ private fun MenuItem(
     Text(
         text,
         style =
-            fieldTextStyle()
-                .copy(fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal),
+            MaterialTheme.typography.bodyLarge
+                .copy(
+                    lineHeight = TextUnit.Unspecified,
+                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                )
+                .exact(),
         color = Ink,
         modifier = Modifier.weight(1f),
     )
@@ -454,12 +602,11 @@ private fun PrivacyNote() {
     Text(
         stringResource(R.string.profile_privacy),
         style =
-            MaterialTheme.typography.bodySmall.copy(
-                fontWeight = FontWeight.Normal,
-                lineHeight = 17.sp,
-            ),
+            MaterialTheme.typography.bodySmall
+                .copy(fontWeight = FontWeight.Normal, lineHeight = 17.sp)
+                .figmaLines(),
         color = Ink3,
-        modifier = Modifier.padding(top = 1.dp),
+        modifier = Modifier.padding(top = 1.dp).height(34.dp),
     )
   }
 }
@@ -477,8 +624,9 @@ private fun ErrorMessage() {
     )
     Text(
         stringResource(R.string.profile_could_not_save),
-        style = MaterialTheme.typography.bodySmall,
+        style = MaterialTheme.typography.bodySmall.exact(),
         color = AccentText,
+        modifier = Modifier.height(30.dp),
     )
   }
 }
@@ -515,7 +663,7 @@ private fun ContinueButton(state: ProfileSetupUiState, onClick: () -> Unit) {
     }
     Text(
         stringResource(if (saving) R.string.profile_saving else R.string.profile_continue),
-        style = MaterialTheme.typography.titleSmall,
+        style = MaterialTheme.typography.titleSmall.exact(),
         color =
             when {
               saving -> Ink
