@@ -401,3 +401,56 @@ test("an unverified association can't set isAssociationVerified by overwriting",
     throw new Error("users/club's isAssociationVerified changed");
   }
 });
+
+test("users/{uid} matches the uid exactly (case and whitespace)", async () => {
+  await assertFails(setDoc(doc(studentDb("u1"), "users/U1"), { uid: "U1" }));
+  await assertFails(setDoc(doc(studentDb("u1"), "users/u1 "), { uid: "u1 " }));
+  await assertFails(getDoc(doc(studentDb("U1"), "users/u1")));
+});
+
+test("a long uid reaches its own users/{uid}, not a shared prefix", async () => {
+  // Firebase uids are at most 128 characters.
+  const uid = "a".repeat(127) + "Z";
+  const db = studentDb(uid);
+
+  await assertSucceeds(setDoc(doc(db, `users/${uid}`), { uid }));
+  await assertSucceeds(getDoc(doc(db, `users/${uid}`)));
+  await assertFails(setDoc(doc(db, `users/${uid.slice(0, -1)}`), { uid }));
+});
+
+test("an account without an email_verified claim can't reach its own users/{uid}", async () => {
+  const db = env.authenticatedContext("u1", { email: "student@epfl.ch" }).firestore();
+
+  await assertFails(getDoc(doc(db, "users/u1")));
+  await assertFails(updateDoc(doc(db, "users/u1"), { section: "IN" }));
+  await assertFails(deleteDoc(doc(db, "users/u1")));
+});
+
+// Collections and paths no rule covers yet, including look-alikes of users/{uid} and paths that
+// end in the caller's own uid. Only users/{uid} itself is reachable.
+const OTHER_PATHS = [
+  "publicProfiles/u1",
+  "associations/u1",
+  "users_backup/u1",
+  "Users/u1",
+  "events/e1/users/u1",
+  "users/u1/private/x/deeper/y",
+];
+
+for (const [name, db] of [
+  ["a verified student", () => studentDb("u1")],
+  ["a verified association", () => associationDb("u1")],
+  ["an unverified student", () => firestoreAs("student@epfl.ch", false, "u1")],
+  ["a signed-out user", () => env.unauthenticatedContext().firestore()],
+]) {
+  test(`${name} can't read or write other collections or deeper paths`, async () => {
+    for (const p of OTHER_PATHS) {
+      await assertFails(getDoc(doc(db(), p))).catch((error) => {
+        throw new Error(`get ${p} was allowed: ${error.message}`);
+      });
+      await assertFails(setDoc(doc(db(), p), { uid: "u1" })).catch((error) => {
+        throw new Error(`create ${p} was allowed: ${error.message}`);
+      });
+    }
+  });
+}
