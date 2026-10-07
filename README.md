@@ -38,7 +38,7 @@ The barrier to campus life is social rather than informational: PolySocial answe
 
 **Privacy:** location is never tracked continuously. It is read once for a feature, or shared only with your group, only during the event, and only when you choose to. Profiles, photos, chats and locations are personal data under the Swiss nLPD, and you can delete your account and data.
 
-For Map distance badges, approximate location is sufficient. The location service reads one foreground snapshot and keeps coordinates only in screen memory; it never stores or uploads them. It saves only whether the location permission prompt was already requested, so returning to the Map does not prompt again. Denying permission keeps map browsing available.
+For Map distance badges, approximate location is sufficient. On first entry, the Map requests location permission once if it is not already granted. The location service reads one foreground snapshot and keeps coordinates only in screen memory; it never stores or uploads them. Leaving the Map or backgrounding the app cancels any pending request and discards the snapshot. On return, use **Refresh distance** for another one-off fix; permission prompts and location reads do not repeat automatically. Only whether the permission prompt was requested is saved. Denying permission keeps map browsing available, with an explicit **Turn on** action if you change your mind.
 
 **Offline:** events you've loaded, your registered events and their schedule, and reminders stay available offline. The map shows cached events on whatever map tiles are already cached.
 
