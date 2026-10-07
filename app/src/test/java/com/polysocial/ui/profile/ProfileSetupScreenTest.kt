@@ -1,7 +1,6 @@
-// Contributors: Claude Opus 5.5 (wrote these tests; large font scale; one save report after
-// rotation; picker accessibility; testing agent: double tap,
-// blocked Continue,
-// existing profile, error retry and picker menu behaviour).
+// Contributors: Claude Opus 5.5 (wrote these tests; large font scale, Figma positions, one save
+// report after rotation, picker accessibility); Claude Opus 5.5 (testing agent: double tap, blocked
+// Continue, existing profile, error retry and picker menu behaviour).
 package com.polysocial.ui.profile
 
 import android.app.Application
@@ -60,6 +59,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 @RunWith(AndroidJUnit4::class)
 class ProfileSetupScreenTest {
@@ -475,7 +476,67 @@ class ProfileSetupScreenTest {
 
   private fun SemanticsNodeInteraction.node() = fetchSemanticsNode()
 
+  // Unclipped: boundsInRoot is empty for a node scrolled out of view.
+  private fun SemanticsNode.top() = positionInRoot.y
+
+  private fun SemanticsNode.bottom() = positionInRoot.y + size.height
+
+  /** The text node showing [text], inside the node tagged [parentTag] when given. */
+  private fun textNode(text: String, parentTag: String? = null): SemanticsNode {
+    val matcher =
+        if (parentTag == null) hasText(text) else hasText(text) and hasParent(hasTestTag(parentTag))
+    return composeTestRule.onNode(matcher, useUnmergedTree = true).fetchSemanticsNode()
+  }
+
   @Test
+  // The Figma frame size at the Pixel 5 density the screen was measured on, with real text
+  // metrics (the legacy mode measures every line 35 dp).
+  @Config(qualifiers = "w360dp-h800dp-440dpi")
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  fun defaultFontSize_elementsSitAtTheirFigmaPositions() {
+    composeTestRule.setContent {
+      PolySocialTheme {
+        Box(Modifier.size(width = 360.dp, height = 800.dp)) {
+          ProfileSetupContent(
+              state = filled,
+              onBack = {},
+              onDisplayNameChange = {},
+              onSectionChange = {},
+              onYearChange = {},
+              onContinue = {},
+          )
+        }
+      }
+    }
+    // The tops in the Figma "Profile · ready" frame (360 x 800).
+    val figmaTops =
+        listOf(
+            "title" to (textNode(string(R.string.profile_title)) to 67.5f),
+            "subtitle" to (textNode(string(R.string.profile_subtitle)) to 107f),
+            "full name label" to (textNode(string(R.string.profile_full_name)) to 239.5f),
+            "name field" to (node(ProfileSetupTestTags.FULL_NAME).node() to 262f),
+            "email label" to (textNode(string(R.string.profile_email)) to 325.5f),
+            "email field" to (node(ProfileSetupTestTags.EMAIL).node() to 348f),
+            "section label" to (textNode(string(R.string.profile_section)) to 409.5f),
+            "section field" to (node(ProfileSetupTestTags.SECTION).node() to 432f),
+            "year field" to (node(ProfileSetupTestTags.YEAR).node() to 432f),
+            "privacy note" to (textNode(string(R.string.profile_privacy)) to 675f),
+            "continue" to (node(ProfileSetupTestTags.CONTINUE).node() to 720f),
+        )
+    val density = composeTestRule.density.density
+    for ((name, nodeAndTop) in figmaTops) {
+      val (node, figmaTop) = nodeAndTop
+      val top = node.top() / density
+      assertTrue(
+          "$name is at $top dp, Figma says $figmaTop",
+          kotlin.math.abs(top - figmaTop) <= 0.6f,
+      )
+    }
+  }
+
+  @Test
+  // Real text metrics: the legacy graphics mode measures text with fixed fake sizes.
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
   fun doubleFontSize_textsFitAndNothingOverlaps() {
     composeTestRule.setContent {
       val density = LocalDensity.current
@@ -492,28 +553,58 @@ class ProfileSetupScreenTest {
         }
       }
     }
-    fun text(id: Int) = composeTestRule.onNodeWithText(string(id), useUnmergedTree = true).node()
-    // Top to bottom, as on screen.
-    val column =
-        listOf(
+    fun text(id: Int) = textNode(string(id))
+    // Every text, fetched as the text node itself: a field's tag sits on its container, which
+    // has no text layout to check.
+    val texts =
+        mapOf(
             "title" to text(R.string.profile_title),
             "subtitle" to text(R.string.profile_subtitle),
             "full name label" to text(R.string.profile_full_name),
             "name field" to node(ProfileSetupTestTags.FULL_NAME).node(),
             "email label" to text(R.string.profile_email),
-            "email field" to node(ProfileSetupTestTags.EMAIL).node(),
+            "email value" to textNode("a@epfl.ch", ProfileSetupTestTags.EMAIL),
             "section label" to text(R.string.profile_section),
-            "section field" to node(ProfileSetupTestTags.SECTION).node(),
+            "section value" to textNode("IN", ProfileSetupTestTags.SECTION),
+            "year label" to text(R.string.profile_year),
+            "year value" to textNode("BA3", ProfileSetupTestTags.YEAR),
             "privacy note" to text(R.string.profile_privacy),
-            "error" to node(ProfileSetupTestTags.ERROR).node(),
-            "continue" to node(ProfileSetupTestTags.CONTINUE).node(),
+            "error" to
+                textNode(string(R.string.profile_could_not_save), ProfileSetupTestTags.ERROR),
+            "continue" to
+                textNode(string(R.string.profile_continue), ProfileSetupTestTags.CONTINUE),
         )
-    for ((name, node) in column) assertTrue("$name text is clipped", !node.textOverflows())
-    column.zipWithNext().forEach { (above, below) ->
-      assertTrue(
-          "${below.first} overlaps ${above.first}",
-          below.second.boundsInRoot.top >= above.second.boundsInRoot.bottom - 1,
-      )
+    for ((name, node) in texts) assertTrue("$name text is clipped", !node.textOverflows())
+
+    // Top to bottom, as on screen (the year column sits next to the section column).
+    fun tagged(tag: String) = node(tag).node()
+    val column =
+        listOf(
+            "title" to texts.getValue("title"),
+            "subtitle" to texts.getValue("subtitle"),
+            "full name label" to texts.getValue("full name label"),
+            "name field" to tagged(ProfileSetupTestTags.FULL_NAME),
+            "email label" to texts.getValue("email label"),
+            "email field" to tagged(ProfileSetupTestTags.EMAIL),
+            "section label" to texts.getValue("section label"),
+            "section field" to tagged(ProfileSetupTestTags.SECTION),
+            "privacy note" to texts.getValue("privacy note"),
+            "error" to tagged(ProfileSetupTestTags.ERROR),
+            "continue" to tagged(ProfileSetupTestTags.CONTINUE),
+        )
+    val yearColumn =
+        listOf(
+            "year label" to texts.getValue("year label"),
+            "year field" to tagged(ProfileSetupTestTags.YEAR),
+            "privacy note" to texts.getValue("privacy note"),
+        )
+    for (stack in listOf(column, yearColumn)) {
+      stack.zipWithNext().forEach { (above, below) ->
+        assertTrue(
+            "${below.first} overlaps ${above.first}",
+            below.second.top() >= above.second.bottom() - 1,
+        )
+      }
     }
   }
 
@@ -560,6 +651,10 @@ class ProfileSetupScreenTest {
         )
     node(ProfileSetupTestTags.YEAR)
         .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "BA3"))
+    // The visible label is read through the field only, not a second time on its own.
+    composeTestRule
+        .onNodeWithText(string(R.string.profile_section), useUnmergedTree = true)
+        .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.HideFromAccessibility))
   }
 
   @Test
