@@ -1,6 +1,5 @@
-// Contributors: Claude Opus 5.5 (wrote these tests; unverified account refused; testing agent: the
-// lock after saving, no
-// signed-in user).
+// Contributors: Claude Opus 5.5 (wrote these tests; unverified account refused); Claude Opus 5.5
+// (testing agent: the lock after saving, no signed-in user).
 package com.polysocial.ui.profile
 
 import com.polysocial.model.auth.AuthUser
