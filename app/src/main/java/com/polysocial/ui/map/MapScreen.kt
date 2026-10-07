@@ -22,6 +22,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -100,7 +101,7 @@ fun MapScreen(
           MapboxRenderer(events, select, status, inset)
         },
 ) {
-  var previewHeight by remember { mutableStateOf(0) }
+  var previewHeight by remember { mutableIntStateOf(0) }
   var showPrivacy by rememberSaveable { mutableStateOf(false) }
   val bottomInset =
       with(LocalDensity.current) {
