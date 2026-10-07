@@ -1,4 +1,5 @@
-// Contributors: Claude (app shell with bottom navigation and app bar, #41).
+// Contributors: Claude (app shell with bottom navigation and app bar, #41; theme title style after
+// review).
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.layout.Box
@@ -19,7 +20,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -86,7 +86,6 @@ private fun AppBar(title: String) {
     Text(
         text = title,
         style = MaterialTheme.typography.headlineMedium,
-        fontWeight = FontWeight.ExtraBold,
         modifier = Modifier.testTag(C.Tag.app_bar_title),
     )
   }
