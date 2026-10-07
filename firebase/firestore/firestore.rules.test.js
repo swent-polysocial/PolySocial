@@ -1,4 +1,4 @@
-// Contributors: Claude (rules tests for #33; also firebase/package.json, which can't hold a comment); Claude Opus 5.5 (testing agent: added edge-case, operation and path coverage tests; users/{uid} tests and no catch-all, #35).
+// Contributors: Claude (rules tests for #33; also firebase/package.json, which can't hold a comment); Claude Opus 5.5 (testing agent: added edge-case, operation and path coverage tests; users/{uid} tests and no catch-all, #35); Claude Opus 5.5 (testing agent: batches, transactions, queries, flag edge cases, uid paths, other paths, #35).
 const { after, before, beforeEach, test } = require("node:test");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
@@ -9,13 +9,19 @@ const {
 } = require("@firebase/rules-unit-testing");
 const {
   collection,
+  collectionGroup,
   deleteDoc,
   deleteField,
   doc,
+  documentId,
   getDoc,
   getDocs,
+  query,
+  runTransaction,
   setDoc,
   updateDoc,
+  where,
+  writeBatch,
 } = require("firebase/firestore");
 
 // A "demo-" project never reaches a real Firebase project.
@@ -292,4 +298,106 @@ test("a verified association can update its other fields, keeping isAssociationV
       displayName: "Club",
     }),
   );
+});
+
+// ---- users/{uid}: attacks beyond a single get or write (#35) ----
+
+/** The stored users/[uid] document, read with the rules off, or undefined if it doesn't exist. */
+async function storedUser(uid) {
+  let data;
+  await env.withSecurityRulesDisabled(async (context) => {
+    data = (await getDoc(doc(context.firestore(), `users/${uid}`))).data();
+  });
+  return data;
+}
+
+test("a batched write touching another student's users/{uid} is denied as a whole", async () => {
+  const db = studentDb("u1");
+  const batch = writeBatch(db);
+  batch.update(doc(db, "users/u1"), { section: "IN" });
+  batch.update(doc(db, "users/u2"), { section: "IN" });
+
+  await assertFails(batch.commit());
+  if ((await storedUser("u1")).section !== undefined) throw new Error("the batch changed users/u1");
+  if ((await storedUser("u2")).section !== undefined) throw new Error("the batch changed users/u2");
+});
+
+test("a transaction can create your own users/{uid}, not read or write another's", async () => {
+  const db = studentDb("u3");
+
+  // The profile step's create-once transaction (#34).
+  await assertSucceeds(
+    runTransaction(db, async (transaction) => {
+      const own = doc(db, "users/u3");
+      if (!(await transaction.get(own)).exists()) transaction.set(own, { uid: "u3" });
+    }),
+  );
+  await assertFails(runTransaction(db, (transaction) => transaction.get(doc(db, "users/u2"))));
+  await assertFails(
+    runTransaction(db, async (transaction) => {
+      await transaction.get(doc(db, "users/u3"));
+      transaction.update(doc(db, "users/u2"), { section: "IN" });
+    }),
+  );
+});
+
+test("a users query is allowed by your own document ID only, not by a field", async () => {
+  const db = studentDb("u1");
+
+  // Rules aren't filters: a query is allowed only if it can return nothing but your own document.
+  await assertSucceeds(getDocs(query(collection(db, "users"), where(documentId(), "==", "u1"))));
+  await assertFails(getDocs(query(collection(db, "users"), where(documentId(), "==", "u2"))));
+  await assertFails(getDocs(query(collection(db, "users"), where("uid", "==", "u1"))));
+  await assertFails(getDocs(collectionGroup(db, "users")));
+});
+
+test("recreating your own users/{uid} can't set isAssociationVerified", async () => {
+  const db = associationDb("club");
+
+  await assertSucceeds(deleteDoc(doc(db, "users/club")));
+  await assertFails(
+    setDoc(doc(db, "users/club"), { accountType: "association", isAssociationVerified: true }),
+  );
+  if ((await storedUser("club")) !== undefined) throw new Error("users/club was recreated");
+});
+
+test("a merge write can't set isAssociationVerified on your own users/{uid}", async () => {
+  // On an existing document (an update) and on a missing one (a create).
+  await assertFails(
+    setDoc(
+      doc(associationDb("club"), "users/club"),
+      { isAssociationVerified: true },
+      { merge: true },
+    ),
+  );
+  await assertFails(
+    setDoc(
+      doc(associationDb("newClub"), "users/newClub"),
+      { isAssociationVerified: true },
+      { merge: true },
+    ),
+  );
+});
+
+test("isAssociationVerified can't be set to null, on create or on update", async () => {
+  await assertFails(
+    setDoc(doc(associationDb("newClub"), "users/newClub"), { isAssociationVerified: null }),
+  );
+  await assertFails(updateDoc(doc(studentDb("u1"), "users/u1"), { isAssociationVerified: null }));
+  await assertFails(
+    updateDoc(doc(associationDb("club"), "users/club"), { isAssociationVerified: null }),
+  );
+});
+
+test("an unverified association can't set isAssociationVerified by overwriting", async () => {
+  await assertFails(
+    setDoc(doc(associationDb("club"), "users/club"), {
+      uid: "club",
+      accountType: "association",
+      isAssociationVerified: true,
+    }),
+  );
+  if ((await storedUser("club")).isAssociationVerified !== false) {
+    throw new Error("users/club's isAssociationVerified changed");
+  }
 });
