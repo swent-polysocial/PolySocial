@@ -1,4 +1,4 @@
-// Contributors: Claude (drafted the Create Event ViewModel).
+// Contributors: Claude (drafted the Create Event ViewModel); Mohamed Khellaf (reviewed).
 package com.polysocial.ui.event.create
 
 import androidx.lifecycle.ViewModel

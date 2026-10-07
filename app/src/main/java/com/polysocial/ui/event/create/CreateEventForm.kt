@@ -1,4 +1,4 @@
-// Contributors: Claude (drafted the Create Event form logic).
+// Contributors: Claude (drafted the Create Event form logic); Mohamed Khellaf (reviewed).
 package com.polysocial.ui.event.create
 
 import com.polysocial.model.event.Coordinates

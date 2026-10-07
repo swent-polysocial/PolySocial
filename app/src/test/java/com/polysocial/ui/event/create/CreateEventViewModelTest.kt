@@ -1,4 +1,4 @@
-// Contributors: Claude (wrote these tests).
+// Contributors: Claude (wrote these tests); Mohamed Khellaf (reviewed).
 package com.polysocial.ui.event.create
 
 import com.polysocial.model.event.CreateEventResult
