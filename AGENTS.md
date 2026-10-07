@@ -1,4 +1,4 @@
-<!-- Contributors: OpenAI Codex (initial draft); Claude (revised: definition of done, conventions, course rules, project context, Security Rules process, team-agreement reconciliation, session context, secrets check, test and PR-size rules; association accounts without an EPFL email). -->
+<!-- Contributors: OpenAI Codex (initial draft; approved Mapbox provider/token policy for #50); Claude (revised: definition of done, conventions, course rules, project context, Security Rules process, team-agreement reconciliation, session context, secrets check, test and PR-size rules; association accounts without an EPFL email). -->
 
 # Instructions for coding agents
 
@@ -84,8 +84,8 @@ guessing. It also shows how the design evolved.
   limited to features like "nearby events" and one-off location checks, not a
   location history). Keep the in-app privacy notice current when a feature
   changes what is collected.
-- Stack: Kotlin, Jetpack Compose, Firestore, Firebase Authentication, Google
-  Maps API. Nominatim/OpenStreetMap is approved for geocoding, reverse
+- Stack: Kotlin, Jetpack Compose, Firestore, Firebase Authentication, Mapbox
+  Maps SDK. Nominatim/OpenStreetMap is approved for geocoding, reverse
   geocoding, and search (not autocomplete/search-as-you-type, which its usage
   policy forbids): send a custom User-Agent, respect the 1 request/second
   limit, debounce and cache queries, and show OSM attribution in the UI. Cloud
@@ -120,9 +120,9 @@ guessing. It also shows how the design evolved.
 - Offline mode means: cached event data, registered events, event schedule,
   and reminders remain available without a network, using Firestore's built-in
   offline persistence. The map shows cached events on whatever tiles the Maps
-  SDK has already cached. Do not implement map tile prefetching or offline tile
-  storage; the Maps SDK does not support it and the Google Maps terms restrict
-  it. Do not remove or weaken offline behavior.
+  SDK has already cached. Do not implement map tile prefetching or explicit
+  offline region downloads; this remains outside the team-approved offline
+  scope. Do not remove or weaken offline behavior.
 - Plan: Firebase Authentication, Firestore, Cloud Storage, and Cloud Functions
   run on the Blaze (pay-as-you-go) plan, with a budget alert configured on the
   Google Cloud project (for example around 5 CHF/month). Expected usage should
@@ -169,7 +169,7 @@ guessing. It also shows how the design evolved.
 - Inspect the actual package layout under `app/src/main/` and follow its
   structure, naming, navigation setup, and dependency versions. Do not assume a
   class, module, or Gradle task exists; check first.
-- Put Firebase, Google Maps, Nominatim, and persistence code behind repository
+- Put Firebase, Mapbox, Nominatim, and persistence code behind repository
   or service interfaces. Do not import a backend SDK in a ViewModel or a
   Composable. Inject dependencies so the data layer can be tested with fakes.
 - Put device access (GPS, camera, QR decoding) behind interfaces too. Keep
@@ -206,16 +206,14 @@ guessing. It also shows how the design evolved.
   covered. Never stage with `git add -A` or `git add .` without reviewing what
   it includes. If a secret is already public, stop and tell the human: the key
   must be rotated, and deleting the file does not remove it from history.
-- Restrict the Google Maps key to the app's package name and the SHA-1
-  fingerprints of every keystore that builds the app: each teammate's debug
-  keystore, the CI keystore, and the release keystore. A missing fingerprint
-  shows up as a blank map; the fix is to register the fingerprint, never to
-  loosen or remove the restriction. Keep the project's budget alert in place
-  (see "Project context").
-- Do not hardcode the Maps key in Kotlin source. Read it through the Gradle
-  Secrets plugin from `local.properties` (git-ignored), with a placeholder
-  default so the project still builds without the key. If `local.properties` or
-  the plugin does not exist yet, ask the team before inventing a scheme.
+- Mapbox is approved in #50, replacing Google Maps. Use a dedicated public
+  `pk.` token with only `styles:read` and `fonts:read`, stored as
+  `MAPBOX_ACCESS_TOKEN` in git-ignored `local.properties`. Gradle generates the
+  SDK string resource, with an empty-token setup state so CI can build. Never
+  package a secret `sk.` token. Mapbox mobile tokens do not support Google's
+  package/SHA-1 restrictions; do not use browser URL restrictions for Android.
+  Monitor usage and retain the team's budget alerts. Keep logo, attribution
+  and telemetry opt-out available; do not enable continuous GPS tracking.
 - Never put private keys, service-account JSON, signing credentials, or the
   Sonar token in the app or repository. Secrets belong in GitHub Actions
   secrets.

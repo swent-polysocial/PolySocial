@@ -1,4 +1,4 @@
-<!-- Contributors: Claude (drafted this page and its diagrams from the README, the Scrum Board and the issue descriptions; association accounts without an EPFL email; Create Event design update, #44; ViewModel rule wording; Security Rules state after #35). -->
+<!-- Contributors: OpenAI Codex (approved Mapbox renderer and setup decision, #50); Claude (drafted this page and its diagrams from the README, the Scrum Board and the issue descriptions; association accounts without an EPFL email; Create Event design update, #44; ViewModel rule wording; Security Rules state after #35). -->
 
 How PolySocial is built, as we currently envision it. The page follows the [Android App Architecture guide](https://developer.android.com/topic/architecture/intro): a **UI layer** (Compose screens and ViewModels), a **domain layer** of pure Kotlin logic, and a **data layer** of repositories in front of Firebase, the map and geocoding services, and the device sensors.
 
@@ -26,7 +26,7 @@ This diagram is meant to **stay ahead of the code and drive development**. When 
 
 Arrows read "uses" or "calls". A dashed arrow is a planned or optional dependency.
 
-**Dependency rule.** Screens talk only to their ViewModel. ViewModels talk to repositories and to domain logic. Only repository implementations import Firebase, the Maps SDK, HTTP or location APIs. The domain layer imports nothing from Android or Firebase.
+**Dependency rule.** Screens talk only to their ViewModel. ViewModels talk to repositories and to domain logic. Only repository implementations import Firebase, HTTP or location APIs. The map SDK is a UI component isolated in `MapboxRenderer`, which renders ViewModel state and does not query event data. The domain layer imports nothing from Android or Firebase.
 
 ## 1. Architecture overview
 
@@ -38,7 +38,7 @@ The source is `images/architecture-overview.svg`, a plain SVG kept next to the P
 - Every screen that holds state has exactly one ViewModel. The app shell (app bar, bottom bar and `NavHost`, #41) has none: its only state is navigation, which the `NavController` owns, and a ViewModel copy of it could get out of sync. The ViewModel exposes a single immutable UI-state `StateFlow` with loading, empty, success and error variants, and receives user actions as function calls.
 - Repositories are Kotlin interfaces with a Firebase (or device) implementation and a `Fake…` implementation for tests. ViewModels get them through their constructor, injected by **Hilt** (`@HiltViewModel`). Tests swap in the fakes with Hilt's test modules.
 - **Offline:** Firestore offline persistence is the only cache (no Room, no custom sync). Loaded events, registered events and their schedule stay readable offline. Writes such as chat messages are queued and synced on reconnect. Reminders are scheduled on the device. The map shows cached events on tiles the Maps SDK already cached, with **no tile prefetching**. Sign-up and log-in need a network and show a clear error without one.
-- **Map provider:** Google Maps today, but it may switch to Mapbox (recommended by the coaches). Either way the map SDK is a UI component, so switching only touches the Map screen. `MapScreen` renders markers from `MapViewModel` state and never queries data itself.
+- **Map provider:** Mapbox is approved (#50), replacing Google Maps. Its SDK is a UI component isolated in `MapboxRenderer`; `MapScreen` renders markers from `MapViewModel` state and never queries data itself. The public `pk.` token comes from ignored `local.properties` through a generated string resource, with an empty-token setup state.
 
 ## 2. Navigation map
 
@@ -137,7 +137,7 @@ flowchart TB
   classDef ext fill:#fff3bf,stroke:#e67700,color:#000
 
   mapS["Map screen<br/>markers · preview card"]:::s1 --> mapVM["<b>MapViewModel</b><br/>Loading · Empty · Success · Error<br/>permission granted / denied"]:::s1
-  mapS -. renders .-> maps[("Map SDK<br/>Google Maps, or Mapbox")]:::ext
+  mapS -. renders .-> maps[("Map SDK<br/>Mapbox")]:::ext
   mapVM --> dist["Haversine distance<br/><i>domain</i>"]:::s1
   mapVM --> ev["<b>EventRepository</b><br/>getUpcomingPublicEvents"]:::s1
   mapVM --> loc["<b>LocationService</b><br/>permission · one-off location"]:::s1
@@ -167,7 +167,7 @@ flowchart TB
 ```
 
 - **Event model (#45).** `id`, `title` (at most 80 characters), `description` (may be blank, at most 5000), `category` (Study, Sports, Culture, Party or Other; an unknown stored category reads as Other), `location` (lat/lng), `startTime`, `endTime` (nullable, after `startTime`), `capacity` (nullable, at least 2), `isPrivate`, `createdBy`, `organizerIds`, `allowedUids` and `isAssociationEvent`. `createdBy` is always the authenticated UID and is always in `organizerIds` and `allowedUids`. At creation the repository makes the creator the only organizer and allowed reader and sets `isAssociationEvent` from the creator's profile, ignoring the form's values. The Security Rules enforce this again (#47). An end time earlier than the start time on the form means the next day.
-- **Create Event access (#46).** **Anyone can create an event** and becomes its **organizer**. An event can have one or several student organizers (`organizerIds`). Only a verified association (`accountType == "association"` and `isAssociationVerified`) publishes under its name: its events get `isAssociationEvent` and show a verified badge. An unverified association account can't create events or add members until it's verified, so the form has no access-denied state. Address search appears in the Figma task (#44), but the Sprint 1 build task only requires a map pin (#46), so geocoding stays blue. Its provider follows the map choice: Nominatim (approved in the API evaluation, with its usage policy) or Mapbox's own geocoding if we switch.
+- **Create Event access (#46).** **Anyone can create an event** and becomes its **organizer**. An event can have one or several student organizers (`organizerIds`). Only a verified association (`accountType == "association"` and `isAssociationVerified`) publishes under its name: its events get `isAssociationEvent` and show a verified badge. An unverified association account can't create events or add members until it's verified, so the form has no access-denied state. Address search appears in the Figma task (#44), but the Sprint 1 build task only requires a map pin (#46), so geocoding stays blue. Geocoding stays with the approved Nominatim service and its usage policy; choosing Mapbox for map rendering does not add a geocoding API.
 - **Create Event screen (#44, #46).** The form follows the Figma (section 04): a date with a start time and an **optional** end time, which tells check-in and "Find my group" when the event is over. An end time earlier than the start time means the next day, shown as "+1 day" under the end field (Figma "Create event · overnight"). Inline errors cover a missing title, a title over 80 characters, a description over 5000, a past date, an end time equal to the start time, a missing location and a capacity below 2, and the *Create* button stays disabled while they remain. Offline, `EventRepository.createEvent` returns `NetworkError` without starting a write (Firestore would queue it and never fail), and the ViewModel shows the error with *Try again*, keeping the form. If location access is denied, the location picker still works with search and the map pin.
 
 ### 3.4 Groups, matching and chat (Product Backlog)
@@ -388,7 +388,6 @@ Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after re
 | 14 | Back button | At a non-home tab root, go to the Events tab. At the Events root, exit. This is Android's standard pattern (changed after review) |
 
 **Open questions** (add new ones here and in `CONTEXT.md`):
-- **Map provider:** keep Google Maps or switch to Mapbox, as the coaches recommended? It affects the map SDK, the API key setup and the geocoding service.
 - **Sign-in providers:** add Google or Microsoft sign-in next to email/password? EPFL addresses are Microsoft accounts, so Microsoft sign-in would prove EPFL membership directly. Either way, the rules keep requiring a verified `@epfl.ch` email for students.
 - **Association members and event drafts:** Figma has them, but there is no data model yet. How does an association find and add a student as a member, and what can each role do? Drafts are not in the `Event` model.
 - **Events without an end time:** `endTime` is optional, but check-in and Find my group only work during the event. Which time window applies when it is not set?

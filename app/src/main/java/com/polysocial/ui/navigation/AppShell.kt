@@ -1,5 +1,6 @@
 // Contributors: Claude (app shell with bottom navigation and app bar, #41; theme title style after
 // review; bottom bar matched to the Figma; loading state, #43; per-tab back stacks, #42).
+// Contributors: OpenAI Codex (map route and detail placeholder, #50).
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.layout.Box
@@ -17,6 +18,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -33,18 +35,21 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
+import com.polysocial.R
 import com.polysocial.resources.C
+import com.polysocial.ui.map.MapRoute
 import com.polysocial.ui.theme.Ink3
 
 /**
  * Root of the signed-in app: an app bar with the current tab's title, the current tab's screen, and
- * the bottom navigation bar. Each tab shows the shared loading state, then a placeholder until its
- * feature is built.
+ * the bottom navigation bar. Other tabs show the shared loading state, then a placeholder until its
+ * feature is built. The map uses its own floating overlays rather than the app bar.
  */
 @Composable
 fun AppShell(
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
+    mapContent: @Composable ((String) -> Unit) -> Unit = { onDetails -> MapRoute(onDetails) },
 ) {
   val backStackEntry by navController.currentBackStackEntryAsState()
   val destination = backStackEntry?.destination
@@ -55,7 +60,7 @@ fun AppShell(
 
   Scaffold(
       modifier = modifier.testTag(C.Tag.app_shell),
-      topBar = { AppBar(title = stringResource(currentTab.label)) },
+      topBar = { if (currentTab != Tab.MAP) AppBar(title = stringResource(currentTab.label)) },
       bottomBar = {
         BottomNavBar(currentTab = currentTab, onTabSelected = { navController.navigateToTab(it) })
       },
@@ -68,13 +73,38 @@ fun AppShell(
       // One nested graph per tab, so each tab keeps its own back stack.
       Tab.entries.forEach { tab ->
         navigation(startDestination = tab.rootRoute, route = tab.route) {
-          composable(tab.rootRoute) { TabRootScreen(tab) }
+          composable(tab.rootRoute) {
+            if (tab == Tab.MAP) {
+              mapContent { id -> navController.navigate("map/event/${android.net.Uri.encode(id)}") }
+            } else {
+              TabRootScreen(tab)
+            }
+          }
           composable(tab.detailRoute) { PlaceholderDetailScreen(tab) }
+          if (tab == Tab.MAP) {
+            composable(MAP_DETAIL_ROUTE) {
+              Column(Modifier.padding(20.dp).testTag("event_detail_placeholder")) {
+                Text(
+                    stringResource(R.string.event_detail_title),
+                    style = MaterialTheme.typography.titleLarge,
+                )
+                Text(stringResource(R.string.event_detail_placeholder))
+                TextButton(
+                    onClick = { navController.popBackStack() },
+                    modifier = Modifier.testTag("event_detail_back"),
+                ) {
+                  Text(stringResource(R.string.event_detail_back))
+                }
+              }
+            }
+          }
         }
       }
     }
   }
 }
+
+private const val MAP_DETAIL_ROUTE = "map/event/{eventId}"
 
 /**
  * Shows [tab] with the screen it was on. The other tabs' stacks are saved and removed, so the back

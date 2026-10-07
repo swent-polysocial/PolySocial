@@ -1,7 +1,9 @@
+# Contributors: OpenAI Codex (Mapbox Compose and lifecycle state collection, #50).
 # Contributors: Claude (Hilt, KSP and Hilt testing entries, #70; Navigation Compose entry, #41;
 # MockK and coroutines for Play Services Tasks, #32); OpenAI Codex (sign-up test entries
 # and Android MockK for the sign-up form device tests).
 [versions]
+mapbox = "11.32.0"
 agp = "9.3.3"
 kotlin = "2.4.20"
 coreKtx = "1.19.1"
@@ -29,6 +31,9 @@ ksp = "2.3.12"
 coroutines = "1.9.0"
 
 [libraries]
+mapbox-android = { module = "com.mapbox.maps:android-ndk27", version.ref = "mapbox" }
+mapbox-compose = { module = "com.mapbox.extension:maps-compose-ndk27", version.ref = "mapbox" }
+androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycleRuntimeKtx" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
