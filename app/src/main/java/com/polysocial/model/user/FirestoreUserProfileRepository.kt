@@ -1,4 +1,5 @@
-// Contributors: Claude (Firestore profile repository, #34).
+// Contributors: Claude (Firestore profile repository, #34; cancelled tasks and wrong-typed fields
+// reported as errors after review).
 package com.polysocial.model.user
 
 import com.google.firebase.FirebaseException
@@ -7,6 +8,9 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.tasks.await
 
 /** Firestore collection holding the private profiles, one document per Firebase Auth UID. */
@@ -26,18 +30,16 @@ class FirestoreUserProfileRepository(private val db: FirebaseFirestore) : UserPr
       db.collection(USERS_COLLECTION).document(uid)
 
   override suspend fun getProfile(uid: String): ProfileResult =
-      try {
+      reportFailures(ProfileResult.NetworkError, ProfileResult.UnexpectedError) {
         val snapshot = document(uid).get().await()
         if (!snapshot.exists()) ProfileResult.NotFound
         else
             snapshot.toUserProfile()?.let { ProfileResult.Found(it) }
                 ?: ProfileResult.UnexpectedError
-      } catch (e: FirebaseException) {
-        if (e.isOffline()) ProfileResult.NetworkError else ProfileResult.UnexpectedError
       }
 
   override suspend fun createProfile(profile: UserProfile): CreateProfileResult =
-      try {
+      reportFailures(CreateProfileResult.NetworkError, CreateProfileResult.UnexpectedError) {
         val ref = document(profile.uid)
         val created =
             db.runTransaction { transaction ->
@@ -49,12 +51,10 @@ class FirestoreUserProfileRepository(private val db: FirebaseFirestore) : UserPr
                 }
                 .await()
         if (created) CreateProfileResult.Created else CreateProfileResult.AlreadyExists
-      } catch (e: FirebaseException) {
-        if (e.isOffline()) CreateProfileResult.NetworkError else CreateProfileResult.UnexpectedError
       }
 
   override suspend fun updateProfile(profile: UserProfile): UpdateProfileResult =
-      try {
+      reportFailures(UpdateProfileResult.NetworkError, UpdateProfileResult.UnexpectedError) {
         val ref = document(profile.uid)
         val updated =
             db.runTransaction { transaction ->
@@ -66,10 +66,23 @@ class FirestoreUserProfileRepository(private val db: FirebaseFirestore) : UserPr
                 }
                 .await()
         if (updated) UpdateProfileResult.Updated else UpdateProfileResult.NotFound
-      } catch (e: FirebaseException) {
-        if (e.isOffline()) UpdateProfileResult.NetworkError else UpdateProfileResult.UnexpectedError
       }
 }
+
+/**
+ * Runs [call] and turns its failures into results, so the caller never hangs on "saving": offline
+ * becomes [offline]; any other Firebase failure, or a Firebase task cancelled while the caller is
+ * still running, becomes [failed]. Cancelling the caller's coroutine still cancels it.
+ */
+private suspend fun <T> reportFailures(offline: T, failed: T, call: suspend () -> T): T =
+    try {
+      call()
+    } catch (e: FirebaseException) {
+      if (e.isOffline()) offline else failed
+    } catch (e: CancellationException) {
+      currentCoroutineContext().ensureActive()
+      failed
+    }
 
 private fun FirebaseException.isOffline(): Boolean =
     this is FirebaseFirestoreException && code == FirebaseFirestoreException.Code.UNAVAILABLE
@@ -87,8 +100,18 @@ private fun UserProfile.toNewDocument(): Map<String, Any> =
 private fun UserProfile.toEditableFields(): Map<String, Any> =
     mapOf("displayName" to displayName, "section" to section, "year" to year)
 
-/** The profile in this document, or `null` if a required field is missing or unknown. */
-private fun DocumentSnapshot.toUserProfile(): UserProfile? {
+/**
+ * The profile in this document, or `null` if a required field is missing, unknown, or stored with
+ * the wrong type (Firestore throws for a field of another type).
+ */
+private fun DocumentSnapshot.toUserProfile(): UserProfile? =
+    try {
+      readUserProfile()
+    } catch (e: RuntimeException) {
+      null
+    }
+
+private fun DocumentSnapshot.readUserProfile(): UserProfile? {
   val accountType =
       AccountType.entries.firstOrNull { it.value == getString("accountType") } ?: return null
   return UserProfile(
