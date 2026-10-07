@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.os.CancellationSignal
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import androidx.core.location.LocationManagerCompat
 import com.polysocial.model.event.Coordinates
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -35,7 +36,7 @@ class AndroidLocationService @Inject constructor(@ApplicationContext private val
       !hasPermission() && !preferences.getBoolean(PERMISSION_REQUESTED, false)
 
   override fun markPermissionRequested() {
-    preferences.edit().putBoolean(PERMISSION_REQUESTED, true).apply()
+    preferences.edit { putBoolean(PERMISSION_REQUESTED, true) }
   }
 
   override suspend fun currentLocation(): LocationResult {
