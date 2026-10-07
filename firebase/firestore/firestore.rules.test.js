@@ -10,6 +10,7 @@ const {
 const {
   collection,
   deleteDoc,
+  deleteField,
   doc,
   getDoc,
   getDocs,
@@ -35,6 +36,18 @@ beforeEach(async () => {
     const db = context.firestore();
     await setDoc(doc(db, "events/e1"), { title: "Seeded" });
     await setDoc(doc(db, "events/e1/messages/m1"), { text: "Seeded" });
+    await setDoc(doc(db, "users/u1"), { uid: "u1", displayName: "Student One" });
+    await setDoc(doc(db, "users/u2"), { uid: "u2", displayName: "Student Two" });
+    await setDoc(doc(db, "users/club"), {
+      uid: "club",
+      accountType: "association",
+      isAssociationVerified: false,
+    });
+    await setDoc(doc(db, "users/verifiedClub"), {
+      uid: "verifiedClub",
+      accountType: "association",
+      isAssociationVerified: true,
+    });
   });
 });
 
@@ -134,3 +147,139 @@ for (const email of [
     await assertAllAccessDenied(firestoreAs(email, true));
   });
 }
+
+// ---- users/{uid} (#35) ----
+
+/** A verified @epfl.ch student signed in as [uid]. */
+function studentDb(uid = "u1") {
+  return firestoreAs("student@epfl.ch", true, uid);
+}
+
+/** A verified non-EPFL account (an association) signed in as [uid]. */
+function associationDb(uid) {
+  return firestoreAs("contact@club.org", true, uid);
+}
+
+test("a student can read, update and delete their own users/{uid}", async () => {
+  const db = studentDb("u1");
+
+  await assertSucceeds(getDoc(doc(db, "users/u1")));
+  await assertSucceeds(updateDoc(doc(db, "users/u1"), { section: "IN" }));
+  await assertSucceeds(deleteDoc(doc(db, "users/u1")));
+});
+
+test("a student can create their own users/{uid}", async () => {
+  await assertSucceeds(setDoc(doc(studentDb("u3"), "users/u3"), { uid: "u3", section: "IN" }));
+});
+
+test("an association account with a non-EPFL verified email can read and write its own users/{uid}", async () => {
+  const db = associationDb("club");
+
+  await assertSucceeds(getDoc(doc(db, "users/club")));
+  await assertSucceeds(updateDoc(doc(db, "users/club"), { displayName: "Club" }));
+  await assertSucceeds(
+    setDoc(doc(associationDb("newClub"), "users/newClub"), { accountType: "association" }),
+  );
+});
+
+test("a student can't read or write another student's users/{uid}", async () => {
+  const db = studentDb("u1");
+
+  await assertFails(getDoc(doc(db, "users/u2")));
+  await assertFails(updateDoc(doc(db, "users/u2"), { section: "IN" }));
+  await assertFails(setDoc(doc(db, "users/u2"), { uid: "u2" }));
+  await assertFails(deleteDoc(doc(db, "users/u2")));
+  await assertFails(setDoc(doc(db, "users/u9"), { uid: "u9" }));
+});
+
+test("an association account can't read or write a student's users/{uid}", async () => {
+  const db = associationDb("verifiedClub");
+
+  await assertFails(getDoc(doc(db, "users/u1")));
+  await assertFails(updateDoc(doc(db, "users/u1"), { section: "IN" }));
+});
+
+test("no one can list the users collection", async () => {
+  await assertFails(getDocs(collection(studentDb("u1"), "users")));
+});
+
+test("an unverified account can't read or write its own users/{uid}", async () => {
+  for (const db of [
+    firestoreAs("student@epfl.ch", false, "u1"),
+    firestoreAs("contact@club.org", false, "club"),
+  ]) {
+    await assertFails(getDoc(doc(db, "users/u1")));
+    await assertFails(getDoc(doc(db, "users/club")));
+    await assertFails(updateDoc(doc(db, "users/u1"), { section: "IN" }));
+    await assertFails(updateDoc(doc(db, "users/club"), { displayName: "Club" }));
+  }
+  await assertFails(setDoc(doc(firestoreAs("student@epfl.ch", false, "u3"), "users/u3"), {}));
+});
+
+test('an account whose email_verified is the string "true" can\'t reach its own users/{uid}', async () => {
+  await assertFails(getDoc(doc(firestoreAs("student@epfl.ch", "true", "u1"), "users/u1")));
+});
+
+test("a signed-out user can't read or write any users/{uid}", async () => {
+  const db = env.unauthenticatedContext().firestore();
+
+  await assertFails(getDoc(doc(db, "users/u1")));
+  await assertFails(setDoc(doc(db, "users/u3"), { uid: "u3" }));
+});
+
+test("a subcollection of your own users/{uid} is denied", async () => {
+  await assertFails(setDoc(doc(studentDb("u1"), "users/u1/private/x"), { text: "Hi" }));
+});
+
+test("creating your own users/{uid} with isAssociationVerified false is allowed", async () => {
+  await assertSucceeds(
+    setDoc(doc(associationDb("newClub"), "users/newClub"), {
+      accountType: "association",
+      isAssociationVerified: false,
+    }),
+  );
+});
+
+test("creating your own users/{uid} with isAssociationVerified set is denied", async () => {
+  for (const value of [true, "true", 1]) {
+    await assertFails(
+      setDoc(doc(associationDb("newClub"), "users/newClub"), {
+        accountType: "association",
+        isAssociationVerified: value,
+      }),
+    ).catch((error) => {
+      throw new Error(`isAssociationVerified ${JSON.stringify(value)} was allowed: ${error.message}`);
+    });
+  }
+});
+
+test("updating your own users/{uid} can't set isAssociationVerified", async () => {
+  await assertFails(
+    updateDoc(doc(associationDb("club"), "users/club"), { isAssociationVerified: true }),
+  );
+  await assertFails(
+    updateDoc(doc(studentDb("u1"), "users/u1"), { isAssociationVerified: false }),
+  );
+});
+
+test("a verified association can't change or remove its isAssociationVerified", async () => {
+  const db = associationDb("verifiedClub");
+
+  await assertFails(updateDoc(doc(db, "users/verifiedClub"), { isAssociationVerified: false }));
+  await assertFails(updateDoc(doc(db, "users/verifiedClub"), { isAssociationVerified: deleteField() }));
+  await assertFails(setDoc(doc(db, "users/verifiedClub"), { accountType: "association" }));
+});
+
+test("a verified association can update its other fields, keeping isAssociationVerified", async () => {
+  const db = associationDb("verifiedClub");
+
+  await assertSucceeds(updateDoc(doc(db, "users/verifiedClub"), { displayName: "Club" }));
+  await assertSucceeds(
+    setDoc(doc(db, "users/verifiedClub"), {
+      uid: "verifiedClub",
+      accountType: "association",
+      isAssociationVerified: true,
+      displayName: "Club",
+    }),
+  );
+});
