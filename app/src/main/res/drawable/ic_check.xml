@@ -1,0 +1,7 @@
+<!-- Contributors: Claude (vector drawn from the Figma profile step, #34). -->
+<!-- Check mark (verified email; the chosen menu item is tinted Ink), exact path from the Figma "Profile · after email sign-up" frame. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="14dp" android:height="14dp" android:viewportWidth="14" android:viewportHeight="14">
+    <path android:pathData="M11.6666,3.5L5.24992,9.91667L2.33325,7" android:strokeColor="#1A7046"
+        android:strokeWidth="1.4" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

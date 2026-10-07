@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (profile step texts from the Figma "First proposal revamped" frames, #34). -->
+<resources>
+    <string name="profile_back">Back</string>
+    <string name="profile_step">Step 1 of 2</string>
+    <string name="profile_title">Complete your profile</string>
+    <string name="profile_subtitle">Your email is verified. Add your section and year so we can match you.</string>
+    <string name="profile_full_name">Full name</string>
+    <string name="profile_email">EPFL email</string>
+    <string name="profile_verified">Verified</string>
+    <string name="profile_section">Section</string>
+    <string name="profile_year">Year</string>
+    <string name="profile_choose">Choose</string>
+    <string name="profile_privacy">Other students only see your name, section, year and interests, never your email.</string>
+    <string name="profile_continue">Continue</string>
+    <string name="profile_saving">Saving…</string>
+    <string name="profile_could_not_save">Couldn\'t save your profile. Check your connection and try again.</string>
+</resources>

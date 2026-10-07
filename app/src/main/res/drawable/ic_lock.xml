@@ -1,0 +1,7 @@
+<!-- Contributors: Claude (vector drawn from the Figma profile step, #34). -->
+<!-- Lock on the read-only email field, exact path from the Figma "Profile · after email sign-up" frame. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="18dp" android:height="18dp" android:viewportWidth="18" android:viewportHeight="18">
+    <path android:pathData="M6,8.25V5.25C6,4.45435 6.31607,3.69129 6.87868,3.12868C7.44129,2.56607 8.20435,2.25 9,2.25C9.79565,2.25 10.5587,2.56607 11.1213,3.12868C11.6839,3.69129 12,4.45435 12,5.25V8.25M3.75,8.25H14.25V15.75H3.75V8.25Z" android:strokeColor="#6B6B76"
+        android:strokeWidth="1.5" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>
