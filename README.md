@@ -1,4 +1,4 @@
-<!-- Contributors: Claude (drafted the README structure, Setup, Running and testing, Tech stack and Project links sections; Firestore index deployment, #49); OpenAI Codex (documented startup routing and rebase reconciliation). -->
+<!-- Contributors: Claude (drafted the README structure, Setup, Running and testing, Tech stack and Project links sections; Firestore index deployment, #49); OpenAI Codex (documented startup routing and rebase reconciliation).; OpenAI Codex (Mapbox integration and setup, #50). -->
 
 # PolySocial
 
@@ -46,7 +46,7 @@ On launch, signed-out users see Welcome. A retained unverified session opens the
 
 - **Kotlin** and **Jetpack Compose** (Material 3), **MVVM** with `StateFlow` UI state; dependency injection with **Hilt**
 - **Firebase:** Authentication, Cloud Firestore (with offline persistence), Cloud Storage for photos, Local Emulator Suite for tests
-- **Maps:** Google Maps SDK for now, Mapbox under consideration; **Nominatim / OpenStreetMap** for geocoding
+- **Maps:** Mapbox Maps SDK and its Compose extension; **Nominatim / OpenStreetMap** for geocoding
 - **Device:** GPS (one-off location), CameraX + ML Kit for QR codes, WorkManager for reminders
 - **Quality:** JUnit, Robolectric, Kaspresso, JaCoCo coverage, SonarCloud, ktfmt, GitHub Actions CI
 
@@ -58,12 +58,22 @@ The app needs two private files that are **not in the repository**. Both are git
 
 | File | What it holds | How to get it |
 |---|---|---|
-| `local.properties` (repository root) | The Android SDK path: `sdk.dir=/path/to/Android/Sdk`. Later also the Maps API key. | Android Studio creates it when you open the project. Otherwise, write that one line yourself. |
+| `local.properties` (repository root) | The Android SDK path: `sdk.dir=/path/to/Android/Sdk`. Also `MAPBOX_ACCESS_TOKEN`, the team’s dedicated public Mapbox token. | Android Studio creates it when you open the project. Otherwise, write that one line yourself. |
 | `app/google-services.json` | The Firebase configuration for `com.polysocial` | Firebase console → Project settings → *Your apps* → Android app `com.polysocial` → download `google-services.json`. Or ask a teammate. |
 
 **Prerequisites:** Android Studio with the Android SDK (compile SDK 37), and JDK 17 or newer.
 
 Then build with `./gradlew assembleDebug` (on Windows, `./gradlew.bat assembleDebug`). CI creates both private files from GitHub secrets.
+
+### Mapbox setup
+
+Create a team Mapbox account and a dedicated **public** (`pk.`) token for PolySocial with only `styles:read` and `fonts:read` public scopes. Put `MAPBOX_ACCESS_TOKEN=your-public-token` in the git-ignored root `local.properties`. Gradle generates `mapbox_access_token`; never commit a token resource or package a secret (`sk.`) token. Downloads from the Mapbox Maven repository need no secret token. The `ndk27` artifacts support Android’s 16 KB memory page requirement.
+
+Mapbox mobile tokens cannot use Google’s package/SHA-1 restrictions; URL restrictions are intended for browser requests and must not be enabled for this Android token. Use a dedicated token per app/environment, minimal scopes, usage monitoring and rotation. Keep billing/budget alerts configured in the team’s Mapbox account. See [Mapbox installation](https://docs.mapbox.com/android/maps/guides/install/) and [token restrictions](https://docs.mapbox.com/accounts/guides/tokens/).
+
+Without a token, CI and local builds still compile and the map displays a setup state. The account/token must be provided before native map rendering, tile errors and billing can be verified on a device. The public event source is injected behind `MapEventSource`; until #49’s `getUpcomingPublicEvents` API lands, production shows “Events unavailable” rather than fixture events or a misleading empty result. Connecting that adapter is the remaining #49 integration step.
+
+**Map privacy:** Mapbox receives map resource requests for the viewed area. The renderer does not enable a location puck, GPS subscription or geofencing. Optional Mapbox telemetry and geofencing consent are set to disabled through the Compose attribution control when the map is created; SDK initialization/accounting requests still occur. Mapbox’s logo, attribution and telemetry preference dialog remain visible. No map tile prefetching or explicit offline region downloads are added; tiles already cached by the SDK remain usable.
 
 Before every commit, check that `git status` never lists these files. If it does, fix `.gitignore` first and don't commit them.
 

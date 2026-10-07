@@ -1,6 +1,9 @@
+// Contributors: OpenAI Codex (Mapbox dependencies and local public-token resource, #50).
 // Contributors: Claude (Hilt, KSP and Hilt testing setup, JaCoCo on Hilt-rewritten classes, #70;
 // Navigation Compose dependency, #41; MockK and kotlinx-coroutines-play-services, #32);
 // OpenAI Codex (sign-up test dependencies, review cleanup and Android UI-test MockK binding).
+import java.util.Properties
+
 plugins {
   alias(libs.plugins.androidApplication)
   alias(libs.plugins.kotlinCompose)
@@ -10,6 +13,17 @@ plugins {
   alias(libs.plugins.ksp)
   alias(libs.plugins.hilt)
   id("jacoco")
+}
+
+val mapboxProperties =
+    Properties().apply {
+      val file = rootProject.file("local.properties")
+      if (file.exists()) file.inputStream().use { load(it) }
+    }
+val mapboxToken = mapboxProperties.getProperty("MAPBOX_ACCESS_TOKEN", "").trim()
+
+require(mapboxToken.isEmpty() || mapboxToken.matches(Regex("pk\\.[A-Za-z0-9._-]+"))) {
+  "MAPBOX_ACCESS_TOKEN must be a public pk. token; secret tokens must never enter the app"
 }
 
 android {
@@ -22,6 +36,7 @@ android {
     targetSdk = 37
     versionCode = 1
     versionName = "1.0"
+    resValue("string", "mapbox_access_token", mapboxToken)
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     vectorDrawables { useSupportLibrary = true }
@@ -45,7 +60,10 @@ android {
 
   testCoverage { jacocoVersion = "0.8.15" }
 
-  buildFeatures { compose = true }
+  buildFeatures {
+    compose = true
+    resValues = true
+  }
 
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_17
@@ -149,6 +167,11 @@ dependencies {
   // UI Tests
   globalTestImplementation(libs.compose.test.junit)
   debugImplementation(libs.compose.test.manifest)
+
+  // ------------- Mapbox ------------------
+  implementation(libs.mapbox.android)
+  implementation(libs.mapbox.compose)
+  implementation(libs.androidx.lifecycle.runtime.compose)
 
   // ------------- Firebase ------------------
   implementation(platform(libs.firebase.bom))
