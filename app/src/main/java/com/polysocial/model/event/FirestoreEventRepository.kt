@@ -6,6 +6,7 @@ import com.google.firebase.FirebaseException
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.MetadataChanges
+import com.google.firebase.firestore.TransactionOptions
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.network.NetworkMonitor
 import java.time.Clock
@@ -26,7 +27,9 @@ const val EVENTS_COLLECTION = "events"
  *
  * The write runs in a transaction. Firestore only runs transactions against the server, so if the
  * connection drops after the [NetworkMonitor] check, the write fails with a network error instead
- * of being queued and finished later.
+ * of being queued and finished later. The transaction is tried only once: it only creates a new
+ * document, so it can't conflict with another write, and retries would just delay the offline
+ * error.
  *
  * Every event is created without the association badge for now: the creator's verified-association
  * status comes with the profile (#90).
@@ -50,7 +53,7 @@ class FirestoreEventRepository(
     val document = db.collection(EVENTS_COLLECTION).document()
     val fields = event.withCreator(user.uid, isVerifiedAssociation = false).toFirestoreMap()
     return try {
-      db.runTransaction { it.set(document, fields) }.await()
+      db.runTransaction(SINGLE_ATTEMPT) { it.set(document, fields) }.await()
       CreateEventResult.Created(document.id)
     } catch (e: FirebaseException) {
       if (e.isOffline()) CreateEventResult.NetworkError else CreateEventResult.UnexpectedError
@@ -99,4 +102,8 @@ class FirestoreEventRepository(
 
   private fun FirebaseException.isOffline() =
       this is FirebaseFirestoreException && code == FirebaseFirestoreException.Code.UNAVAILABLE
+
+  private companion object {
+    val SINGLE_ATTEMPT: TransactionOptions = TransactionOptions.Builder().setMaxAttempts(1).build()
+  }
 }

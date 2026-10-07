@@ -16,6 +16,7 @@ import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
 import com.google.firebase.firestore.SnapshotMetadata
 import com.google.firebase.firestore.Transaction
+import com.google.firebase.firestore.TransactionOptions
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.network.NetworkMonitor
@@ -48,6 +49,7 @@ class FirestoreEventRepositoryTest {
   private val document = mockk<DocumentReference>()
   private val transaction = mockk<Transaction>()
   private val written = slot<Any>()
+  private val options = slot<TransactionOptions>()
 
   private val auth = FakeAuthRepository(AuthUser("creator", "creator@epfl.ch", true))
   private var online = true
@@ -65,15 +67,16 @@ class FirestoreEventRepositoryTest {
     every { collection.document() } returns document
     every { document.id } returns "event-42"
     every { transaction.set(document, capture(written)) } returns transaction
-    every { db.runTransaction(any<Transaction.Function<Transaction>>()) } answers
+    every { db.runTransaction(capture(options), any<Transaction.Function<Transaction>>()) } answers
         {
-          Tasks.forResult(firstArg<Transaction.Function<Transaction>>().apply(transaction))
+          Tasks.forResult(secondArg<Transaction.Function<Transaction>>().apply(transaction))
         }
   }
 
   private fun failWith(code: FirebaseFirestoreException.Code) {
-    every { db.runTransaction(any<Transaction.Function<Transaction>>()) } returns
-        Tasks.forException(FirebaseFirestoreException("failed", code))
+    every {
+      db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Transaction>>())
+    } returns Tasks.forException(FirebaseFirestoreException("failed", code))
   }
 
   private fun writtenFields() = written.captured as Map<*, *>
@@ -83,6 +86,13 @@ class FirestoreEventRepositoryTest {
     assertEquals(CreateEventResult.Created("event-42"), repository.createEvent(validEvent()))
 
     assertEquals(validEvent().withCreator("creator", false).toFirestoreMap(), writtenFields())
+  }
+
+  @Test
+  fun theWrite_isTriedOnlyOnce() = runTest {
+    repository.createEvent(validEvent())
+
+    assertEquals(1, options.captured.maxAttempts)
   }
 
   @Test
