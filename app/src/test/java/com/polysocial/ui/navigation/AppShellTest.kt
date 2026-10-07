@@ -1,4 +1,5 @@
-// Contributors: Claude (UI tests for the bottom navigation and app bar, #41).
+// Contributors: Claude (UI tests for the bottom navigation and app bar, #41; nested tab routes,
+// #42).
 package com.polysocial.ui.navigation
 
 import android.content.Context
@@ -93,7 +94,7 @@ class AppShellTest {
         assertEquals(entryId, navController.currentBackStackEntry?.id)
         // Only the Events tab can sit below a tab, so back never shows a duplicate
         val below = navController.previousBackStackEntry?.destination?.route
-        assertEquals(if (tab == Tab.EVENTS) null else Tab.EVENTS.route, below)
+        assertEquals(if (tab == Tab.EVENTS) null else Tab.EVENTS.rootRoute, below)
       }
       assertOnTab(tab)
     }

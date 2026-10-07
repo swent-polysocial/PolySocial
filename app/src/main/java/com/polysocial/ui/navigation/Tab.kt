@@ -1,4 +1,5 @@
-// Contributors: Claude (tab definitions for the bottom navigation, #41; loading messages, #43).
+// Contributors: Claude (tab definitions for the bottom navigation, #41; loading messages, #43;
+// per-tab routes, #42).
 package com.polysocial.ui.navigation
 
 import androidx.annotation.DrawableRes
@@ -9,7 +10,7 @@ import com.polysocial.resources.C
 /**
  * The four top-level tabs of the app, in the order they appear in the bottom navigation bar.
  *
- * @property route Navigation route of the tab's root screen.
+ * @property route Navigation route of the tab's own graph, which holds its back stack.
  * @property label Tab name, shown in the bottom bar and as the app bar title.
  * @property icon Icon shown in the bottom bar and on the tab's placeholder screen.
  * @property loadingMessage Message of the shared loading state while the tab's content loads.
@@ -55,5 +56,20 @@ enum class Tab(
       R.string.loading_profile,
       C.Tag.nav_item_profile,
       C.Tag.screen_profile,
-  ),
+  );
+
+  /** Route of the tab's root screen, the start destination of its graph. */
+  val rootRoute: String
+    get() = "$route/root"
+
+  /**
+   * Route of the tab's placeholder detail screen, one level below its root. Only tests open it for
+   * now. Real screens (e.g. an event's detail from the Map preview card, #50) replace it.
+   */
+  val detailRoute: String
+    get() = "$route/detail"
+
+  /** Test tag of the tab's placeholder detail screen. */
+  val detailTag: String
+    get() = "detail_$route"
 }

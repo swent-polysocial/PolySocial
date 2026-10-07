@@ -1,4 +1,4 @@
-<!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43). -->
+<!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42). -->
 <resources>
     <string name="app_name">PolySocial</string>
     <string name="title_activity_main">MainActivity</string>
@@ -9,6 +9,7 @@
     <string name="tab_chats">Chats</string>
     <string name="tab_profile">Profile</string>
     <string name="placeholder_coming_soon">%1$s — coming soon</string>
+    <string name="placeholder_detail_coming_soon">Details — coming soon</string>
     <string name="loading_events">Loading events…</string>
     <string name="loading_map">Loading the map…</string>
     <string name="loading_chats">Loading chats…</string>
