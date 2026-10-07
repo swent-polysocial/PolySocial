@@ -1,4 +1,5 @@
-// Contributors: Claude Opus 5.5 (wrote these tests; large font scale; testing agent: double tap,
+// Contributors: Claude Opus 5.5 (wrote these tests; large font scale; one save report after
+// rotation; picker accessibility; testing agent: double tap,
 // blocked Continue,
 // existing profile, error retry and picker menu behaviour).
 package com.polysocial.ui.profile
@@ -9,8 +10,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.SemanticsNodeInteraction
@@ -19,12 +22,15 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasParent
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -509,5 +515,61 @@ class ProfileSetupScreenTest {
           below.second.boundsInRoot.top >= above.second.boundsInRoot.bottom - 1,
       )
     }
+  }
+
+  // ---- Rotation and accessibility ----
+
+  @Test
+  fun profileSaved_isReportedOnceEvenAfterRotation() {
+    val viewModel = ProfileSetupViewModel(auth, profiles)
+    val restoration = StateRestorationTester(composeTestRule)
+    restoration.setContent {
+      PolySocialTheme {
+        ProfileSetupScreen(onBack = {}, onProfileSaved = { savedCalls++ }, viewModel = viewModel)
+      }
+    }
+    pickSectionAndYear()
+    node(ProfileSetupTestTags.CONTINUE).performClick()
+    composeTestRule.waitForIdle()
+    assertEquals(1, savedCalls)
+
+    // The ViewModel survives the rotation and is still Saved.
+    restoration.emulateSavedInstanceStateRestore()
+    composeTestRule.waitForIdle()
+
+    assertEquals(1, savedCalls)
+  }
+
+  @Test
+  fun pickers_announceTheirLabelValueAndRole() {
+    setContent(filled.copy(section = null))
+
+    node(ProfileSetupTestTags.SECTION)
+        .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.DropdownList))
+        .assert(
+            SemanticsMatcher.expectValue(
+                SemanticsProperties.ContentDescription,
+                listOf(string(R.string.profile_section)),
+            )
+        )
+        .assert(
+            SemanticsMatcher.expectValue(
+                SemanticsProperties.StateDescription,
+                string(R.string.profile_choose),
+            )
+        )
+    node(ProfileSetupTestTags.YEAR)
+        .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "BA3"))
+  }
+
+  @Test
+  fun pickerMenu_exposesTheChosenOptionAsSelected() {
+    setScreen()
+    pick(ProfileSetupTestTags.SECTION, ProfileSetupTestTags.sectionOption("SC"))
+
+    node(ProfileSetupTestTags.SECTION).performClick()
+
+    node(ProfileSetupTestTags.sectionOption("SC")).assertIsSelected()
+    node(ProfileSetupTestTags.sectionOption("IN")).assertIsNotSelected()
   }
 }
