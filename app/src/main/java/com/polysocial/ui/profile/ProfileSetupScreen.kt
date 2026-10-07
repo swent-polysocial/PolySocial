@@ -1,5 +1,6 @@
 // Contributors: Claude (profile step screen for #34, built from the Figma "First proposal
-// revamped" Profile frames; layout that grows with large text after review).
+// revamped" Profile frames; layout that grows with large text, one save report and picker
+// accessibility after review).
 package com.polysocial.ui.profile
 
 import androidx.annotation.StringRes
@@ -27,6 +28,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -42,6 +44,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,6 +63,10 @@ import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -120,7 +127,14 @@ fun ProfileSetupScreen(
     viewModel: ProfileSetupViewModel = hiltViewModel(),
 ) {
   val state by viewModel.uiState.collectAsState()
-  LaunchedEffect(state.status) { if (state.status == ProfileSetupStatus.Saved) onProfileSaved() }
+  // Reported once: after a rotation the ViewModel is still Saved, and the effect runs again.
+  var savedReported by rememberSaveable { mutableStateOf(false) }
+  LaunchedEffect(state.status) {
+    if (state.status == ProfileSetupStatus.Saved && !savedReported) {
+      savedReported = true
+      onProfileSaved()
+    }
+  }
   ProfileSetupContent(
       state = state,
       onBack = onBack,
@@ -459,6 +473,8 @@ private fun Picker(
   var expanded by remember { mutableStateOf(false) }
   var fieldBottom by remember { mutableIntStateOf(0) }
   val shape = MaterialTheme.shapes.small
+  val labelText = stringResource(label)
+  val shownValue = value ?: stringResource(R.string.profile_choose)
   Column(modifier) {
     FieldLabel(label)
     Spacer(Modifier.height(5.5.dp))
@@ -469,7 +485,12 @@ private fun Picker(
               .alpha(if (faded) 0.45f else 1f)
               .background(Bg, shape)
               .border(if (expanded) 2.dp else 1.dp, if (expanded) Ink else Border, shape)
-              .clickable(enabled = enabled) { expanded = true }
+              .clickable(enabled = enabled, role = Role.DropdownList) { expanded = true }
+              // Screen readers announce "Section, IN, drop-down list".
+              .semantics {
+                contentDescription = labelText
+                stateDescription = shownValue
+              }
               .padding(start = textStart, end = 14.dp)
               .testTag(fieldTag),
           verticalAlignment = Alignment.CenterVertically,
@@ -598,7 +619,7 @@ private fun MenuItem(
           .fillMaxWidth()
           .heightIn(min = 40.dp)
           .background(if (selected) Surface else Bg, RoundedCornerShape(8.dp))
-          .clickable(onClick = onClick)
+          .selectable(selected = selected, onClick = onClick)
           .padding(start = 12.dp, end = 10.dp),
       verticalAlignment = Alignment.CenterVertically,
   ) {
