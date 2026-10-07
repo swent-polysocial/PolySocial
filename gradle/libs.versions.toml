@@ -1,5 +1,5 @@
 # Contributors: Claude (Hilt, KSP and Hilt testing entries, #70; Navigation Compose entry, #41;
-# MockK, #32).
+# MockK and coroutines for Play Services Tasks, #32).
 [versions]
 agp = "9.3.3"
 kotlin = "2.4.20"
@@ -21,6 +21,7 @@ mockk = "1.14.11"
 sonar = "7.5.0.8588"
 googleServices = "4.5.0"
 firebaseBom = "34.19.0"
+coroutinesPlayServices = "1.9.0"
 hilt = "2.60.1"
 hiltLifecycleViewModelCompose = "1.4.0"
 ksp = "2.3.12"
@@ -55,6 +56,7 @@ mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-auth = { group = "com.google.firebase", name = "firebase-auth" }
 firebase-firestore = { group = "com.google.firebase", name = "firebase-firestore" }
+kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "coroutinesPlayServices" }
 
 hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
 hilt-compiler = { group = "com.google.dagger", name = "hilt-android-compiler", version.ref = "hilt" }
