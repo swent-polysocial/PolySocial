@@ -59,6 +59,12 @@ The issues for the last four points (#12, #31, #32, #34, #35, #44–#47, #52) st
 ## Traps
 
 - **Security Rules are not filters.** A query that could return a document the user can't read fails entirely. Public events need `where isPrivate == false`. Private events need `array-contains` on `allowedUids`.
+- **Matching Figma to the pixel in Compose** (found on the profile step, #34; the Log in screen likely needs the same):
+  - Chained `Spacer`s round each half-dp Figma gap to whole pixels and the error adds up (4 dp by mid-screen at 2.75x). Place elements at their absolute Figma y instead (`AtFigmaY` in `ProfileSetupScreen.kt`).
+  - Give texts `TextMotion.Animated`: Android otherwise rounds each glyph to a whole pixel, so long texts come out about 1 dp narrower than Figma.
+  - Multi-line texts with a line height need `LineHeightStyle(Center, Trim.None)`; Compose trims the first and last line by default, Figma doesn't.
+  - Material's `DropdownMenu` keeps a 48 dp margin from the window edge and opens *above* a field near the bottom of an 800 dp screen; use a custom `Popup` when Figma shows it below.
+  - Check on a device, not Robolectric (its text metrics differ): render the state, export the Figma frame at the device scale, and compare element by element.
 - **Don't let Firestore map `Event` automatically** (`set(event)`, `toObject`). It stores the Kotlin property `isPrivate` as `private` (and `isAssociationEvent` as `associationEvent`), so queries and rules on `isPrivate` never match, and reading needs a no-argument constructor. Convert to and from a map by hand (writing: `Event.toFirestoreMap()`).
 - `isPrivate == false` combined with a `startTime` range needs a **composite index**. Version it in `firestore.indexes.json`, which doesn't exist yet.
 - **Firestore queues writes while offline** instead of failing them, so a screen that waits for a write would spin forever. `EventRepository.createEvent` checks connectivity first and returns `NetworkError` (#45); any repository whose write the UI waits for must do the same.
