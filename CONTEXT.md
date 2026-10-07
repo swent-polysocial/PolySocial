@@ -33,10 +33,15 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 - **Approved libraries (not added yet):** WorkManager for reminders (scheduled at registration, notification permission asked then). CameraX + ML Kit barcode scanning for QR codes, with typed payloads `polysocial://checkin/{eventId}/{token}` and `polysocial://friend/{uid}` checked by a pure parser.
 - **DI: Hilt** (`@HiltViewModel`, constructor injection). Tests replace repositories with the `Fake…` versions through Hilt test modules. Set up in #70: `PolySocialApp` is the `@HiltAndroidApp` class, `MainActivity` is an `@AndroidEntryPoint`, and Compose gets ViewModels with `hiltViewModel()` (no navigation dependency needed). Each feature adds its own Hilt module for its repositories. Chosen after review over manual DI because it scales as repositories grow.
 - **Back button:** at the root of the Map, Chats or Profile tab, back goes to the Events (home) tab, and at the Events root it exits (Android's standard). This overrides #42's current text.
-- **Associations have no EPFL email** (SIC, Fréquence Banane… use their own domain, often from Google for nonprofits). They sign up with their own verified email and get **no access** until a PolySocial admin verifies them by setting `isAssociationVerified` by hand in the Firebase console (to be documented in the README). Before that, they can only read and write their own `users/{uid}`. No client may ever write `isAssociationVerified`. Every granting rule is therefore `email_verified` **and** (`@epfl.ch` email **or** verified association). An in-app admin verification flow is in the backlog, not a current priority. Section-exclusive events are deferred.
+- **Associations have no EPFL email** (SIC, Fréquence Banane… use their own domain, often from Google for nonprofits). They sign up with their own verified email and get **no access** until a PolySocial admin verifies them by setting `isAssociationVerified` by hand in the Firebase console (to be documented in the README). An in-app admin verification flow is in the backlog, not a current priority.
+  - **Rules:** every granting rule needs `email_verified` **and** an `@epfl.ch` email (students) **or** a verified association (`accountType == "association"` and `isAssociationVerified`).
+  - **Only exception:** any account with a verified email may read and write its own `users/{uid}`, but never set `isAssociationVerified`, on create or update. That is all an unverified association can reach.
+  - **What a verified association can do** (Figma): set up its association and see its profile, manage its members and their roles, and publish and manage its own events (Events tab: upcoming, drafts, past). No access to students' profiles, groups, chats or matching.
+  - **Order of work:** #33 (PR #78) stays students-only. The association branch arrives with #35, together with protecting `isAssociationVerified` and removing or narrowing the catch-all `match /{document=**}`. Before that, any EPFL user could write someone else's `users/{uid}` and verify an outside account. #47 then accepts verified associations for their own events.
+- **Section-exclusive events** are deferred.
 - **Offline** relies only on Firestore's offline cache. No Room, no map tile prefetching.
 
-The issues for the last four points (#12, #31, #32, #34, #35, #44–#47, #52) still describe the old design until they are edited. #33, #35 and #47 still assume every account has an `@epfl.ch` email.
+The issues for the last four points (#12, #31, #32, #34, #35, #44–#47, #52) still describe the old design until they are edited. #35 and #47 don't mention associations without an `@epfl.ch` email yet.
 
 ## Traps
 
@@ -51,6 +56,7 @@ The issues for the last four points (#12, #31, #32, #34, #35, #44–#47, #52) st
 
 - **Map provider:** Google Maps (current default) or Mapbox (recommended by the coaches)?
 - **Sign-in providers:** add Google or Microsoft sign-in next to email/password? Every student account still needs a verified `@epfl.ch` email (checked by the rules). Only email/password needs our Verify Email screen, because Google and Microsoft deliver already-verified emails.
+- **Association members and event drafts:** Figma has them, but there is no data model yet. How does an association find and add a student as a member, and what can each role do? Drafts are not in the `Event` model.
 
 Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
@@ -58,7 +64,7 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 
-- 2026-10-06 · Association accounts use their own (non-EPFL) email and get no access until a PolySocial admin verifies them. The rules accept an `@epfl.ch` email or a verified association. (this PR)
+- 2026-10-06 · Association accounts use their own (non-EPFL) email and get no access until a PolySocial admin verifies them. A verified association only reaches its own association, members and events. The association rule lands with #35, after the catch-all rule is gone. (#80)
 - 2026-10-04 · Coverage bar 95% lines on new code (wiki). The ~1000-line PR cap counts production code only; tests ship in the same PR, and a fix goes in the same commit as its regression test. (this PR)
 - 2026-10-04 · CI split into parallel "Build and test" and "Release build" jobs behind the single required `CI` check. Docs-only PRs skip the build. (#67)
 - 2026-10-04 · Secrets and machine files git-ignored, README setup section added, and a pre-commit secrets check required in `AGENTS.md`. (#64)
