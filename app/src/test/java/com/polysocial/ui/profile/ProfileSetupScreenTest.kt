@@ -1,4 +1,5 @@
-// Contributors: Claude Opus 5.5 (wrote these tests).
+// Contributors: Claude Opus 5.5 (wrote these tests; testing agent: double tap, blocked Continue,
+// existing profile, error retry and picker menu behaviour).
 package com.polysocial.ui.profile
 
 import android.app.Application
@@ -13,7 +14,10 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasParent
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -22,8 +26,12 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
 import com.polysocial.model.auth.AuthUser
@@ -263,6 +271,130 @@ class ProfileSetupScreenTest {
 
     assertEquals(1, backCalls)
     assertEquals(0, savedCalls)
+  }
+
+  @Test
+  fun doubleTapOnContinue_createsTheProfileOnce() {
+    profiles.createGate = CompletableDeferred()
+    setScreen()
+    pickSectionAndYear()
+
+    // A quick double tap while the first save is still running: the second must write nothing.
+    node(ProfileSetupTestTags.CONTINUE).performTouchInput {
+      click()
+      click()
+    }
+    profiles.createGate?.complete(Unit)
+    composeTestRule.waitForIdle()
+
+    assertEquals(1, profiles.createdProfiles.size)
+    assertEquals(1, savedCalls)
+  }
+
+  @Test
+  fun disabledContinue_neverReachesTheRepository() {
+    setScreen()
+
+    node(ProfileSetupTestTags.CONTINUE).performClick()
+    pick(ProfileSetupTestTags.SECTION, ProfileSetupTestTags.sectionOption("IN"))
+    node(ProfileSetupTestTags.CONTINUE).performClick()
+    pick(ProfileSetupTestTags.YEAR, ProfileSetupTestTags.yearOption("BA3"))
+    node(ProfileSetupTestTags.FULL_NAME).performTextClearance()
+    node(ProfileSetupTestTags.CONTINUE).assertIsNotEnabled().performClick()
+    composeTestRule.waitForIdle()
+
+    assertEquals(emptyList<Any>(), profiles.createdProfiles)
+    assertEquals(0, savedCalls)
+  }
+
+  @Test
+  fun existingProfile_movesOnWithoutAnError() {
+    profiles.createProfileResult = CreateProfileResult.AlreadyExists
+    setScreen()
+    pickSectionAndYear()
+
+    node(ProfileSetupTestTags.CONTINUE).performClick()
+    composeTestRule.waitForIdle()
+
+    node(ProfileSetupTestTags.ERROR).assertDoesNotExist()
+    assertEquals(1, profiles.createdProfiles.size)
+    assertEquals(1, savedCalls)
+  }
+
+  @Test
+  fun failedSave_editingHidesTheErrorAndContinueRetriesWithTheNewValue() {
+    profiles.createProfileResult = CreateProfileResult.UnexpectedError
+    setScreen()
+    pickSectionAndYear(year = "BA3")
+    node(ProfileSetupTestTags.CONTINUE).performClick()
+    composeTestRule.waitForIdle()
+    node(ProfileSetupTestTags.ERROR).assertExists()
+    assertEquals(0, savedCalls)
+
+    pick(ProfileSetupTestTags.YEAR, ProfileSetupTestTags.yearOption("BA4"))
+    node(ProfileSetupTestTags.ERROR).assertDoesNotExist()
+    profiles.createProfileResult = CreateProfileResult.Created
+    node(ProfileSetupTestTags.CONTINUE).performClick()
+    composeTestRule.waitForIdle()
+
+    assertEquals(listOf("BA3", "BA4"), profiles.createdProfiles.map { it.year })
+    assertEquals(1, savedCalls)
+  }
+
+  @Test
+  fun pickerMenu_backClosesItAndKeepsTheValue() {
+    setScreen()
+    pick(ProfileSetupTestTags.SECTION, ProfileSetupTestTags.sectionOption("IN"))
+
+    node(ProfileSetupTestTags.SECTION).performClick()
+    node(ProfileSetupTestTags.sectionOption("AR")).assertExists()
+    Espresso.pressBack()
+    composeTestRule.waitForIdle()
+
+    node(ProfileSetupTestTags.sectionOption("AR")).assertDoesNotExist()
+    node(ProfileSetupTestTags.SECTION).assert(shows("IN"))
+  }
+
+  @Test
+  fun pickerMenu_opensAtTheSelectedValueAndEveryOptionIsReachable() {
+    setScreen()
+    pick(ProfileSetupTestTags.SECTION, ProfileSetupTestTags.sectionOption("SC"))
+
+    node(ProfileSetupTestTags.SECTION).performClick()
+
+    // SC is near the end of the list: the menu opens scrolled to it, past the first options.
+    node(ProfileSetupTestTags.sectionOption("SC")).assertIsDisplayed()
+    node(ProfileSetupTestTags.sectionOption(SECTIONS.first())).assertIsNotDisplayed()
+    for (code in SECTIONS) {
+      node(ProfileSetupTestTags.sectionOption(code)).performScrollTo().assertIsDisplayed()
+    }
+  }
+
+  @Test
+  fun pickerMenu_marksOnlyTheSelectedOption() {
+    setScreen()
+    pick(ProfileSetupTestTags.YEAR, ProfileSetupTestTags.yearOption("MA1"))
+
+    node(ProfileSetupTestTags.YEAR).performClick()
+
+    for (code in YEARS) {
+      assertEquals(
+          code,
+          if (code == "MA1") FontWeight.Bold else FontWeight.Normal,
+          optionFontWeight(ProfileSetupTestTags.yearOption(code), code),
+      )
+    }
+  }
+
+  /** The font weight the option tagged [tag] draws its [text] with. */
+  private fun optionFontWeight(tag: String, text: String): FontWeight? {
+    val textNode =
+        composeTestRule
+            .onNode(hasText(text) and hasParent(hasTestTag(tag)), useUnmergedTree = true)
+            .fetchSemanticsNode()
+    val layouts = mutableListOf<TextLayoutResult>()
+    textNode.config[SemanticsActions.GetTextLayoutResult].action?.invoke(layouts)
+    return layouts.single().layoutInput.style.fontWeight
   }
 
   // ---- Each Figma state ----
