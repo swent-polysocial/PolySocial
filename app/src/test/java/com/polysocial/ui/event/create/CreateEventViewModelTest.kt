@@ -59,6 +59,14 @@ class CreateEventViewModelTest {
   }
 
   @Test
+  fun aPastStartTime_showsItsErrorBeforeTheRestOfTheFormIsFilled() {
+    viewModel.onDatePick(LocalDate.of(2026, 10, 7))
+    viewModel.onStartTimePick(LocalTime.of(10, 0))
+
+    assertEquals(setOf(CreateEventFormError.START_IN_PAST), state().visibleErrors)
+  }
+
+  @Test
   fun submittingAnIncompleteForm_showsEveryErrorAndSendsNothing() = runTest {
     viewModel.onSubmit()
     advanceUntilIdle()

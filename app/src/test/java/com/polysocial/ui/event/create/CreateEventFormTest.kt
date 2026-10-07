@@ -143,4 +143,37 @@ class CreateEventFormTest {
     assertTrue(CreateEventFormError.TITLE_TOO_LONG in errors)
     assertTrue(CreateEventFormError.DESCRIPTION_TOO_LONG in errors)
   }
+
+  @Test
+  fun errors_checkTheTimesBeforeTheOtherFieldsArePicked() {
+    val pastStart =
+        CreateEventForm(date = LocalDate.of(2026, 10, 7), startTime = LocalTime.of(10, 0))
+    val endAtStart =
+        CreateEventForm(
+            date = LocalDate.of(2026, 10, 10),
+            startTime = LocalTime.of(14, 0),
+            endTime = LocalTime.of(14, 0),
+        )
+
+    assertTrue(CreateEventFormError.START_IN_PAST in pastStart.errors(FORM_NOW, ZURICH))
+    assertTrue(CreateEventFormError.END_SAME_AS_START in endAtStart.errors(FORM_NOW, ZURICH))
+  }
+
+  @Test
+  fun toEvent_trimsTheTitleAndDescription() {
+    val event =
+        completeForm()
+            .copy(title = "  Study together ", description = "\nExercise sheet 4  ")
+            .toEvent(ZURICH)!!
+
+    assertEquals("Study together", event.title)
+    assertEquals("Exercise sheet 4", event.description)
+  }
+
+  @Test
+  fun errors_countTheTitleLengthWithoutSurroundingSpaces() {
+    val form = completeForm().copy(title = "a".repeat(MAX_TITLE_LENGTH) + "  ")
+
+    assertEquals(emptySet<CreateEventFormError>(), form.errors(FORM_NOW, ZURICH))
+  }
 }
