@@ -1,4 +1,5 @@
-// Contributors: Claude Opus 5.5 (wrote these tests; refresh after Log in).
+// Contributors: Claude Opus 5.5 (wrote these tests; refresh after Log in; full profile fixture,
+// #34).
 package com.polysocial.ui.start
 
 import com.polysocial.model.auth.AuthUser
@@ -18,7 +19,16 @@ class AppStartViewModelTest {
   @get:Rule val mainDispatcherRule = MainDispatcherRule()
 
   private val verified = AuthUser(uid = "u1", email = "a@epfl.ch", isEmailVerified = true)
-  private val found = ProfileResult.Found(UserProfile(uid = "u1", email = "a@epfl.ch"))
+  private val found =
+      ProfileResult.Found(
+          UserProfile(
+              uid = "u1",
+              email = "a@epfl.ch",
+              displayName = "Test Student",
+              section = "IN",
+              year = "BA3",
+          )
+      )
 
   private val auth = FakeAuthRepository()
   private val profiles = FakeUserProfileRepository()
