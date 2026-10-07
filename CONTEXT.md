@@ -92,11 +92,11 @@ Newest first, one line each, with a link. Remove a line once its content lives i
 - 2026-10-07 · One ViewModel per screen instead of `AuthViewModel`. `AuthRepository` grows per issue instead of declaring stubs up front, and Firebase Tasks use the library's `Task.await()`. #32 is split: auth layer and `LoginViewModel` (#72), app-start routing (separate PR), Log in screen (#76). (#72)
 - 2026-10-07 · Per-tab back stacks: one nested graph per tab with Android's standard save/restore pattern, no custom back handling. (#42)
 - 2026-10-07 · [#30](https://github.com/swent-polysocial/PolySocial/issues/30): sign-up extends the merged #72 repository with `SignUpResult` and a dedicated `SignUpViewModel`; login keeps `LogInResult`/`LoginViewModel`, and both use one Hilt binding. Verification methods remain for #31.
+- 2026-10-07 · No catch-all rule: deny by default. `users/{uid}` is owner-only for any verified email (associations included), and `isAssociationVerified` is admin-only. The verified-association rule comes with #47. (#35)
 - 2026-10-06 · Create Event follows the Figma: "Event created" confirmation instead of opening the detail screen, "+1 day" for overnight end times, offline and location-off states. The model side is #45's line below. (#44)
 - 2026-10-06 · Tab roots show a shared loading state, driven by a ViewModel per tab, with no artificial delay. (#43)
 - 2026-10-06 · Association accounts use their own (non-EPFL) email and get no access until a PolySocial admin verifies them. A verified association only reaches its own association, members and events. The association rule lands with #35, after the catch-all rule is gone. (#80)
 - 2026-10-06 · ViewModel rule worded as "every screen that holds state": the app shell has none, since the `NavController` owns navigation state. (#85)
-- 2026-10-07 · No catch-all rule: deny by default. `users/{uid}` is owner-only for any verified email (associations included), and `isAssociationVerified` is admin-only. The verified-association rule comes with #47. (#35)
 - 2026-10-05 · Every rule requires a verified `@epfl.ch` user (`isEpflUser()`). Rules tests use `@firebase/rules-unit-testing` with Node's test runner, in `firebase/`. (#33)
 - 2026-10-05 · App shell with Navigation Compose: one `NavHost`, string routes in the `Tab` enum. (#75)
 - 2026-10-05 · Association accounts use `accountType` (student or association), not `isAssociation`. Unverified associations can't create events or add members. (#45)
