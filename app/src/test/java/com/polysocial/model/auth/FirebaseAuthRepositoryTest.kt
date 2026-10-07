@@ -11,20 +11,17 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.FirebaseUser
-import com.polysocial.utils.runWithMainLooper
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.runs
 import io.mockk.verify
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
 
-@OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(AndroidJUnit4::class)
 class FirebaseAuthRepositoryTest {
   private val auth = mockk<FirebaseAuth>()
@@ -50,10 +47,8 @@ class FirebaseAuthRepositoryTest {
     signInReturns(Tasks.forException(error))
   }
 
-  private fun kotlinx.coroutines.test.TestScope.logIn(
-      email: String = "a@epfl.ch",
-      password: String = "secret",
-  ): LogInResult = runWithMainLooper { repository.logIn(email, password) }.getCompleted()
+  private suspend fun logIn(email: String = "a@epfl.ch", password: String = "secret"): LogInResult =
+      repository.logIn(email, password)
 
   @Test
   fun logIn_verifiedUser_returnsSuccessWithTheUser() = runTest {

@@ -1,5 +1,5 @@
 // Contributors: Claude (Hilt, KSP and Hilt testing setup, JaCoCo on Hilt-rewritten classes, #70;
-// Navigation Compose dependency, #41; MockK, #32).
+// Navigation Compose dependency, #41; MockK and kotlinx-coroutines-play-services, #32).
 plugins {
   alias(libs.plugins.androidApplication)
   alias(libs.plugins.kotlinCompose)
@@ -150,6 +150,8 @@ dependencies {
   implementation(platform(libs.firebase.bom))
   implementation(libs.firebase.auth)
   implementation(libs.firebase.firestore)
+  // Task.await() for Firebase calls in coroutines
+  implementation(libs.kotlinx.coroutines.play.services)
 
   // ------------- Hilt (dependency injection) ------------------
   implementation(libs.hilt.android)
