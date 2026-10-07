@@ -266,7 +266,7 @@ class ProfileSetupViewModelTest {
 
   @Test
   fun initialsOf_takesTheFirstAndLastWords() {
-    assertEquals("FN", initialsOf("Franek Najda"))
+    assertEquals("AM", initialsOf("Alex Morel"))
     assertEquals("JD", initialsOf("  jean   paul  doe "))
     assertEquals("A", initialsOf("Ada"))
     assertEquals("", initialsOf("   "))

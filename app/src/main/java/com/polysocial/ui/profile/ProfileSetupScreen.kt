@@ -674,7 +674,7 @@ private fun ContinueButton(state: ProfileSetupUiState, onClick: () -> Unit) {
   }
 }
 
-/** The first letters of the first and last words of [name], in capitals: "Franek Najda" → "FN". */
+/** The first letters of the first and last words of [name], in capitals: "Alex Morel" → "AM". */
 internal fun initialsOf(name: String): String {
   val words = name.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
   if (words.isEmpty()) return ""
