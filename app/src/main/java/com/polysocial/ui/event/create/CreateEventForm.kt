@@ -10,6 +10,7 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
+import java.time.ZonedDateTime
 
 /** A place picked on the map: its coordinates and the name the form shows. */
 data class PickedLocation(val coordinates: Coordinates, val name: String)
@@ -47,27 +48,23 @@ val CreateEventForm.endsNextDay: Boolean
 /**
  * Builds the [Event] to create, or returns null while a required field (category, date, start time,
  * location) is missing or the capacity isn't a number. Times are read in [zone], and an end time
- * earlier than the start time is the next day.
+ * earlier than the start time is the next day. The title and description are trimmed.
  */
 fun CreateEventForm.toEvent(zone: ZoneId): Event? {
   val kind = category ?: return null
-  val start = date?.let { d -> startTime?.let { d.atTime(it).atZone(zone) } } ?: return null
+  val start = startIn(zone) ?: return null
   val place = location ?: return null
   val capacity =
       parseCapacity(capacityText).getOrElse {
         return null
       }
-  val end = endTime?.let {
-    val endDate = if (endsNextDay) start.toLocalDate().plusDays(1) else start.toLocalDate()
-    endDate.atTime(it).atZone(zone).toInstant()
-  }
   return Event(
-      title = title,
-      description = description,
+      title = title.trim(),
+      description = description.trim(),
       category = kind,
       location = place.coordinates,
       startTime = start.toInstant(),
-      endTime = end,
+      endTime = endAfter(start, zone),
       capacity = capacity,
       isPrivate = isPrivate,
   )
@@ -84,12 +81,20 @@ fun CreateEventForm.errors(now: Instant, zone: ZoneId): Set<CreateEventFormError
   if (parseCapacity(capacityText).isFailure) errors += CreateEventFormError.INVALID_CAPACITY
   if (title.isBlank()) errors += CreateEventFormError.MISSING_TITLE
   if (category == null) errors += CreateEventFormError.MISSING_CATEGORY
-  val event = toEvent(zone)
-  val rules =
-      if (event != null) validateNewEvent(event, now)
-      else validateNewEvent(placeholderFor(now), now)
-  errors += rules.map { it.toFormError() }
+  val event = toEvent(zone) ?: placeholderFor(now, zone)
+  errors += validateNewEvent(event, now).map { it.toFormError() }
   return errors
+}
+
+/** The start in [zone], or null until both the date and the start time are picked. */
+private fun CreateEventForm.startIn(zone: ZoneId): ZonedDateTime? = date?.let { day ->
+  startTime?.let { day.atTime(it).atZone(zone) }
+}
+
+/** The end of an event starting at [start]: the next day if it is earlier than the start. */
+private fun CreateEventForm.endAfter(start: ZonedDateTime, zone: ZoneId): Instant? = endTime?.let {
+  val endDate = if (endsNextDay) start.toLocalDate().plusDays(1) else start.toLocalDate()
+  endDate.atTime(it).atZone(zone).toInstant()
 }
 
 /** Empty means no limit; anything else must be a whole number (the minimum is a model rule). */
@@ -101,19 +106,23 @@ private fun parseCapacity(text: String): Result<Int?> {
 }
 
 /**
- * The form's text and capacity in an event that otherwise passes, so their rules can be checked
- * before the date and location are picked.
+ * The form as an event that fills in what is still missing (category, location, and a start at
+ * [now] until the date and start time are picked), so the rules of the fields already filled in,
+ * such as a past start, are checked before the rest of the form.
  */
-private fun CreateEventForm.placeholderFor(now: Instant) =
-    Event(
-        title = title,
-        description = description,
-        category = EventCategory.OTHER,
-        location = Coordinates(0.0, 0.0),
-        startTime = now,
-        capacity = parseCapacity(capacityText).getOrNull(),
-        isPrivate = isPrivate,
-    )
+private fun CreateEventForm.placeholderFor(now: Instant, zone: ZoneId): Event {
+  val start = startIn(zone)
+  return Event(
+      title = title.trim(),
+      description = description.trim(),
+      category = EventCategory.OTHER,
+      location = Coordinates(0.0, 0.0),
+      startTime = start?.toInstant() ?: now,
+      endTime = start?.let { endAfter(it, zone) },
+      capacity = parseCapacity(capacityText).getOrNull(),
+      isPrivate = isPrivate,
+  )
+}
 
 private fun EventValidationError.toFormError() =
     when (this) {
