@@ -1,4 +1,4 @@
-// Contributors: Claude (profile step state for #34).
+// Contributors: Claude (profile step state for #34; unverified accounts refused after review).
 package com.polysocial.ui.profile
 
 import androidx.lifecycle.ViewModel
@@ -81,13 +81,16 @@ constructor(
 
   /**
    * Creates the profile once. Does nothing unless [ProfileSetupUiState.canContinue]. An existing
-   * profile counts as saved, so the user is never stuck on this step.
+   * profile counts as saved, so the user is never stuck on this step. A signed-out or unverified
+   * account never reaches the repository: it gets [ProfileSetupStatus.CouldNotSave].
    */
   fun onContinue() {
     val state = _uiState.value
     if (!state.canContinue) return
+    // Only a verified account may get a profile (#34); routing (#74) and the rules (#35) check it
+    // too, but the step must not rely on them.
     val user = auth.currentUser()
-    if (user == null) {
+    if (user == null || !user.isEmailVerified) {
       _uiState.update { it.copy(status = ProfileSetupStatus.CouldNotSave) }
       return
     }
