@@ -31,10 +31,10 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 - **Profiles are split.** `users/{uid}` is owner-only. `publicProfiles/{uid}` holds visible fields, with a public or private profile (Instagram-style). Section, year and interests are always visible (matching needs them).
 - **Matching** is a deterministic heuristic (tag overlap / first-fit) in a pure module, run **on the device**. Group joins go through a Firestore transaction (capacity). A Cloud Function only if fairness or cheating becomes a problem.
 - **Create Event** opens from a "+" button on the Events and Map tabs and follows the Figma (section 04, #44):
-  - Fields: title, description, category, date with **start and end time**, location (search or map pin), optional capacity, private or public.
-  - Validation errors inline: missing title, past date, missing location, invalid capacity. Capacity is optional, and when set it is **at least 2** (team decision, 2026-10-06).
+  - Fields: title, description, category, date with a start time and an **optional end time**, location (search or map pin), optional capacity, private or public. An end time earlier than the start time means the next day, and the form shows "+1 day" under the end field (Figma "Create event · overnight").
+  - Validation errors inline (limits in "Event fields" above): missing title, title over 80 characters, description over 5000, past date, end time equal to the start time, missing location, capacity below 2.
   - After creating, an **"Event created" confirmation** offers *View event* and *Back to map* (team decision, 2026-10-06).
-  - Creating offline shows an error with *Try again* and keeps the form. If location access is denied, the picker still works with search and the map pin.
+  - Offline, `EventRepository.createEvent` returns `NetworkError` without starting a write, and the ViewModel shows the offline error with *Try again*, keeping the form. If location access is denied, the picker still works with search and the map pin.
 - **Chats:** a one-to-one chat is a two-member group (one model, one set of rules).
 - **Find my group:** positions in `groups/{id}/locations/{uid}`, written only during the event, readable by members only, deleted afterwards. No location history.
 - **Approved libraries (not added yet):** WorkManager for reminders (scheduled at registration, notification permission asked then). CameraX + ML Kit barcode scanning for QR codes, with typed payloads `polysocial://checkin/{eventId}/{token}` and `polysocial://friend/{uid}` checked by a pure parser.
@@ -56,7 +56,7 @@ The issues for the last four points (#12, #31, #32, #34, #35, #44–#47, #52) st
 - **Security Rules are not filters.** A query that could return a document the user can't read fails entirely. Public events need `where isPrivate == false`. Private events need `array-contains` on `allowedUids`.
 - **Don't let Firestore map `Event` automatically** (`set(event)`, `toObject`). It stores the Kotlin property `isPrivate` as `private` (and `isAssociationEvent` as `associationEvent`), so queries and rules on `isPrivate` never match, and reading needs a no-argument constructor. Convert to and from a map by hand (writing: `Event.toFirestoreMap()`).
 - `isPrivate == false` combined with a `startTime` range needs a **composite index**. Version it in `firestore.indexes.json`, which doesn't exist yet.
-- **Firestore queues writes while offline** instead of failing them. A screen that waits for a write (Create Event's "Creating event…") must check connectivity first or use a timeout, or it spins forever.
+- **Firestore queues writes while offline** instead of failing them, so a screen that waits for a write would spin forever. `EventRepository.createEvent` checks connectivity first and returns `NetworkError` (#45); any repository whose write the UI waits for must do the same.
 - After the email is verified, **force an ID-token refresh** (`getIdToken(true)`), or the rules still see `email_verified == false`.
 - Distance on the map is **straight-line** (haversine), labelled as such. Route-based distances are out of scope.
 - **Hilt rewrites the bytecode** of `@AndroidEntryPoint` and `@HiltAndroidApp` classes, so `jacocoTestReport` reads the rewritten classes (`transformDebugClassesWithAsm`) and excludes Hilt's generated ones. Reading the compiler output instead makes those classes show 0% and fails SonarCloud. (#71)
@@ -81,7 +81,7 @@ Newest first, one line each, with a link. Remove a line once its content lives i
 
 - 2026-10-07 · Events are written to Firestore through a hand-written map, in a transaction, after a `NetworkMonitor` online check. (#45)
 - 2026-10-07 · One ViewModel per screen instead of `AuthViewModel`. `AuthRepository` grows per issue instead of declaring stubs up front, and Firebase Tasks use the library's `Task.await()`. #32 is split: auth layer and `LoginViewModel` (#72), app-start routing (separate PR), Log in screen (#76). (#72)
-- 2026-10-06 · Create Event follows the Figma: "Event created" confirmation instead of opening the detail screen, events get an `endTime`, capacity is at least 2, offline and location-off states. (#44)
+- 2026-10-06 · Create Event follows the Figma: "Event created" confirmation instead of opening the detail screen, "+1 day" for overnight end times, offline and location-off states. The model side is #45's line below. (#44)
 - 2026-10-06 · Association accounts use their own (non-EPFL) email and get no access until a PolySocial admin verifies them. A verified association only reaches its own association, members and events. The association rule lands with #35, after the catch-all rule is gone. (#80)
 - 2026-10-05 · Every rule requires a verified `@epfl.ch` user (`isEpflUser()`). Rules tests use `@firebase/rules-unit-testing` with Node's test runner, in `firebase/`. (#33)
 - 2026-10-05 · App shell with Navigation Compose: one `NavHost`, string routes in the `Tab` enum. (#75)
