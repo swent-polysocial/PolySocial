@@ -1,7 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Contributors: Claude (registered the Hilt application class, #70). -->
+<!-- Contributors: Claude (registered the Hilt application class, #70; network state permission for the online check). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Lets NetworkMonitor check whether the device is online before writing to Firestore. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <application
         android:name=".PolySocialApp"
