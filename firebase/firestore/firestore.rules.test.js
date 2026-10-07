@@ -1,4 +1,4 @@
-// Contributors: Claude (rules tests for #33; also firebase/package.json, which can't hold a comment); Claude Opus 5.5 (testing agent: added edge-case, operation and path coverage tests, #33); Claude Opus 5.5 (users/{uid} tests and no catch-all, #35); Claude Opus 5.5 (testing agent: batches, transactions, queries, flag edge cases, uid paths, other paths, #35); Claude Opus 5.5 (fixed uid and accountType, #35).
+// Contributors: Claude (rules tests for #33; also firebase/package.json, which can't hold a comment); Claude Opus 5.5 (testing agent: added edge-case, operation and path coverage tests, #33); Claude Opus 5.5 (users/{uid} tests and no catch-all, #35); Claude Opus 5.5 (testing agent: batches, transactions, queries, flag edge cases, uid paths, other paths, #35); Claude Opus 5.5 (fixed uid and accountType, #35). OpenAI Codex (event visibility and query tests, #52).
 const { after, before, beforeEach, test } = require("node:test");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
@@ -40,7 +40,26 @@ beforeEach(async () => {
   await env.clearFirestore();
   await env.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
-    await setDoc(doc(db, "events/e1"), { title: "Seeded" });
+    await setDoc(doc(db, "groups/g1"), { title: "Seeded" });
+    await setDoc(doc(db, "groups/g1/messages/m1"), { text: "Seeded" });
+    for (const [id, event] of Object.entries({
+      e1: { isPrivate: false, createdBy: "u2", allowedUids: ["u2"] },
+      private: { isPrivate: true, createdBy: "u2", allowedUids: ["u2", "u3", "u4"] },
+      clubPublic: {
+        isPrivate: false,
+        createdBy: "verifiedClub",
+        allowedUids: ["verifiedClub"],
+        isAssociationEvent: true,
+      },
+      clubPrivate: {
+        isPrivate: true,
+        createdBy: "verifiedClub",
+        allowedUids: ["verifiedClub"],
+        isAssociationEvent: true,
+      },
+    })) {
+      await setDoc(doc(db, `events/${id}`), event);
+    }
     await setDoc(doc(db, "events/e1/messages/m1"), { text: "Seeded" });
     await setDoc(doc(db, "users/u1"), { uid: "u1", displayName: "Student One" });
     await setDoc(doc(db, "users/u2"), { uid: "u2", displayName: "Student Two" });
@@ -69,18 +88,18 @@ function firestoreAs(email, emailVerified, uid = "u1") {
 }
 
 /**
- * Every kind of access to a collection no rule covers yet (#47 adds the events rules), on a
+ * Every kind of access to a collection no rule covers yet, on a
  * top-level collection and on a subcollection. Since #35 there is no catch-all rule, so all of
  * them are denied. Each entry is run on its own so a test names the access that broke.
  */
 const ACCESSES = {
-  get: (db) => getDoc(doc(db, "events/e1")),
-  list: (db) => getDocs(collection(db, "events")),
-  create: (db) => setDoc(doc(db, "events/e2"), { title: "New" }),
-  update: (db) => updateDoc(doc(db, "events/e1"), { title: "Changed" }),
-  delete: (db) => deleteDoc(doc(db, "events/e1")),
-  "subcollection get": (db) => getDoc(doc(db, "events/e1/messages/m1")),
-  "subcollection create": (db) => setDoc(doc(db, "events/e1/messages/m2"), { text: "Hi" }),
+  get: (db) => getDoc(doc(db, "groups/g1")),
+  list: (db) => getDocs(collection(db, "groups")),
+  create: (db) => setDoc(doc(db, "groups/g2"), { title: "New" }),
+  update: (db) => updateDoc(doc(db, "groups/g1"), { title: "Changed" }),
+  delete: (db) => deleteDoc(doc(db, "groups/g1")),
+  "subcollection get": (db) => getDoc(doc(db, "groups/g1/messages/m1")),
+  "subcollection create": (db) => setDoc(doc(db, "groups/g1/messages/m2"), { text: "Hi" }),
 };
 
 async function assertAllAccessDenied(db) {
@@ -105,7 +124,7 @@ test("a verified non-EPFL user can't read or write", async () => {
   await assertFails(setDoc(doc(db, "events/e2"), { title: "New" }));
 });
 
-test("a verified @epfl.ch user is denied every access outside users/{uid}", async () => {
+test("a verified @epfl.ch user is denied every access to uncovered collections", async () => {
   await assertAllAccessDenied(firestoreAs("student@epfl.ch", true));
 });
 
@@ -514,3 +533,163 @@ for (const [name, db] of [
     }
   });
 }
+
+// ---- events/{id} read access (#52); writes remain denied until #47 ----
+
+test("any verified EPFL student can get a public event", async () => {
+  const snapshot = await assertSucceeds(getDoc(doc(studentDb("u1"), "events/e1")));
+  if (snapshot.data().isPrivate !== false) throw new Error("Expected the public event");
+});
+
+for (const [role, uid] of [["creator", "u2"], ["member", "u3"], ["approved requester", "u4"]]) {
+  test(`a private event's ${role} can read it through allowedUids`, async () => {
+    await assertSucceeds(getDoc(doc(studentDb(uid), "events/private")));
+  });
+}
+
+test("an unrelated student can't read a private event", async () => {
+  await assertFails(getDoc(doc(studentDb("u1"), "events/private")));
+});
+
+test("a creator omitted from allowedUids can't bypass the private allowlist", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "events/omittedCreator"), {
+      isPrivate: true, createdBy: "u1", organizerIds: ["u1"], allowedUids: ["u2"],
+    });
+  });
+  await assertFails(getDoc(doc(studentDb("u1"), "events/omittedCreator")));
+});
+
+test("the public query explicitly filters out private events", async () => {
+  const db = studentDb();
+  const snapshot = await assertSucceeds(
+    getDocs(query(collection(db, "events"), where("isPrivate", "==", false))),
+  );
+  if (snapshot.docs.map((item) => item.id).sort().join(",") !== "clubPublic,e1") {
+    throw new Error("The public query returned unexpected events");
+  }
+  await assertFails(getDocs(collection(db, "events")));
+  await assertFails(getDocs(query(collection(db, "events"), where("isPrivate", "==", true))));
+});
+
+test("the private query requires the current student's allowedUids membership", async () => {
+  const db = studentDb("u3");
+  const snapshot = await assertSucceeds(getDocs(query(
+    collection(db, "events"), where("isPrivate", "==", true),
+    where("allowedUids", "array-contains", "u3"),
+  )));
+  if (snapshot.docs.map((item) => item.id).join(",") !== "private") {
+    throw new Error("The private query returned unexpected events");
+  }
+  await assertFails(getDocs(query(
+    collection(db, "events"), where("isPrivate", "==", true),
+    where("allowedUids", "array-contains", "u2"),
+  )));
+});
+
+for (const [name, getDb] of [
+  ["signed-out account", () => env.unauthenticatedContext().firestore()],
+  ["unverified EPFL account", () => firestoreAs("student@epfl.ch", false, "u2")],
+  ["verified outside account", () => firestoreAs("student@example.org", true, "u2")],
+  ["unverified association", () => associationDb("club")],
+  ["association without verified email", () => firestoreAs("contact@club.org", false, "verifiedClub")],
+  ["account without email", () => env.authenticatedContext("u2", { email_verified: true }).firestore()],
+  ["account without email verification", () => env.authenticatedContext("u2", { email: "student@epfl.ch" }).firestore()],
+]) {
+  test(`a ${name} can't get or query public or private events`, async () => {
+    const db = getDb();
+    for (const id of ["e1", "private", "clubPublic", "clubPrivate"]) {
+      await assertFails(getDoc(doc(db, `events/${id}`)));
+    }
+    await assertFails(getDocs(query(collection(db, "events"), where("isPrivate", "==", false))));
+    await assertFails(getDocs(query(
+      collection(db, "events"), where("isPrivate", "==", true),
+      where("allowedUids", "array-contains", "u2"),
+    )));
+  });
+}
+
+for (const [name, event] of [
+  ["missing visibility", { allowedUids: ["u1"] }],
+  ["string visibility", { isPrivate: "false", allowedUids: ["u1"] }],
+  ["null visibility", { isPrivate: null, allowedUids: ["u1"] }],
+  ["missing allowlist", { isPrivate: true }],
+  ["map allowlist", { isPrivate: true, allowedUids: { u1: true } }],
+  ["string allowlist", { isPrivate: true, allowedUids: "u1" }],
+  ["empty allowlist", { isPrivate: true, allowedUids: [] }],
+]) {
+  test(`a student can't read an event with ${name}`, async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "events/malformed"), event);
+    });
+    await assertFails(getDoc(doc(studentDb(), "events/malformed")));
+  });
+}
+
+test("a verified association can only read its own association events", async () => {
+  const db = associationDb("verifiedClub");
+  await assertSucceeds(getDoc(doc(db, "events/clubPublic")));
+  await assertSucceeds(getDoc(doc(db, "events/clubPrivate")));
+  await assertFails(getDoc(doc(db, "events/e1")));
+  await assertFails(getDoc(doc(db, "events/private")));
+  await assertFails(getDoc(doc(db, "users/u1")));
+  await assertFails(getDoc(doc(db, "groups/g1")));
+  await assertFails(getDocs(query(collection(db, "events"), where("isPrivate", "==", false))));
+  const snapshot = await assertSucceeds(getDocs(query(
+    collection(db, "events"), where("createdBy", "==", "verifiedClub"),
+    where("isAssociationEvent", "==", true),
+  )));
+  if (snapshot.size !== 2) throw new Error("Expected the association's two own events");
+});
+
+test("allowlist membership alone gives an outside association no student event access", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await updateDoc(doc(context.firestore(), "events/private"), {
+      allowedUids: ["u2", "verifiedClub"],
+    });
+  });
+  await assertFails(getDoc(doc(associationDb("verifiedClub"), "events/private")));
+});
+
+test("a client can't grant association access through token claims", async () => {
+  const db = env.authenticatedContext("club", {
+    email: "contact@club.org", email_verified: true,
+    accountType: "association", isAssociationVerified: true,
+  }).firestore();
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "events/unverifiedClub"), {
+      isPrivate: false, createdBy: "club", isAssociationEvent: true,
+    });
+  });
+  await assertFails(getDoc(doc(db, "events/unverifiedClub")));
+});
+
+for (const [name, profile] of [
+  ["string verification flag", { accountType: "association", isAssociationVerified: "true" }],
+  ["wrong account type", { accountType: "student", isAssociationVerified: true }],
+  ["missing verification flag", { accountType: "association" }],
+]) {
+  test(`association access denies a profile with ${name}`, async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users/verifiedClub"), profile);
+    });
+    await assertFails(getDoc(doc(associationDb("verifiedClub"), "events/clubPublic")));
+  });
+}
+
+test("association ownership also requires the association-event badge", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await updateDoc(doc(context.firestore(), "events/clubPublic"), { isAssociationEvent: false });
+  });
+  await assertFails(getDoc(doc(associationDb("verifiedClub"), "events/clubPublic")));
+});
+
+test("read access doesn't authorize event writes or event subcollections", async () => {
+  for (const db of [studentDb("u2"), associationDb("verifiedClub")]) {
+    await assertFails(setDoc(doc(db, "events/new"), { isPrivate: false }));
+    await assertFails(updateDoc(doc(db, "events/e1"), { isPrivate: false }));
+    await assertFails(deleteDoc(doc(db, "events/e1")));
+    await assertFails(getDoc(doc(db, "events/e1/messages/m1")));
+    await assertFails(setDoc(doc(db, "events/e1/messages/m2"), { text: "Hi" }));
+  }
+});
