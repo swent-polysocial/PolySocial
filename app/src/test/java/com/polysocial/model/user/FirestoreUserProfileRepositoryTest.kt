@@ -1,6 +1,7 @@
-// Contributors: Claude Opus 5.5 (wrote these tests).
+// Contributors: Claude Opus 5.5 (wrote these tests; cancelled tasks and wrong-typed fields).
 package com.polysocial.model.user
 
+import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.CollectionReference
@@ -15,9 +16,12 @@ import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
 import java.time.Instant
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FirestoreUserProfileRepositoryTest {
@@ -252,5 +256,50 @@ class FirestoreUserProfileRepositoryTest {
     transactionsFail(denied())
 
     assertEquals(UpdateProfileResult.UnexpectedError, repository.updateProfile(profile))
+  }
+
+  // ---- Failures that are not FirebaseExceptions ----
+
+  @Test
+  fun getProfile_cancelledTask_returnsUnexpectedError() = runTest {
+    every { ref.get() } returns Tasks.forCanceled()
+
+    assertEquals(ProfileResult.UnexpectedError, repository.getProfile("u1"))
+  }
+
+  @Test
+  fun createProfile_cancelledTask_returnsUnexpectedError() = runTest {
+    every { db.runTransaction(any<Transaction.Function<Boolean>>()) } returns Tasks.forCanceled()
+
+    assertEquals(CreateProfileResult.UnexpectedError, repository.createProfile(profile))
+  }
+
+  @Test
+  fun updateProfile_cancelledTask_returnsUnexpectedError() = runTest {
+    every { db.runTransaction(any<Transaction.Function<Boolean>>()) } returns Tasks.forCanceled()
+
+    assertEquals(UpdateProfileResult.UnexpectedError, repository.updateProfile(profile))
+  }
+
+  @Test
+  fun getProfile_fieldOfTheWrongType_returnsUnexpectedError() = runTest {
+    val stored = snapshot(storedFields)
+    every { stored.getString("section") } throws RuntimeException("section is not a String")
+    every { ref.get() } returns Tasks.forResult(stored)
+
+    assertEquals(ProfileResult.UnexpectedError, repository.getProfile("u1"))
+  }
+
+  @Test
+  fun cancellingTheCaller_stillCancelsTheCall() = runTest {
+    every { ref.get() } returns TaskCompletionSource<DocumentSnapshot>().task
+    var result: ProfileResult? = null
+    val call = launch(start = CoroutineStart.UNDISPATCHED) { result = repository.getProfile("u1") }
+
+    call.cancel()
+    call.join()
+
+    assertTrue(call.isCancelled)
+    assertEquals(null, result)
   }
 }
