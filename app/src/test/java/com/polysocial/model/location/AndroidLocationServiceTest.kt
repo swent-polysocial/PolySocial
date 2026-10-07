@@ -37,7 +37,7 @@ import org.junit.runner.RunWith
 class AndroidLocationServiceTest {
   private val context = mockk<Context>()
   private val manager = mockk<LocationManager>()
-  private val callback = slot<Consumer<Location>>()
+  private val callback = slot<Consumer<Location?>>()
   private val signal = slot<CancellationSignal>()
   private val provider = slot<String>()
   private lateinit var service: AndroidLocationService
