@@ -1,5 +1,5 @@
 // Contributors: Claude (isEpflUser helper, #33; own users/{uid} rule and no catch-all, #35;
-// fixed uid and accountType after review, #35).
+// fixed uid and accountType after review, #35).; OpenAI Codex (public/private event read rules, #52).
 rules_version = '2';
 
 service cloud.firestore {
@@ -34,6 +34,26 @@ service cloud.firestore {
       allow update: if isOwner()
           && !request.resource.data.diff(resource.data).affectedKeys()
               .hasAny(['uid', 'accountType', 'isAssociationVerified']);
+    }
+
+    // Read access only: event writes arrive with #47. No recursive match grants access to
+    // event subcollections. Private queries also need isPrivate == true and allowedUids
+    // array-contains auth.uid; public queries need isPrivate == false.
+    match /events/{eventId} {
+      function isVerifiedAssociationOwner() {
+        let profile = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+        return hasVerifiedEmail()
+            && profile.accountType == 'association'
+            && profile.isAssociationVerified == true
+            && resource.data.isAssociationEvent == true
+            && resource.data.createdBy == request.auth.uid;
+      }
+
+      allow read: if (isEpflUser()
+          && (resource.data.isPrivate == false
+              || (resource.data.isPrivate == true
+                  && resource.data.allowedUids.hasAny([request.auth.uid]))))
+          || (hasVerifiedEmail() && isVerifiedAssociationOwner());
     }
   }
 }
