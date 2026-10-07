@@ -1,4 +1,4 @@
-<!-- Contributors: Claude (drafted this page and its diagrams from the README, the Scrum Board and the issue descriptions). -->
+<!-- Contributors: Claude (drafted this page and its diagrams from the README, the Scrum Board and the issue descriptions; association accounts without an EPFL email). -->
 
 How PolySocial is built, as we currently envision it. The page follows the [Android App Architecture guide](https://developer.android.com/topic/architecture/intro): a **UI layer** (Compose screens and ViewModels), a **domain layer** of pure Kotlin logic, and a **data layer** of repositories in front of Firebase, the map and geocoding services, and the device sensors.
 
@@ -126,7 +126,7 @@ flowchart TB
 
 - **Result types (#30–#32).** `signUp` returns success, invalid domain, already in use or network error. `logIn` adds wrong credentials. `sendVerificationEmail` has a distinct *throttled* failure for Firebase's too-many-requests error, which the UI shows differently from a real error.
 - **Profile (#34).** `UserProfile` has at least `uid`, `email` and `createdAt`. #45 adds `isAssociation` and `isAssociationVerified`, both defaulting to `false`. The document ID is always the Auth UID, never a client-generated ID. The profile is created **exactly once, at the first verified entry** (Verify Email "Continue", or app-start routing finding a verified user without a profile), because the Security Rules only allow writes from verified accounts. If account creation fails, no profile is written. If the profile write fails, the user sees an error state. Fields other students may see live in a separate `publicProfiles/{uid}` document (see [5.2](#52-collections-and-key-fields)).
-- **Email verification.** Every account must have a verified `@epfl.ch` email, and the Security Rules check this whatever the sign-in method. Sprint 1 uses email/password, where Firebase marks the email unverified until the student clicks the link we send, hence the Verify Email screen. Google or Microsoft sign-in, if added later, deliver already-verified emails, so those users would skip that screen. The rules would not change.
+- **Email verification.** Every student account must have a verified `@epfl.ch` email, and the Security Rules check this whatever the sign-in method. **Associations** have no EPFL email, so they sign up with their own verified email, and they get no access beyond their own `users/{uid}` until a PolySocial admin verifies them (decision 11). Sprint 1 uses email/password, where Firebase marks the email unverified until the student clicks the link we send, hence the Verify Email screen. Google or Microsoft sign-in, if added later, deliver already-verified emails, so those users would skip that screen. The rules would not change.
 - **Log out (#8, #32).** Logging out clears the session, and the next launch routes to Log In.
 
 ### 3.2 Map (Sprint 1)
@@ -353,8 +353,10 @@ Rules live in `firebase/firestore/firestore.rules` and are tested against the Fi
 | Collection | Read | Create | Update / delete | Issue | Status |
 |---|---|---|---|---|---|
 | *every rule* | requires `isEpflUser()`: signed in, `email_verified == true`, email ends with `@epfl.ch` | | | #33 | 🟩 S1 |
+| *association branch* | a verified association (`email_verified == true`, `accountType == "association"`, `isAssociationVerified` set by an admin), **only** on its own association, members and events. Added only once the catch-all rule is removed or narrowed | | | #35 | 🟩 S1 |
 | `users/{uid}` | own document only | own document only | own document only | #35 | 🟩 S1 |
-| `events/{id}`, public | any EPFL user | any EPFL user, `createdBy == auth.uid` and in `organizerIds`. `isAssociationEvent` only for a verified association | organizers only | #47, #52 | 🟩 S1 |
+| | **Only exception to *every rule*:** any account with a verified email reaches its own `users/{uid}`, but never sets `isAssociationVerified` (create or update). That is all an unverified association can reach | | | #35 | 🟩 S1 |
+| `events/{id}`, public | any EPFL user | any EPFL user or verified association, `createdBy == auth.uid` and in `organizerIds`. `isAssociationEvent` only for a verified association | organizers only | #47, #52 | 🟩 S1 |
 | `events/{id}`, private | `auth.uid in allowedUids` (organizers, members, approved match requesters) | as above | organizers only | #52, #23 | 🟩 S1 |
 | `publicProfiles/{uid}` | any EPFL user. Fields beyond the public set only for public profiles or approved connections | owner only | owner only | new issue | 🟦 PB |
 | `groups/**`, `messages` | group members only | members, rate-limit ready | sender only | #25 | 🟦 PB |
@@ -365,7 +367,7 @@ Every PR that changes rules follows the process in `AGENTS.md`: "Changes Securit
 
 ## 7. Design decisions
 
-Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after review. The issues are being updated to match.
+Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after review and 11 revised on 2026-10-06. The issues are being updated to match.
 
 | # | Topic | Decision |
 |---|---|---|
@@ -379,14 +381,15 @@ Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after re
 | 8 | Reminders | WorkManager, scheduled at registration. Notification permission asked then |
 | 9 | QR codes | CameraX + ML Kit. Typed `polysocial://checkin/…` and `polysocial://friend/…` payloads, pure parser |
 | 10 | Section-exclusive events | Deferred. Later `allowedSections` on events, checked in the rules |
-| 11 | Association verification | Manual flag in the Firebase console, documented in the README. In-app flow later |
+| 11 | Association verification | Associations have no EPFL email and sign up with their own. A PolySocial admin verifies them by hand (`isAssociationVerified` in the Firebase console, documented in the README); no access before that, except their own `users/{uid}`. Once verified, an association only sets up its association, manages its members and their roles, and publishes and manages its own events (no student profiles, groups, chats or matching). In-app admin flow later, not a current priority (changed on 2026-10-06) |
 | 12 | One-to-one chat | A two-member group (one chat model) |
 | 13 | Dependency injection | **Hilt** (changed after review). It is Android's recommended DI library, scales as repositories grow, and Hilt test modules swap in the fakes cleanly. The cost is some setup and slower builds |
 | 14 | Back button | At a non-home tab root, go to the Events tab. At the Events root, exit. This is Android's standard pattern (changed after review) |
 
 **Open questions** (add new ones here and in `CONTEXT.md`):
 - **Map provider:** keep Google Maps or switch to Mapbox, as the coaches recommended? It affects the map SDK, the API key setup and the geocoding service.
-- **Sign-in providers:** add Google or Microsoft sign-in next to email/password? EPFL addresses are Microsoft accounts, so Microsoft sign-in would prove EPFL membership directly. Either way, the rules keep requiring a verified `@epfl.ch` email.
+- **Sign-in providers:** add Google or Microsoft sign-in next to email/password? EPFL addresses are Microsoft accounts, so Microsoft sign-in would prove EPFL membership directly. Either way, the rules keep requiring a verified `@epfl.ch` email for students.
+- **Association members and event drafts:** Figma has them, but there is no data model yet. How does an association find and add a student as a member, and what can each role do? Drafts are not in the `Event` model.
 
 ## 8. Backlog traceability
 
