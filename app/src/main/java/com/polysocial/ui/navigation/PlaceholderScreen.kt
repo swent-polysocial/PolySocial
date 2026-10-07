@@ -17,7 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.polysocial.R
 
@@ -44,7 +43,6 @@ fun PlaceholderScreen(tab: Tab, modifier: Modifier = Modifier) {
     Text(
         text = stringResource(R.string.placeholder_coming_soon, stringResource(tab.label)),
         style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold,
     )
   }
 }
