@@ -1,5 +1,6 @@
 // Contributors: Claude (isEpflUser helper, #33; own users/{uid} rule and no catch-all, #35;
-// fixed uid and accountType after review, #35); OpenAI Codex (public/private event read rules, #52).
+// fixed uid and accountType after review, #35); OpenAI Codex (public/private event read rules, #52);
+// Claude Opus 5.5 (event write rules, #47).
 rules_version = '2';
 
 service cloud.firestore {
@@ -36,9 +37,9 @@ service cloud.firestore {
               .hasAny(['uid', 'accountType', 'isAssociationVerified']);
     }
 
-    // Read access only: event writes arrive with #47. No recursive match grants access to
-    // event subcollections. Private queries also need isPrivate == true and allowedUids
-    // array-contains auth.uid; public queries need isPrivate == false.
+    // No recursive match grants access to event subcollections. Private queries also need
+    // isPrivate == true and allowedUids array-contains auth.uid; public queries need
+    // isPrivate == false.
     match /events/{eventId} {
       function isVerifiedAssociationOwner() {
         let profile = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
@@ -54,6 +55,66 @@ service cloud.firestore {
               || (resource.data.isPrivate == true
                   && resource.data.allowedUids.hasAny([request.auth.uid]))))
           || (hasVerifiedEmail() && isVerifiedAssociationOwner());
+
+      function callerProfile() {
+        return /databases/$(database)/documents/users/$(request.auth.uid);
+      }
+
+      // Read from the protected users/{uid}, never from token claims. A student without a
+      // profile yet, or whose profile has no accountType, is not an association.
+      function isAssociationAccount() {
+        return exists(callerProfile())
+            && get(callerProfile()).data.get('accountType', null) == 'association';
+      }
+
+      function isVerifiedAssociation() {
+        return isAssociationAccount()
+            && get(callerProfile()).data.get('isAssociationVerified', false) == true;
+      }
+
+      // Who may create and manage events: a verified EPFL student, or an association a
+      // PolySocial admin has verified. An association account with an @epfl.ch email still
+      // needs that verification.
+      function canWriteEvents() {
+        return hasVerifiedEmail()
+            && (isVerifiedAssociation() || (isEpflUser() && !isAssociationAccount()));
+      }
+
+      // The limits of validateNewEvent (title, description) and the EventCategory names. The
+      // creator always stays an organizer and an allowed reader, so they never lose access.
+      function isValidEvent(data) {
+        return data.title is string
+            && data.title.trim().size() > 0
+            && data.title.size() <= 80
+            && data.description is string
+            && data.description.size() <= 5000
+            && data.category in ['STUDY', 'SPORTS', 'CULTURE', 'PARTY', 'OTHER']
+            && data.isPrivate is bool
+            && data.isAssociationEvent is bool
+            && data.organizerIds is list
+            && data.organizerIds.hasAny([data.createdBy])
+            && data.allowedUids is list
+            && data.allowedUids.hasAny([data.createdBy]);
+      }
+
+      function isOrganizer() {
+        return resource.data.organizerIds.hasAny([request.auth.uid]);
+      }
+
+      // Only a verified association may publish under its name (the verified badge).
+      allow create: if canWriteEvents()
+          && request.resource.data.createdBy == request.auth.uid
+          && isValidEvent(request.resource.data)
+          && (request.resource.data.isAssociationEvent == false || isVerifiedAssociation());
+
+      // Any organizer manages the event. The creator and the badge are fixed once created.
+      allow update: if canWriteEvents()
+          && isOrganizer()
+          && isValidEvent(request.resource.data)
+          && !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['createdBy', 'isAssociationEvent']);
+
+      allow delete: if canWriteEvents() && isOrganizer();
     }
   }
 }
