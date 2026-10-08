@@ -159,7 +159,7 @@ flowchart TB
   createS["Create Event screen<br/>form · map-pin location"]:::s1 --> createVM["<b>CreateEventViewModel</b><br/>Editing · Saving · Created · Failed"]:::s1
   createVM --> valid["Event validation<br/><i>domain</i>"]:::s1
   createVM --> ev["<b>EventRepository</b><br/>createEvent"]:::s1
-  createVM --> prof["<b>UserProfileRepository</b><br/>association name on the form"]:::s1
+  createVM -. "association name, later" .-> prof["<b>UserProfileRepository</b>"]:::s1
   ev -- "creator's badge" --> prof
   createVM -.-> geo["<b>GeocodingRepository</b><br/>address search, later"]:::pb
   ev --> fs[("Firestore<br/>events · users")]:::ext
