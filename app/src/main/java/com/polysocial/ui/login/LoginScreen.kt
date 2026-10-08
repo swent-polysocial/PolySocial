@@ -1,8 +1,10 @@
 // Contributors: Claude (Log in screen for #32, built from the Figma "First proposal revamped"
 // frames); Claude Opus 5.5 (eye icon label, scrolling on short screens and locked fields while
-// redirecting, after review); OpenAI Codex (GPT-6.1 Sol, medium; official Google button artwork).
+// redirecting, after review); OpenAI Codex (GPT-6.1 Sol, medium; official Google button artwork;
+// lock navigation actions during login and verification handoffs).
 package com.polysocial.ui.login
 
+import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -102,6 +104,10 @@ fun LoginScreen(
     viewModel: LoginViewModel = hiltViewModel(),
 ) {
   val state by viewModel.uiState.collectAsState()
+  // Keep the completion effect alive, including the delayed unverified-account handoff.
+  BackHandler(
+      state.status in setOf(LoginStatus.Loading, LoginStatus.LoggedIn, LoginStatus.Unverified)
+  ) {}
   LaunchedEffect(state.status) {
     when (state.status) {
       LoginStatus.LoggedIn -> onLoggedIn()
@@ -163,7 +169,7 @@ fun LoginContent(
               Modifier.padding(top = 12.dp)
                   .offset(x = (-12).dp)
                   .size(44.dp)
-                  .clickable(onClick = onBack)
+                  .clickable(enabled = !fieldsLocked, onClick = onBack)
                   .testTag(LoginScreenTestTags.BACK),
               contentAlignment = Alignment.Center,
           ) {
@@ -270,7 +276,7 @@ fun LoginContent(
                 color = AccentText,
                 textDecoration = TextDecoration.Underline,
                 modifier =
-                    Modifier.clickable(onClick = onCreateAccount)
+                    Modifier.clickable(enabled = !fieldsLocked, onClick = onCreateAccount)
                         .testTag(LoginScreenTestTags.CREATE_ACCOUNT),
             )
           }

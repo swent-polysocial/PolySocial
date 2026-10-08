@@ -1,6 +1,7 @@
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; translated the Figma sign-up form to Compose
 // Foundation, reusing the shared app theme; connected login and added the official Google
-// placeholder button; connected the welcome entry screen and app-start/profile routing).
+// placeholder button; connected the welcome entry screen and app-start/profile routing;
+// preserved submission handoffs on system Back).
 package com.polysocial.ui.auth
 
 import androidx.activity.compose.BackHandler
@@ -215,6 +216,8 @@ fun SignUpRoute(
     onBack: () -> Unit,
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
+  // Keep the success effect in composition while the request and handoff finish.
+  BackHandler(state.status is SignUpStatus.Loading || state.status is SignUpStatus.SignedUp) {}
   val signedUp = state.status as? SignUpStatus.SignedUp
   val latestOnSignedUp by rememberUpdatedState(onSignedUp)
   LaunchedEffect(signedUp) { signedUp?.let { latestOnSignedUp(it.user) } }

@@ -1,5 +1,5 @@
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; tested sign-up state and failure paths with
-// the shared fake and MainDispatcherRule).
+// the shared fake and MainDispatcherRule; cancellation recovery and cleared-password handoff).
 package com.polysocial.ui.auth
 
 import com.polysocial.model.auth.AuthUser
@@ -8,6 +8,7 @@ import com.polysocial.model.auth.FieldError
 import com.polysocial.model.auth.SignUpField
 import com.polysocial.model.auth.SignUpResult
 import com.polysocial.utils.MainDispatcherRule
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runCurrent
@@ -240,4 +241,28 @@ class SignUpViewModelTest {
     assertTrue(viewModel.uiState.value.form.hasNumber)
     assertNull(viewModel.uiState.value.visibleError(SignUpField.Password))
   }
+
+  @Test
+  fun cancelledSubmissionRestoresIdleAndAllowsRetryWithoutShowingAnError() =
+      runTest(dispatcher) {
+        validForm()
+        val form = viewModel.uiState.value.form
+        repository.signUpException = CancellationException("cancelled test request")
+        viewModel.signUp()
+        runCurrent()
+        assertEquals(SignUpStatus.Idle, viewModel.uiState.value.status)
+        assertEquals(form, viewModel.uiState.value.form)
+        assertTrue(viewModel.uiState.value.canSubmit)
+        assertEquals(1, repository.signUpCalls)
+
+        repository.signUpException = null
+        viewModel.signUp()
+        runCurrent()
+        assertEquals(SignUpStatus.SignedUp(user), viewModel.uiState.value.status)
+        assertEquals("", viewModel.uiState.value.form.password)
+        assertEquals("", viewModel.uiState.value.form.confirmPassword)
+        SignUpField.entries.forEach { assertNull(viewModel.uiState.value.visibleError(it)) }
+        assertFalse(viewModel.uiState.value.canSubmit)
+        assertEquals(2, repository.signUpCalls)
+      }
 }

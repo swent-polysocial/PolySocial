@@ -1,4 +1,4 @@
-<!-- Contributors: OpenAI Codex (sign-up foundation context and review reconciliation); Claude (drafted the initial content from the repository, the wiki and the Scrum Board; association accounts without an EPFL email; Security Rules and rules-test entries for #33; Create Event design update, #44; tab loading state, #43; per-tab back stacks, #42; ViewModel rule wording; profile repository, #34; users/{uid} rule and default deny, #35; reading public events, #49). OpenAI Codex (sign-up form, startup integration and rebase reconciliation). -->
+<!-- Contributors: OpenAI Codex (sign-up foundation context and review reconciliation); Claude (drafted the initial content from the repository, the wiki and the Scrum Board; association accounts without an EPFL email; Security Rules and rules-test entries for #33; Create Event design update, #44; tab loading state, #43; per-tab back stacks, #42; ViewModel rule wording; profile repository, #34; users/{uid} rule and default deny, #35; reading public events, #49). OpenAI Codex (sign-up form, startup integration, rebase reconciliation and submission Back handling). -->
 
 # Project context
 
@@ -59,6 +59,8 @@ The issues for the last four points (#12, #31, #32, #34, #35, #44–#47, #52) st
 
 ## Traps
 
+- **Auth completion effects leave with the screen.** System Back must keep sign-up and login in composition during submission and successful routing; otherwise the account can be created or signed in without reaching its destination. In-screen login Back/Create account are locked too; failures unlock navigation. Regression tests use deferred fake repositories ([#87](https://github.com/swent-polysocial/PolySocial/pull/87)).
+
 - **Local Java version:** the host default Java 27 causes JaCoCo test instrumentation errors (`Unsupported class file major version 71`). Run Gradle with the installed Java 21 via `JAVA_HOME`; do not upgrade project dependencies to match the host.
 
 - **Security Rules are not filters.** A query that could return a document the user can't read fails entirely. Public events need `where isPrivate == false`. Private events need `array-contains` on `allowedUids`.
@@ -86,6 +88,8 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 ## Decision log
 
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
+
+- 2026-10-09 · [#87](https://github.com/swent-polysocial/PolySocial/pull/87): preserve sign-up/login completion effects by blocking Back during submission and handoff; failures restore navigation.
 
 - 2026-10-08 · [#87](https://github.com/swent-polysocial/PolySocial/pull/87): wire the merged startup router into auth entry and verified login; preserve Welcome for signed-out users, handle profile loading/error/Retry, and keep #31/#34 destination markers until their screens land.
 
