@@ -1,5 +1,5 @@
 // Contributors: Claude (profile lookup needed by app-start routing, #32; profile model, create and
-// update, #34).
+// update, #34; isAssociationVerified, #45).
 package com.polysocial.model.user
 
 import java.time.Instant
@@ -14,6 +14,9 @@ enum class AccountType(val value: String) {
  * A profile document `users/{uid}`, private to its owner. [section] and [year] are codes such as
  * `IN` and `BA3`. [createdAt] is set by the server when the profile is created, so it is `null` in
  * a profile that hasn't been saved yet.
+ *
+ * [isAssociationVerified] is set only by a PolySocial admin, by hand in the Firebase console. The
+ * app reads it but never writes it, and the Security Rules forbid users to set it (#35).
  */
 data class UserProfile(
     val uid: String,
@@ -22,8 +25,13 @@ data class UserProfile(
     val section: String,
     val year: String,
     val accountType: AccountType = AccountType.STUDENT,
+    val isAssociationVerified: Boolean = false,
     val createdAt: Instant? = null,
-)
+) {
+  /** Whether this account may publish events under its association's name, with the badge. */
+  val isVerifiedAssociation: Boolean
+    get() = accountType == AccountType.ASSOCIATION && isAssociationVerified
+}
 
 /** Outcome of [UserProfileRepository.getProfile]. */
 sealed interface ProfileResult {
