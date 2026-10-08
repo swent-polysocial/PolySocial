@@ -1,5 +1,6 @@
 // Contributors: OpenAI Codex (isolated SDK setup for session-aware activity startup).
 // Contributors: Claude (regression test for the system-bar icons, review of #69).
+// Contributors: OpenAI Codex (mocked Firebase session before activity startup for #31).
 package com.polysocial
 
 import androidx.activity.ComponentActivity

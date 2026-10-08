@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (GPT-6.1 Sol, medium; implemented sign-up form state and submission).
+// Contributors: OpenAI Codex (GPT-6.1 Sol, medium; implemented sign-up form state and submission;
+// reset the form when changing address for #31).
 package com.polysocial.ui.auth
 
 import androidx.lifecycle.ViewModel
@@ -47,6 +48,11 @@ data class SignUpUiState(
 class SignUpViewModel @Inject constructor(private val repository: AuthRepository) : ViewModel() {
   private val mutableState = MutableStateFlow(SignUpUiState())
   val uiState = mutableState.asStateFlow()
+
+  /** Starts a fresh form after the verification flow explicitly signs out to change address. */
+  fun reset() {
+    mutableState.value = SignUpUiState()
+  }
 
   fun update(field: SignUpField, value: String) {
     val state = mutableState.value
