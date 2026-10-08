@@ -1,6 +1,6 @@
 // Contributors: Claude (auth contract for #32; Sign up and Verify Email methods left to #30 and
 // #31 after review); OpenAI Codex (GPT-6.1 Sol, medium; integrated sign-up results and display
-// name).
+// name; implemented verification result contracts for #31).
 package com.polysocial.model.auth
 
 /** The signed-in Firebase user, reduced to what the app needs. */
@@ -47,8 +47,7 @@ sealed interface SignUpResult {
 
 /**
  * Account and session operations. The only place that talks to Firebase Authentication; screens and
- * ViewModels depend on this interface so tests can replace the backend. Verify Email (#31) adds its
- * own methods.
+ * ViewModels depend on this interface so tests can replace the backend.
  */
 interface AuthRepository {
   /**
@@ -59,9 +58,41 @@ interface AuthRepository {
   /** Signs in with email and password (#32). */
   suspend fun logIn(email: String, password: String): LogInResult
 
-  /** Signs out; the next app start routes to Log in (#32). */
+  /** Signs out; the next app start routes to Welcome. */
   fun logOut()
 
   /** The current user, or `null` when nobody is signed in. */
   fun currentUser(): AuthUser?
+
+  /** Sends a verification link for the signed-in account; preserves Firebase throttling. */
+  suspend fun sendVerificationEmail(): SendVerificationResult
+
+  /** Reloads the account and refreshes its ID token before reporting verified access. */
+  suspend fun reloadAndCheckVerified(): VerificationResult
+}
+
+/** Outcome of sending an email; a successful send does not mean the account is verified. */
+sealed interface SendVerificationResult {
+  data object Sent : SendVerificationResult
+
+  data object Throttled : SendVerificationResult
+
+  data object NotSignedIn : SendVerificationResult
+
+  data object NetworkError : SendVerificationResult
+
+  data object UnexpectedError : SendVerificationResult
+}
+
+/** Verification is successful only after both account reload and token refresh succeed. */
+sealed interface VerificationResult {
+  data object Verified : VerificationResult
+
+  data object Unverified : VerificationResult
+
+  data object NotSignedIn : VerificationResult
+
+  data object NetworkError : VerificationResult
+
+  data object UnexpectedError : VerificationResult
 }
