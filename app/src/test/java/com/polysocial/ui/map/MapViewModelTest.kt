@@ -64,9 +64,11 @@ class MapViewModelTest {
             event.copy(id = "latNaN", location = Coordinates(Double.NaN, 6.5)),
             event.copy(id = "latInfinity", location = Coordinates(Double.POSITIVE_INFINITY, 6.5)),
             event.copy(id = "latRange", location = Coordinates(91.0, 6.5)),
+            event.copy(id = "latSouth", location = Coordinates(-91.0, 6.5)),
             event.copy(id = "lonNaN", location = Coordinates(46.5, Double.NaN)),
             event.copy(id = "lonInfinity", location = Coordinates(46.5, Double.NEGATIVE_INFINITY)),
             event.copy(id = "lonRange", location = Coordinates(46.5, -181.0)),
+            event.copy(id = "lonEast", location = Coordinates(46.5, 181.0)),
         )
     emit(MapEventResult.Events(rejected))
     assertEquals(emptyList<Any>(), vm.uiState.value.events)
