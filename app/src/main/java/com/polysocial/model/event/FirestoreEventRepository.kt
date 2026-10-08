@@ -9,8 +9,10 @@ import com.google.firebase.firestore.MetadataChanges
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.network.NetworkMonitor
 import java.time.Clock
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.tasks.await
 
@@ -62,29 +64,37 @@ class FirestoreEventRepository(
    *
    * Metadata changes are included, so the flow also emits when only [PublicEventsResult.Events]'s
    * `fromCache` changes, for example when the device comes back online.
+   *
+   * The flow is conflated: a slow collector gets only the latest result, never a backlog of
+   * outdated snapshots. Sending never fails or blocks the listener's callback, so the terminal
+   * [PublicEventsResult.Error] replaces any result still waiting and always reaches the collector
+   * before the flow ends.
    */
   override fun getUpcomingPublicEvents(windowDays: Int): Flow<PublicEventsResult> {
     require(windowDays > 0) { "windowDays must be positive, was $windowDays" }
     return callbackFlow {
-      val now = clock.instant()
-      val registration =
-          db.collection(EVENTS_COLLECTION)
-              .whereEqualTo("isPrivate", false)
-              .whereGreaterThanOrEqualTo("startTime", now.toTimestamp())
-              .whereLessThan("startTime", upcomingWindowEnd(now, windowDays).toTimestamp())
-              .orderBy("startTime")
-              .addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
-                if (error != null || snapshot == null) {
-                  trySend(PublicEventsResult.Error)
-                  close()
-                } else {
-                  val events =
-                      snapshot.documents.mapNotNull { eventFromFirestore(it.id, it.data.orEmpty()) }
-                  trySend(PublicEventsResult.Events(events, snapshot.metadata.isFromCache))
-                }
-              }
-      awaitClose { registration.remove() }
-    }
+          val now = clock.instant()
+          val registration =
+              db.collection(EVENTS_COLLECTION)
+                  .whereEqualTo("isPrivate", false)
+                  .whereGreaterThanOrEqualTo("startTime", now.toTimestamp())
+                  .whereLessThan("startTime", upcomingWindowEnd(now, windowDays).toTimestamp())
+                  .orderBy("startTime")
+                  .addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
+                    if (error != null || snapshot == null) {
+                      trySend(PublicEventsResult.Error)
+                      close()
+                    } else {
+                      val events =
+                          snapshot.documents.mapNotNull {
+                            eventFromFirestore(it.id, it.data.orEmpty())
+                          }
+                      trySend(PublicEventsResult.Events(events, snapshot.metadata.isFromCache))
+                    }
+                  }
+          awaitClose { registration.remove() }
+        }
+        .buffer(Channel.CONFLATED)
   }
 
   private fun FirebaseException.isOffline() =

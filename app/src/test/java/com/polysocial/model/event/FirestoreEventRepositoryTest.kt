@@ -27,9 +27,13 @@ import io.mockk.verify
 import java.time.Clock
 import java.time.Duration
 import java.time.ZoneOffset
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -263,6 +267,63 @@ class FirestoreEventRepositoryTest {
 
     assertEquals(listOf(PublicEventsResult.Error), results)
     verify { registration.remove() }
+  }
+
+  /**
+   * Collects the upcoming events with a collector that stays suspended on its first result until
+   * [release] completes, like a slow screen. Returns everything it received.
+   */
+  private fun TestScope.collectSlowly(release: CompletableDeferred<Unit>) =
+      mutableListOf<PublicEventsResult>().also { results ->
+        launch(UnconfinedTestDispatcher(testScheduler)) {
+          repository.getUpcomingPublicEvents().collect {
+            results += it
+            if (results.size == 1) release.await()
+          }
+        }
+      }
+
+  @Test
+  fun upcomingEvents_aSlowCollectorStillGetsTheErrorAfterManySnapshots() = runTest {
+    stubPublicEventsQuery()
+    val release = CompletableDeferred<Unit>()
+    val results = collectSlowly(release)
+
+    listener.captured.onEvent(snapshot(), null)
+    repeat(200) {
+      listener.captured.onEvent(snapshot(document("event-1", stored.toFirestoreMap())), null)
+    }
+    listener.captured.onEvent(
+        null,
+        FirebaseFirestoreException("denied", FirebaseFirestoreException.Code.PERMISSION_DENIED),
+    )
+    release.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals(PublicEventsResult.Error, results.last())
+    verify { registration.remove() }
+  }
+
+  @Test
+  fun upcomingEvents_aSlowCollectorGetsOnlyTheLatestSnapshot() = runTest {
+    stubPublicEventsQuery()
+    val release = CompletableDeferred<Unit>()
+    val results = collectSlowly(release)
+
+    listener.captured.onEvent(snapshot(), null)
+    listener.captured.onEvent(snapshot(fromCache = true), null)
+    listener.captured.onEvent(snapshot(document("event-1", stored.toFirestoreMap())), null)
+    release.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals(
+        listOf(
+            PublicEventsResult.Events(emptyList(), fromCache = false),
+            PublicEventsResult.Events(listOf(stored.copy(id = "event-1")), fromCache = false),
+        ),
+        results,
+    )
+    coroutineContext.cancelChildren()
   }
 
   @Test
