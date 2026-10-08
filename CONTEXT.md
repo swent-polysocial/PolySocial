@@ -58,7 +58,7 @@ The issues for the last four points (#12, #31, #32, #34, #35, #44–#47, #52) st
 
 ## Traps
 
-- **Security Rules are not filters.** A query that could return a document the user can't read fails entirely. Public events need `where isPrivate == false`. Private events need `where isPrivate == true` and `array-contains` the signed-in UID on `allowedUids`. Association event queries need `createdBy == auth.uid` and `isAssociationEvent == true`; the association verification comes from its protected `users/{uid}` document, never client-supplied token claims.
+- **Security Rules are not filters.** A query that could return a document the user can't read fails entirely. Public events need `where isPrivate == false`. Private events need `where isPrivate == true` and `array-contains` the signed-in UID on `allowedUids`. Association event queries need `createdBy == auth.uid` and `isAssociationEvent == true`; the association verification comes from its protected `users/{uid}` document, never client-supplied token claims. A non-EPFL verified association cannot run the student map's unrestricted public query; its own-event browsing needs the owner-constrained query.
 - **Private rules use `allowedUids.hasAny([auth.uid])`.** This list-only operation denies malformed map/string allowlists and supports `array-contains` queries. Adding a separate `allowedUids is list` check makes even the valid query fail in the emulator's rules evaluation.
 - **Don't let Firestore map `Event` automatically** (`set(event)`, `toObject`). It stores the Kotlin property `isPrivate` as `private` (and `isAssociationEvent` as `associationEvent`), so queries and rules on `isPrivate` never match, and reading needs a no-argument constructor. Convert to and from a map by hand (writing: `Event.toFirestoreMap()`).
 - `isPrivate == false` combined with a `startTime` range needs a **composite index**. Version it in `firestore.indexes.json`, which doesn't exist yet.
@@ -72,6 +72,7 @@ The issues for the last four points (#12, #31, #32, #34, #35, #44–#47, #52) st
 
 ## Open questions (don't guess, ask)
 
+- **Association event reads (#47/#52):** [review of #93](https://github.com/swent-polysocial/PolySocial/pull/93) asks #47's owner to confirm that association writes will build on the existing own-events-only read policy. Keep this policy until the team confirms or changes it.
 - **Map provider:** Google Maps (current default) or Mapbox (recommended by the coaches)?
 - **Sign-in providers:** add Google or Microsoft sign-in next to email/password? Every student account still needs a verified `@epfl.ch` email (checked by the rules). Only email/password needs our Verify Email screen, because Google and Microsoft deliver already-verified emails.
 - **Association members and event drafts:** Figma has them, but there is no data model yet. How does an association find and add a student as a member, and what can each role do? Drafts are not in the `Event` model.
@@ -85,6 +86,7 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 
+- 2026-10-08 · Clarify owner-constrained association event queries and record the #47/#52 review coordination question; event access rules are unchanged. ([#93](https://github.com/swent-polysocial/PolySocial/pull/93))
 - 2026-10-08 · [#97](https://github.com/swent-polysocial/PolySocial/pull/97): retain official Google artwork on both Welcome and Log in to comply with Google branding; use the shared light pill rather than the custom text G.
 
 - 2026-10-07 · Event reads use explicit public/private filters and the private allowlist; verified associations read only their own association events. Writes and subcollections stay denied until their own issues. ([#52](https://github.com/swent-polysocial/PolySocial/issues/52))
