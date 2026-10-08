@@ -72,9 +72,22 @@ object MapTags {
   fun marker(id: String) = "map_marker_$id"
 }
 
-/** Hilt boundary; tests exercise [MapScreen] with a fake event stream and renderer. */
+internal val defaultMapRenderer:
+    @Composable
+    (List<Event>, (String) -> Unit, (MapRenderStatus) -> Unit, Dp) -> Unit =
+    { events, select, status, inset ->
+      MapboxRenderer(events, select, status, inset)
+    }
+
+/** Hilt boundary observing map state; tests inject the repository-backed model and renderer. */
 @Composable
-fun MapRoute(onViewDetails: (String) -> Unit, viewModel: MapViewModel = hiltViewModel()) {
+fun MapRoute(
+    onViewDetails: (String) -> Unit,
+    viewModel: MapViewModel = hiltViewModel(),
+    tokenConfigured: Boolean = stringResource(R.string.mapbox_access_token).startsWith("pk."),
+    renderer: @Composable (List<Event>, (String) -> Unit, (MapRenderStatus) -> Unit, Dp) -> Unit =
+        defaultMapRenderer,
+) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   MapScreen(
       state = state,
@@ -83,6 +96,8 @@ fun MapRoute(onViewDetails: (String) -> Unit, viewModel: MapViewModel = hiltView
       onViewDetails = onViewDetails,
       onRetry = viewModel::retry,
       onRenderStatus = viewModel::onRenderStatus,
+      tokenConfigured = tokenConfigured,
+      renderer = renderer,
   )
 }
 
@@ -97,9 +112,7 @@ fun MapScreen(
     modifier: Modifier = Modifier,
     tokenConfigured: Boolean = stringResource(R.string.mapbox_access_token).startsWith("pk."),
     renderer: @Composable (List<Event>, (String) -> Unit, (MapRenderStatus) -> Unit, Dp) -> Unit =
-        { events, select, status, inset ->
-          MapboxRenderer(events, select, status, inset)
-        },
+        defaultMapRenderer,
 ) {
   var previewHeight by remember { mutableIntStateOf(0) }
   var showPrivacy by rememberSaveable { mutableStateOf(false) }

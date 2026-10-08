@@ -1,4 +1,5 @@
 // Contributors: Claude (UI tests for the per-tab back stacks, #42).
+// Contributors: OpenAI Codex (inject an offline Map placeholder while testing shared navigation).
 package com.polysocial.ui.navigation
 
 import androidx.activity.ComponentActivity
@@ -35,7 +36,9 @@ class TabBackStackTest {
   fun setUp() {
     composeTestRule.setContent {
       navController = rememberNavController()
-      PolySocialTheme { AppShell(navController = navController) }
+      PolySocialTheme {
+        AppShell(navController = navController, mapContent = { TabRootScreen(Tab.MAP) })
+      }
     }
   }
 

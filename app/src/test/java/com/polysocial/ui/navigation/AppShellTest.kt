@@ -99,6 +99,29 @@ class AppShellTest {
   }
 
   @Test
+  fun selectedMapEventDetailSurvivesSwitchingTabsAndRetappingMap() {
+    composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).performClick()
+    composeTestRule.onNodeWithTag("fake_map_details").performClick()
+    val entryId = composeTestRule.runOnIdle { navController.currentBackStackEntry?.id }
+
+    composeTestRule.onNodeWithTag(Tab.CHATS.navItemTag).performClick()
+    composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).performClick()
+    composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).performClick()
+
+    composeTestRule.onNodeWithTag("event_detail_placeholder").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).assertIsSelected()
+    composeTestRule.runOnIdle {
+      assertEquals(entryId, navController.currentBackStackEntry?.id)
+      assertEquals(
+          "event/one",
+          navController.currentBackStackEntry?.arguments?.getString("eventId"),
+      )
+    }
+    composeTestRule.onNodeWithTag("event_detail_back").performClick()
+    assertOnTab(Tab.MAP)
+  }
+
+  @Test
   fun startsOnEventsTab() {
     assertOnTab(Tab.EVENTS)
   }
