@@ -6,9 +6,9 @@ import dagger.Module
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 
-/** Replace this binding with #49's event repository adapter when its read API lands. */
+/** Connects the production map to the event repository without exposing Firebase to the UI. */
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class MapModule {
-  @Binds abstract fun bindEventSource(source: NotConfiguredMapEventSource): MapEventSource
+  @Binds abstract fun bindEventSource(source: RepositoryMapEventSource): MapEventSource
 }
