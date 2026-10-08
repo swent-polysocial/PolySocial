@@ -8,7 +8,10 @@ import com.polysocial.model.map.MapEventResult
 import com.polysocial.model.map.MapEventSource
 import com.polysocial.model.map.RepositoryMapEventSource
 import com.polysocial.utils.MainDispatcherRule
-import kotlinx.coroutines.flow.MutableStateFlow
+import java.time.Clock
+import java.time.Instant
+import java.time.ZoneOffset
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import org.junit.Assert.assertEquals
@@ -19,7 +22,7 @@ import org.junit.Test
 
 class MapViewModelTest {
   @get:Rule val mainDispatcherRule = MainDispatcherRule()
-  private val result = MutableStateFlow<MapEventResult>(MapEventResult.Loading)
+  private val result = MutableSharedFlow<MapEventResult>(replay = 1)
   private lateinit var vm: MapViewModel
   private val event = validEvent().copy(id = "one")
 
@@ -29,7 +32,7 @@ class MapViewModelTest {
   }
 
   private fun emit(value: MapEventResult) {
-    result.value = value
+    result.tryEmit(value)
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
   }
 
@@ -48,11 +51,37 @@ class MapViewModelTest {
   }
 
   @Test
-  fun emptyAndUnavailableAreDifferentStates() {
+  fun emptyResultEndsLoading() {
     emit(MapEventResult.Events(emptyList()))
     assertEquals(MapContentStatus.EMPTY, vm.uiState.value.status)
-    emit(MapEventResult.Unavailable)
-    assertEquals(MapContentStatus.UNAVAILABLE, vm.uiState.value.status)
+  }
+
+  @Test
+  fun retryingEventsKeepsCameraRendererAndSelectedCachedEvent() {
+    emit(MapEventResult.Events(listOf(event)))
+    vm.selectEvent(event.id)
+    vm.onRenderStatus(MapRenderStatus.READY)
+    emit(MapEventResult.Error)
+    vm.retry()
+    assertEquals(0, vm.uiState.value.renderGeneration)
+    assertEquals(MapRenderStatus.READY, vm.uiState.value.renderStatus)
+    assertEquals(listOf(event), vm.uiState.value.events)
+    assertEquals(event, vm.uiState.value.selectedEvent)
+  }
+
+  @Test
+  fun tonightUsesZurichDateAndUpdatesWithSelectedEvent() {
+    val now = Instant.parse("2026-10-08T22:30:00Z")
+    val model = MapViewModel(MapEventSource { result }, Clock.fixed(now, ZoneOffset.UTC))
+    val tonight = event.copy(startTime = now.plusSeconds(3600))
+    val tomorrow = event.copy(id = "tomorrow", startTime = now.plusSeconds(86400))
+    emit(MapEventResult.Events(listOf(tonight, tomorrow)))
+    model.selectEvent(event.id)
+    assertEquals(true, model.uiState.value.selectedEventIsToday)
+    model.selectEvent(tomorrow.id)
+    assertEquals(false, model.uiState.value.selectedEventIsToday)
+    emit(MapEventResult.Events(listOf(tomorrow.copy(startTime = now))))
+    assertEquals(true, model.uiState.value.selectedEventIsToday)
   }
 
   @Test

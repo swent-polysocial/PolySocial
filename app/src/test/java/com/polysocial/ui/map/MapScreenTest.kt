@@ -14,6 +14,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -63,6 +64,8 @@ class MapScreenTest {
       token: Boolean = true,
       renderStatus: MapRenderStatus = MapRenderStatus.READY,
       modifier: Modifier = Modifier,
+      loadingEvents: Boolean = false,
+      selectedIsToday: Boolean = false,
   ) {
     vm.onRenderStatus(renderStatus)
     dispatcherRule.dispatcher.scheduler.advanceUntilIdle()
@@ -70,7 +73,8 @@ class MapScreenTest {
       val state by vm.uiState.collectAsState()
       PolySocialTheme {
         MapScreen(
-            state,
+            if (loadingEvents) state.copy(status = MapContentStatus.LOADING)
+            else state.copy(selectedEventIsToday = selectedIsToday),
             vm::selectEvent,
             vm::closePreview,
             { detailId = it },
@@ -120,7 +124,13 @@ class MapScreenTest {
     composeRule.onNodeWithTag(MapTags.PREVIEW).assertIsDisplayed()
     composeRule.onNodeWithTag(MapTags.TITLE).assertTextEquals(second.title)
     composeRule.onNodeWithTag(MapTags.TIME).assertTextEquals(formattedTime(second.startTime))
-    composeRule.onNodeWithText(context.getString(R.string.map_category_sports)).assertIsDisplayed()
+    composeRule.onNodeWithTag(MapTags.CATEGORY_ICON).assertIsDisplayed()
+    composeRule
+        .onNodeWithTag(MapTags.CATEGORY)
+        .assertTextEquals(
+            context.getString(R.string.map_category_day, "Sports", formattedDate(second.startTime))
+        )
+    composeRule.onNodeWithTag(MapTags.FIND_GROUP).assertIsDisplayed().assertIsNotEnabled()
     composeRule.onNodeWithTag(MapTags.DETAILS).performClick()
     assertEquals(second.id, detailId)
     composeRule.onNodeWithTag(MapTags.CLOSE).performClick()
@@ -141,7 +151,11 @@ class MapScreenTest {
                 formattedTime(first.endTime!!),
             )
         )
-    composeRule.onNodeWithText(context.getString(R.string.map_category_study)).assertIsDisplayed()
+    composeRule
+        .onNodeWithTag(MapTags.CATEGORY)
+        .assertTextEquals(
+            context.getString(R.string.map_category_day, "Study", formattedDate(first.startTime))
+        )
   }
 
   @Test
@@ -150,13 +164,18 @@ class MapScreenTest {
     show()
     composeRule.onNodeWithTag(MapTags.EMPTY).assertIsDisplayed()
     composeRule.onNodeWithText(context.getString(R.string.map_empty_title)).assertIsDisplayed()
+    composeRule
+        .onNodeWithText(
+            "No public events in the next two weeks around here. Try another filter, or create one with +."
+        )
+        .assertIsDisplayed()
+    composeRule.onNodeWithTag(MapTags.EMPTY_ICON).assertIsDisplayed()
     composeRule.onNodeWithTag(MapTags.marker(first.id)).assertDoesNotExist()
   }
 
   @Test
   fun loadingShowsProgressWithoutEmptyNotice() {
-    source.value = MapEventResult.Loading
-    show()
+    show(loadingEvents = true)
     composeRule.onNodeWithTag(MapTags.LOADING).assertIsDisplayed()
     composeRule.onNodeWithTag(MapTags.EMPTY).assertDoesNotExist()
   }
@@ -174,7 +193,7 @@ class MapScreenTest {
     composeRule.onNodeWithTag(MapTags.ERROR).assertIsDisplayed()
     composeRule.onNodeWithTag(MapTags.CANVAS).assertIsDisplayed()
     composeRule.onNodeWithTag(MapTags.RETRY).performClick()
-    assertEquals(1, vm.uiState.value.renderGeneration)
+    assertEquals(0, vm.uiState.value.renderGeneration)
   }
 
   @Test
@@ -193,15 +212,6 @@ class MapScreenTest {
   }
 
   @Test
-  fun unavailableSourceIsHonestAndMapStillWorks() {
-    source.value = MapEventResult.Unavailable
-    show()
-    composeRule.onNodeWithTag(MapTags.SOURCE_UNAVAILABLE).assertIsDisplayed()
-    composeRule.onNodeWithTag(MapTags.EMPTY).assertDoesNotExist()
-    composeRule.onNodeWithTag(MapTags.CANVAS).assertIsDisplayed()
-  }
-
-  @Test
   fun privacyNoticeCanOpenAndCloseEvenWithoutToken() {
     show(token = false)
     composeRule.onNodeWithTag(MapTags.PRIVACY).performClick()
@@ -212,11 +222,13 @@ class MapScreenTest {
   }
 
   private fun formattedTime(instant: java.time.Instant): String =
-      java.time.format.DateTimeFormatter.ofLocalizedDateTime(
-              java.time.format.FormatStyle.MEDIUM,
-              java.time.format.FormatStyle.SHORT,
-          )
+      java.time.format.DateTimeFormatter.ofLocalizedTime(java.time.format.FormatStyle.SHORT)
           .withZone(java.time.ZoneId.of("Europe/Zurich"))
+          .format(instant)
+
+  private fun formattedDate(instant: java.time.Instant): String =
+      java.time.format.DateTimeFormatter.ofPattern("EEE d MMM")
+          .withZone(MAP_TIME_ZONE)
           .format(instant)
 
   @Test
@@ -226,5 +238,39 @@ class MapScreenTest {
         EventCategory.entries.map(::categoryColor).distinct().size,
     )
     EventCategory.entries.forEach { assertTrue(context.getString(categoryLabel(it)).isNotBlank()) }
+  }
+
+  @Test
+  fun eventTodayShowsFigmaCategoryAndTonightLabel() {
+    show(selectedIsToday = true)
+    composeRule.onNodeWithTag(MapTags.marker(first.id)).performClick()
+    composeRule.onNodeWithTag(MapTags.CATEGORY).assertTextEquals("Study · Tonight")
+    composeRule.onNodeWithTag(MapTags.FIND_GROUP).assertIsNotEnabled()
+  }
+
+  @Test
+  fun eachCategoryShowsItsIconLabelAndDisabledMatchingAction() {
+    val events =
+        EventCategory.entries.map {
+          first.copy(id = it.name, category = it, title = "${it.name} meetup")
+        }
+    source.value = MapEventResult.Events(events)
+    show()
+    events.forEach { event ->
+      composeRule.onNodeWithTag(MapTags.marker(event.id)).performClick()
+      composeRule.onNodeWithTag(MapTags.TITLE).assertTextEquals(event.title)
+      composeRule.onNodeWithTag(MapTags.CATEGORY_ICON).assertIsDisplayed()
+      composeRule
+          .onNodeWithTag(MapTags.CATEGORY)
+          .assertTextEquals(
+              context.getString(
+                  R.string.map_category_day,
+                  context.getString(categoryLabel(event.category)),
+                  formattedDate(event.startTime),
+              )
+          )
+      composeRule.onNodeWithTag(MapTags.FIND_GROUP).assertIsNotEnabled()
+      composeRule.onNodeWithTag(MapTags.CLOSE).performClick()
+    }
   }
 }
