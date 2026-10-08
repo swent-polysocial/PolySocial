@@ -1,5 +1,5 @@
 // Contributors: Claude (Firestore profile repository, #34; cancelled tasks and wrong-typed fields
-// reported as errors after review).
+// reported as errors after review; reading isAssociationVerified, #45).
 package com.polysocial.model.user
 
 import com.google.firebase.FirebaseException
@@ -102,7 +102,8 @@ private fun UserProfile.toEditableFields(): Map<String, Any> =
 
 /**
  * The profile in this document, or `null` if a required field is missing, unknown, or stored with
- * the wrong type (Firestore throws for a field of another type).
+ * the wrong type (Firestore throws for a field of another type). A missing `isAssociationVerified`
+ * means not verified: the client never writes it, so only verified accounts have it.
  */
 private fun DocumentSnapshot.toUserProfile(): UserProfile? =
     try {
@@ -121,6 +122,7 @@ private fun DocumentSnapshot.readUserProfile(): UserProfile? {
       section = getString("section") ?: return null,
       year = getString("year") ?: return null,
       accountType = accountType,
+      isAssociationVerified = getBoolean("isAssociationVerified") ?: false,
       createdAt = getTimestamp("createdAt")?.toInstant(),
   )
 }
