@@ -63,8 +63,9 @@ interface EventRepository {
    * [isUpcomingPublicEvent]), for the map. Private events are never returned.
    *
    * The flow emits a new [PublicEventsResult.Events] whenever the events change, including from the
-   * offline cache while the device is offline. It ends after a [PublicEventsResult.Error]. The
-   * window is fixed when collection starts, and cancelling the collection stops listening.
+   * offline cache while the device is offline. A slow collector gets only the latest result. It
+   * ends after a [PublicEventsResult.Error], which is always delivered first. The window is fixed
+   * when collection starts, and cancelling the collection stops listening.
    *
    * @throws IllegalArgumentException if [windowDays] is not positive.
    */
