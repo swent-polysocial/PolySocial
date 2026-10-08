@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (isolated SDK setup for session-aware activity startup).
 // Contributors: Claude (regression test for the system-bar icons, review of #69).
 package com.polysocial
 
@@ -5,7 +6,9 @@ import androidx.activity.ComponentActivity
 import androidx.core.view.WindowCompat
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.utils.FirebaseStartupRule
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
@@ -17,6 +20,7 @@ import org.robolectric.annotation.Config
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = "night")
 class SystemBarsTest {
+  @get:Rule(order = 0) val firebaseStartupRule = FirebaseStartupRule()
 
   private fun assertDarkSystemBarIcons(activity: Class<out ComponentActivity>) {
     ActivityScenario.launch(activity).use { scenario ->

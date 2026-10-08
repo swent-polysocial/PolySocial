@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (isolated SDK setup for session-aware activity startup).
 // Contributors: Claude Opus 5.5 (wrote these tests).
 package com.polysocial
 
@@ -11,6 +12,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.utils.FirebaseStartupRule
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
@@ -38,9 +40,11 @@ class ProbeGreeting @Inject constructor() {
 @Config(application = HiltTestApplication::class)
 @RunWith(AndroidJUnit4::class)
 class HiltViewModelInjectionTest {
+  @get:Rule(order = 1) val firebaseStartupRule = FirebaseStartupRule()
+
   @get:Rule(order = 0) val hiltRule = HiltAndroidRule(this)
 
-  @get:Rule(order = 1) val composeTestRule = createAndroidComposeRule<MainActivity>()
+  @get:Rule(order = 2) val composeTestRule = createAndroidComposeRule<MainActivity>()
 
   @Test
   fun hiltViewModel_providesAViewModelWithItsDependencies() {

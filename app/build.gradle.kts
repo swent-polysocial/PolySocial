@@ -1,6 +1,6 @@
 // Contributors: Claude (Hilt, KSP and Hilt testing setup, JaCoCo on Hilt-rewritten classes, #70;
 // Navigation Compose dependency, #41; MockK and kotlinx-coroutines-play-services, #32);
-// OpenAI Codex (sign-up test dependencies and review cleanup).
+// OpenAI Codex (sign-up test dependencies, review cleanup and Android UI-test MockK binding).
 plugins {
   alias(libs.plugins.androidApplication)
   alias(libs.plugins.kotlinCompose)
@@ -118,6 +118,7 @@ fun DependencyHandlerScope.globalTestImplementation(dep: Any) {
 dependencies {
   implementation(libs.compose.foundation)
   testImplementation(libs.coroutines.test)
+  androidTestImplementation(libs.mockk.android)
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.appcompat)
   implementation(libs.material)
