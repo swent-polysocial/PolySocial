@@ -476,7 +476,7 @@ class MapScreenTest {
   }
 
   @Test
-  fun deniedLocationAndEventFailure_leavePrivacyAndBothNoticesReachable() {
+  fun deniedLocationAndEventFailure_leaveBothNoticesAndMarkersReachable() {
     location.markPermissionRequested()
     vm.onMapEntered()
     show()
@@ -484,9 +484,7 @@ class MapScreenTest {
     dispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     composeRule.onNodeWithTag(MapTags.LOCATION_NOTICE).assertIsDisplayed()
     composeRule.onNodeWithTag(MapTags.ERROR).assertIsDisplayed()
-    composeRule.onNodeWithTag(MapTags.PRIVACY).performClick()
-    composeRule.onNodeWithTag(MapTags.PRIVACY_DIALOG).assertIsDisplayed()
-    composeRule.onNodeWithTag(MapTags.PRIVACY_CLOSE).performClick()
+    composeRule.onNodeWithTag("map_privacy").assertDoesNotExist()
     composeRule.onNodeWithTag(MapTags.marker(first.id)).performClick()
     composeRule.onNodeWithTag(MapTags.TITLE).assertTextEquals(first.title)
     composeRule.onNodeWithTag(MapTags.DISTANCE).assertDoesNotExist()
