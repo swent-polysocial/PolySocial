@@ -55,6 +55,8 @@ sealed interface MapLocationState {
   data object Denied : MapLocationState
 
   data object Unavailable : MapLocationState
+
+  data object OpenSettings : MapLocationState
 }
 
 data class MapUiState(
@@ -93,6 +95,7 @@ constructor(
   private var locationRequest: Job? = null
   private var enteredMap = false
   private var mapActive = false
+  private var readAfterPermissionResult = false
 
   init {
     observeEvents()
@@ -119,7 +122,7 @@ constructor(
         setLocation(MapLocationState.Denied)
       }
     } else if (
-        location == MapLocationState.Idle ||
+        (location == MapLocationState.Idle && readAfterPermissionResult) ||
             location == MapLocationState.Denied ||
             location == MapLocationState.Waiting
     ) {
@@ -141,17 +144,27 @@ constructor(
         setLocation(MapLocationState.Denied)
       }
       mapActive -> readLocation()
-      else -> setLocation(MapLocationState.Idle)
+      else -> {
+        readAfterPermissionResult = true
+        setLocation(MapLocationState.Idle)
+      }
     }
   }
 
   /**
    * An explicit student action can retry; returning to this tab does not repeat a prompt or fix.
    */
-  fun turnOnLocation() {
+  fun turnOnLocation(canRequestPermission: Boolean = true) {
     if (locationService.hasPermission()) readLocation()
-    else setLocation(MapLocationState.RequestPermission)
+    else
+        setLocation(
+            if (canRequestPermission) MapLocationState.RequestPermission
+            else MapLocationState.OpenSettings
+        )
   }
+
+  /** Consumes the settings action before Android pauses the route. */
+  fun onSettingsOpened() = setLocation(MapLocationState.Denied)
 
   /** Cancels a pending device request when the route leaves the foreground. */
   fun onMapInactive() {
@@ -161,7 +174,7 @@ constructor(
         mutableState.value.locationState == MapLocationState.Locating ||
             mutableState.value.locationState is MapLocationState.Available
     ) {
-      setLocation(MapLocationState.Unavailable)
+      setLocation(MapLocationState.Idle)
     }
   }
 
@@ -171,6 +184,7 @@ constructor(
 
   private fun readLocation() {
     if (!mapActive || mutableState.value.locationState == MapLocationState.Locating) return
+    readAfterPermissionResult = false
     locationRequest?.cancel()
     setLocation(MapLocationState.Locating)
     locationRequest = viewModelScope.launch {
