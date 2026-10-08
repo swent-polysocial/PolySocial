@@ -6,9 +6,11 @@ import androidx.lifecycle.viewModelScope
 import com.polysocial.model.event.CreateEventResult
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.EventRepository
+import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalTime
+import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -59,12 +61,12 @@ data class CreateEventUiState(
  * Create with problems left; nothing is sent in that case. Offline and other failures keep the form
  * so the organizer can try again.
  *
- * Not yet a `@HiltViewModel`: Hilt can only build it once an [EventRepository] implementation is
- * bound (#45 part 2). The navigation entry (#41) will add the annotation and `hiltViewModel()`.
- *
  * @param clock gives the current time and time zone, so tests can fix them.
  */
-class CreateEventViewModel(
+@HiltViewModel
+class CreateEventViewModel
+@Inject
+constructor(
     private val repository: EventRepository,
     private val clock: Clock,
 ) : ViewModel() {
