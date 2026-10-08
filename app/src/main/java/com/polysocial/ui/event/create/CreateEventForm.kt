@@ -38,7 +38,8 @@ enum class CreateEventFormError {
   START_IN_PAST,
   END_SAME_AS_START,
   MISSING_LOCATION,
-  INVALID_CAPACITY,
+  CAPACITY_NOT_A_NUMBER,
+  CAPACITY_TOO_SMALL,
 }
 
 /** True when the end time is earlier than the start time, so the event ends the next day. */
@@ -78,7 +79,7 @@ fun CreateEventForm.errors(now: Instant, zone: ZoneId): Set<CreateEventFormError
   val errors = mutableSetOf<CreateEventFormError>()
   if (date == null || startTime == null) errors += CreateEventFormError.MISSING_DATE
   if (location == null) errors += CreateEventFormError.MISSING_LOCATION
-  if (parseCapacity(capacityText).isFailure) errors += CreateEventFormError.INVALID_CAPACITY
+  if (parseCapacity(capacityText).isFailure) errors += CreateEventFormError.CAPACITY_NOT_A_NUMBER
   if (title.isBlank()) errors += CreateEventFormError.MISSING_TITLE
   if (category == null) errors += CreateEventFormError.MISSING_CATEGORY
   val event = toEvent(zone) ?: placeholderFor(now, zone)
@@ -131,5 +132,5 @@ private fun EventValidationError.toFormError() =
       EventValidationError.DESCRIPTION_TOO_LONG -> CreateEventFormError.DESCRIPTION_TOO_LONG
       EventValidationError.START_IN_PAST -> CreateEventFormError.START_IN_PAST
       EventValidationError.END_NOT_AFTER_START -> CreateEventFormError.END_SAME_AS_START
-      EventValidationError.CAPACITY_TOO_SMALL -> CreateEventFormError.INVALID_CAPACITY
+      EventValidationError.CAPACITY_TOO_SMALL -> CreateEventFormError.CAPACITY_TOO_SMALL
     }
