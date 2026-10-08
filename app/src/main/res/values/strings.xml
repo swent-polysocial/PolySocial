@@ -81,6 +81,4 @@
     <string name="event_detail_title">Event details</string>
     <string name="event_detail_placeholder">Event details are coming soon.</string>
     <string name="event_detail_back">Back to map</string>
-    <string name="map_privacy_title">Map privacy</string>
-    <string name="map_privacy_message">Mapbox receives requests for map tiles in the area you view. Optional telemetry and geofencing are disabled when the map opens; SDK initialization and usage accounting requests still occur. The map does not enable continuous GPS tracking or a location puck. Mapbox attribution provides its data sources and telemetry choices.</string>
 </resources>

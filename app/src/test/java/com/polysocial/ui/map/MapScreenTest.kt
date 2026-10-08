@@ -170,6 +170,9 @@ class MapScreenTest {
         )
         .assertIsDisplayed()
     composeRule.onNodeWithTag(MapTags.EMPTY_ICON).assertIsDisplayed()
+    val card = composeRule.onNodeWithTag(MapTags.EMPTY).fetchSemanticsNode().boundsInRoot
+    val icon = composeRule.onNodeWithTag(MapTags.EMPTY_ICON).fetchSemanticsNode().boundsInRoot
+    assertTrue(kotlin.math.abs(card.center.x - icon.center.x) < 1f)
     composeRule.onNodeWithTag(MapTags.marker(first.id)).assertDoesNotExist()
   }
 
@@ -212,13 +215,10 @@ class MapScreenTest {
   }
 
   @Test
-  fun privacyNoticeCanOpenAndCloseEvenWithoutToken() {
+  fun missingTokenDoesNotAddAnExtraPrivacyControl() {
     show(token = false)
-    composeRule.onNodeWithTag(MapTags.PRIVACY).performClick()
-    composeRule.onNodeWithTag(MapTags.PRIVACY_DIALOG).assertIsDisplayed()
-    composeRule.onNodeWithText(context.getString(R.string.map_privacy_message)).assertIsDisplayed()
-    composeRule.onNodeWithTag(MapTags.PRIVACY_CLOSE).performClick()
-    composeRule.onNodeWithTag(MapTags.PRIVACY_DIALOG).assertDoesNotExist()
+    composeRule.onNodeWithTag("map_privacy").assertDoesNotExist()
+    composeRule.onNodeWithTag(MapTags.SETUP).assertIsDisplayed()
   }
 
   private fun formattedTime(instant: java.time.Instant): String =

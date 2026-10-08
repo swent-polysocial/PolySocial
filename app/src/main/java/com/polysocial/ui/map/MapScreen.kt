@@ -11,8 +11,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -28,9 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,6 +39,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -73,10 +72,6 @@ object MapTags {
   const val ERROR = "map_error"
   const val RETRY = "map_retry"
   const val SETUP = "map_setup"
-
-  const val PRIVACY = "map_privacy"
-  const val PRIVACY_DIALOG = "map_privacy_dialog"
-  const val PRIVACY_CLOSE = "map_privacy_close"
 
   fun marker(id: String) = "map_marker_$id"
 }
@@ -124,7 +119,6 @@ fun MapScreen(
         defaultMapRenderer,
 ) {
   var previewHeight by remember { mutableIntStateOf(0) }
-  var showPrivacy by rememberSaveable { mutableStateOf(false) }
   val bottomInset =
       with(LocalDensity.current) {
         if (state.selectedEvent == null) 12.dp else previewHeight.toDp() + 12.dp
@@ -181,12 +175,6 @@ fun MapScreen(
               Modifier.align(Alignment.Center).padding(24.dp),
           )
     }
-    TextButton(
-        onClick = { showPrivacy = true },
-        modifier = Modifier.align(Alignment.TopEnd).padding(12.dp).testTag(MapTags.PRIVACY),
-    ) {
-      Text(stringResource(R.string.map_privacy_title))
-    }
     state.selectedEvent?.let { event ->
       EventPreview(
           event,
@@ -198,22 +186,6 @@ fun MapScreen(
               .padding(12.dp),
       )
     }
-  }
-  if (showPrivacy) {
-    AlertDialog(
-        onDismissRequest = { showPrivacy = false },
-        modifier = Modifier.testTag(MapTags.PRIVACY_DIALOG),
-        title = { Text(stringResource(R.string.map_privacy_title)) },
-        text = { Text(stringResource(R.string.map_privacy_message)) },
-        confirmButton = {
-          TextButton(
-              onClick = { showPrivacy = false },
-              modifier = Modifier.testTag(MapTags.PRIVACY_CLOSE),
-          ) {
-            Text(stringResource(R.string.map_close))
-          }
-        },
-    )
   }
 }
 
@@ -229,16 +201,35 @@ private fun MapNotice(
       shape = RoundedCornerShape(20.dp),
       colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
   ) {
-    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    val empty = tag == MapTags.EMPTY
+    Column(
+        Modifier.padding(if (empty) 24.dp else 20.dp),
+        verticalArrangement = Arrangement.spacedBy(if (empty) 12.dp else 8.dp),
+        horizontalAlignment = if (empty) Alignment.CenterHorizontally else Alignment.Start,
+    ) {
       if (tag == MapTags.EMPTY) {
-        Icon(
-            painterResource(R.drawable.ic_tab_events),
-            null,
-            Modifier.size(32.dp).testTag(MapTags.EMPTY_ICON),
-        )
+        Box(
+            Modifier.size(64.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+          Icon(
+              painterResource(R.drawable.ic_tab_events),
+              null,
+              Modifier.size(28.dp).testTag(MapTags.EMPTY_ICON),
+          )
+        }
       }
-      Text(stringResource(title), style = MaterialTheme.typography.titleMedium)
-      Text(stringResource(message), style = MaterialTheme.typography.bodyMedium)
+      Text(
+          stringResource(title),
+          style = MaterialTheme.typography.titleMedium,
+          fontWeight = if (empty) FontWeight.Bold else null,
+          textAlign = if (empty) TextAlign.Center else TextAlign.Start,
+      )
+      Text(
+          stringResource(message),
+          style = MaterialTheme.typography.bodyMedium,
+          textAlign = if (empty) TextAlign.Center else TextAlign.Start,
+      )
     }
   }
 }
