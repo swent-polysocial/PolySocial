@@ -169,10 +169,11 @@ class VerifyEmailScreenTest {
     }
     compose.onNodeWithTag(VerifyEmailTags.Banner).assertTextContains(unverifiedMessage)
     compose.onNodeWithTag("auth_profile_setup").assertDoesNotExist()
-    coEvery { repository.reloadAndCheckVerified() } answers {
- every { repository.currentUser() } returns user.copy(isEmailVerified = true)
- VerificationResult.Verified
-}
+    coEvery { repository.reloadAndCheckVerified() } answers
+        {
+          every { repository.currentUser() } returns user.copy(isEmailVerified = true)
+          VerificationResult.Verified
+        }
     compose.waitUntil(timeoutMillis = 5_000) {
       compose.onAllNodes(readyToContinue).fetchSemanticsNodes().isNotEmpty()
     }
