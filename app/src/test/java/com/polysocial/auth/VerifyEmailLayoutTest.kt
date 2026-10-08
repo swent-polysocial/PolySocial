@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (adaptive verification layout and tagged UI-state tests for #31).
+// Contributors: OpenAI Codex (adaptive verification layout and tagged UI-state tests for #31;
+// startup timing-loading feedback and disabled-action assertions).
 package com.polysocial.auth
 
 import androidx.compose.runtime.CompositionLocalProvider
@@ -8,12 +9,14 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.Density
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.R
 import com.polysocial.ui.auth.*
 import com.polysocial.ui.theme.PolySocialTheme
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 @RunWith(AndroidJUnit4::class)
@@ -97,6 +100,27 @@ class VerifyEmailLayoutTest {
     compose.onNodeWithTag(VerifyEmailTags.Loading).assertIsDisplayed()
     compose.onNodeWithTag(VerifyEmailTags.Resend).assertIsNotEnabled()
     compose.onNodeWithTag(VerifyEmailTags.ChangeAddress).assertIsNotEnabled()
+  }
+
+  @Test
+  fun preparingTimingShowsProgressAndDisablesActionsUntilReady() {
+    state.value = state.value.copy(preparing = true, remainingSeconds = 0)
+    launch()
+    compose.onNodeWithTag(VerifyEmailTags.Continue).performScrollTo().assertIsNotEnabled()
+    compose
+        .onNodeWithTag(VerifyEmailTags.Resend)
+        .assertIsNotEnabled()
+        .assertTextEquals(
+            RuntimeEnvironment.getApplication().getString(R.string.verification_sending)
+        )
+    compose.onNodeWithTag(VerifyEmailTags.Loading).assertIsDisplayed()
+    compose.onNodeWithTag(VerifyEmailTags.ChangeAddress).assertIsNotEnabled()
+    compose.runOnIdle { state.value = state.value.copy(preparing = false) }
+    compose.onNodeWithTag(VerifyEmailTags.Loading).assertDoesNotExist()
+    compose.onNodeWithTag(VerifyEmailTags.Continue).assertIsEnabled().performClick()
+    compose.onNodeWithTag(VerifyEmailTags.Resend).performScrollTo().assertIsEnabled().performClick()
+    assertEquals(1, checks)
+    assertEquals(1, resends)
   }
 
   @Test
