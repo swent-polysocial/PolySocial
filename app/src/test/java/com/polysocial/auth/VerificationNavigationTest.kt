@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (cold-start versus recreation navigation regression tests for #31).
+// Contributors: OpenAI Codex (cold-start, recreation and verification Back sign-out regression
+// tests for #31).
 package com.polysocial.auth
 
 import androidx.compose.ui.test.*
@@ -27,7 +28,7 @@ class VerificationNavigationTest {
       MemoryVerificationStore().apply { timings[user.uid] = VerificationTiming(1000, 46_000) }
   private val signup = SignUpViewModel(repository)
   private val login = LoginViewModel(repository)
-  private val start = AppStartViewModel(repository, FakeUserProfileRepository())
+  private var start = AppStartViewModel(repository, FakeUserProfileRepository())
   private val models = mutableListOf<VerifyEmailViewModel>()
 
   private fun model() =
@@ -51,21 +52,20 @@ class VerificationNavigationTest {
       }
 
   @Test
-  fun coldRestartOverridesSavedWelcomeForAnUnverifiedSession() {
+  fun backSignsOutAndColdRestartStaysAtWelcome() {
     val restoration = launch()
     compose.onNodeWithTag(VerifyEmailTags.Back).performClick()
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    assertNull(repository.currentUser())
+    assertEquals(1, repository.logOutCalls)
+    start = AppStartViewModel(repository, FakeUserProfileRepository())
     verification = model()
     restoration.emulateSavedInstanceStateRestore()
-    compose.onNodeWithTag(VerifyEmailTags.Screen).assertIsDisplayed()
-    compose.onNodeWithTag(WelcomeTags.Screen).assertDoesNotExist()
-    compose
-        .onNodeWithTag(VerifyEmailTags.Resend)
-        .performScrollTo()
-        .assertTextContains("0:45", substring = true)
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    compose.onNodeWithTag(VerifyEmailTags.Screen).assertDoesNotExist()
     assertEquals(0, repository.logInCalls)
-    assertEquals(0, repository.logOutCalls)
     assertEquals(0, repository.sendCalls)
+    assertEquals(VerificationTiming(1000, 46_000), store.timings[user.uid])
   }
 
   @Test
@@ -75,7 +75,7 @@ class VerificationNavigationTest {
     restoration.emulateSavedInstanceStateRestore()
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
     compose.onNodeWithTag(VerifyEmailTags.Screen).assertDoesNotExist()
-    assertEquals(0, repository.logOutCalls)
+    assertEquals(1, repository.logOutCalls)
   }
 
   @Test
