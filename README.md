@@ -1,4 +1,4 @@
-<!-- Contributors: Claude (drafted the README structure, Setup, Running and testing, Tech stack and Project links sections). -->
+<!-- Contributors: Claude (drafted the README structure, Setup, Running and testing, Tech stack and Project links sections; Firestore index deployment, #49). -->
 
 # PolySocial
 
@@ -64,6 +64,16 @@ The app needs two private files that are **not in the repository**. Both are git
 Then build with `./gradlew assembleDebug` (on Windows, `./gradlew.bat assembleDebug`). CI creates both private files from GitHub secrets.
 
 Before every commit, check that `git status` never lists these files. If it does, fix `.gitignore` first and don't commit them.
+
+**Firestore indexes:** the composite indexes the app's queries need are versioned in `firebase/firestore/firestore.indexes.json`. When that file changes on `main`, someone with access to the Firebase project deploys it with the [Firebase CLI](https://firebase.google.com/docs/cli) (`firebase login` first):
+
+```bash
+firebase deploy --only firestore:indexes --project <project-id>
+```
+
+`<project-id>` is the `project_id` in your `app/google-services.json`.
+
+Keep `--only firestore:indexes`: a plain `firebase deploy` would also deploy the Security Rules. A new index takes a few minutes to build (Firebase console → Firestore → Indexes). Until it's ready, the query that needs it fails. The local emulator doesn't need indexes.
 
 ## Running and testing
 
