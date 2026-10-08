@@ -9,6 +9,7 @@ import com.polysocial.model.event.PublicEventsResult
 import com.polysocial.model.event.TEST_NOW
 import com.polysocial.model.event.validEvent
 import com.polysocial.ui.map.MAP_TEST_CLOCK
+import com.polysocial.model.location.FakeLocationService
 import com.polysocial.ui.map.MapContentStatus
 import com.polysocial.ui.map.MapViewModel
 import com.polysocial.utils.MainDispatcherRule
@@ -50,7 +51,7 @@ class RepositoryMapEventSourceTest {
   @Test
   fun newlyCreatedEventReachesTheMapWithoutRetry() = runTest {
     val repository = FakeEventRepository()
-    val viewModel = MapViewModel(RepositoryMapEventSource(repository), MAP_TEST_CLOCK)
+    val viewModel = MapViewModel(RepositoryMapEventSource(repository), FakeLocationService(), MAP_TEST_CLOCK)
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     assertEquals(MapContentStatus.EMPTY, viewModel.uiState.value.status)
 
@@ -68,7 +69,7 @@ class RepositoryMapEventSourceTest {
     val cached = validEvent().copy(id = "cached")
     val repository = FakeEventRepository().apply { readFromCache = true }
     repository.seed(cached)
-    val viewModel = MapViewModel(RepositoryMapEventSource(repository), MAP_TEST_CLOCK)
+    val viewModel = MapViewModel(RepositoryMapEventSource(repository), FakeLocationService(), MAP_TEST_CLOCK)
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
 
     assertEquals(MapContentStatus.READY, viewModel.uiState.value.status)
@@ -90,7 +91,7 @@ class RepositoryMapEventSourceTest {
   @Test
   fun retryAfterTerminalErrorStartsAFreshRepositoryCollection() = runTest {
     val repository = FakeEventRepository().apply { readFailure = true }
-    val viewModel = MapViewModel(RepositoryMapEventSource(repository), MAP_TEST_CLOCK)
+    val viewModel = MapViewModel(RepositoryMapEventSource(repository), FakeLocationService(), MAP_TEST_CLOCK)
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     assertEquals(MapContentStatus.ERROR, viewModel.uiState.value.status)
 
