@@ -1,4 +1,5 @@
-// Contributors: Claude (drafted the Hilt binding for the event repository).
+// Contributors: Claude (drafted the Hilt binding for the event repository; shared Firestore
+// instance and injected clock, #45).
 package com.polysocial.model.event
 
 import com.google.firebase.firestore.FirebaseFirestore
@@ -17,11 +18,10 @@ import javax.inject.Singleton
 object EventModule {
   @Provides
   @Singleton
-  fun eventRepository(auth: AuthRepository, network: NetworkMonitor): EventRepository =
-      FirestoreEventRepository(
-          FirebaseFirestore.getInstance(),
-          auth,
-          network,
-          Clock.systemDefaultZone(),
-      )
+  fun eventRepository(
+      db: FirebaseFirestore,
+      auth: AuthRepository,
+      network: NetworkMonitor,
+      clock: Clock,
+  ): EventRepository = FirestoreEventRepository(db, auth, network, clock)
 }
