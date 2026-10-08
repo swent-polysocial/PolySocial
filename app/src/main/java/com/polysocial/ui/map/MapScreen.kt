@@ -10,13 +10,18 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -33,7 +38,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -47,7 +54,6 @@ import com.polysocial.ui.theme.Info
 import com.polysocial.ui.theme.Ink3
 import com.polysocial.ui.theme.Success
 import com.polysocial.ui.theme.Warning
-import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 
@@ -58,12 +64,15 @@ object MapTags {
   const val TIME = "map_preview_time"
   const val CLOSE = "map_preview_close"
   const val DETAILS = "map_preview_details"
+  const val FIND_GROUP = "map_preview_find_group"
+  const val CATEGORY = "map_preview_category"
+  const val CATEGORY_ICON = "map_preview_category_icon"
+  const val EMPTY_ICON = "map_empty_icon"
   const val LOADING = "map_loading"
   const val EMPTY = "map_empty"
   const val ERROR = "map_error"
   const val RETRY = "map_retry"
   const val SETUP = "map_setup"
-  const val SOURCE_UNAVAILABLE = "map_source_unavailable"
 
   const val PRIVACY = "map_privacy"
   const val PRIVACY_DIALOG = "map_privacy_dialog"
@@ -148,13 +157,6 @@ fun MapScreen(
               onRetry,
               Modifier.align(Alignment.TopCenter).padding(start = 12.dp, top = 64.dp, end = 12.dp),
           )
-      state.status == MapContentStatus.UNAVAILABLE ->
-          MapNotice(
-              R.string.map_source_title,
-              R.string.map_source_message,
-              MapTags.SOURCE_UNAVAILABLE,
-              Modifier.align(Alignment.TopCenter).padding(start = 12.dp, top = 64.dp, end = 12.dp),
-          )
       tokenConfigured &&
           (state.status == MapContentStatus.LOADING ||
               state.renderStatus == MapRenderStatus.LOADING) ->
@@ -190,6 +192,7 @@ fun MapScreen(
           event,
           onClosePreview,
           { onViewDetails(event.id) },
+          state.selectedEventIsToday,
           Modifier.align(Alignment.BottomCenter)
               .onSizeChanged { previewHeight = it.height }
               .padding(12.dp),
@@ -227,6 +230,13 @@ private fun MapNotice(
       colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
   ) {
     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+      if (tag == MapTags.EMPTY) {
+        Icon(
+            painterResource(R.drawable.ic_tab_events),
+            null,
+            Modifier.size(32.dp).testTag(MapTags.EMPTY_ICON),
+        )
+      }
       Text(stringResource(title), style = MaterialTheme.typography.titleMedium)
       Text(stringResource(message), style = MaterialTheme.typography.bodyMedium)
     }
@@ -250,6 +260,7 @@ private fun EventPreview(
     event: Event,
     onClose: () -> Unit,
     onDetails: () -> Unit,
+    isToday: Boolean,
     modifier: Modifier,
 ) {
   Card(
@@ -257,44 +268,94 @@ private fun EventPreview(
       shape = RoundedCornerShape(24.dp),
       colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
   ) {
-    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
       Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            stringResource(categoryLabel(event.category)),
-            color = categoryColor(event.category),
-            style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.weight(1f),
-        )
-        TextButton(onClose, Modifier.testTag(MapTags.CLOSE)) {
-          Text(stringResource(R.string.map_close))
+        Box(
+            Modifier.size(52.dp)
+                .background(
+                    categoryColor(event.category).copy(alpha = 0.1f),
+                    RoundedCornerShape(16.dp),
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+          Icon(
+              painterResource(categoryIcon(event.category)),
+              null,
+              Modifier.size(28.dp).testTag(MapTags.CATEGORY_ICON),
+              tint = categoryColor(event.category),
+          )
+        }
+        Column(Modifier.weight(1f).padding(start = 12.dp)) {
+          Text(
+              stringResource(
+                  R.string.map_category_day,
+                  stringResource(categoryLabel(event.category)),
+                  if (isToday) stringResource(R.string.map_tonight)
+                  else previewDateFormatter.format(event.startTime),
+              ),
+              color = categoryColor(event.category),
+              style = MaterialTheme.typography.labelMedium,
+              modifier = Modifier.testTag(MapTags.CATEGORY),
+          )
+          Text(
+              event.title,
+              style = MaterialTheme.typography.titleLarge,
+              fontWeight = FontWeight.Bold,
+              modifier = Modifier.testTag(MapTags.TITLE),
+          )
+        }
+        IconButton(
+            onClose,
+            Modifier.background(
+                    MaterialTheme.colorScheme.surfaceVariant,
+                    RoundedCornerShape(50),
+                )
+                .testTag(MapTags.CLOSE),
+        ) {
+          Icon(painterResource(R.drawable.ic_close), stringResource(R.string.map_close))
         }
       }
-      Text(
-          event.title,
-          style = MaterialTheme.typography.titleLarge,
-          modifier = Modifier.testTag(MapTags.TITLE),
-      )
-      val formatter =
-          DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT)
-              .withZone(ZoneId.of("Europe/Zurich"))
-      val time = formatter.format(event.startTime)
+      val time = previewTimeFormatter.format(event.startTime)
       Text(
           if (event.endTime == null) time
           else
               stringResource(
                   R.string.map_time_range,
                   time,
-                  formatter.format(event.endTime),
+                  previewTimeFormatter.format(event.endTime),
               ),
           style = MaterialTheme.typography.bodyMedium,
           modifier = Modifier.testTag(MapTags.TIME),
       )
-      Button(onDetails, Modifier.fillMaxWidth().testTag(MapTags.DETAILS)) {
-        Text(stringResource(R.string.map_view_details))
+      Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        OutlinedButton(onDetails, Modifier.weight(1f).testTag(MapTags.DETAILS)) {
+          Text(stringResource(R.string.map_view_details))
+        }
+        Button(
+            {},
+            Modifier.weight(1.4f).testTag(MapTags.FIND_GROUP),
+            enabled = false,
+            colors = ButtonDefaults.buttonColors(containerColor = Accent),
+        ) {
+          Text(stringResource(R.string.map_find_group))
+        }
       }
     }
   }
 }
+
+private val previewTimeFormatter =
+    DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withZone(MAP_TIME_ZONE)
+private val previewDateFormatter = DateTimeFormatter.ofPattern("EEE d MMM").withZone(MAP_TIME_ZONE)
+
+internal fun categoryIcon(category: EventCategory): Int =
+    when (category) {
+      EventCategory.STUDY -> R.drawable.ic_map_study
+      EventCategory.SPORTS -> R.drawable.ic_map_sports
+      EventCategory.CULTURE -> R.drawable.ic_map_culture
+      EventCategory.PARTY -> R.drawable.ic_map_party
+      EventCategory.OTHER -> R.drawable.ic_tab_events
+    }
 
 @StringRes
 internal fun categoryLabel(category: EventCategory): Int =

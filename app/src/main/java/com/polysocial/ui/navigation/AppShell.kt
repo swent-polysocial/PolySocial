@@ -30,11 +30,13 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.polysocial.R
 import com.polysocial.resources.C
 import com.polysocial.ui.map.MapRoute
@@ -75,36 +77,50 @@ fun AppShell(
         navigation(startDestination = tab.rootRoute, route = tab.route) {
           composable(tab.rootRoute) {
             if (tab == Tab.MAP) {
-              mapContent { id -> navController.navigate("map/event/${android.net.Uri.encode(id)}") }
+              mapContent { id ->
+                navController.navigate("${tab.detailRoute}?eventId=${android.net.Uri.encode(id)}")
+              }
             } else {
               TabRootScreen(tab)
             }
           }
-          composable(tab.detailRoute) { PlaceholderDetailScreen(tab) }
           if (tab == Tab.MAP) {
-            composable(MAP_DETAIL_ROUTE) {
-              Column(Modifier.padding(20.dp).testTag("event_detail_placeholder")) {
-                Text(
-                    stringResource(R.string.event_detail_title),
-                    style = MaterialTheme.typography.titleLarge,
-                )
-                Text(stringResource(R.string.event_detail_placeholder))
-                TextButton(
-                    onClick = { navController.popBackStack() },
-                    modifier = Modifier.testTag("event_detail_back"),
-                ) {
-                  Text(stringResource(R.string.event_detail_back))
-                }
-              }
+            composable(
+                "${tab.detailRoute}?eventId={eventId}",
+                arguments =
+                    listOf(
+                        navArgument("eventId") {
+                          type = NavType.StringType
+                          nullable = true
+                          defaultValue = null
+                        }
+                    ),
+            ) { entry ->
+              if (entry.arguments?.getString("eventId") == null) {
+                PlaceholderDetailScreen(tab)
+              } else
+                  Column(Modifier.padding(20.dp).testTag(C.Tag.event_detail_placeholder)) {
+                    Text(
+                        stringResource(R.string.event_detail_title),
+                        style = MaterialTheme.typography.titleLarge,
+                    )
+                    Text(stringResource(R.string.event_detail_placeholder))
+                    TextButton(
+                        onClick = { navController.popBackStack() },
+                        modifier = Modifier.testTag(C.Tag.event_detail_back),
+                    ) {
+                      Text(stringResource(R.string.event_detail_back))
+                    }
+                  }
             }
+          } else {
+            composable(tab.detailRoute) { PlaceholderDetailScreen(tab) }
           }
         }
       }
     }
   }
 }
-
-private const val MAP_DETAIL_ROUTE = "map/event/{eventId}"
 
 /**
  * Shows [tab] with the screen it was on. The other tabs' stacks are saved and removed, so the back
