@@ -1,5 +1,5 @@
-// Contributors: Claude (Hilt @AndroidEntryPoint annotation, #70; light system-bar icons for the
-// light-only theme, #66; show the app shell instead of the template greeting, #41).
+// Contributors: Claude (Hilt entry point, light-only system bars and app shell, #41);
+// OpenAI Codex (GPT-6.1 Sol, medium; connected sign-up and future authentication destinations).
 package com.polysocial
 
 import android.graphics.Color
@@ -8,7 +8,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import com.polysocial.ui.navigation.AppShell
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import com.polysocial.ui.auth.AuthFlow
+import com.polysocial.ui.auth.SignUpViewModel
 import com.polysocial.ui.theme.PolySocialTheme
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -21,6 +23,11 @@ class MainActivity : ComponentActivity() {
         statusBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
         navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
     )
-    setContent { PolySocialTheme { AppShell() } }
+    setContent {
+      PolySocialTheme {
+        val signUpViewModel: SignUpViewModel = hiltViewModel()
+        AuthFlow(signUpViewModel, onExit = { finish() })
+      }
+    }
   }
 }

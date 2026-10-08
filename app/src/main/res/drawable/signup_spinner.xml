@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Unknown AI (original Figma design; model unknown); OpenAI Codex (GPT-6.1 Sol, medium; converted to Android vector and clarified source attribution). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="18dp"
+    android:height="18dp"
+    android:viewportWidth="18"
+    android:viewportHeight="18">
+    <group>
+        <clip-path android:pathData="M0,0H18V18H0Z" />
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M9 16.2C12.9764 16.2 16.2 12.9764 16.2 9C16.2 5.02355 12.9764 1.8 9 1.8C5.02355 1.8 1.8 5.02355 1.8 9C1.8 12.9764 5.02355 16.2 9 16.2Z"
+            android:strokeColor="#FFFFFF"
+            android:strokeAlpha="0.3"
+            android:strokeWidth="2.16" />
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M9 1.8C10.9096 1.8 12.7409 2.55857 14.0912 3.90883C15.4414 5.25909 16.2 7.09044 16.2 9"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="2.16"
+            android:strokeLineCap="round" />
+    </group>
+</vector>

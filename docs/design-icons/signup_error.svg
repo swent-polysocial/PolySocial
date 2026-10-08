@@ -1,0 +1,14 @@
+<!-- Source: exported directly from an AI-generated Figma design (AI model unknown).
+Contributors: OpenAI Codex (GPT-6.1 Sol Medium; documented source attribution). -->
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Icon" clip-path="url(#clip0_0_4)">
+<path id="Vector" d="M7 12.6C10.0928 12.6 12.6 10.0928 12.6 7C12.6 3.90721 10.0928 1.4 7 1.4C3.90721 1.4 1.4 3.90721 1.4 7C1.4 10.0928 3.90721 12.6 7 12.6Z" stroke="#B3202A" stroke-width="1.4"/>
+<path id="Vector_2" d="M7 4.2V7.6" stroke="#B3202A" stroke-width="1.4" stroke-linecap="round"/>
+<path id="Vector_3" d="M7 10.6C7.44183 10.6 7.8 10.2418 7.8 9.8C7.8 9.35817 7.44183 9 7 9C6.55817 9 6.2 9.35817 6.2 9.8C6.2 10.2418 6.55817 10.6 7 10.6Z" fill="#B3202A"/>
+</g>
+<defs>
+<clipPath id="clip0_0_4">
+<rect width="14" height="14" fill="white"/>
+</clipPath>
+</defs>
+</svg>

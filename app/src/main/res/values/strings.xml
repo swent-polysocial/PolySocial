@@ -1,4 +1,4 @@
-<!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42); OpenAI Codex (Google and welcome copy). -->
+<!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42); OpenAI Codex (Google and welcome copy). OpenAI Codex (sign-up form and startup integration). -->
 <resources>
     <string name="app_name">PolySocial</string>
     <string name="title_activity_main">MainActivity</string>
@@ -14,8 +14,37 @@
     <string name="loading_map">Loading the map…</string>
     <string name="loading_chats">Loading chats…</string>
     <string name="loading_profile">Loading your profile…</string>
+    <string name="signup_or">or</string>
     <string name="google_sign_in">Sign in with Google</string>
+    <string name="signup_title">Create your account</string>
+    <string name="signup_description">Use your EPFL email. Verification is required before you can access the app.</string>
+    <string name="signup_full_name">Full name</string>
+    <string name="signup_email">EPFL email</string>
+    <string name="signup_password">Password</string>
+    <string name="signup_confirm_password">Confirm password</string>
+    <string name="signup_create">Create account</string>
+    <string name="signup_creating">Creating account…</string>
     <string name="signup_already_have_account">Already have an account?</string>
+    <string name="signup_log_in">Log in</string>
+    <string name="signup_log_in_instead">Log in instead</string>
+    <string name="signup_required">This field is required.</string>
+    <string name="signup_invalid_domain">Use your @epfl.ch address.</string>
+    <string name="signup_password_rules">Use at least 8 characters and include a number.</string>
+    <string name="signup_password_mismatch">Passwords don\'t match.</string>
+    <string name="signup_duplicate_email">This email already has an account.</string>
+    <string name="signup_network_error">Check your connection and try again.</string>
+    <string name="signup_too_many_requests">Too many requests. Wait a few minutes and try again.</string>
+    <string name="signup_unknown_error">Couldn\'t create your account. Please try again.</string>
+    <string name="signup_display_name_error">Your account was created, but your name could not be saved. Log in to recover your account.</string>
+    <string name="signup_minimum_length">At least 8 characters</string>
+    <string name="signup_contains_number">Contains a number</string>
+    <string name="signup_epfl_address">EPFL address</string>
+    <string name="signup_show_password">Show password</string>
+    <string name="signup_hide_password">Hide password</string>
+    <string name="signup_back">Back</string>
+    <string name="signup_rule_met">Requirement met</string>
+    <string name="signup_rule_unmet">Requirement not met</string>
+    <string name="verify_email_title">Verify email</string>
     <string name="welcome_title">Never go alone.</string>
     <string name="welcome_subtitle">Find a small group of EPFL students to go to campus events with.</string>
     <string name="welcome_sign_up">Sign up with EPFL email</string>
