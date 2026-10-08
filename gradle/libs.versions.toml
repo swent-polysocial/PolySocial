@@ -1,6 +1,6 @@
 # Contributors: Claude (Hilt, KSP and Hilt testing entries, #70; Navigation Compose entry, #41;
 # MockK and coroutines for Play Services Tasks, #32); OpenAI Codex (sign-up test entries
-# and removal of the unused Android MockK entry after review).
+# and Android MockK for the sign-up form device tests).
 [versions]
 agp = "9.3.3"
 kotlin = "2.4.20"
@@ -56,6 +56,7 @@ kaspresso-compose = { group = "com.kaspersky.android-components", name = "kaspre
 
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
+mockk-android = { module = "io.mockk:mockk-android", version.ref = "mockk" }
 
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-auth = { group = "com.google.firebase", name = "firebase-auth" }

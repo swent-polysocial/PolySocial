@@ -1,6 +1,6 @@
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; tested tagged validation, backend errors and
 // sign-up handoff with MockK; backend failure messages, recovery actions, login navigation and
-// official Google placeholder behavior and welcome navigation).
+// official Google placeholder behavior, welcome navigation and startup routing injection).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -12,13 +12,16 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.polysocial.R
 import com.polysocial.model.auth.*
+import com.polysocial.model.user.*
 import com.polysocial.resources.C
 import com.polysocial.ui.auth.*
 import com.polysocial.ui.login.LoginScreenTestTags
 import com.polysocial.ui.login.LoginViewModel
+import com.polysocial.ui.start.AppStartViewModel
 import com.polysocial.ui.theme.PolySocialTheme
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import org.junit.Assert.*
 import org.junit.Before
@@ -33,11 +36,17 @@ class SignUpScreenTest {
   private val user = AuthUser("test-uid", "student.test@epfl.ch", false, "Test Student")
   private val viewModel = SignUpViewModel(repository)
   private val loginViewModel = LoginViewModel(repository)
+  private val profiles = mockk<UserProfileRepository>()
+  private lateinit var startViewModel: AppStartViewModel
   private var signedUp = 0
   private var logIn = 0
 
   @Before
   fun setup() {
+    every { repository.currentUser() } returns null
+    coEvery { profiles.getProfile(any()) } returns
+        ProfileResult.Found(UserProfile(user.uid, user.email, "Test Student", "IN", "BA1"))
+    startViewModel = AppStartViewModel(repository, profiles)
     coEvery { repository.signUp(any(), any(), any()) } returns SignUpResult.Success(user)
   }
 
@@ -337,7 +346,14 @@ class SignUpScreenTest {
   @Test
   fun welcomeIsInitialDestinationAndBothSignUpBackActionsReturnToIt() {
     compose.setContent {
-      PolySocialTheme { AuthFlow(viewModel, onExit = {}, loginViewModel = loginViewModel) }
+      PolySocialTheme {
+        AuthFlow(
+            viewModel,
+            onExit = {},
+            loginViewModel = loginViewModel,
+            startViewModel = startViewModel,
+        )
+      }
     }
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
     compose.onNodeWithTag(SignUpTags.Screen).assertDoesNotExist()
@@ -356,7 +372,14 @@ class SignUpScreenTest {
   @Test
   fun welcomeLoginBackReturnsToWelcomeAndCreateAccountOpensSignUp() {
     compose.setContent {
-      PolySocialTheme { AuthFlow(viewModel, onExit = {}, loginViewModel = loginViewModel) }
+      PolySocialTheme {
+        AuthFlow(
+            viewModel,
+            onExit = {},
+            loginViewModel = loginViewModel,
+            startViewModel = startViewModel,
+        )
+      }
     }
     compose.onNodeWithTag(WelcomeTags.LogIn).performScrollTo().performClick()
     compose.onNodeWithTag(LoginScreenTestTags.SCREEN).assertIsDisplayed()
@@ -376,7 +399,14 @@ class SignUpScreenTest {
   fun successfulSignUpNavigatesOnlyToVerifyEmailAndBackExits() {
     var exits = 0
     compose.setContent {
-      PolySocialTheme { AuthFlow(viewModel, onExit = { exits++ }, loginViewModel = loginViewModel) }
+      PolySocialTheme {
+        AuthFlow(
+            viewModel,
+            onExit = { exits++ },
+            loginViewModel = loginViewModel,
+            startViewModel = startViewModel,
+        )
+      }
     }
     compose.onNodeWithTag(WelcomeTags.SignUp).performScrollTo().performClick()
     fill()
@@ -394,7 +424,14 @@ class SignUpScreenTest {
   @Test
   fun loginLinkOpensLoginPageAndCreateAccountRestoresTheSignUpForm() {
     compose.setContent {
-      PolySocialTheme { AuthFlow(viewModel, onExit = {}, loginViewModel = loginViewModel) }
+      PolySocialTheme {
+        AuthFlow(
+            viewModel,
+            onExit = {},
+            loginViewModel = loginViewModel,
+            startViewModel = startViewModel,
+        )
+      }
     }
     compose.onNodeWithTag(WelcomeTags.SignUp).performScrollTo().performClick()
     input(SignUpField.FullName, "Test Student")
@@ -416,7 +453,14 @@ class SignUpScreenTest {
   fun loginFailureStaysOnLoginPageAndVerifiedRetryOpensAppShell() {
     coEvery { repository.logIn(any(), any()) } returns LogInResult.WrongCredentials
     compose.setContent {
-      PolySocialTheme { AuthFlow(viewModel, onExit = {}, loginViewModel = loginViewModel) }
+      PolySocialTheme {
+        AuthFlow(
+            viewModel,
+            onExit = {},
+            loginViewModel = loginViewModel,
+            startViewModel = startViewModel,
+        )
+      }
     }
     compose.onNodeWithTag(WelcomeTags.SignUp).performScrollTo().performClick()
     compose.onNodeWithTag(SignUpTags.LogIn).performScrollTo().performClick()
@@ -428,6 +472,7 @@ class SignUpScreenTest {
     compose.onNodeWithTag(C.Tag.app_shell).assertDoesNotExist()
     compose.onNodeWithTag(SignUpTags.VerifyEmailDestination).assertDoesNotExist()
 
+    every { repository.currentUser() } returns user.copy(isEmailVerified = true)
     coEvery { repository.logIn(any(), any()) } returns
         LogInResult.Success(user.copy(isEmailVerified = true))
     compose.onNodeWithTag(LoginScreenTestTags.LOG_IN).performScrollTo().performClick()
@@ -442,7 +487,14 @@ class SignUpScreenTest {
   fun unverifiedLoginOpensVerificationInsteadOfAppShell() {
     coEvery { repository.logIn(any(), any()) } returns LogInResult.Success(user)
     compose.setContent {
-      PolySocialTheme { AuthFlow(viewModel, onExit = {}, loginViewModel = loginViewModel) }
+      PolySocialTheme {
+        AuthFlow(
+            viewModel,
+            onExit = {},
+            loginViewModel = loginViewModel,
+            startViewModel = startViewModel,
+        )
+      }
     }
     compose.onNodeWithTag(WelcomeTags.SignUp).performScrollTo().performClick()
     compose.onNodeWithTag(SignUpTags.LogIn).performScrollTo().performClick()
@@ -469,7 +521,14 @@ class SignUpScreenTest {
   fun duplicateEmailLinkOpensLoginPageAndBackReturnsToForm() {
     coEvery { repository.signUp(any(), any(), any()) } returns SignUpResult.AlreadyInUse
     compose.setContent {
-      PolySocialTheme { AuthFlow(viewModel, onExit = {}, loginViewModel = loginViewModel) }
+      PolySocialTheme {
+        AuthFlow(
+            viewModel,
+            onExit = {},
+            loginViewModel = loginViewModel,
+            startViewModel = startViewModel,
+        )
+      }
     }
     compose.onNodeWithTag(WelcomeTags.SignUp).performScrollTo().performClick()
     fill()

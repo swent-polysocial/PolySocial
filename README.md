@@ -1,4 +1,4 @@
-<!-- Contributors: Claude (drafted the README structure, Setup, Running and testing, Tech stack and Project links sections; Firestore index deployment, #49). -->
+<!-- Contributors: Claude (drafted the README structure, Setup, Running and testing, Tech stack and Project links sections; Firestore index deployment, #49); OpenAI Codex (documented startup routing and rebase reconciliation). -->
 
 # PolySocial
 
@@ -39,6 +39,8 @@ The barrier to campus life is social rather than informational: PolySocial answe
 **Privacy:** location is never tracked continuously. It is read once for a feature, or shared only with your group, only during the event, and only when you choose to. Profiles, photos, chats and locations are personal data under the Swiss nLPD, and you can delete your account and data.
 
 **Offline:** events you've loaded, your registered events and their schedule, and reminders stay available offline. The map shows cached events on whatever map tiles are already cached.
+
+On launch, signed-out users see Welcome. A retained unverified session opens the Verify Email placeholder. Verified sessions load their profile before opening the app or the profile-setup placeholder; a failed profile read shows Retry. Verified login uses the same check. The full verification and profile screens follow in #31 and #34.
 
 ## Tech stack
 

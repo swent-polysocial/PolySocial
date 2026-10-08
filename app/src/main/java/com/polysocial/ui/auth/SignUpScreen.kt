@@ -1,6 +1,6 @@
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; translated the Figma sign-up form to Compose
 // Foundation, reusing the shared app theme; connected login and added the official Google
-// placeholder button; connected the welcome entry screen).
+// placeholder button; connected the welcome entry screen and app-start/profile routing).
 package com.polysocial.ui.auth
 
 import androidx.activity.compose.BackHandler
@@ -17,6 +17,8 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
@@ -47,6 +49,8 @@ import com.polysocial.model.auth.*
 import com.polysocial.ui.login.LoginScreen
 import com.polysocial.ui.login.LoginViewModel
 import com.polysocial.ui.navigation.AppShell
+import com.polysocial.ui.start.AppStartViewModel
+import com.polysocial.ui.start.StartDestination
 import com.polysocial.ui.theme.Disabled
 import com.polysocial.ui.theme.Success
 import kotlinx.coroutines.launch
@@ -94,6 +98,9 @@ private fun SignUpSpinner() {
 }
 
 private enum class AuthDestination {
+  Loading,
+  Error,
+  ProfileSetup,
   Welcome,
   SignUp,
   VerifyEmail,
@@ -101,23 +108,70 @@ private enum class AuthDestination {
   SignedIn,
 }
 
-/** Connects welcome, sign-up and login; verification and account-status routing remain #31/#74. */
+/** Connects auth screens to session/profile routing; #31 and #34 supply the remaining screens. */
 @Composable
 fun AuthFlow(
     viewModel: SignUpViewModel,
     onExit: () -> Unit,
     loginViewModel: LoginViewModel = hiltViewModel(),
+    startViewModel: AppStartViewModel = hiltViewModel(),
 ) {
-  var destination by rememberSaveable { mutableStateOf(AuthDestination.Welcome) }
+  var destination by rememberSaveable { mutableStateOf(AuthDestination.Loading) }
+  var startupApplied by rememberSaveable { mutableStateOf(false) }
+  val startDestination by startViewModel.destination.collectAsStateWithLifecycle()
+  LaunchedEffect(startDestination) {
+    // Preserve the active signed-out form on recreation; fresh launches resolve the session.
+    if (
+        !startupApplied ||
+            startDestination != StartDestination.Login ||
+            destination == AuthDestination.Loading
+    ) {
+      destination =
+          when (startDestination) {
+            StartDestination.Loading -> AuthDestination.Loading
+            StartDestination.Login -> AuthDestination.Welcome
+            StartDestination.VerifyEmail -> AuthDestination.VerifyEmail
+            StartDestination.ProfileSetup -> AuthDestination.ProfileSetup
+            StartDestination.Main -> AuthDestination.SignedIn
+            StartDestination.Error -> AuthDestination.Error
+          }
+      if (startDestination != StartDestination.Loading) startupApplied = true
+    }
+  }
   var loginOrigin by rememberSaveable { mutableStateOf(AuthDestination.Welcome) }
   BackHandler(destination != AuthDestination.Welcome && destination != AuthDestination.SignedIn) {
     when (destination) {
-      AuthDestination.VerifyEmail -> onExit()
+      AuthDestination.VerifyEmail,
+      AuthDestination.ProfileSetup,
+      AuthDestination.Loading,
+      AuthDestination.Error -> onExit()
       AuthDestination.LogIn -> destination = loginOrigin
       else -> destination = AuthDestination.Welcome
     }
   }
   when (destination) {
+    AuthDestination.Loading ->
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+          CircularProgressIndicator(Modifier.semantics { testTag = "auth_start_loading" })
+        }
+    AuthDestination.Error ->
+        Column(Modifier.safeDrawingPadding()) {
+          Label(
+              stringResource(R.string.auth_start_error),
+              Modifier.semantics { testTag = "auth_start_error" },
+          )
+          Button(
+              onClick = startViewModel::refresh,
+              modifier = Modifier.semantics { testTag = "auth_start_retry" },
+          ) {
+            Label(stringResource(R.string.auth_start_retry))
+          }
+        }
+    AuthDestination.ProfileSetup ->
+        Label(
+            stringResource(R.string.auth_profile_setup),
+            Modifier.safeDrawingPadding().semantics { testTag = "auth_profile_setup" },
+        )
     AuthDestination.Welcome ->
         WelcomeScreen(
             onSignUp = { destination = AuthDestination.SignUp },
@@ -144,7 +198,7 @@ fun AuthFlow(
     AuthDestination.LogIn ->
         LoginScreen(
             onBack = { destination = loginOrigin },
-            onLoggedIn = { destination = AuthDestination.SignedIn },
+            onLoggedIn = startViewModel::refresh,
             onNeedsVerification = { destination = AuthDestination.VerifyEmail },
             onCreateAccount = { destination = AuthDestination.SignUp },
             viewModel = loginViewModel,

@@ -1,5 +1,8 @@
 <!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42); OpenAI Codex (Google and welcome copy). OpenAI Codex (sign-up form and startup integration). -->
 <resources>
+    <string name="auth_start_error">Could not load your profile. Check your connection and try again.</string>
+    <string name="auth_start_retry">Retry</string>
+    <string name="auth_profile_setup">Complete your profile — coming soon</string>
     <string name="app_name">PolySocial</string>
     <string name="title_activity_main">MainActivity</string>
     <string name="title_activity_second">SecondActivity</string>
