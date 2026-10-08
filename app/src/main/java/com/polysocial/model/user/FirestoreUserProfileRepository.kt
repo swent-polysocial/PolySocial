@@ -102,8 +102,10 @@ private fun UserProfile.toEditableFields(): Map<String, Any> =
 
 /**
  * The profile in this document, or `null` if a required field is missing, unknown, or stored with
- * the wrong type (Firestore throws for a field of another type). A missing `isAssociationVerified`
- * means not verified: the client never writes it, so only verified accounts have it.
+ * the wrong type (Firestore throws for a field of another type). `isAssociationVerified` counts
+ * only when it is the boolean `true`, like the rules' `== true`: an admin sets it by hand, so a
+ * missing field or a typo such as the string "true" means not verified instead of an unreadable
+ * profile.
  */
 private fun DocumentSnapshot.toUserProfile(): UserProfile? =
     try {
@@ -122,7 +124,7 @@ private fun DocumentSnapshot.readUserProfile(): UserProfile? {
       section = getString("section") ?: return null,
       year = getString("year") ?: return null,
       accountType = accountType,
-      isAssociationVerified = getBoolean("isAssociationVerified") ?: false,
+      isAssociationVerified = get("isAssociationVerified") == true,
       createdAt = getTimestamp("createdAt")?.toInstant(),
   )
 }

@@ -56,7 +56,7 @@ class FirestoreUserProfileRepositoryTest {
   private fun snapshot(fields: Map<String, Any?>?): DocumentSnapshot = mockk {
     every { exists() } returns (fields != null)
     every { getString(any()) } answers { fields?.get(firstArg()) as String? }
-    every { getBoolean(any()) } answers { fields?.get(firstArg()) as Boolean? }
+    every { this@mockk.get(any<String>()) } answers { fields?.get(firstArg()) }
     every { getTimestamp(any()) } answers { fields?.get(firstArg()) as Timestamp? }
   }
 
@@ -138,13 +138,19 @@ class FirestoreUserProfileRepositoryTest {
   }
 
   @Test
-  fun getProfile_verifiedFlagOfTheWrongType_returnsUnexpectedError() = runTest {
-    val stored = snapshot(storedFields)
-    every { stored.getBoolean("isAssociationVerified") } throws
-        RuntimeException("isAssociationVerified is not a Boolean")
-    every { ref.get() } returns Tasks.forResult(stored)
+  fun getProfile_verifiedFlagOfTheWrongType_readsAsNotVerified() = runTest {
+    every { ref.get() } returns
+        Tasks.forResult(
+            snapshot(
+                storedFields +
+                    ("accountType" to "association") +
+                    ("isAssociationVerified" to "true")
+            )
+        )
 
-    assertEquals(ProfileResult.UnexpectedError, repository.getProfile("u1"))
+    val result = repository.getProfile("u1") as ProfileResult.Found
+
+    assertFalse(result.profile.isAssociationVerified)
   }
 
   @Test
