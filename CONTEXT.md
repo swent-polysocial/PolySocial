@@ -77,7 +77,7 @@ The issues for the last four points (#12, #31, #32, #34, #35, #44–#47, #52) st
 
 ## Open questions (don't guess, ask)
 
-- **Association event reads (#47/#52):** [review of #93](https://github.com/swent-polysocial/PolySocial/pull/93) asks #47's owner to confirm that association writes will build on the existing own-events-only read policy. Keep this policy until the team confirms or changes it.
+- **Association access to other public events:** [Ayoub confirmed](https://github.com/swent-polysocial/PolySocial/pull/93#issuecomment-6069094805) that #47's writes will build on #52's own-association-events read policy. Whether associations may also read students' public events remains a separate team question; keep the current policy until a team decision.
 - **Map provider:** Google Maps (current default) or Mapbox (recommended by the coaches)?
 - **Sign-in providers:** add Google or Microsoft sign-in next to email/password? Every student account still needs a verified `@epfl.ch` email (checked by the rules). Only email/password needs our Verify Email screen, because Google and Microsoft deliver already-verified emails.
 - **Association members and event drafts:** Figma has them, but there is no data model yet. How does an association find and add a student as a member, and what can each role do? Drafts are not in the `Event` model.
@@ -91,6 +91,7 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 
+- 2026-10-09 · Record #47 owner's confirmation that association writes build on the existing own-events read policy; broader association public-event access still needs a team decision. ([#93](https://github.com/swent-polysocial/PolySocial/pull/93#issuecomment-6069094805))
 - 2026-10-09 · [#87](https://github.com/swent-polysocial/PolySocial/pull/87): preserve sign-up/login completion effects by blocking Back during submission and handoff; failures restore navigation.
 
 - 2026-10-08 · [#87](https://github.com/swent-polysocial/PolySocial/pull/87): wire the merged startup router into auth entry and verified login; preserve Welcome for signed-out users, handle profile loading/error/Retry, and keep #31/#34 destination markers until their screens land.
