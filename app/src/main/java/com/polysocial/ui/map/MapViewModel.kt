@@ -111,8 +111,9 @@ constructor(
   }
 
   private fun isTonight(event: Event?): Boolean =
-      event != null && event.startTime.atZone(MAP_TIME_ZONE).toLocalDate() ==
-          LocalDate.now(clock.withZone(MAP_TIME_ZONE)) &&
+      event != null &&
+          event.startTime.atZone(MAP_TIME_ZONE).toLocalDate() ==
+              LocalDate.now(clock.withZone(MAP_TIME_ZONE)) &&
           event.startTime.atZone(MAP_TIME_ZONE).hour >= 18
 }
 

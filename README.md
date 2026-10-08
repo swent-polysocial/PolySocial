@@ -67,6 +67,8 @@ Then build with `./gradlew assembleDebug` (on Windows, `./gradlew.bat assembleDe
 
 ### Mapbox setup
 
+The prototype keeps the current account and signup public token. The team decides production billing, usage thresholds and token rotation before release; this setup does not add a payment method.
+
 One **public** (`pk.`) token is enough for the initial PolySocial prototype, including teammates' local builds. The signup token can be used for initial development. Card-free trial accounts currently allow 100 monthly active mobile users and cannot create additional tokens until a payment method is added; see [Mapbox signup and trial limits](https://docs.mapbox.com/accounts/guides/signup/). Before production, create a dedicated PolySocial public token with only `styles:read` and `fonts:read` scopes. Separate development/release tokens can help track usage and rotate credentials independently, but are not required for the prototype.
 
 Put `MAPBOX_ACCESS_TOKEN=your-public-token` in each checkout's git-ignored root `local.properties`. Gradle generates `mapbox_access_token`; never commit a token resource or package a secret (`sk.`) token. A public token is included in the installed app, so minimal scopes and usage monitoring still matter. Downloads from the Mapbox Maven repository need no secret token. The `ndk27` artifacts support Android’s 16 KB memory page requirement.

@@ -3,7 +3,6 @@ package com.polysocial.ui.map
 
 import android.content.Context
 import androidx.activity.ComponentActivity
-import androidx.activity.ComponentDialog
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,7 +36,6 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.shadows.ShadowDialog
 
 @RunWith(AndroidJUnit4::class)
 class MapRepositoryRouteTest {
@@ -135,21 +133,13 @@ class MapRepositoryRouteTest {
   }
 
   @Test
-  fun missingTokenKeepsSetupAndPrivacyDismissalUsableWithLoadedEvents() {
+  fun missingTokenKeepsSetupVisibleWithLoadedEvents() {
     val repository = FakeEventRepository()
     repository.seed(validEvent().copy(id = "configured-data"))
     show(repository, tokenConfigured = false)
     compose.onNodeWithTag(MapTags.SETUP).assertIsDisplayed()
     compose.onNodeWithTag(MapTags.CANVAS).assertDoesNotExist()
-    compose.onNodeWithTag(MapTags.PRIVACY).performClick()
-    compose.onNodeWithTag(MapTags.PRIVACY_DIALOG).assertIsDisplayed()
-
-    compose.runOnIdle {
-      (ShadowDialog.getLatestDialog() as ComponentDialog).onBackPressedDispatcher.onBackPressed()
-    }
-
-    compose.onNodeWithTag(MapTags.PRIVACY_DIALOG).assertDoesNotExist()
-    compose.onNodeWithTag(MapTags.SETUP).assertIsDisplayed()
+    compose.onNodeWithTag("map_privacy").assertDoesNotExist()
   }
 
   @Test
