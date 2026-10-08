@@ -8,15 +8,25 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.polysocial.R
+import com.polysocial.model.event.Event
 
 /** Android permission UI boundary; device reads and permission history stay in the ViewModel. */
 @Composable
-fun MapRoute(onViewDetails: (String) -> Unit, viewModel: MapViewModel = hiltViewModel()) {
+fun MapRoute(
+    onViewDetails: (String) -> Unit,
+    viewModel: MapViewModel = hiltViewModel(),
+    tokenConfigured: Boolean = stringResource(R.string.mapbox_access_token).startsWith("pk."),
+    renderer: @Composable (List<Event>, (String) -> Unit, (MapRenderStatus) -> Unit, Dp) -> Unit =
+        defaultMapRenderer,
+) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   val lifecycleOwner = LocalLifecycleOwner.current
   val permissionLauncher =
@@ -59,5 +69,7 @@ fun MapRoute(onViewDetails: (String) -> Unit, viewModel: MapViewModel = hiltView
       onRetry = viewModel::retry,
       onRenderStatus = viewModel::onRenderStatus,
       onTurnOnLocation = viewModel::turnOnLocation,
+      tokenConfigured = tokenConfigured,
+      renderer = renderer,
   )
 }

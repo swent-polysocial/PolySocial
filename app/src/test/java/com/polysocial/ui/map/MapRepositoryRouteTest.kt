@@ -1,9 +1,11 @@
-// Contributors: OpenAI Codex (repository-to-map UI integration and callback tests for #50).
+// Contributors: OpenAI Codex (repository-to-map UI tests for #50; denied-location fake for #51).
 package com.polysocial.ui.map
 
 import android.content.Context
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -11,6 +13,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
@@ -26,6 +29,7 @@ import com.polysocial.model.event.CreateEventResult
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.validEvent
+import com.polysocial.model.location.FakeLocationService
 import com.polysocial.model.map.RepositoryMapEventSource
 import com.polysocial.ui.theme.PolySocialTheme
 import com.polysocial.utils.MainDispatcherRule
@@ -44,7 +48,11 @@ class MapRepositoryRouteTest {
   private var detailId: String? = null
 
   private fun model(repository: FakeEventRepository) =
-      MapViewModel(RepositoryMapEventSource(repository), MAP_TEST_CLOCK)
+      MapViewModel(
+          RepositoryMapEventSource(repository),
+          FakeLocationService().apply { markPermissionRequested() },
+          MAP_TEST_CLOCK,
+      )
 
   private fun show(repository: FakeEventRepository, tokenConfigured: Boolean = true) {
     val model = model(repository)
@@ -77,13 +85,19 @@ class MapRepositoryRouteTest {
       select: (String) -> Unit,
       status: (MapRenderStatus) -> Unit,
   ) {
-    Column(Modifier.testTag(MapTags.CANVAS)) {
-      TextButton({ status(MapRenderStatus.READY) }, Modifier.testTag("fake_renderer_ready")) {
+    // Keep physical click targets clear of the permission notice at the top of the map.
+    Box(Modifier.fillMaxSize().testTag(MapTags.CANVAS)) {
+      TextButton(
+          { status(MapRenderStatus.READY) },
+          Modifier.align(Alignment.TopStart).testTag("fake_renderer_ready"),
+      ) {
         Text("Map loaded")
       }
-      events.forEach { event ->
-        TextButton({ select(event.id) }, Modifier.testTag(MapTags.marker(event.id))) {
-          Text(event.title)
+      Column(Modifier.align(Alignment.CenterStart)) {
+        events.forEach { event ->
+          TextButton({ select(event.id) }, Modifier.testTag(MapTags.marker(event.id))) {
+            Text(event.title)
+          }
         }
       }
     }
@@ -99,6 +113,7 @@ class MapRepositoryRouteTest {
     settle()
     compose.onNodeWithTag(MapTags.marker("private")).assertDoesNotExist()
     compose.onNodeWithTag(MapTags.TITLE).assertTextEquals(cached.title)
+    compose.onNodeWithTag(MapTags.DISTANCE).assertDoesNotExist()
     compose.onNodeWithTag(MapTags.DETAILS).performClick()
     assertEquals(cached.id, detailId)
     compose.onNodeWithTag(MapTags.CLOSE).performClick()
@@ -129,6 +144,7 @@ class MapRepositoryRouteTest {
 
     compose.onNodeWithTag(MapTags.ERROR).assertDoesNotExist()
     compose.onNodeWithTag(MapTags.marker("recovered")).assertIsDisplayed().performClick()
+    settle()
     compose.onNodeWithTag(MapTags.TITLE).assertTextEquals("Recovered meetup")
   }
 
