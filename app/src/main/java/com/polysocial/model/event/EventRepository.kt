@@ -1,5 +1,8 @@
-// Contributors: Claude (drafted the EventRepository interface); Mohamed Khellaf (reviewed).
+// Contributors: Claude (drafted the EventRepository interface and the public upcoming-events
+// query, #49); Mohamed Khellaf (reviewed).
 package com.polysocial.model.event
+
+import kotlinx.coroutines.flow.Flow
 
 /** Outcome of [EventRepository.createEvent]. */
 sealed interface CreateEventResult {
@@ -22,7 +25,24 @@ sealed interface CreateEventResult {
   data object UnexpectedError : CreateEventResult
 }
 
-/** Stores events in `events/{id}`. Reading events comes with the Map epic (#49). */
+/** How many days ahead [EventRepository.getUpcomingPublicEvents] looks by default. */
+const val DEFAULT_UPCOMING_WINDOW_DAYS = 14
+
+/** What [EventRepository.getUpcomingPublicEvents] emits. */
+sealed interface PublicEventsResult {
+  /**
+   * The current public upcoming events, sorted by start time.
+   *
+   * @property fromCache true when the list comes from Firestore's offline cache, for example while
+   *   the device is offline. It may then miss events created since the last sync.
+   */
+  data class Events(val events: List<Event>, val fromCache: Boolean) : PublicEventsResult
+
+  /** The events couldn't be read, for example because the Security Rules denied the query. */
+  data object Error : PublicEventsResult
+}
+
+/** Stores events in `events/{id}`. */
 interface EventRepository {
   /**
    * Validates [event] with [validateNewEvent], then saves it as created by the signed-in user (see
@@ -37,4 +57,18 @@ interface EventRepository {
    * failing, so the repository must not start one.
    */
   suspend fun createEvent(event: Event): CreateEventResult
+
+  /**
+   * Observes the public events that start within the next [windowDays] days (see
+   * [isUpcomingPublicEvent]), for the map. Private events are never returned.
+   *
+   * The flow emits a new [PublicEventsResult.Events] whenever the events change, including from the
+   * offline cache while the device is offline. It ends after a [PublicEventsResult.Error]. The
+   * window is fixed when collection starts, and cancelling the collection stops listening.
+   *
+   * @throws IllegalArgumentException if [windowDays] is not positive.
+   */
+  fun getUpcomingPublicEvents(
+      windowDays: Int = DEFAULT_UPCOMING_WINDOW_DAYS
+  ): Flow<PublicEventsResult>
 }
