@@ -2,14 +2,20 @@
 package com.polysocial.ui.map
 
 import android.Manifest
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
+import androidx.core.app.ActivityCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -24,11 +30,14 @@ fun MapRoute(
     onViewDetails: (String) -> Unit,
     viewModel: MapViewModel = hiltViewModel(),
     tokenConfigured: Boolean = stringResource(R.string.mapbox_access_token).startsWith("pk."),
+    permissionRationale: (() -> Boolean)? = null,
     renderer: @Composable (List<Event>, (String) -> Unit, (MapRenderStatus) -> Unit, Dp) -> Unit =
         defaultMapRenderer,
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   val lifecycleOwner = LocalLifecycleOwner.current
+  val activity = LocalActivity.current
+  val context = LocalContext.current
   val permissionLauncher =
       rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         viewModel.onPermissionResult()
@@ -42,9 +51,6 @@ fun MapRoute(
       }
     }
     lifecycleOwner.lifecycle.addObserver(observer)
-    if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-      viewModel.onMapEntered()
-    }
     onDispose {
       lifecycleOwner.lifecycle.removeObserver(observer)
       viewModel.onMapInactive()
@@ -56,8 +62,16 @@ fun MapRoute(
       permissionLauncher.launch(
           arrayOf(
               Manifest.permission.ACCESS_COARSE_LOCATION,
-              Manifest.permission.ACCESS_FINE_LOCATION,
           )
+      )
+    } else if (state.locationState == MapLocationState.OpenSettings) {
+      viewModel.onSettingsOpened()
+      context.startActivity(
+          Intent(
+                  Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                  Uri.fromParts("package", context.packageName, null),
+              )
+              .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
       )
     }
   }
@@ -68,7 +82,16 @@ fun MapRoute(
       onViewDetails = onViewDetails,
       onRetry = viewModel::retry,
       onRenderStatus = viewModel::onRenderStatus,
-      onTurnOnLocation = viewModel::turnOnLocation,
+      onTurnOnLocation = {
+        viewModel.turnOnLocation(
+            permissionRationale?.invoke()
+                ?: (activity != null &&
+                    ActivityCompat.shouldShowRequestPermissionRationale(
+                        activity,
+                        Manifest.permission.ACCESS_COARSE_LOCATION,
+                    ))
+        )
+      },
       tokenConfigured = tokenConfigured,
       renderer = renderer,
   )

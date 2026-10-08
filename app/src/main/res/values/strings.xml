@@ -83,6 +83,7 @@
     <string name="event_detail_placeholder">Event details are coming soon.</string>
     <string name="event_detail_back">Back to map</string>
     <string name="map_location_denied">Location is off. The map works, distances are hidden.</string>
+    <string name="map_location_off_title">Location is off.</string>
     <string name="map_location_unavailable">Location is unavailable. The map works, distances are hidden.</string>
     <string name="map_location_turn_on">Turn on</string>
     <string name="map_location_refresh">Refresh distance</string>

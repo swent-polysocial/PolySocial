@@ -178,7 +178,7 @@ class MapLocationViewModelTest {
     vm.onMapInactive()
     settle()
     assertTrue(cancelled)
-    assertEquals(MapLocationState.Unavailable, vm.uiState.value.locationState)
+    assertEquals(MapLocationState.Idle, vm.uiState.value.locationState)
     vm.onMapEntered()
     settle()
     assertEquals(1, starts)
@@ -229,8 +229,27 @@ class MapLocationViewModelTest {
     vm.selectEvent(event.id)
     assertEquals(0.0, vm.uiState.value.selectedDistanceMeters!!, 0.0)
     vm.onMapInactive()
-    assertEquals(MapLocationState.Unavailable, vm.uiState.value.locationState)
+    assertEquals(MapLocationState.Idle, vm.uiState.value.locationState)
     assertNull(vm.uiState.value.selectedDistanceMeters)
     assertEquals(event, vm.uiState.value.selectedEvent)
+  }
+
+  @Test
+  fun permanentDenialOffersSettingsAndConsumesTheAction() {
+    service.markPermissionRequested()
+    val vm = model()
+    vm.onMapEntered()
+    vm.turnOnLocation(canRequestPermission = false)
+    assertEquals(MapLocationState.OpenSettings, vm.uiState.value.locationState)
+    assertEquals(0, service.requestCount)
+    vm.onSettingsOpened()
+    assertEquals(MapLocationState.Denied, vm.uiState.value.locationState)
+    vm.onMapInactive()
+    service.permissionGranted = true
+    service.result = LocationResult.Available(event.location)
+    vm.onMapEntered()
+    settle()
+    assertEquals(1, service.requestCount)
+    assertEquals(MapLocationState.Available(event.location), vm.uiState.value.locationState)
   }
 }

@@ -6,7 +6,6 @@
     <!-- Lets NetworkMonitor check whether the device is online before writing to Firestore. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
 
     <application
         android:name=".PolySocialApp"

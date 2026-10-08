@@ -23,8 +23,8 @@ sealed interface LocationResult {
 
 /**
  * Foreground, one-off device location access for the Map tab. No location history is stored or sent
- * to a server. Approximate permission is sufficient; the UI may request coarse and fine together so
- * Android lets the student choose.
+ * to a server. The Map asks only for approximate permission, which is sufficient for distance
+ * badges. Existing precise grants remain supported by the platform service.
  */
 interface LocationService {
   /** Whether either approximate or precise permission is currently granted. */

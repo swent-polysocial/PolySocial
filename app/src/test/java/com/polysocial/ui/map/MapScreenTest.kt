@@ -102,7 +102,7 @@ class MapScreenTest {
               vm::onRenderStatus,
               modifier = modifier,
               tokenConfigured = token,
-              onTurnOnLocation = vm::turnOnLocation,
+              onTurnOnLocation = { vm.turnOnLocation() },
               renderer = { events, select, _, inset ->
                 rendererCalled = true
                 renderedEvents = events
@@ -369,6 +369,7 @@ class MapScreenTest {
     vm.onMapEntered()
     show()
     composeRule.onNodeWithTag(MapTags.LOCATION_NOTICE).assertIsDisplayed()
+    composeRule.onNodeWithTag(MapTags.LOCATION_ICON).assertIsDisplayed()
     composeRule.onNodeWithText(context.getString(R.string.map_location_denied)).assertIsDisplayed()
     composeRule.onNodeWithTag(MapTags.marker(first.id)).performClick()
     composeRule.onNodeWithTag(MapTags.TITLE).assertTextEquals(first.title)
@@ -378,6 +379,26 @@ class MapScreenTest {
     composeRule.onNodeWithTag(MapTags.LOCATION_ACTION).performClick()
     assertEquals(MapLocationState.RequestPermission, vm.uiState.value.locationState)
     assertEquals(0, location.requestCount)
+  }
+
+  @Test
+  fun returningToGrantedMapShowsNoFalseErrorAndExplicitRefreshRestoresDistance() {
+    location.permissionGranted = true
+    location.result = LocationResult.Available(first.location)
+    vm.onMapEntered()
+    dispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+    vm.onMapInactive()
+    vm.onMapEntered()
+    show()
+    composeRule.onNodeWithTag(MapTags.LOCATION_NOTICE).assertDoesNotExist()
+    composeRule.onNodeWithTag(MapTags.marker(first.id)).performClick()
+    composeRule.onNodeWithTag(MapTags.DISTANCE).assertDoesNotExist()
+    composeRule.onNodeWithTag(MapTags.LOCATION_REFRESH).performClick()
+    dispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+    composeRule
+        .onNodeWithTag(MapTags.DISTANCE)
+        .assertTextEquals(context.getString(R.string.map_distance_meters, 0))
+    assertEquals(2, location.requestCount)
   }
 
   @Test

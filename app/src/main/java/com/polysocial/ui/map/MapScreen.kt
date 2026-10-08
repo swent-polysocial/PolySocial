@@ -33,12 +33,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -49,6 +52,7 @@ import com.polysocial.model.event.EventCategory
 import com.polysocial.resources.C
 import com.polysocial.ui.theme.Accent
 import com.polysocial.ui.theme.Info
+import com.polysocial.ui.theme.InfoSoft
 import com.polysocial.ui.theme.Ink3
 import com.polysocial.ui.theme.Success
 import com.polysocial.ui.theme.Warning
@@ -76,6 +80,8 @@ object MapTags {
   const val SETUP = "map_setup"
   const val LOCATION_NOTICE = "map_location_notice"
   const val LOCATION_ACTION = "map_location_action"
+  const val LOCATION_REFRESH = "map_location_refresh"
+  const val LOCATION_ICON = "map_location_icon"
   const val DISTANCE = "map_preview_distance"
 
   fun marker(id: String) = "map_marker_$id"
@@ -104,7 +110,6 @@ fun MapScreen(
 ) {
   var previewHeight by remember { mutableIntStateOf(0) }
   var locationNoticeHeight by remember { mutableIntStateOf(0) }
-  var showPrivacy by rememberSaveable { mutableStateOf(false) }
   val hasLocationNotice =
       state.locationState == MapLocationState.Denied ||
           state.locationState == MapLocationState.Unavailable
@@ -185,6 +190,12 @@ fun MapScreen(
           )
     }
     if (hasLocationNotice) {
+      val noticeText =
+          stringResource(
+              if (state.locationState == MapLocationState.Denied) R.string.map_location_denied
+              else R.string.map_location_unavailable
+          )
+      val titleLength = stringResource(R.string.map_location_off_title).length
       Card(
           Modifier.align(Alignment.TopCenter)
               .padding(start = 12.dp, top = 64.dp, end = 12.dp)
@@ -192,16 +203,31 @@ fun MapScreen(
               .testTag(MapTags.LOCATION_NOTICE),
           shape = RoundedCornerShape(20.dp),
       ) {
-        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+          Icon(
+              painterResource(R.drawable.ic_map_location),
+              null,
+              Modifier.size(32.dp)
+                  .background(InfoSoft, RoundedCornerShape(50))
+                  .padding(7.dp)
+                  .testTag(MapTags.LOCATION_ICON),
+              tint = Info,
+          )
           Text(
-              stringResource(
-                  if (state.locationState == MapLocationState.Denied) R.string.map_location_denied
-                  else R.string.map_location_unavailable
-              ),
+              buildAnnotatedString {
+                append(noticeText)
+                if (state.locationState == MapLocationState.Denied) {
+                  addStyle(SpanStyle(fontWeight = FontWeight.Bold), 0, titleLength)
+                }
+              },
               modifier = Modifier.weight(1f),
               style = MaterialTheme.typography.bodyMedium,
           )
-          TextButton(onTurnOnLocation, Modifier.testTag(MapTags.LOCATION_ACTION)) {
+          Button(onTurnOnLocation, Modifier.testTag(MapTags.LOCATION_ACTION)) {
             Text(
                 stringResource(
                     if (state.locationState == MapLocationState.Denied)
@@ -212,6 +238,26 @@ fun MapScreen(
           }
         }
       }
+    }
+    IconButton(
+        onTurnOnLocation,
+        Modifier.align(Alignment.BottomEnd)
+            .padding(end = 20.dp, bottom = bottomInset)
+            .size(48.dp)
+            .shadow(6.dp, RoundedCornerShape(50))
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(50))
+            .testTag(MapTags.LOCATION_REFRESH),
+        enabled =
+            state.locationState != MapLocationState.Locating &&
+                state.locationState != MapLocationState.Waiting,
+    ) {
+      Icon(
+          painterResource(
+              if (hasLocationNotice) R.drawable.ic_map_location_off else R.drawable.ic_map_location
+          ),
+          stringResource(R.string.map_location_refresh),
+          tint = Ink3,
+      )
     }
     state.selectedEvent?.let { event ->
       EventPreview(

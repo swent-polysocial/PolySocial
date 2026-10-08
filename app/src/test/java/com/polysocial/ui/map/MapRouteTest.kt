@@ -4,6 +4,7 @@ package com.polysocial.ui.map
 import android.Manifest
 import android.content.Context
 import android.content.res.Resources
+import android.provider.Settings
 import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.result.ActivityResultRegistry
 import androidx.activity.result.ActivityResultRegistryOwner
@@ -13,6 +14,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
@@ -46,6 +48,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Shadows.shadowOf
 
 @RunWith(AndroidJUnit4::class)
 class MapRouteTest {
@@ -63,6 +66,8 @@ class MapRouteTest {
   private var detailId: String? = null
   private lateinit var viewModel: MapViewModel
   private lateinit var resources: Resources
+  private var showRationale: Boolean? = true
+  private lateinit var routeContext: Context
 
   @Before
   fun setUp() {
@@ -89,7 +94,17 @@ class MapRouteTest {
           LocalResources provides resources,
       ) {
         PolySocialTheme {
-          if (routeVisible) MapRoute(onViewDetails = { detailId = it }, viewModel = viewModel)
+          routeContext = LocalContext.current
+          if (routeVisible)
+              MapRoute(
+                  onViewDetails = { detailId = it },
+                  viewModel = viewModel,
+                  permissionRationale =
+                      if (showRationale == null) null
+                      else {
+                        { showRationale == true }
+                      },
+              )
         }
       }
     }
@@ -109,13 +124,12 @@ class MapRouteTest {
   }
 
   @Test
-  fun firstResumedEntry_launchesBothPermissionsOnceAfterSavingPromptFlag() {
+  fun firstResumedEntry_launchesOnlyApproximatePermissionOnceAfterSavingPromptFlag() {
     show()
     assertEquals(
         listOf(
             listOf(
                 Manifest.permission.ACCESS_COARSE_LOCATION,
-                Manifest.permission.ACCESS_FINE_LOCATION,
             )
         ),
         registry.launches,
@@ -180,7 +194,7 @@ class MapRouteTest {
         .assertTextEquals(resources.getString(R.string.map_distance_meters, 0))
     moveTo(Lifecycle.State.STARTED)
     assertNull(viewModel.uiState.value.selectedDistanceMeters)
-    assertEquals(MapLocationState.Unavailable, viewModel.uiState.value.locationState)
+    assertEquals(MapLocationState.Idle, viewModel.uiState.value.locationState)
     composeRule.onNodeWithTag(MapTags.DISTANCE).assertDoesNotExist()
     moveTo(Lifecycle.State.RESUMED)
     assertEquals(1, location.requestCount)
@@ -213,7 +227,35 @@ class MapRouteTest {
     assertEquals(listOf(event), viewModel.uiState.value.events)
     moveTo(Lifecycle.State.RESUMED)
     assertEquals(1, requestStarts)
-    composeRule.onNodeWithTag(MapTags.LOCATION_ACTION).assertIsDisplayed()
+    composeRule.onNodeWithTag(MapTags.LOCATION_NOTICE).assertDoesNotExist()
+  }
+
+  @Test
+  fun permanentDenialTurnOnOpensThisAppsSettingsWithoutAnotherDialog() {
+    showRationale = null
+    show()
+    composeRule.runOnIdle { registry.respond(grantedCoarse = false) }
+    settle()
+    composeRule.onNodeWithTag(MapTags.LOCATION_ACTION).performClick()
+    settle()
+    val intent =
+        shadowOf(ApplicationProvider.getApplicationContext<android.app.Application>())
+            .nextStartedActivity
+    assertEquals(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, intent.action)
+    assertEquals("package:${routeContext.packageName}", intent.data.toString())
+    assertEquals(1, registry.launches.size)
+    assertEquals(MapLocationState.Denied, viewModel.uiState.value.locationState)
+  }
+
+  @Test
+  fun recoverableDenialTurnOnRequestsApproximatePermissionAgain() {
+    show()
+    composeRule.runOnIdle { registry.respond(grantedCoarse = false) }
+    settle()
+    composeRule.onNodeWithTag(MapTags.LOCATION_ACTION).performClick()
+    settle()
+    assertEquals(2, registry.launches.size)
+    assertEquals(listOf(Manifest.permission.ACCESS_COARSE_LOCATION), registry.launches.last())
   }
 
   private class ControlledLifecycleOwner : LifecycleOwner {
