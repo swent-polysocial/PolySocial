@@ -59,8 +59,8 @@ The issues for the last four points (#12, #31, #32, #34, #35, #44–#47, #52) st
 ## Traps
 
 - **Security Rules are not filters.** A query that could return a document the user can't read fails entirely. Public events need `where isPrivate == false`. Private events need `array-contains` on `allowedUids`.
-- **Matching Figma to the pixel in Compose** (found on the profile step, #34; the Log in screen likely needs the same):
-  - Chained `Spacer`s round each half-dp Figma gap to whole pixels and the error adds up (4 dp by mid-screen at 2.75x). Place elements at their absolute Figma y instead (`AtFigmaY` in `ProfileSetupScreen.kt`).
+- **Matching Figma in Compose** (found on the profile step, #34):
+  - Lay a screen out with a `Column` and Figma's gaps as `Spacer`s, not at absolute Figma positions. Each half-dp gap is rounded to whole pixels, which can add up to a few dp down the screen; the team accepts that (review of [#95](https://github.com/swent-polysocial/PolySocial/pull/95)) over a custom layout tied to one frame size.
   - Give texts `TextMotion.Animated`: Android otherwise rounds each glyph to a whole pixel, so long texts come out about 1 dp narrower than Figma.
   - Multi-line texts with a line height need `LineHeightStyle(Center, Trim.None)`; Compose trims the first and last line by default, Figma doesn't.
   - Material's `DropdownMenu` keeps a 48 dp margin from the window edge and opens *above* a field near the bottom of an 800 dp screen; use a custom `Popup` when Figma shows it below.
