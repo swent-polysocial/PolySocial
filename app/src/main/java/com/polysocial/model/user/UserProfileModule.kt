@@ -1,4 +1,5 @@
-// Contributors: Claude (Hilt binding for the profile repository; Firestore version, #34).
+// Contributors: Claude (Hilt binding for the profile repository; Firestore version, #34; shared
+// Firestore instance, #45).
 package com.polysocial.model.user
 
 import com.google.firebase.firestore.FirebaseFirestore
@@ -17,6 +18,6 @@ import javax.inject.Singleton
 object UserProfileModule {
   @Provides
   @Singleton
-  fun userProfileRepository(): UserProfileRepository =
-      FirestoreUserProfileRepository(FirebaseFirestore.getInstance())
+  fun userProfileRepository(db: FirebaseFirestore): UserProfileRepository =
+      FirestoreUserProfileRepository(db)
 }
