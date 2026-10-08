@@ -1,4 +1,5 @@
-// Contributors: Claude (app shell and tab test tags, #41; loading state tag, #43).
+// Contributors: Claude (app shell and tab test tags, #41; loading state tag, #43; Create Event
+// tags, #46).
 package com.polysocial.resources
 
 // Like R, but C
