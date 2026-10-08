@@ -1,5 +1,5 @@
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; tested welcome actions, placeholders and
-// scrolling in a short window).
+// scrolling in a short window and landscape action visibility).
 package com.polysocial.ui.auth
 
 import android.app.Application
@@ -17,6 +17,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
 
 @RunWith(AndroidJUnit4::class)
 class WelcomeScreenTest {
@@ -45,6 +46,20 @@ class WelcomeScreenTest {
     assertEquals(1, signUps)
     assertEquals(0, logins)
     compose.onNodeWithTag(WelcomeTags.LogIn).performScrollTo().assertIsDisplayed().performClick()
+    assertEquals(1, signUps)
+    assertEquals(1, logins)
+  }
+
+  @Test
+  @Config(qualifiers = "w800dp-h360dp-land")
+  fun landscapeShowsAccountActionsWithoutScrolling() {
+    launch()
+    compose.onNodeWithText(message(R.string.welcome_title)).assertIsDisplayed()
+    compose.onNodeWithText(message(R.string.welcome_subtitle)).assertIsDisplayed()
+    compose.onNodeWithTag(WelcomeTags.Google).assertIsDisplayed()
+    compose.onNodeWithTag(WelcomeTags.SignUp).assertIsDisplayed().performClick()
+    compose.onNodeWithTag(WelcomeTags.LogIn).assertIsDisplayed().performClick()
+    compose.onNodeWithTag(WelcomeTags.Association).assertIsDisplayed()
     assertEquals(1, signUps)
     assertEquals(1, logins)
   }
