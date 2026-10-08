@@ -1,4 +1,4 @@
-<!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42). -->
+<!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42).; OpenAI Codex (Google and welcome copy). -->
 <resources>
     <string name="app_name">PolySocial</string>
     <string name="title_activity_main">MainActivity</string>
@@ -14,4 +14,18 @@
     <string name="loading_map">Loading the map…</string>
     <string name="loading_chats">Loading chats…</string>
     <string name="loading_profile">Loading your profile…</string>
+    <string name="google_sign_in">Sign in with Google</string>
+    <string name="signup_already_have_account">Already have an account?</string>
+    <string name="welcome_title">Never go alone.</string>
+    <string name="welcome_subtitle">Find a small group of EPFL students to go to campus events with.</string>
+    <string name="welcome_sign_up">Sign up with EPFL email</string>
+    <string name="welcome_association">I run an association or club</string>
+    <string name="welcome_privacy">Students use @epfl.ch; associations use their own email. By continuing you agree to the privacy notice.</string>
+    <string name="welcome_event_time">Tonight · 20:00</string>
+    <string name="welcome_event_venue">Satellite</string>
+    <string name="welcome_you">You</string>
+    <string name="welcome_avatar_lm">LM</string>
+    <string name="welcome_avatar_tr">TR</string>
+    <string name="welcome_avatar_ak">AK</string>
+    <string name="welcome_group_size">Group of 4</string>
 </resources>
