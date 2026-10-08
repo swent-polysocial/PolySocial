@@ -27,7 +27,6 @@ import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.*
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -135,10 +134,12 @@ fun AuthFlow(
   var startupApplied by rememberSaveable { mutableStateOf(false) }
   val startDestination by startViewModel.destination.collectAsStateWithLifecycle()
   LaunchedEffect(startDestination) {
-    // Preserve the active signed-out form on recreation; fresh launches resolve the session.
+    // Preserve the active auth screen on recreation, including Back from verification.
+    // Fresh launches still resolve the session.
     if (
         !startupApplied ||
-            startDestination != StartDestination.Login ||
+            (startDestination != StartDestination.Login &&
+                startDestination != StartDestination.VerifyEmail) ||
             destination == AuthDestination.Loading
     ) {
       destination =

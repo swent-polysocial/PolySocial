@@ -2,7 +2,7 @@
 // sign-up handoff with MockK; backend failure messages, recovery actions, login navigation and
 // official Google placeholder behavior, welcome navigation and startup routing injection); Claude
 // (signed-in shell without Hilt, #105).
-// Contributors: OpenAI Codex (updated verification/back expectations for #31).
+// Contributors: OpenAI Codex (updated verification/back expectations and integration for #31).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity

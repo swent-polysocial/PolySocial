@@ -143,6 +143,8 @@ Newest first, one line each, with a link. Remove a line once its content lives i
 - 2026-10-11 · Events tab: day headings Today / Tomorrow / date instead of Figma's relative labels, shared `EventCategoryStyle`, and injectable tab content so tests run without Hilt. ([#145](https://github.com/swent-polysocial/PolySocial/pull/145))
 - 2026-10-11 · Anything that can fail is handled gracefully: typed results, an error state with a way out, a test per failure path; added to `AGENTS.md`. ([#153](https://github.com/swent-polysocial/PolySocial/pull/153))
 - 2026-10-11 · Repository tests against the Firebase emulators are `@EmulatorTest` instrumented tests, run only with `-Pemulator` inside `firebase emulators:exec`; CI skips them until it starts the emulators. ([#117](https://github.com/swent-polysocial/PolySocial/issues/117))
+- 2026-10-09 · [#99](https://github.com/swent-polysocial/PolySocial/pull/99): verification success uses the shared startup profile check, preserving existing profiles, loading/error/Retry and #87 submission handoffs.
+
 - 2026-10-09 · Record #47 owner's confirmation that association writes build on the existing own-events read policy; broader association public-event access still needs a team decision. ([#93](https://github.com/swent-polysocial/PolySocial/pull/93#issuecomment-6069094805))
 - 2026-10-09 · [#87](https://github.com/swent-polysocial/PolySocial/pull/87): preserve sign-up/login completion effects by blocking Back during submission and handoff; failures restore navigation.
 - 2026-10-08 · The association badge comes from the creator's profile. If the profile can't be read, creating the event fails instead of dropping the badge. One shared `FirebaseFirestore` from `FirebaseModule`. (#45)
