@@ -120,11 +120,22 @@ class CreateEventFormTest {
   }
 
   @Test
-  fun errors_rejectACapacityThatIsTooSmallOrNotANumber() {
-    for (text in listOf("1", "0", "eight", "2.5")) {
+  fun errors_rejectACapacityBelowTwo() {
+    for (text in listOf("1", "0", "-3")) {
       assertEquals(
           "capacity $text",
-          setOf(CreateEventFormError.INVALID_CAPACITY),
+          setOf(CreateEventFormError.CAPACITY_TOO_SMALL),
+          completeForm().copy(capacityText = text).errors(FORM_NOW, ZURICH),
+      )
+    }
+  }
+
+  @Test
+  fun errors_rejectACapacityThatIsNotAWholeNumber() {
+    for (text in listOf("eight", "2.5")) {
+      assertEquals(
+          "capacity $text",
+          setOf(CreateEventFormError.CAPACITY_NOT_A_NUMBER),
           completeForm().copy(capacityText = text).errors(FORM_NOW, ZURICH),
       )
     }

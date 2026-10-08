@@ -125,7 +125,7 @@ class CreateEventViewModelTest {
     viewModel.onCapacityChange("1")
 
     assertEquals(
-        setOf(CreateEventFormError.DESCRIPTION_TOO_LONG, CreateEventFormError.INVALID_CAPACITY),
+        setOf(CreateEventFormError.DESCRIPTION_TOO_LONG, CreateEventFormError.CAPACITY_TOO_SMALL),
         state().visibleErrors,
     )
   }

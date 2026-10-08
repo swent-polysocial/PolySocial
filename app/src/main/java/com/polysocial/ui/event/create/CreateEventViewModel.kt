@@ -182,6 +182,7 @@ class CreateEventViewModel(
           CreateEventFormError.START_IN_PAST,
           CreateEventFormError.END_SAME_AS_START -> Field.DATE
           CreateEventFormError.MISSING_LOCATION -> Field.LOCATION
-          CreateEventFormError.INVALID_CAPACITY -> Field.CAPACITY
+          CreateEventFormError.CAPACITY_NOT_A_NUMBER,
+          CreateEventFormError.CAPACITY_TOO_SMALL -> Field.CAPACITY
         }
 }
