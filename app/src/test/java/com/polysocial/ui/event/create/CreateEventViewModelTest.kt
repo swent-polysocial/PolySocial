@@ -100,7 +100,7 @@ class CreateEventViewModelTest {
     viewModel.onVisibilityChange(false)
 
     viewModel.onSubmit()
-    assertEquals(CreateEventStatus.Submitting, state().status)
+    assertEquals(CreateEventStatus.Saving, state().status)
     assertFalse(state().canSubmit)
     advanceUntilIdle()
 

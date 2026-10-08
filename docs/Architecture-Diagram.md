@@ -156,7 +156,7 @@ flowchart TB
   classDef pb fill:#dbe4ff,stroke:#364fc7,color:#000
   classDef ext fill:#fff3bf,stroke:#e67700,color:#000
 
-  createS["Create Event screen<br/>form · map-pin location"]:::s1 --> createVM["<b>CreateEventViewModel</b><br/>Editing · Submitting · Created · Error"]:::s1
+  createS["Create Event screen<br/>form · map-pin location"]:::s1 --> createVM["<b>CreateEventViewModel</b><br/>Editing · Saving · Created · Failed"]:::s1
   createVM --> valid["Event validation<br/><i>domain</i>"]:::s1
   createVM --> ev["<b>EventRepository</b><br/>createEvent"]:::s1
   createVM --> prof["<b>UserProfileRepository</b><br/>association badge"]:::s1
