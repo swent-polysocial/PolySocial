@@ -180,6 +180,13 @@ class MapScreenTest {
   fun loadingShowsProgressWithoutEmptyNotice() {
     show(loadingEvents = true)
     composeRule.onNodeWithTag(MapTags.LOADING).assertIsDisplayed()
+    val card = composeRule.onNodeWithTag(MapTags.LOADING).fetchSemanticsNode().boundsInRoot
+    val indicator =
+        composeRule.onNodeWithTag(MapTags.LOADING_INDICATOR).fetchSemanticsNode().boundsInRoot
+    val label = composeRule.onNodeWithTag(MapTags.LOADING_LABEL).fetchSemanticsNode().boundsInRoot
+    assertTrue(indicator.bottom < label.top)
+    assertTrue(kotlin.math.abs(card.center.x - indicator.center.x) < 1f)
+    assertTrue(kotlin.math.abs(card.center.x - label.center.x) < 1f)
     composeRule.onNodeWithTag(MapTags.EMPTY).assertDoesNotExist()
   }
 
