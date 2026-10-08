@@ -1,7 +1,9 @@
-// Contributors: OpenAI Codex (persisted per-account resend deadlines and injectable time for #31).
+// Contributors: OpenAI Codex (persisted per-account resend deadlines, injectable time and KTX
+// preference editing for #31).
 package com.polysocial.model.auth
 
 import android.content.Context
+import androidx.core.content.edit
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
@@ -40,17 +42,17 @@ class PreferencesVerificationStore @Inject constructor(@ApplicationContext conte
 
   override suspend fun write(uid: String, timing: VerificationTiming): Unit =
       withContext(Dispatchers.IO) {
-        check(
-            preferences
-                .edit()
-                .putLong("$uid.sent", timing.sentAtMillis)
-                .putLong("$uid.retry", timing.retryAtMillis)
-                .commit()
-        )
+        preferences.edit(commit = true) {
+          putLong("$uid.sent", timing.sentAtMillis)
+          putLong("$uid.retry", timing.retryAtMillis)
+        }
       }
 
   override suspend fun clear(uid: String): Unit =
       withContext(Dispatchers.IO) {
-        check(preferences.edit().remove("$uid.sent").remove("$uid.retry").commit())
+        preferences.edit(commit = true) {
+          remove("$uid.sent")
+          remove("$uid.retry")
+        }
       }
 }
