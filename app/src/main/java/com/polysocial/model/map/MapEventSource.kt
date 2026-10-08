@@ -10,11 +10,7 @@ import kotlinx.coroutines.flow.map
 
 /** Result of observing public upcoming events; cached events may arrive while offline. */
 sealed interface MapEventResult {
-  data object Loading : MapEventResult
-
   data class Events(val events: List<Event>) : MapEventResult
-
-  data object Unavailable : MapEventResult
 
   data object Error : MapEventResult
 }

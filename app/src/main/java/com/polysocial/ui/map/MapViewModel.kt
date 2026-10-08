@@ -7,6 +7,9 @@ import com.polysocial.model.event.Event
 import com.polysocial.model.map.MapEventResult
 import com.polysocial.model.map.MapEventSource
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.time.Clock
+import java.time.LocalDate
+import java.time.ZoneId
 import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,7 +25,6 @@ enum class MapContentStatus {
   LOADING,
   READY,
   EMPTY,
-  UNAVAILABLE,
   ERROR,
 }
 
@@ -38,13 +40,19 @@ data class MapUiState(
     val selectedEvent: Event? = null,
     val renderStatus: MapRenderStatus = MapRenderStatus.LOADING,
     val renderGeneration: Int = 0,
+    val selectedEventIsToday: Boolean = false,
 )
 
 /**
  * Observes events, protects the public map and retains cached markers during transient failures.
  */
 @HiltViewModel
-class MapViewModel @Inject constructor(private val source: MapEventSource) : ViewModel() {
+class MapViewModel
+@Inject
+constructor(
+    private val source: MapEventSource,
+    private val clock: Clock = Clock.systemUTC(),
+) : ViewModel() {
   private val mutableState = MutableStateFlow(MapUiState())
   val uiState: StateFlow<MapUiState> = mutableState.asStateFlow()
   private var observation: Job? = null
@@ -54,7 +62,8 @@ class MapViewModel @Inject constructor(private val source: MapEventSource) : Vie
   }
 
   fun selectEvent(id: String) = mutableState.update {
-    it.copy(selectedEvent = it.events.firstOrNull { event -> event.id == id })
+    val selected = it.events.firstOrNull { event -> event.id == id }
+    it.copy(selectedEvent = selected, selectedEventIsToday = isToday(selected))
   }
 
   fun closePreview() = mutableState.update { it.copy(selectedEvent = null) }
@@ -65,10 +74,11 @@ class MapViewModel @Inject constructor(private val source: MapEventSource) : Vie
 
   fun retry() {
     mutableState.update {
+      val restartRenderer = it.renderStatus == MapRenderStatus.ERROR
       it.copy(
           status = MapContentStatus.LOADING,
-          renderStatus = MapRenderStatus.LOADING,
-          renderGeneration = it.renderGeneration + 1,
+          renderStatus = if (restartRenderer) MapRenderStatus.LOADING else it.renderStatus,
+          renderGeneration = it.renderGeneration + if (restartRenderer) 1 else 0,
       )
     }
     observeEvents()
@@ -82,16 +92,16 @@ class MapViewModel @Inject constructor(private val source: MapEventSource) : Vie
           .collect { result ->
             mutableState.update { previous ->
               when (result) {
-                MapEventResult.Loading -> previous.copy(status = MapContentStatus.LOADING)
-                MapEventResult.Unavailable -> previous.copy(status = MapContentStatus.UNAVAILABLE)
                 MapEventResult.Error -> previous.copy(status = MapContentStatus.ERROR)
                 is MapEventResult.Events -> {
                   val events = publicMapEvents(result.events)
+                  val selected = events.firstOrNull { it.id == previous.selectedEvent?.id }
                   previous.copy(
                       status =
                           if (events.isEmpty()) MapContentStatus.EMPTY else MapContentStatus.READY,
                       events = events,
-                      selectedEvent = events.firstOrNull { it.id == previous.selectedEvent?.id },
+                      selectedEvent = selected,
+                      selectedEventIsToday = isToday(selected),
                   )
                 }
               }
@@ -99,7 +109,13 @@ class MapViewModel @Inject constructor(private val source: MapEventSource) : Vie
           }
     }
   }
+
+  private fun isToday(event: Event?): Boolean =
+      event?.startTime?.atZone(MAP_TIME_ZONE)?.toLocalDate() ==
+          LocalDate.now(clock.withZone(MAP_TIME_ZONE))
 }
+
+internal val MAP_TIME_ZONE: ZoneId = ZoneId.of("Europe/Zurich")
 
 /** Rejects private and malformed records before coordinates reach the native renderer. */
 internal fun publicMapEvents(events: List<Event>): List<Event> =
