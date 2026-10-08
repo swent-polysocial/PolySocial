@@ -1,4 +1,5 @@
-// Contributors: Claude (wrote these tests, including the upcoming-events listener, #49).
+// Contributors: Claude (wrote these tests; verified association badge, #45; the upcoming-events
+// listener, #49).
 package com.polysocial.model.event
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -20,6 +21,10 @@ import com.google.firebase.firestore.TransactionOptions
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.network.NetworkMonitor
+import com.polysocial.model.user.AccountType
+import com.polysocial.model.user.FakeUserProfileRepository
+import com.polysocial.model.user.ProfileResult
+import com.polysocial.model.user.UserProfile
 import io.mockk.Called
 import io.mockk.every
 import io.mockk.mockk
@@ -58,8 +63,18 @@ class FirestoreEventRepositoryTest {
         override fun isOnline() = online
       }
 
+  private val creatorProfile =
+      UserProfile(
+          uid = "creator",
+          email = "creator@epfl.ch",
+          displayName = "Test Creator",
+          section = "IN",
+          year = "BA3",
+      )
+  private val profiles = FakeUserProfileRepository(ProfileResult.Found(creatorProfile))
+
   private val repository =
-      FirestoreEventRepository(db, auth, network, Clock.fixed(TEST_NOW, ZoneOffset.UTC))
+      FirestoreEventRepository(db, auth, profiles, network, Clock.fixed(TEST_NOW, ZoneOffset.UTC))
 
   @Before
   fun stubFirestore() {
@@ -157,6 +172,63 @@ class FirestoreEventRepositoryTest {
     failWith(FirebaseFirestoreException.Code.PERMISSION_DENIED)
 
     assertEquals(CreateEventResult.UnexpectedError, repository.createEvent(validEvent()))
+  }
+
+  @Test
+  fun aVerifiedAssociation_getsTheBadge() = runTest {
+    profiles.getProfileResult =
+        ProfileResult.Found(
+            creatorProfile.copy(accountType = AccountType.ASSOCIATION, isAssociationVerified = true)
+        )
+
+    assertEquals(CreateEventResult.Created("event-42"), repository.createEvent(validEvent()))
+
+    assertEquals(true, writtenFields()["isAssociationEvent"])
+    assertEquals("creator", profiles.lastRequestedUid)
+  }
+
+  @Test
+  fun anUnverifiedAssociation_getsNoBadge() = runTest {
+    profiles.getProfileResult =
+        ProfileResult.Found(creatorProfile.copy(accountType = AccountType.ASSOCIATION))
+
+    repository.createEvent(validEvent())
+
+    assertEquals(false, writtenFields()["isAssociationEvent"])
+  }
+
+  @Test
+  fun aCreatorWithoutAProfile_getsNoBadge() = runTest {
+    profiles.getProfileResult = ProfileResult.NotFound
+
+    assertEquals(CreateEventResult.Created("event-42"), repository.createEvent(validEvent()))
+
+    assertEquals(false, writtenFields()["isAssociationEvent"])
+  }
+
+  @Test
+  fun aProfileReadOffline_isANetworkErrorAndWritesNothing() = runTest {
+    profiles.getProfileResult = ProfileResult.NetworkError
+
+    assertEquals(CreateEventResult.NetworkError, repository.createEvent(validEvent()))
+    verify { db wasNot Called }
+  }
+
+  @Test
+  fun aFailedProfileRead_isAnUnexpectedErrorAndWritesNothing() = runTest {
+    profiles.getProfileResult = ProfileResult.UnexpectedError
+
+    assertEquals(CreateEventResult.UnexpectedError, repository.createEvent(validEvent()))
+    verify { db wasNot Called }
+  }
+
+  @Test
+  fun offline_doesNotReadTheProfile() = runTest {
+    online = false
+
+    repository.createEvent(validEvent())
+
+    assertEquals(0, profiles.getProfileCalls)
   }
 
   // Reading the public upcoming events (#49)
