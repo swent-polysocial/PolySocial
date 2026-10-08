@@ -1,6 +1,6 @@
 // Contributors: Claude (profile step screen for #34, built from the Figma "First proposal
 // revamped" Profile frames; layout that grows with large text, one save report and picker
-// accessibility after review).
+// accessibility after review; plain Column layout after review).
 package com.polysocial.ui.profile
 
 import androidx.annotation.StringRes
@@ -55,7 +55,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.shadow.Shadow
-import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -173,27 +172,18 @@ fun ProfileSetupContent(
               .padding(horizontal = 20.dp),
           verticalArrangement = Arrangement.SpaceBetween,
       ) {
-        // Each element sits at its y in the Figma frame.
-        AtFigmaY(
-            listOf(
-                FigmaSlot(0.dp, 56.dp), // top bar
-                FigmaSlot(67.5.dp, 32.dp), // title
-                FigmaSlot(107.dp, 44.dp), // subtitle
-                FigmaSlot(168.dp, 56.dp), // avatar
-                FigmaSlot(239.5.dp, 17.dp), // "Full name"
-                FigmaSlot(262.dp, 50.dp), // name field
-                FigmaSlot(325.5.dp, 17.dp), // "EPFL email"
-                FigmaSlot(348.dp, 48.dp), // email field
-                FigmaSlot(409.5.dp, 70.5.dp), // section and year: label, 5.5 dp, field
-            )
-        ) {
+        // The gaps are the Figma frame's; a taller element (larger font size) pushes the ones below
+        // it down.
+        Column(Modifier.fillMaxWidth()) {
           TopBar(onBack)
+          Spacer(Modifier.height(11.5.dp))
           Text(
               stringResource(R.string.profile_title),
               style = typography.headlineMedium.figmaLines(),
               color = Ink,
               modifier = Modifier.heightIn(min = 32.dp),
           )
+          Spacer(Modifier.height(7.5.dp))
           Text(
               stringResource(R.string.profile_subtitle),
               style = typography.bodyLarge.figmaLines(),
@@ -201,11 +191,17 @@ fun ProfileSetupContent(
               // Figma's text box is narrower than the column, which sets where the line breaks.
               modifier = Modifier.widthIn(max = 293.5.dp).fillMaxWidth().heightIn(min = 44.dp),
           )
+          Spacer(Modifier.height(17.dp))
           Initials(state.displayName)
+          Spacer(Modifier.height(15.5.dp))
           FieldLabel(R.string.profile_full_name)
+          Spacer(Modifier.height(5.5.dp))
           NameField(state.displayName, onDisplayNameChange, enabled = editable, faded = saving)
+          Spacer(Modifier.height(13.5.dp))
           EmailLabel()
+          Spacer(Modifier.height(5.5.dp))
           EmailField(state.email)
+          Spacer(Modifier.height(13.5.dp))
           Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Picker(
                 label = R.string.profile_section,
@@ -239,22 +235,15 @@ fun ProfileSetupContent(
           // Keeps a gap above the privacy note when the form scrolls; hidden in the free space
           // otherwise.
           Spacer(Modifier.height(24.dp))
-          // Offsets from the privacy note's top (Figma y 674, or 599 with the error at 640 and
-          // Continue at 720).
+          PrivacyNote()
           if (state.status == ProfileSetupStatus.CouldNotSave) {
-            AtFigmaY(
-                listOf(FigmaSlot(0.dp, 35.dp), FigmaSlot(41.dp, 30.dp), FigmaSlot(121.dp, 52.dp))
-            ) {
-              PrivacyNote()
-              ErrorMessage()
-              ContinueButton(state = state, onClick = onContinue)
-            }
+            Spacer(Modifier.height(6.dp))
+            ErrorMessage()
+            Spacer(Modifier.height(50.dp))
           } else {
-            AtFigmaY(listOf(FigmaSlot(0.dp, 35.dp), FigmaSlot(46.dp, 52.dp))) {
-              PrivacyNote()
-              ContinueButton(state = state, onClick = onContinue)
-            }
+            Spacer(Modifier.height(11.dp))
           }
+          ContinueButton(state = state, onClick = onContinue)
           Spacer(Modifier.height(28.dp))
         }
       }
@@ -316,36 +305,6 @@ private fun TextStyle.figmaLines(): TextStyle =
             lineHeightStyle =
                 LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None)
         )
-
-/** Where an element sits in the Figma frame: its top [y] and its [height] there. */
-private data class FigmaSlot(val y: Dp, val height: Dp)
-
-/**
- * Places its children top to bottom at their Figma [slots]. Chained spacers would round each
- * half-dp gap to whole pixels and add up the error; here each position is rounded once. A child
- * taller than its Figma height (larger font size, narrow screen) pushes the ones below down by the
- * difference, so nothing overlaps or is clipped; at the default font size the layout is Figma's.
- */
-@Composable
-private fun AtFigmaY(slots: List<FigmaSlot>, content: @Composable () -> Unit) {
-  Layout(content, Modifier.fillMaxWidth()) { measurables, constraints ->
-    // Each child keeps its own size (the avatar is 56 dp wide, not the column's width).
-    val placeables = measurables.map { it.measure(constraints.copy(minWidth = 0, minHeight = 0)) }
-    // Android lays some texts out 1-2 px taller than Figma's box at the default font size; that
-    // isn't growth. Every Figma gap is at least 5.5 dp, so it can't make elements overlap.
-    val tolerance = 2.dp.roundToPx()
-    var pushedDown = 0
-    val tops = placeables.mapIndexed { i, placeable ->
-      val top = slots[i].y.roundToPx() + pushedDown
-      val grown = placeable.height - slots[i].height.roundToPx()
-      if (grown > tolerance) pushedDown += grown
-      top
-    }
-    layout(constraints.maxWidth, tops.last() + placeables.last().height) {
-      placeables.forEachIndexed { i, placeable -> placeable.place(0, tops[i]) }
-    }
-  }
-}
 
 /** The avatar: the first letters of the first and last name, since there is no photo yet. */
 @Composable
