@@ -68,6 +68,8 @@ object MapTags {
   const val CATEGORY_ICON = "map_preview_category_icon"
   const val EMPTY_ICON = "map_empty_icon"
   const val LOADING = "map_loading"
+  const val LOADING_INDICATOR = "map_loading_indicator"
+  const val LOADING_LABEL = "map_loading_label"
   const val EMPTY = "map_empty"
   const val ERROR = "map_error"
   const val RETRY = "map_retry"
@@ -155,16 +157,26 @@ fun MapScreen(
           (state.status == MapContentStatus.LOADING ||
               state.renderStatus == MapRenderStatus.LOADING) ->
           Card(
-              Modifier.align(Alignment.Center).testTag(MapTags.LOADING),
+              Modifier.align(Alignment.Center)
+                  .padding(24.dp)
+                  .fillMaxWidth()
+                  .testTag(MapTags.LOADING),
               shape = RoundedCornerShape(20.dp),
           ) {
-            Row(
-                Modifier.padding(20.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            Column(
+                Modifier.fillMaxWidth().padding(24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-              CircularProgressIndicator()
-              Text(stringResource(R.string.map_loading))
+              CircularProgressIndicator(
+                  Modifier.size(28.dp).testTag(MapTags.LOADING_INDICATOR),
+                  color = MaterialTheme.colorScheme.onSurface,
+              )
+              Text(
+                  stringResource(R.string.map_loading),
+                  modifier = Modifier.testTag(MapTags.LOADING_LABEL),
+                  textAlign = TextAlign.Center,
+              )
             }
           }
       tokenConfigured && state.status == MapContentStatus.EMPTY ->
