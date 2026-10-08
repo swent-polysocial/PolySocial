@@ -1,4 +1,4 @@
-// Contributors: Claude (wrote these tests).
+// Contributors: Claude (wrote these tests, including reading events back, #49).
 package com.polysocial.model.event
 
 import com.google.firebase.Timestamp
@@ -66,5 +66,70 @@ class FirestoreEventMappingTest {
 
       assertEquals(category.name, map["category"])
     }
+  }
+
+  private val stored = validEvent().withCreator("creator", isVerifiedAssociation = false)
+
+  @Test
+  fun eventFromFirestore_readsBackWhatWasWritten() {
+    val event =
+        stored.copy(
+            startTime = TEST_NOW.plusSeconds(3600).plusNanos(123_000_000),
+            endTime = null,
+            capacity = null,
+            isAssociationEvent = true,
+        )
+
+    assertEquals(event.copy(id = "event-1"), eventFromFirestore("event-1", event.toFirestoreMap()))
+  }
+
+  @Test
+  fun eventFromFirestore_readsAnUnknownCategoryAsOther() {
+    val data = stored.toFirestoreMap() + ("category" to "KARAOKE")
+
+    assertEquals(EventCategory.OTHER, eventFromFirestore("event-1", data)?.category)
+  }
+
+  @Test
+  fun eventFromFirestore_readsTheCapacityFirestoreReturnsAsALong() {
+    val data = stored.toFirestoreMap() + ("capacity" to 8L)
+
+    assertEquals(8, eventFromFirestore("event-1", data)?.capacity)
+  }
+
+  @Test
+  fun eventFromFirestore_givesMissingOptionalFieldsTheirDefaults() {
+    val required =
+        stored.toFirestoreMap().filterKeys {
+          it in setOf("title", "description", "category", "location", "startTime", "isPrivate")
+        }
+
+    val event = eventFromFirestore("event-1", required)
+
+    assertEquals(
+        stored.copy(
+            id = "event-1",
+            endTime = null,
+            capacity = null,
+            createdBy = "",
+            organizerIds = emptyList(),
+            allowedUids = emptyList(),
+        ),
+        event,
+    )
+  }
+
+  @Test
+  fun eventFromFirestore_rejectsADocumentMissingARequiredField() {
+    for (field in
+        listOf("title", "description", "category", "location", "startTime", "isPrivate")) {
+      assertNull(field, eventFromFirestore("event-1", stored.toFirestoreMap() - field))
+    }
+  }
+
+  @Test
+  fun eventFromFirestore_rejectsARequiredFieldWithTheWrongType() {
+    assertNull(eventFromFirestore("event-1", stored.toFirestoreMap() + ("isPrivate" to "false")))
+    assertNull(eventFromFirestore("event-1", stored.toFirestoreMap() + ("startTime" to "tomorrow")))
   }
 }

@@ -1,4 +1,4 @@
-// Contributors: Claude (drafted the Firestore mapping for events).
+// Contributors: Claude (drafted the Firestore mapping for events, and reading it back, #49).
 package com.polysocial.model.event
 
 import com.google.firebase.Timestamp
@@ -30,4 +30,41 @@ fun Event.toFirestoreMap(): Map<String, Any?> =
         "isAssociationEvent" to isAssociationEvent,
     )
 
-private fun Instant.toTimestamp() = Timestamp(epochSecond, nano)
+/**
+ * Reads the fields of `events/[id]` back into an [Event], the reverse of [toFirestoreMap].
+ *
+ * A stored category this app version doesn't know is read as [EventCategory.OTHER], so adding a
+ * category later doesn't break older versions. Returns null if a required field (title,
+ * description, category, location, start time or visibility) is missing or has the wrong type, so
+ * one malformed document can't crash the map. Missing optional fields get their defaults.
+ */
+fun eventFromFirestore(id: String, data: Map<String, Any?>): Event? {
+  val title = data["title"] as? String ?: return null
+  val description = data["description"] as? String ?: return null
+  val category = data["category"] as? String ?: return null
+  val location = data["location"] as? GeoPoint ?: return null
+  val startTime = data["startTime"] as? Timestamp ?: return null
+  val isPrivate = data["isPrivate"] as? Boolean ?: return null
+  return Event(
+      id = id,
+      title = title,
+      description = description,
+      category = EventCategory.entries.firstOrNull { it.name == category } ?: EventCategory.OTHER,
+      location = Coordinates(location.latitude, location.longitude),
+      startTime = startTime.toInstant(),
+      endTime = (data["endTime"] as? Timestamp)?.toInstant(),
+      // Firestore returns every whole number as a Long.
+      capacity = (data["capacity"] as? Number)?.toInt(),
+      isPrivate = isPrivate,
+      createdBy = data["createdBy"] as? String ?: "",
+      organizerIds = data["organizerIds"].stringList(),
+      allowedUids = data["allowedUids"].stringList(),
+      isAssociationEvent = data["isAssociationEvent"] as? Boolean ?: false,
+  )
+}
+
+/** This instant as a Firestore [Timestamp], keeping sub-second precision. */
+internal fun Instant.toTimestamp() = Timestamp(epochSecond, nano)
+
+private fun Any?.stringList(): List<String> =
+    (this as? List<*>)?.filterIsInstance<String>().orEmpty()
