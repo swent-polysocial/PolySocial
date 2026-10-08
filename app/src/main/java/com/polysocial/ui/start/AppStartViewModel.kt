@@ -1,4 +1,4 @@
-// Contributors: Claude (app-start routing for #32; retry only after an error).
+// Contributors: Claude (app-start routing for #32; refresh after Log in, not while loading).
 package com.polysocial.ui.start
 
 import androidx.lifecycle.ViewModel
@@ -49,11 +49,12 @@ constructor(
   }
 
   /**
-   * Tries again after [StartDestination.Error]. Ignored otherwise, so repeated taps can't load the
-   * profile twice.
+   * Decides the destination again from the current account, for example after Log in or as Retry
+   * after [StartDestination.Error]. Ignored while the profile is loading, so repeated calls can't
+   * load it twice.
    */
-  fun retry() {
-    if (_destination.value == StartDestination.Error) resolve()
+  fun refresh() {
+    if (_destination.value != StartDestination.Loading) resolve()
   }
 
   private fun resolve() {
