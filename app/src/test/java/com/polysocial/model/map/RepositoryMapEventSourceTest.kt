@@ -1,4 +1,4 @@
-// Contributors: OpenAI Codex (repository-to-map stream integration tests for #50).
+// Contributors: OpenAI Codex (repository-to-map stream tests for #50; location fakes for #51).
 package com.polysocial.model.map
 
 import com.polysocial.model.event.CreateEventResult
