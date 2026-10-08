@@ -65,7 +65,7 @@ class MapScreenTest {
       renderStatus: MapRenderStatus = MapRenderStatus.READY,
       modifier: Modifier = Modifier,
       loadingEvents: Boolean = false,
-      selectedIsToday: Boolean = false,
+      selectedIsTonight: Boolean = false,
   ) {
     vm.onRenderStatus(renderStatus)
     dispatcherRule.dispatcher.scheduler.advanceUntilIdle()
@@ -74,7 +74,7 @@ class MapScreenTest {
       PolySocialTheme {
         MapScreen(
             if (loadingEvents) state.copy(status = MapContentStatus.LOADING)
-            else state.copy(selectedEventIsToday = selectedIsToday),
+            else state.copy(selectedEventIsTonight = selectedIsTonight),
             vm::selectEvent,
             vm::closePreview,
             { detailId = it },
@@ -242,7 +242,7 @@ class MapScreenTest {
 
   @Test
   fun eventTodayShowsFigmaCategoryAndTonightLabel() {
-    show(selectedIsToday = true)
+    show(selectedIsTonight = true)
     composeRule.onNodeWithTag(MapTags.marker(first.id)).performClick()
     composeRule.onNodeWithTag(MapTags.CATEGORY).assertTextEquals("Study · Tonight")
     composeRule.onNodeWithTag(MapTags.FIND_GROUP).assertIsNotEnabled()

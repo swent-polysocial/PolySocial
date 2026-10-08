@@ -73,15 +73,21 @@ class MapViewModelTest {
   fun tonightUsesZurichDateAndUpdatesWithSelectedEvent() {
     val now = Instant.parse("2026-10-08T22:30:00Z")
     val model = MapViewModel(MapEventSource { result }, Clock.fixed(now, ZoneOffset.UTC))
-    val tonight = event.copy(startTime = now.plusSeconds(3600))
-    val tomorrow = event.copy(id = "tomorrow", startTime = now.plusSeconds(86400))
+    val tonight = event.copy(startTime = Instant.parse("2026-10-09T18:00:00Z"))
+    val tomorrow = event.copy(id = "tomorrow", startTime = Instant.parse("2026-10-10T18:00:00Z"))
     emit(MapEventResult.Events(listOf(tonight, tomorrow)))
     model.selectEvent(event.id)
-    assertEquals(true, model.uiState.value.selectedEventIsToday)
+    assertEquals(true, model.uiState.value.selectedEventIsTonight)
     model.selectEvent(tomorrow.id)
-    assertEquals(false, model.uiState.value.selectedEventIsToday)
-    emit(MapEventResult.Events(listOf(tomorrow.copy(startTime = now))))
-    assertEquals(true, model.uiState.value.selectedEventIsToday)
+    assertEquals(false, model.uiState.value.selectedEventIsTonight)
+    emit(MapEventResult.Events(listOf(tomorrow.copy(startTime = tonight.startTime))))
+    assertEquals(true, model.uiState.value.selectedEventIsTonight)
+    emit(
+        MapEventResult.Events(
+            listOf(tomorrow.copy(startTime = Instant.parse("2026-10-09T10:00:00Z")))
+        )
+    )
+    assertEquals(false, model.uiState.value.selectedEventIsTonight)
   }
 
   @Test
