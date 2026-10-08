@@ -1,4 +1,5 @@
-// Contributors: Claude (isEpflUser helper, #33; own users/{uid} rule and no catch-all, #35).
+// Contributors: Claude (isEpflUser helper, #33; own users/{uid} rule and no catch-all, #35;
+// fixed uid and accountType after review, #35).
 rules_version = '2';
 
 service cloud.firestore {
@@ -17,7 +18,9 @@ service cloud.firestore {
 
     // Each account's private profile. The only rule open to any verified email (associations
     // have none at EPFL), so an unverified association reaches nothing else. Only an admin sets
-    // isAssociationVerified, in the Firebase console.
+    // isAssociationVerified, in the Firebase console. The uid field names the document's owner,
+    // and uid and accountType are fixed once created, so an admin verifying an account isn't
+    // misled.
     match /users/{uid} {
       function isOwner() {
         return hasVerifiedEmail() && request.auth.uid == uid;
@@ -25,11 +28,12 @@ service cloud.firestore {
 
       allow read, delete: if isOwner();
       allow create: if isOwner()
+          && request.resource.data.uid == uid
           && (!('isAssociationVerified' in request.resource.data)
               || request.resource.data.isAssociationVerified == false);
       allow update: if isOwner()
           && !request.resource.data.diff(resource.data).affectedKeys()
-              .hasAny(['isAssociationVerified']);
+              .hasAny(['uid', 'accountType', 'isAssociationVerified']);
     }
   }
 }
