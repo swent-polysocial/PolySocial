@@ -2,7 +2,6 @@
 // Foundation, reusing the shared app theme; connected login and added the official Google
 // placeholder button; connected the welcome entry screen and app-start/profile routing;
 // preserved submission handoffs on Back and aligned form hints, loading and recovery layout).
-// placeholder button; connected the welcome entry screen).
 // Contributors: OpenAI Codex (connected verification and unverified cold-start routing for #31).
 package com.polysocial.ui.auth
 
@@ -27,7 +26,6 @@ import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.*
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -129,10 +127,12 @@ fun AuthFlow(
   var startupApplied by rememberSaveable { mutableStateOf(false) }
   val startDestination by startViewModel.destination.collectAsStateWithLifecycle()
   LaunchedEffect(startDestination) {
-    // Preserve the active signed-out form on recreation; fresh launches resolve the session.
+    // Preserve the active auth screen on recreation, including Back from verification.
+    // Fresh launches still resolve the session.
     if (
         !startupApplied ||
-            startDestination != StartDestination.Login ||
+            (startDestination != StartDestination.Login &&
+                startDestination != StartDestination.VerifyEmail) ||
             destination == AuthDestination.Loading
     ) {
       destination =

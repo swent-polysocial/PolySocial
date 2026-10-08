@@ -92,9 +92,9 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 ## Decision log
 
-- 2026-10-09 · [#99](https://github.com/swent-polysocial/PolySocial/pull/99): verification success uses the shared startup profile check, preserving existing profiles, loading/error/Retry and #87 submission handoffs.
-
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
+
+- 2026-10-09 · [#99](https://github.com/swent-polysocial/PolySocial/pull/99): verification success uses the shared startup profile check, preserving existing profiles, loading/error/Retry and #87 submission handoffs.
 
 - 2026-10-09 · Record #47 owner's confirmation that association writes build on the existing own-events read policy; broader association public-event access still needs a team decision. ([#93](https://github.com/swent-polysocial/PolySocial/pull/93#issuecomment-6069094805))
 - 2026-10-09 · [#87](https://github.com/swent-polysocial/PolySocial/pull/87): preserve sign-up/login completion effects by blocking Back during submission and handoff; failures restore navigation.

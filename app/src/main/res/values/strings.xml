@@ -76,7 +76,5 @@
     <string name="verification_network">Can\'t connect. Check your connection and try again.</string>
     <string name="verification_error">Something went wrong. Please try again.</string>
     <string name="verification_not_signed_in">Please log in to verify your email.</string>
-    <string name="profile_setup_title">Set up your profile</string>
-    <string name="profile_setup_pending">Your email is verified. Profile setup is coming soon.</string>
     <string name="verification_send_description">Send a confirmation link to</string>
 </resources>
