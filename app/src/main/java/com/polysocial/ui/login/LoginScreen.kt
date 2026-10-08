@@ -1,6 +1,6 @@
 // Contributors: Claude (Log in screen for #32, built from the Figma "First proposal revamped"
 // frames); Claude Opus 5.5 (eye icon label, scrolling on short screens and locked fields while
-// redirecting, after review).
+// redirecting, after review); OpenAI Codex (GPT-6.1 Sol, medium; official Google button artwork).
 package com.polysocial.ui.login
 
 import androidx.annotation.StringRes
@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -58,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.polysocial.R
+import com.polysocial.ui.auth.GoogleSignInButton
 import com.polysocial.ui.theme.Accent
 import com.polysocial.ui.theme.AccentText
 import com.polysocial.ui.theme.Bg
@@ -174,7 +174,7 @@ fun LoginContent(
           Spacer(Modifier.height(6.dp))
           Text(stringResource(R.string.login_subtitle), style = typography.bodyLarge, color = Ink2)
           Spacer(Modifier.height(20.5.dp))
-          GoogleButton(onClick = showNotAvailable)
+          GoogleSignInButton(tag = LoginScreenTestTags.GOOGLE, onClick = showNotAvailable)
           Spacer(Modifier.height(19.5.dp))
           OrWithEmailDivider()
           Spacer(Modifier.height(20.dp))
@@ -291,36 +291,6 @@ fun LoginContent(
           contentColor = Bg,
       )
     }
-  }
-}
-
-@Composable
-private fun GoogleButton(onClick: () -> Unit) {
-  Row(
-      Modifier.fillMaxWidth()
-          .height(52.dp)
-          .background(Ink, MaterialTheme.shapes.large)
-          .clickable(onClick = onClick)
-          .testTag(LoginScreenTestTags.GOOGLE),
-      horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
-      verticalAlignment = Alignment.CenterVertically,
-  ) {
-    Box(Modifier.size(22.dp).background(Bg, CircleShape), contentAlignment = Alignment.Center) {
-      Text(
-          stringResource(R.string.login_google_initial),
-          style =
-              MaterialTheme.typography.titleSmall.copy(
-                  fontWeight = FontWeight.ExtraBold,
-                  fontSize = 13.sp,
-              ),
-          color = Ink,
-      )
-    }
-    Text(
-        stringResource(R.string.login_continue_with_google),
-        style = MaterialTheme.typography.titleSmall,
-        color = Bg,
-    )
   }
 }
 

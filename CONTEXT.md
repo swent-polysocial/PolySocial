@@ -18,6 +18,8 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 
 ## Decided design (follow this, even where an issue still says otherwise)
 
+- **Google sign-in buttons:** Welcome and Log in share the unchanged pre-approved Google PNG through `GoogleSignInButton`, preserving the logo, font and aspect ratio. [Google requires compliant branding](https://developers.google.com/identity/branding-guidelines) for app verification; a plain-text or monochrome G is not allowed. The light pill is our selected supported variant, not a Google requirement to use only light buttons. Actions remain unavailable until Google sign-in is implemented.
+
 - **Layers:** Compose screen → ViewModel (one `StateFlow` UI state) → repository interface → Firebase/device implementation, with a `Fake…` implementation for tests. Pure logic (validation, haversine distance, filtering, matching, QR parsing) goes in plain Kotlin with no Android/Firebase imports.
   - Every screen that holds state has exactly one ViewModel. The app shell has none, because the `NavController` owns navigation state.
 - **Names fixed by Sprint 1 issues:**
@@ -81,6 +83,8 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 ## Decision log
 
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
+
+- 2026-10-08 · [#97](https://github.com/swent-polysocial/PolySocial/pull/97): retain official Google artwork on both Welcome and Log in to comply with Google branding; use the shared light pill rather than the custom text G.
 
 - 2026-10-07 · Create Event screen: pure form logic, Robolectric UI tests, "Event created" confirmation, `@HiltViewModel` with an injected `Clock`, location picker waits for Mapbox. (#46)
 - 2026-10-07 · Events are written to Firestore through a hand-written map, in a transaction, after a `NetworkMonitor` online check. (#45)
