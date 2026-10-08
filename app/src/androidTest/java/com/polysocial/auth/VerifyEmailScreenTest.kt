@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (verification UI and session/navigation regression tests for #31).
+// Contributors: OpenAI Codex (verification UI and session/navigation regression tests for #31;
+// synchronized Continue checks with startup work to repair PR #99's CI race).
 package com.polysocial.auth
 
 import android.graphics.Bitmap
@@ -18,6 +19,7 @@ import com.polysocial.ui.start.AppStartViewModel
 import com.polysocial.ui.theme.PolySocialTheme
 import io.mockk.*
 import java.io.File
+import kotlinx.coroutines.CompletableDeferred
 import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
@@ -135,18 +137,42 @@ class VerifyEmailScreenTest {
 
   @Test
   fun continueKeepsUnverifiedUserOnScreenThenCompletesWithoutLogin() {
-    flow()
-    compose.onNodeWithTag(VerifyEmailTags.Continue).performScrollTo().performClick()
-    compose
-        .onNodeWithTag(VerifyEmailTags.Banner)
-        .assertTextContains(message(R.string.verification_unverified))
-    compose.onNodeWithTag("auth_profile_setup").assertDoesNotExist()
-    coEvery { repository.reloadAndCheckVerified() } answers
+    val initialSend = CompletableDeferred<Unit>()
+    coEvery { repository.sendVerificationEmail() } coAnswers
         {
-          every { repository.currentUser() } returns user.copy(isEmailVerified = true)
-          VerificationResult.Verified
+          initialSend.await()
+          SendVerificationResult.Sent
         }
+    flow()
+    compose.waitUntil(timeoutMillis = 5_000) { vm.uiState.value.sending }
+    compose.onNodeWithTag(VerifyEmailTags.Continue).assertIsNotEnabled()
+    // Startup send and resume checks disable Continue; a click during that work is ignored.
+    initialSend.complete(Unit)
+    val readyToContinue = hasTestTag(VerifyEmailTags.Continue) and isEnabled()
+    compose.waitUntil(timeoutMillis = 5_000) {
+      compose.onAllNodes(readyToContinue).fetchSemanticsNodes().isNotEmpty()
+    }
     compose.onNodeWithTag(VerifyEmailTags.Continue).performScrollTo().performClick()
+    val unverifiedMessage = message(R.string.verification_unverified)
+    compose.waitUntil(timeoutMillis = 5_000) {
+      compose
+          .onAllNodes(hasTestTag(VerifyEmailTags.Banner) and hasText(unverifiedMessage))
+          .fetchSemanticsNodes()
+          .isNotEmpty()
+    }
+    compose.onNodeWithTag(VerifyEmailTags.Banner).assertTextContains(unverifiedMessage)
+    compose.onNodeWithTag("auth_profile_setup").assertDoesNotExist()
+    coEvery { repository.reloadAndCheckVerified() } answers {
+ every { repository.currentUser() } returns user.copy(isEmailVerified = true)
+ VerificationResult.Verified
+}
+    compose.waitUntil(timeoutMillis = 5_000) {
+      compose.onAllNodes(readyToContinue).fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onNodeWithTag(VerifyEmailTags.Continue).performScrollTo().performClick()
+    compose.waitUntil(timeoutMillis = 5_000) {
+      compose.onAllNodesWithTag("auth_profile_setup").fetchSemanticsNodes().isNotEmpty()
+    }
     compose.onNodeWithTag("auth_profile_setup").assertIsDisplayed()
     coVerify(exactly = 0) { repository.logIn(any(), any()) }
   }
