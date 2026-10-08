@@ -1,5 +1,6 @@
 # Contributors: Claude (Hilt, KSP and Hilt testing entries, #70; Navigation Compose entry, #41;
 # MockK and coroutines for Play Services Tasks, #32).
+# Contributors: OpenAI Codex (GPT-6.1 Sol, medium; added sign-up and MockK test entries).
 [versions]
 agp = "9.3.3"
 kotlin = "2.4.20"
@@ -25,6 +26,7 @@ coroutinesPlayServices = "1.9.0"
 hilt = "2.60.1"
 hiltLifecycleViewModelCompose = "1.4.0"
 ksp = "2.3.12"
+coroutines = "1.9.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -36,6 +38,9 @@ material = { group = "com.google.android.material", name = "material", version.r
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }
 
 compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
+compose-foundation = { group = "androidx.compose.foundation", name = "foundation" }
+coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
+mockk-android = { module = "io.mockk:mockk-android", version.ref = "mockk" }
 compose-material3 = { group = "androidx.compose.material3", name = "material3" }
 compose-ui = { group = "androidx.compose.ui", name = "ui" }
 compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }

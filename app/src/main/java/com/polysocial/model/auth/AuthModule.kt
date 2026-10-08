@@ -1,7 +1,7 @@
-// Contributors: Claude (Hilt binding for the auth repository).
+// Contributors: Claude (Hilt binding for the auth repository); OpenAI Codex
+// (GPT-6.1 Sol, medium; retained one binding with lazy Firebase initialization).
 package com.polysocial.model.auth
 
-import com.google.firebase.auth.FirebaseAuth
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -12,7 +12,5 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object AuthModule {
-  @Provides
-  @Singleton
-  fun authRepository(): AuthRepository = FirebaseAuthRepository(FirebaseAuth.getInstance())
+  @Provides @Singleton fun authRepository(): AuthRepository = FirebaseAuthRepository()
 }
