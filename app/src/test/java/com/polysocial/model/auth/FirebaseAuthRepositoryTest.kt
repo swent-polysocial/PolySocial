@@ -1,4 +1,5 @@
-// Contributors: Claude Opus 5.5 (wrote these tests).
+// Contributors: Claude Opus 5.5 (wrote these tests); OpenAI Codex
+// (GPT-6.1 Sol, medium; adapted the user fixture for display-name snapshots).
 package com.polysocial.model.auth
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -32,6 +33,7 @@ class FirebaseAuthRepositoryTest {
         every { this@mockk.uid } returns uid
         every { this@mockk.email } returns email
         every { isEmailVerified } returns verified
+        every { displayName } returns null
       }
 
   private fun signInReturns(task: Task<AuthResult>) {
