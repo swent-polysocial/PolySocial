@@ -3,7 +3,7 @@
 // placeholder button; connected the welcome entry screen and app-start/profile routing;
 // preserved submission handoffs on Back and aligned form hints, loading and recovery layout);
 // Claude (injectable signed-in content, so tests run without Hilt, #105).
-// Contributors: OpenAI Codex (connected verification and unverified cold-start routing for #31).
+// Contributors: OpenAI Codex (verification routing and Back sign-out for #31).
 package com.polysocial.ui.auth
 
 import androidx.activity.compose.BackHandler
@@ -173,15 +173,20 @@ fun AuthFlow(
     if (verificationState.verified) startViewModel.refresh()
   }
   var loginOrigin by rememberSaveable { mutableStateOf(AuthDestination.Welcome) }
+  val backFromVerification = {
+    verificationViewModel.changeAddress()
+    viewModel.reset()
+    loginViewModel.reset()
+    loginOrigin = AuthDestination.Welcome
+    startViewModel.refresh()
+    destination = AuthDestination.Welcome
+  }
   BackHandler(destination != AuthDestination.Welcome && destination != AuthDestination.SignedIn) {
     when (destination) {
       AuthDestination.ProfileSetup,
       AuthDestination.Loading,
       AuthDestination.Error -> onExit()
-      AuthDestination.VerifyEmail -> {
-        verificationViewModel.leave()
-        destination = AuthDestination.Welcome
-      }
+      AuthDestination.VerifyEmail -> backFromVerification()
       AuthDestination.LogIn -> destination = loginOrigin
       else -> destination = AuthDestination.Welcome
     }
@@ -230,10 +235,7 @@ fun AuthFlow(
     AuthDestination.VerifyEmail ->
         VerifyEmailScreen(
             verificationState,
-            onBack = {
-              verificationViewModel.leave()
-              destination = AuthDestination.Welcome
-            },
+            onBack = backFromVerification,
             onChangeAddress = {
               verificationViewModel.changeAddress()
               viewModel.reset()

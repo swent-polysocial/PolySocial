@@ -2,7 +2,7 @@
 // sign-up handoff with MockK; backend failure messages, recovery actions, login navigation and
 // official Google placeholder behavior, welcome navigation and startup routing injection); Claude
 // (signed-in shell without Hilt, #105).
-// Contributors: OpenAI Codex (updated verification/back expectations and integration for #31).
+// Contributors: OpenAI Codex (updated verification/back sign-out expectations and integration for #31).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -75,6 +75,7 @@ class SignUpScreenTest {
   @Before
   fun setup() {
     every { repository.currentUser() } answers { session }
+    every { repository.logOut() } answers { session = null }
     coEvery { repository.sendVerificationEmail() } returns SendVerificationResult.Sent
     coEvery { repository.reloadAndCheckVerified() } returns VerificationResult.Unverified
     verificationViewModel =
@@ -464,7 +465,9 @@ class SignUpScreenTest {
     compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
     compose.runOnIdle { assertEquals(0, exits) }
-    assertEquals(user, session)
+    assertNull(session)
+    assertEquals(SignUpUiState(), viewModel.uiState.value)
+    assertEquals("", loginViewModel.uiState.value.email)
   }
 
   @Test
