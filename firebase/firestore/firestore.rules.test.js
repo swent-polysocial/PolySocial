@@ -1,4 +1,4 @@
-// Contributors: Claude (rules tests for #33; also firebase/package.json, which can't hold a comment); Claude Opus 5.5 (testing agent: added edge-case, operation and path coverage tests, #33); Claude Opus 5.5 (users/{uid} tests and no catch-all, #35); Claude Opus 5.5 (testing agent: batches, transactions, queries, flag edge cases, uid paths, other paths, #35).
+// Contributors: Claude (rules tests for #33; also firebase/package.json, which can't hold a comment); Claude Opus 5.5 (testing agent: added edge-case, operation and path coverage tests, #33); Claude Opus 5.5 (users/{uid} tests and no catch-all, #35); Claude Opus 5.5 (testing agent: batches, transactions, queries, flag edge cases, uid paths, other paths, #35); Claude Opus 5.5 (fixed uid and accountType, #35).
 const { after, before, beforeEach, test } = require("node:test");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
@@ -194,7 +194,10 @@ test("an association account with a non-EPFL verified email can read and write i
   await assertSucceeds(getDoc(doc(db, "users/club")));
   await assertSucceeds(updateDoc(doc(db, "users/club"), { displayName: "Club" }));
   await assertSucceeds(
-    setDoc(doc(associationDb("newClub"), "users/newClub"), { accountType: "association" }),
+    setDoc(doc(associationDb("newClub"), "users/newClub"), {
+      uid: "newClub",
+      accountType: "association",
+    }),
   );
 });
 
@@ -229,7 +232,9 @@ test("an unverified account can't read or write its own users/{uid}", async () =
     await assertFails(updateDoc(doc(db, "users/u1"), { section: "IN" }));
     await assertFails(updateDoc(doc(db, "users/club"), { displayName: "Club" }));
   }
-  await assertFails(setDoc(doc(firestoreAs("student@epfl.ch", false, "u3"), "users/u3"), {}));
+  await assertFails(
+    setDoc(doc(firestoreAs("student@epfl.ch", false, "u3"), "users/u3"), { uid: "u3" }),
+  );
 });
 
 test('an account whose email_verified is the string "true" can\'t reach its own users/{uid}', async () => {
@@ -250,6 +255,7 @@ test("a subcollection of your own users/{uid} is denied", async () => {
 test("creating your own users/{uid} with isAssociationVerified false is allowed", async () => {
   await assertSucceeds(
     setDoc(doc(associationDb("newClub"), "users/newClub"), {
+      uid: "newClub",
       accountType: "association",
       isAssociationVerified: false,
     }),
@@ -260,6 +266,7 @@ test("creating your own users/{uid} with isAssociationVerified set is denied", a
   for (const value of [true, "true", 1]) {
     await assertFails(
       setDoc(doc(associationDb("newClub"), "users/newClub"), {
+        uid: "newClub",
         accountType: "association",
         isAssociationVerified: value,
       }),
@@ -283,7 +290,9 @@ test("a verified association can't change or remove its isAssociationVerified", 
 
   await assertFails(updateDoc(doc(db, "users/verifiedClub"), { isAssociationVerified: false }));
   await assertFails(updateDoc(doc(db, "users/verifiedClub"), { isAssociationVerified: deleteField() }));
-  await assertFails(setDoc(doc(db, "users/verifiedClub"), { accountType: "association" }));
+  await assertFails(
+    setDoc(doc(db, "users/verifiedClub"), { uid: "verifiedClub", accountType: "association" }),
+  );
 });
 
 test("a verified association can update its other fields, keeping isAssociationVerified", async () => {
@@ -297,6 +306,50 @@ test("a verified association can update its other fields, keeping isAssociationV
       isAssociationVerified: true,
       displayName: "Club",
     }),
+  );
+});
+
+test("creating your own users/{uid} needs a uid field naming you", async () => {
+  const db = studentDb("u3");
+
+  await assertFails(setDoc(doc(db, "users/u3"), { uid: "u2", section: "IN" }));
+  await assertFails(setDoc(doc(db, "users/u3"), { section: "IN" }));
+  await assertFails(setDoc(doc(db, "users/u3"), { uid: "U3" }));
+  if ((await storedUser("u3")) !== undefined) throw new Error("users/u3 was created");
+});
+
+test("updating your own users/{uid} can't change its uid", async () => {
+  const db = studentDb("u1");
+
+  await assertFails(updateDoc(doc(db, "users/u1"), { uid: "u2" }));
+  await assertFails(updateDoc(doc(db, "users/u1"), { uid: deleteField() }));
+  await assertFails(setDoc(doc(db, "users/u1"), { uid: "u2", displayName: "Student One" }));
+});
+
+test("updating your own users/{uid} can't change its accountType", async () => {
+  await assertFails(
+    updateDoc(doc(studentDb("u1"), "users/u1"), { accountType: "association" }),
+  );
+  const club = associationDb("club");
+  await assertFails(updateDoc(doc(club, "users/club"), { accountType: "student" }));
+  await assertFails(updateDoc(doc(club, "users/club"), { accountType: deleteField() }));
+  await assertFails(
+    setDoc(doc(club, "users/club"), {
+      uid: "club",
+      accountType: "student",
+      isAssociationVerified: false,
+    }),
+  );
+  if ((await storedUser("club")).accountType !== "association") {
+    throw new Error("users/club's accountType changed");
+  }
+});
+
+test("updating your own users/{uid} may keep its uid and accountType", async () => {
+  const db = associationDb("club");
+
+  await assertSucceeds(
+    updateDoc(doc(db, "users/club"), { uid: "club", accountType: "association", section: "IN" }),
   );
 });
 
@@ -356,7 +409,11 @@ test("recreating your own users/{uid} can't set isAssociationVerified", async ()
 
   await assertSucceeds(deleteDoc(doc(db, "users/club")));
   await assertFails(
-    setDoc(doc(db, "users/club"), { accountType: "association", isAssociationVerified: true }),
+    setDoc(doc(db, "users/club"), {
+      uid: "club",
+      accountType: "association",
+      isAssociationVerified: true,
+    }),
   );
   if ((await storedUser("club")) !== undefined) throw new Error("users/club was recreated");
 });
@@ -373,7 +430,7 @@ test("a merge write can't set isAssociationVerified on your own users/{uid}", as
   await assertFails(
     setDoc(
       doc(associationDb("newClub"), "users/newClub"),
-      { isAssociationVerified: true },
+      { uid: "newClub", isAssociationVerified: true },
       { merge: true },
     ),
   );
@@ -381,7 +438,10 @@ test("a merge write can't set isAssociationVerified on your own users/{uid}", as
 
 test("isAssociationVerified can't be set to null, on create or on update", async () => {
   await assertFails(
-    setDoc(doc(associationDb("newClub"), "users/newClub"), { isAssociationVerified: null }),
+    setDoc(doc(associationDb("newClub"), "users/newClub"), {
+      uid: "newClub",
+      isAssociationVerified: null,
+    }),
   );
   await assertFails(updateDoc(doc(studentDb("u1"), "users/u1"), { isAssociationVerified: null }));
   await assertFails(
