@@ -10,11 +10,14 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -56,7 +59,11 @@ class MapScreenTest {
     vm = MapViewModel(MapEventSource { source })
   }
 
-  private fun show(token: Boolean = true, renderStatus: MapRenderStatus = MapRenderStatus.READY) {
+  private fun show(
+      token: Boolean = true,
+      renderStatus: MapRenderStatus = MapRenderStatus.READY,
+      modifier: Modifier = Modifier,
+  ) {
     vm.onRenderStatus(renderStatus)
     dispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     composeRule.setContent {
@@ -69,6 +76,7 @@ class MapScreenTest {
             { detailId = it },
             vm::retry,
             vm::onRenderStatus,
+            modifier = modifier,
             tokenConfigured = token,
             renderer = { events, select, _, _ ->
               rendererCalled = true
@@ -96,6 +104,13 @@ class MapScreenTest {
     assertEquals(first.location, renderedEvents[0].location)
     assertEquals(second.location, renderedEvents[1].location)
     composeRule.onNodeWithTag(MapTags.PREVIEW).assertDoesNotExist()
+  }
+
+  @Test
+  fun callerAccessibilityModifierReachesTheMapContainer() {
+    show(modifier = Modifier.semantics { contentDescription = "Public event map" })
+    composeRule.onNodeWithContentDescription("Public event map").assertIsDisplayed()
+    composeRule.onNodeWithTag(MapTags.marker(first.id)).assertIsDisplayed()
   }
 
   @Test

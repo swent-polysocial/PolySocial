@@ -1,20 +1,28 @@
 // Contributors: OpenAI Codex (repository-to-map UI integration and callback tests for #50).
 package com.polysocial.ui.map
 
+import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.activity.ComponentDialog
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.R
 import com.polysocial.model.event.CreateEventResult
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.FakeEventRepository
@@ -22,6 +30,8 @@ import com.polysocial.model.event.validEvent
 import com.polysocial.model.map.RepositoryMapEventSource
 import com.polysocial.ui.theme.PolySocialTheme
 import com.polysocial.utils.MainDispatcherRule
+import io.mockk.every
+import io.mockk.spyk
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -35,8 +45,11 @@ class MapRepositoryRouteTest {
   @get:Rule(order = 1) val compose = createAndroidComposeRule<ComponentActivity>()
   private var detailId: String? = null
 
+  private fun model(repository: FakeEventRepository) =
+      MapViewModel(RepositoryMapEventSource(repository))
+
   private fun show(repository: FakeEventRepository, tokenConfigured: Boolean = true) {
-    val model = MapViewModel(RepositoryMapEventSource(repository))
+    val model = model(repository)
     dispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     compose.setContent {
       PolySocialTheme {
@@ -137,5 +150,94 @@ class MapRepositoryRouteTest {
 
     compose.onNodeWithTag(MapTags.PRIVACY_DIALOG).assertDoesNotExist()
     compose.onNodeWithTag(MapTags.SETUP).assertIsDisplayed()
+  }
+
+  @Test
+  fun replacingTheViewModelRebindsSelectionCloseRetryAndRendererCallbacks() {
+    val firstEvent = validEvent(title = "First model").copy(id = "first")
+    val firstRepository = FakeEventRepository().apply { seed(firstEvent) }
+    val firstModel = model(firstRepository)
+    val secondEvent = validEvent(title = "Second model").copy(id = "second")
+    val secondRepository =
+        FakeEventRepository().apply {
+          seed(secondEvent)
+          readFailure = true
+        }
+    val secondModel = model(secondRepository)
+    var currentModel by mutableStateOf(firstModel)
+    dispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+    compose.setContent {
+      PolySocialTheme {
+        MapRoute(
+            onViewDetails = { detailId = it },
+            viewModel = currentModel,
+            tokenConfigured = true,
+            renderer = { events, select, status, _ -> FakeRenderer(events, select, status) },
+        )
+      }
+    }
+    settle()
+    compose.onNodeWithTag("fake_renderer_ready").performClick()
+    compose.onNodeWithTag(MapTags.marker(firstEvent.id)).performClick()
+    settle()
+    compose.onNodeWithTag(MapTags.TITLE).assertTextEquals(firstEvent.title)
+
+    compose.runOnIdle { currentModel = secondModel }
+    settle()
+    compose.onNodeWithTag(MapTags.ERROR).assertIsDisplayed()
+    compose.onNodeWithTag(MapTags.PREVIEW).assertDoesNotExist()
+    secondRepository.readFailure = false
+    compose.onNodeWithTag(MapTags.RETRY).performClick()
+    settle()
+    compose.onNodeWithTag("fake_renderer_ready").performClick()
+    settle()
+    assertEquals(MapRenderStatus.READY, secondModel.uiState.value.renderStatus)
+    compose.onNodeWithTag(MapTags.marker(secondEvent.id)).performClick()
+    settle()
+    compose.onNodeWithTag(MapTags.TITLE).assertTextEquals(secondEvent.title)
+    compose.onNodeWithTag(MapTags.DETAILS).performClick()
+    assertEquals(secondEvent.id, detailId)
+    compose.onNodeWithTag(MapTags.CLOSE).performClick()
+    settle()
+    compose.onNodeWithTag(MapTags.PREVIEW).assertDoesNotExist()
+    assertEquals(firstEvent, firstModel.uiState.value.selectedEvent)
+  }
+
+  @Test
+  fun configuredTokenIsReadByTheRouteAndOnlyPublicTokensEnableTheRenderer() {
+    val context = ApplicationProvider.getApplicationContext<Context>()
+    val resources = spyk(context.resources)
+    var token by mutableStateOf("")
+    every { resources.getString(R.string.mapbox_access_token) } answers { token }
+    val event = validEvent().copy(id = "token-event")
+    val viewModel = model(FakeEventRepository().apply { seed(event) })
+    dispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+    compose.setContent {
+      CompositionLocalProvider(LocalResources provides resources) {
+        PolySocialTheme {
+          MapRoute(
+              onViewDetails = { detailId = it },
+              viewModel = viewModel,
+              renderer = { events, select, status, _ -> FakeRenderer(events, select, status) },
+          )
+        }
+      }
+    }
+    settle()
+    compose.onNodeWithTag(MapTags.SETUP).assertIsDisplayed()
+    compose.onNodeWithTag(MapTags.CANVAS).assertDoesNotExist()
+
+    compose.runOnIdle { token = "pk.hermetic-route-test" }
+    settle()
+    compose.onNodeWithTag(MapTags.CANVAS).assertIsDisplayed()
+    compose.onNodeWithTag(MapTags.SETUP).assertDoesNotExist()
+    compose.onNodeWithTag("fake_renderer_ready").performClick()
+    settle()
+    compose.onNodeWithTag(MapTags.marker(event.id)).assertIsDisplayed()
+
+    compose.runOnIdle { token = "sk.not-an-app-token" }
+    settle()
+    compose.onNodeWithTag(MapTags.SETUP).assertIsDisplayed()
+    compose.onNodeWithTag(MapTags.CANVAS).assertDoesNotExist()
   }
 }
