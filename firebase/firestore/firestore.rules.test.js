@@ -1,4 +1,4 @@
-// Contributors: Claude (rules tests for #33; also firebase/package.json, which can't hold a comment); Claude Opus 5.5 (testing agent: added edge-case, operation and path coverage tests, #33); Claude Opus 5.5 (users/{uid} tests and no catch-all, #35); Claude Opus 5.5 (testing agent: batches, transactions, queries, flag edge cases, uid paths, other paths, #35); Claude Opus 5.5 (fixed uid and accountType, #35). OpenAI Codex (event visibility and query tests, #52).
+// Contributors: Claude (rules tests for #33; also firebase/package.json, which can't hold a comment); Claude Opus 5.5 (testing agent: added edge-case, operation and path coverage tests, #33); Claude Opus 5.5 (users/{uid} tests and no catch-all, #35); Claude Opus 5.5 (testing agent: batches, transactions, queries, flag edge cases, uid paths, other paths, #35); Claude Opus 5.5 (fixed uid and accountType, #35). OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47).
 const { after, before, beforeEach, test } = require("node:test");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
@@ -23,6 +23,7 @@ const {
   updateDoc,
   where,
   writeBatch,
+  GeoPoint,
   Timestamp,
 } = require("firebase/firestore");
 
@@ -536,7 +537,7 @@ for (const [name, db] of [
   });
 }
 
-// ---- events/{id} read access (#52); writes remain denied until #47 ----
+// ---- events/{id} read access (#52) ----
 
 test("the map's public upcoming query is allowed and keeps its sorted time window", async () => {
   const start = Timestamp.fromDate(new Date("2026-01-01T12:00:00Z"));
@@ -723,4 +724,223 @@ test("read access doesn't authorize event writes or event subcollections", async
     await assertFails(getDoc(doc(db, "events/e1/messages/m1")));
     await assertFails(setDoc(doc(db, "events/e1/messages/m2"), { text: "Hi" }));
   }
+});
+
+// ---- events/{id} writes (#47) ----
+
+/** An event as `Event.toFirestoreMap()` writes it, created by [uid], with [overrides]. */
+function eventBy(uid, overrides = {}) {
+  return {
+    title: "Study session",
+    description: "",
+    category: "STUDY",
+    location: new GeoPoint(46.5191, 6.5668),
+    startTime: Timestamp.fromDate(new Date("2026-11-02T18:00:00Z")),
+    endTime: null,
+    capacity: null,
+    isPrivate: false,
+    createdBy: uid,
+    organizerIds: [uid],
+    allowedUids: [uid],
+    isAssociationEvent: false,
+    ...overrides,
+  };
+}
+
+/** Stores [data] as events/[id], bypassing the rules. */
+async function seedEvent(id, data) {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), `events/${id}`), data);
+  });
+}
+
+/** u2 created "managed", u5 co-organizes it, and u3 may only read it. */
+async function seedManagedEvent() {
+  await seedEvent("managed", eventBy("u2", {
+    organizerIds: ["u2", "u5"], allowedUids: ["u2", "u5", "u3"],
+  }));
+}
+
+test("a verified student can create an event they created", async () => {
+  await assertSucceeds(setDoc(doc(studentDb("u1"), "events/new"), eventBy("u1")));
+});
+
+test("a verified student can create an event in a transaction, as the app does", async () => {
+  const db = studentDb("u1");
+  await assertSucceeds(runTransaction(db, async (transaction) => {
+    transaction.set(doc(db, "events/new"), eventBy("u1", { isPrivate: true }));
+  }));
+});
+
+test("a verified association can publish an event under its name", async () => {
+  const db = associationDb("verifiedClub");
+  await assertSucceeds(setDoc(
+    doc(db, "events/clubNew"), eventBy("verifiedClub", { isAssociationEvent: true }),
+  ));
+  await assertSucceeds(setDoc(doc(db, "events/clubPlain"), eventBy("verifiedClub")));
+});
+
+test("an event whose createdBy isn't the caller is denied", async () => {
+  await assertFails(setDoc(doc(studentDb("u1"), "events/new"), eventBy("u2", {
+    organizerIds: ["u1", "u2"], allowedUids: ["u1", "u2"],
+  })));
+});
+
+for (const [name, overrides] of [
+  ["organizerIds", { organizerIds: ["u2"] }],
+  ["allowedUids", { allowedUids: ["u2"] }],
+]) {
+  test(`an event whose creator is missing from ${name} is denied`, async () => {
+    await assertFails(setDoc(doc(studentDb("u1"), "events/new"), eventBy("u1", overrides)));
+  });
+}
+
+test("an unverified association account can't create events", async () => {
+  const db = associationDb("club");
+  await assertFails(setDoc(doc(db, "events/new"), eventBy("club")));
+  await assertFails(setDoc(
+    doc(db, "events/new"), eventBy("club", { isAssociationEvent: true }),
+  ));
+});
+
+test("an unverified association account with an @epfl.ch email can't create events", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "users/epflClub"), {
+      uid: "epflClub", accountType: "association", isAssociationVerified: false,
+    });
+  });
+  const db = firestoreAs("club@epfl.ch", true, "epflClub");
+  await assertFails(setDoc(doc(db, "events/new"), eventBy("epflClub")));
+});
+
+test("a student can't publish an association event", async () => {
+  await assertFails(setDoc(
+    doc(studentDb("u1"), "events/new"), eventBy("u1", { isAssociationEvent: true }),
+  ));
+});
+
+for (const [name, getDb] of [
+  ["signed-out user", () => env.unauthenticatedContext().firestore()],
+  ["unverified EPFL account", () => firestoreAs("student@epfl.ch", false, "u1")],
+  ["verified outside account", () => firestoreAs("student@example.org", true, "u1")],
+]) {
+  test(`a ${name} can't create events`, async () => {
+    await assertFails(setDoc(doc(getDb(), "events/new"), eventBy("u1")));
+  });
+}
+
+for (const [name, overrides] of [
+  ["an empty title", { title: "" }],
+  ["a blank title", { title: "   " }],
+  ["a title over 80 characters", { title: "a".repeat(81) }],
+  ["a missing title", { title: undefined }],
+  ["a non-string title", { title: 42 }],
+  ["a description over 5000 characters", { description: "a".repeat(5001) }],
+  ["a missing description", { description: undefined }],
+  ["an unknown category", { category: "MUSIC" }],
+  ["a lowercase category", { category: "study" }],
+  ["a missing category", { category: undefined }],
+  ["a string visibility", { isPrivate: "false" }],
+  ["a string association badge", { isAssociationEvent: "false" }],
+  ["a string organizer list", { organizerIds: "u1" }],
+  ["a string allowlist", { allowedUids: "u1" }],
+]) {
+  test(`an event with ${name} is denied`, async () => {
+    const event = eventBy("u1", overrides);
+    for (const key of Object.keys(event)) if (event[key] === undefined) delete event[key];
+    await assertFails(setDoc(doc(studentDb("u1"), "events/new"), event));
+  });
+}
+
+test("the title and description limits are inclusive", async () => {
+  await assertSucceeds(setDoc(doc(studentDb("u1"), "events/new"), eventBy("u1", {
+    title: "a".repeat(80), description: "a".repeat(5000),
+  })));
+});
+
+for (const category of ["STUDY", "SPORTS", "CULTURE", "PARTY", "OTHER"]) {
+  test(`an event in category ${category} is allowed`, async () => {
+    await assertSucceeds(setDoc(
+      doc(studentDb("u1"), "events/new"), eventBy("u1", { category }),
+    ));
+  });
+}
+
+for (const [role, uid] of [["creator", "u2"], ["co-organizer", "u5"]]) {
+  test(`the event's ${role} can update and delete it`, async () => {
+    await seedManagedEvent();
+    const db = studentDb(uid);
+    await assertSucceeds(updateDoc(doc(db, "events/managed"), {
+      title: "Moved to Rolex", isPrivate: true,
+    }));
+    await assertSucceeds(deleteDoc(doc(db, "events/managed")));
+  });
+}
+
+test("an organizer can add another organizer", async () => {
+  await seedManagedEvent();
+  await assertSucceeds(updateDoc(doc(studentDb("u2"), "events/managed"), {
+    organizerIds: ["u2", "u5", "u3"],
+  }));
+});
+
+for (const [name, getDb] of [
+  ["an allowed reader who isn't an organizer", () => studentDb("u3")],
+  ["an unrelated student", () => studentDb("u1")],
+  ["a verified association", () => associationDb("verifiedClub")],
+]) {
+  test(`${name} can't update or delete someone else's event`, async () => {
+    await seedManagedEvent();
+    const db = getDb();
+    await assertFails(updateDoc(doc(db, "events/managed"), { title: "Hijacked" }));
+    await assertFails(deleteDoc(doc(db, "events/managed")));
+  });
+}
+
+test("a non-organizer can't make themselves an organizer", async () => {
+  await seedManagedEvent();
+  await assertFails(updateDoc(doc(studentDb("u3"), "events/managed"), {
+    organizerIds: ["u2", "u5", "u3"],
+  }));
+});
+
+test("an organizer without a verified email can't update or delete", async () => {
+  await seedManagedEvent();
+  const db = firestoreAs("student@epfl.ch", false, "u5");
+  await assertFails(updateDoc(doc(db, "events/managed"), { title: "Changed" }));
+  await assertFails(deleteDoc(doc(db, "events/managed")));
+});
+
+for (const [name, change] of [
+  ["change the creator", { createdBy: "u5" }],
+  ["set the association badge", { isAssociationEvent: true }],
+  ["remove the creator from the organizers", { organizerIds: ["u5"] }],
+  ["remove the creator from the allowlist", { allowedUids: ["u5", "u3"] }],
+  ["empty the title", { title: "" }],
+  ["set an unknown category", { category: "MUSIC" }],
+]) {
+  test(`an organizer can't ${name}`, async () => {
+    await seedManagedEvent();
+    await assertFails(updateDoc(doc(studentDb("u5"), "events/managed"), change));
+  });
+}
+
+test("a verified association manages its own event and keeps its badge", async () => {
+  await seedEvent("clubManaged", eventBy("verifiedClub", { isAssociationEvent: true }));
+  const db = associationDb("verifiedClub");
+  await assertSucceeds(updateDoc(doc(db, "events/clubManaged"), { title: "Balélec warm-up" }));
+  await assertFails(updateDoc(doc(db, "events/clubManaged"), { isAssociationEvent: false }));
+  await assertSucceeds(deleteDoc(doc(db, "events/clubManaged")));
+});
+
+test("an association whose verification was revoked can't manage its events", async () => {
+  await seedEvent("clubManaged", eventBy("verifiedClub", { isAssociationEvent: true }));
+  await env.withSecurityRulesDisabled(async (context) => {
+    await updateDoc(doc(context.firestore(), "users/verifiedClub"), {
+      isAssociationVerified: false,
+    });
+  });
+  const db = associationDb("verifiedClub");
+  await assertFails(updateDoc(doc(db, "events/clubManaged"), { title: "Changed" }));
+  await assertFails(deleteDoc(doc(db, "events/clubManaged")));
 });
