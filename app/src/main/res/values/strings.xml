@@ -1,11 +1,9 @@
-<!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42); OpenAI Codex (Google and welcome copy). OpenAI Codex (sign-up form and startup integration). -->
+<!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42); OpenAI Codex (Google and welcome copy). OpenAI Codex (sign-up form, startup integration, name hint and unused-title cleanup). -->
 <resources>
     <string name="auth_start_error">Could not load your profile. Check your connection and try again.</string>
     <string name="auth_start_retry">Retry</string>
     <string name="auth_profile_setup">Complete your profile — coming soon</string>
     <string name="app_name">PolySocial</string>
-    <string name="title_activity_main">MainActivity</string>
-    <string name="title_activity_second">SecondActivity</string>
 
     <string name="tab_events">Events</string>
     <string name="tab_map">Map</string>
@@ -22,6 +20,7 @@
     <string name="signup_title">Create your account</string>
     <string name="signup_description">Use your EPFL email. Verification is required before you can access the app.</string>
     <string name="signup_full_name">Full name</string>
+    <string name="signup_full_name_placeholder">Your full name</string>
     <string name="signup_email">EPFL email</string>
     <string name="signup_password">Password</string>
     <string name="signup_confirm_password">Confirm password</string>
