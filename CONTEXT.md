@@ -1,4 +1,4 @@
-<!-- Contributors: OpenAI Codex (sign-up foundation context and review reconciliation); Claude (drafted the initial content from the repository, the wiki and the Scrum Board; association accounts without an EPFL email; Security Rules and rules-test entries for #33; Create Event design update, #44; tab loading state, #43; per-tab back stacks, #42; ViewModel rule wording; profile repository, #34). -->
+<!-- Contributors: OpenAI Codex (sign-up foundation context and review reconciliation); Claude (drafted the initial content from the repository, the wiki and the Scrum Board; association accounts without an EPFL email; Security Rules and rules-test entries for #33; Create Event design update, #44; tab loading state, #43; per-tab back stacks, #42; ViewModel rule wording; profile repository, #34; Create Event entry, #46). -->
 
 # Project context
 
@@ -35,6 +35,7 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 - **Profiles are split.** `users/{uid}` is owner-only. `publicProfiles/{uid}` holds visible fields, with a public or private profile (Instagram-style). Section, year and interests are always visible (matching needs them).
 - **Matching** is a deterministic heuristic (tag overlap / first-fit) in a pure module, run **on the device**. Group joins go through a Firestore transaction (capacity). A Cloud Function only if fairness or cheating becomes a problem.
 - **Create Event** opens from a "+" button on the Events and Map tabs and follows the Figma (section 04, #44):
+  - The "+" is a floating action button on the roots of the Events and Map tabs. Create Event opens full screen (no app bar or bottom bar) in that tab's back stack, at `{tab}/create`. *View event* replaces the form with `{tab}/event/{eventId}` (a placeholder detail for now, the same pattern as #50's `map/event/{eventId}`), and *Back to map* closes the form, then shows the Map tab.
   - Fields: title, description, category, date with a start time and an **optional end time**, location (search or map pin), optional capacity, private or public. An end time earlier than the start time means the next day, and the form shows "+1 day" under the end field (Figma "Create event · overnight").
   - Validation errors inline (limits in "Event fields" above): missing title, title over 80 characters, description over 5000, past date, end time equal to the start time, missing location, capacity below 2.
   - After creating, an **"Event created" confirmation** offers *View event* and *Back to map* (team decision, 2026-10-06).
@@ -84,6 +85,7 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 
+- 2026-10-08 · Create Event entry: a floating "+" on the Events and Map roots opens the form full screen in that tab's back stack; event details live at `{tab}/event/{eventId}`. (#46)
 - 2026-10-08 · [#97](https://github.com/swent-polysocial/PolySocial/pull/97): retain official Google artwork on both Welcome and Log in to comply with Google branding; use the shared light pill rather than the custom text G.
 
 - 2026-10-07 · Create Event screen: pure form logic, Robolectric UI tests, "Event created" confirmation, `@HiltViewModel` with an injected `Clock`, location picker waits for Mapbox. (#46)
