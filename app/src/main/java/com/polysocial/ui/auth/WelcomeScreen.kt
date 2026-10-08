@@ -1,5 +1,6 @@
 // Contributors: Figma mockup (event/group illustration assets); OpenAI Codex (GPT-6.1 Sol,
-// medium; implemented the welcome layout, navigation callbacks and unavailable actions).
+// medium; implemented the welcome layout, navigation callbacks and unavailable actions;
+// added a compact two-column layout for landscape).
 package com.polysocial.ui.auth
 
 import androidx.compose.foundation.Image
@@ -52,82 +53,49 @@ fun WelcomeScreen(onSignUp: () -> Unit, onLogIn: () -> Unit) {
   val showUnavailable: () -> Unit = { scope.launch { snackbarHostState.showSnackbar(unavailable) } }
   Box(Modifier.fillMaxSize().background(Bg).testTag(WelcomeTags.Screen)) {
     BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {
-      // The Figma reference is 800 dp tall. Short windows scroll; taller ones keep the
-      // actions near the bottom by distributing extra space above the illustration and title.
-      val extraSpace = (maxHeight - 800.dp).coerceAtLeast(0.dp) / 2
-      Column(
-          Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
-          horizontalAlignment = Alignment.CenterHorizontally,
-      ) {
-        Spacer(Modifier.height(147.dp + extraSpace))
-        WelcomeIllustration()
-        Spacer(Modifier.height(86.dp + extraSpace))
-        BasicText(
-            stringResource(R.string.welcome_title),
-            style =
-                MaterialTheme.typography.displaySmall.copy(
-                    fontSize = 32.sp,
-                    lineHeight = 38.sp,
-                    letterSpacing = (-0.64).sp,
-                    color = Ink,
-                    textAlign = TextAlign.Center,
-                ),
-        )
-        Spacer(Modifier.height(11.dp))
-        BasicText(
-            stringResource(R.string.welcome_subtitle),
-            Modifier.widthIn(max = 269.dp),
-            style =
-                MaterialTheme.typography.bodyLarge.copy(color = Ink2, textAlign = TextAlign.Center),
-        )
-        Spacer(Modifier.height(70.dp))
-        GoogleSignInButton(WelcomeTags.Google, showUnavailable)
-        Spacer(Modifier.height(12.dp))
-        Box(
+      // Use the available window, including split-screen, rather than device orientation.
+      // Wide, short windows put actions beside the hero so they are visible immediately.
+      val sideBySide = maxWidth >= 600.dp && maxWidth > maxHeight
+      val scrollState = rememberScrollState()
+      if (sideBySide) {
+        Row(
             Modifier.fillMaxWidth()
-                .heightIn(min = 52.dp)
-                .border(1.dp, Border, MaterialTheme.shapes.large)
-                .clip(MaterialTheme.shapes.large)
-                .clickable(role = Role.Button, onClick = onSignUp)
-                .testTag(WelcomeTags.SignUp)
-                .padding(horizontal = 12.dp, vertical = 15.dp),
-            contentAlignment = Alignment.Center,
+                .verticalScroll(scrollState)
+                .heightIn(min = maxHeight)
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(32.dp),
         ) {
-          BasicText(
-              stringResource(R.string.welcome_sign_up),
-              style =
-                  MaterialTheme.typography.titleSmall.copy(
-                      color = Ink,
-                      textAlign = TextAlign.Center,
-                  ),
-          )
+          Column(
+              Modifier.weight(1f),
+              horizontalAlignment = Alignment.CenterHorizontally,
+          ) {
+            WelcomeIllustration()
+            Spacer(Modifier.height(20.dp))
+            WelcomeHeading()
+          }
+          Column(
+              Modifier.weight(1f).widthIn(max = 400.dp),
+              horizontalAlignment = Alignment.CenterHorizontally,
+          ) {
+            WelcomeActions(onSignUp, onLogIn, showUnavailable)
+          }
         }
-        Spacer(Modifier.height(17.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-          BasicText(
-              stringResource(R.string.signup_already_have_account),
-              style = MaterialTheme.typography.bodyMedium.copy(color = Ink2),
-          )
-          WelcomeLink(stringResource(R.string.login_log_in), WelcomeTags.LogIn, onLogIn)
+      } else {
+        // Keep the portrait reference's spacing and distribute extra height above the hero.
+        val extraSpace = (maxHeight - 800.dp).coerceAtLeast(0.dp) / 2
+        Column(
+            Modifier.fillMaxWidth().verticalScroll(scrollState).padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+          Spacer(Modifier.height(147.dp + extraSpace))
+          WelcomeIllustration()
+          Spacer(Modifier.height(86.dp + extraSpace))
+          WelcomeHeading()
+          Spacer(Modifier.height(70.dp))
+          WelcomeActions(onSignUp, onLogIn, showUnavailable)
+          Spacer(Modifier.height(10.dp))
         }
-        WelcomeLink(
-            stringResource(R.string.welcome_association),
-            WelcomeTags.Association,
-            showUnavailable,
-        )
-        Spacer(Modifier.height(4.dp))
-        BasicText(
-            stringResource(R.string.welcome_privacy),
-            Modifier.widthIn(max = 278.dp),
-            style =
-                MaterialTheme.typography.bodySmall.copy(
-                    fontWeight = FontWeight.Normal,
-                    lineHeight = 17.sp,
-                    color = Ink3,
-                    textAlign = TextAlign.Center,
-                ),
-        )
-        Spacer(Modifier.height(10.dp))
       }
     }
     SnackbarHost(
@@ -137,6 +105,77 @@ fun WelcomeScreen(onSignUp: () -> Unit, onLogIn: () -> Unit) {
       Snackbar(it, shape = RoundedCornerShape(14.dp), containerColor = Ink, contentColor = Bg)
     }
   }
+}
+
+@Composable
+private fun WelcomeHeading() {
+  BasicText(
+      stringResource(R.string.welcome_title),
+      style =
+          MaterialTheme.typography.displaySmall.copy(
+              fontSize = 32.sp,
+              lineHeight = 38.sp,
+              letterSpacing = (-0.64).sp,
+              color = Ink,
+              textAlign = TextAlign.Center,
+          ),
+  )
+  Spacer(Modifier.height(11.dp))
+  BasicText(
+      stringResource(R.string.welcome_subtitle),
+      Modifier.widthIn(max = 269.dp),
+      style = MaterialTheme.typography.bodyLarge.copy(color = Ink2, textAlign = TextAlign.Center),
+  )
+}
+
+@Composable
+private fun WelcomeActions(onSignUp: () -> Unit, onLogIn: () -> Unit, showUnavailable: () -> Unit) {
+  GoogleSignInButton(WelcomeTags.Google, showUnavailable)
+  Spacer(Modifier.height(12.dp))
+  Box(
+      Modifier.fillMaxWidth()
+          .heightIn(min = 52.dp)
+          .border(1.dp, Border, MaterialTheme.shapes.large)
+          .clip(MaterialTheme.shapes.large)
+          .clickable(role = Role.Button, onClick = onSignUp)
+          .testTag(WelcomeTags.SignUp)
+          .padding(horizontal = 12.dp, vertical = 15.dp),
+      contentAlignment = Alignment.Center,
+  ) {
+    BasicText(
+        stringResource(R.string.welcome_sign_up),
+        style =
+            MaterialTheme.typography.titleSmall.copy(
+                color = Ink,
+                textAlign = TextAlign.Center,
+            ),
+    )
+  }
+  Spacer(Modifier.height(17.dp))
+  Row(verticalAlignment = Alignment.CenterVertically) {
+    BasicText(
+        stringResource(R.string.signup_already_have_account),
+        style = MaterialTheme.typography.bodyMedium.copy(color = Ink2),
+    )
+    WelcomeLink(stringResource(R.string.login_log_in), WelcomeTags.LogIn, onLogIn)
+  }
+  WelcomeLink(
+      stringResource(R.string.welcome_association),
+      WelcomeTags.Association,
+      showUnavailable,
+  )
+  Spacer(Modifier.height(4.dp))
+  BasicText(
+      stringResource(R.string.welcome_privacy),
+      Modifier.widthIn(max = 278.dp),
+      style =
+          MaterialTheme.typography.bodySmall.copy(
+              fontWeight = FontWeight.Normal,
+              lineHeight = 17.sp,
+              color = Ink3,
+              textAlign = TextAlign.Center,
+          ),
+  )
 }
 
 @Composable
