@@ -1,4 +1,5 @@
 <!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42); OpenAI Codex (Google and welcome copy). OpenAI Codex (sign-up form, startup integration, name hint and unused-title cleanup). -->
+<!-- Contributors: OpenAI Codex (verification screen and failure messages for #31). -->
 <resources>
     <string name="auth_start_error">Could not load your profile. Check your connection and try again.</string>
     <string name="auth_start_retry">Retry</string>
@@ -59,4 +60,23 @@
     <string name="welcome_avatar_tr">TR</string>
     <string name="welcome_avatar_ak">AK</string>
     <string name="welcome_group_size">Group of 4</string>
+    <string name="verification_inbox">Check your inbox</string>
+    <string name="verification_description">We sent a confirmation link to</string>
+    <string name="verification_change_address">Wrong address? Change it</string>
+    <string name="verification_spam">Can\'t find it? Check the spam folder of your EPFL mailbox.</string>
+    <string name="verification_continue">I\'ve verified · Continue</string>
+    <string name="verification_checking">Checking…</string>
+    <string name="verification_resend">Resend email</string>
+    <string name="verification_sending">Sending…</string>
+    <string name="verification_countdown">Resend email in %1$d:%2$02d</string>
+    <string name="verification_sent">We sent a new link to your EPFL inbox. It can take a minute to arrive.</string>
+    <string name="verification_already_sent">A verification email has already been sent.</string>
+    <string name="verification_throttled">Too many requests in a row. Wait a few minutes, then ask for a new email.</string>
+    <string name="verification_unverified">Your email isn\'t verified yet. Open the link we sent, then tap Continue again.</string>
+    <string name="verification_network">Can\'t connect. Check your connection and try again.</string>
+    <string name="verification_error">Something went wrong. Please try again.</string>
+    <string name="verification_not_signed_in">Please log in to verify your email.</string>
+    <string name="profile_setup_title">Set up your profile</string>
+    <string name="profile_setup_pending">Your email is verified. Profile setup is coming soon.</string>
+    <string name="verification_send_description">Send a confirmation link to</string>
 </resources>

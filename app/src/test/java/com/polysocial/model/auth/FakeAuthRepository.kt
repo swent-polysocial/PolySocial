@@ -88,7 +88,9 @@ class FakeAuthRepository(var user: AuthUser? = null) : AuthRepository {
   override suspend fun reloadAndCheckVerified(): VerificationResult {
     checkCalls++
     checkGate?.await()
-    return verificationResult
+    return verificationResult.also {
+      if (it == VerificationResult.Verified) user = user?.copy(isEmailVerified = true)
+    }
   }
 
   override fun currentUser(): AuthUser? = user

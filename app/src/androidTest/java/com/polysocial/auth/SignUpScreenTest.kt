@@ -1,6 +1,8 @@
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; tested tagged validation, backend errors and
 // sign-up handoff with MockK; backend failure messages, recovery actions, login navigation and
 // official Google placeholder behavior, welcome navigation and startup routing injection).
+// official Google placeholder behavior and welcome navigation; updated verification/back
+// expectations for #31).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -8,6 +10,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.polysocial.R
@@ -23,6 +26,7 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import org.junit.After
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Rule
@@ -38,16 +42,52 @@ class SignUpScreenTest {
   private val loginViewModel = LoginViewModel(repository)
   private val profiles = mockk<UserProfileRepository>()
   private lateinit var startViewModel: AppStartViewModel
+  private val verificationStore =
+      object : VerificationStore {
+        private val timings = mutableMapOf<String, VerificationTiming>()
+
+        override suspend fun read(uid: String) = timings[uid] ?: VerificationTiming()
+
+        override suspend fun write(uid: String, timing: VerificationTiming) {
+          timings[uid] = timing
+        }
+
+        override suspend fun clear(uid: String) {
+          timings.remove(uid)
+        }
+      }
+  private lateinit var verificationViewModel: VerifyEmailViewModel
+  private var session: AuthUser? = null
   private var signedUp = 0
   private var logIn = 0
 
+  @After
+  fun disposeVerification() {
+    ViewModelStore().apply {
+      put("verification", verificationViewModel)
+      clear()
+    }
+  }
+
   @Before
   fun setup() {
-    every { repository.currentUser() } returns null
+    every { repository.currentUser() } answers { session }
+    coEvery { repository.sendVerificationEmail() } returns SendVerificationResult.Sent
+    coEvery { repository.reloadAndCheckVerified() } returns VerificationResult.Unverified
+    verificationViewModel =
+        VerifyEmailViewModel(
+            repository,
+            verificationStore,
+            VerificationClock { 1_000_000L },
+        )
+    coEvery { repository.signUp(any(), any(), any()) } answers
+        {
+          session = user
+          SignUpResult.Success(user)
+        }
     coEvery { profiles.getProfile(any()) } returns
         ProfileResult.Found(UserProfile(user.uid, user.email, "Test Student", "IN", "BA1"))
     startViewModel = AppStartViewModel(repository, profiles)
-    coEvery { repository.signUp(any(), any(), any()) } returns SignUpResult.Success(user)
   }
 
   private fun launch() {
@@ -352,6 +392,7 @@ class SignUpScreenTest {
             onExit = {},
             loginViewModel = loginViewModel,
             startViewModel = startViewModel,
+            verificationViewModel = verificationViewModel,
         )
       }
     }
@@ -378,6 +419,7 @@ class SignUpScreenTest {
             onExit = {},
             loginViewModel = loginViewModel,
             startViewModel = startViewModel,
+            verificationViewModel = verificationViewModel,
         )
       }
     }
@@ -396,7 +438,7 @@ class SignUpScreenTest {
   }
 
   @Test
-  fun successfulSignUpNavigatesOnlyToVerifyEmailAndBackExits() {
+  fun successfulSignUpNavigatesToVerifyEmailAndBackReturnsToWelcome() {
     var exits = 0
     compose.setContent {
       PolySocialTheme {
@@ -405,20 +447,21 @@ class SignUpScreenTest {
             onExit = { exits++ },
             loginViewModel = loginViewModel,
             startViewModel = startViewModel,
+            verificationViewModel = verificationViewModel,
         )
       }
     }
     compose.onNodeWithTag(WelcomeTags.SignUp).performScrollTo().performClick()
     fill()
     compose.onNodeWithTag(SignUpTags.Submit).performScrollTo().performClick()
-    compose
-        .onNodeWithTag(SignUpTags.VerifyEmailDestination)
-        .assertIsDisplayed()
-        .assertTextContains(message(R.string.verify_email_title))
+    compose.onNodeWithTag(SignUpTags.VerifyEmailDestination).assertIsDisplayed()
+    compose.onNodeWithText(message(R.string.verification_inbox)).assertIsDisplayed()
     compose.onNodeWithTag(LoginScreenTestTags.SCREEN).assertDoesNotExist()
     compose.onNodeWithTag(SignUpTags.Screen).assertDoesNotExist()
     compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
-    compose.runOnIdle { assertEquals(1, exits) }
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    compose.runOnIdle { assertEquals(0, exits) }
+    assertEquals(user, session)
   }
 
   @Test
@@ -430,6 +473,7 @@ class SignUpScreenTest {
             onExit = {},
             loginViewModel = loginViewModel,
             startViewModel = startViewModel,
+            verificationViewModel = verificationViewModel,
         )
       }
     }
@@ -459,6 +503,7 @@ class SignUpScreenTest {
             onExit = {},
             loginViewModel = loginViewModel,
             startViewModel = startViewModel,
+            verificationViewModel = verificationViewModel,
         )
       }
     }
@@ -485,7 +530,11 @@ class SignUpScreenTest {
 
   @Test
   fun unverifiedLoginOpensVerificationInsteadOfAppShell() {
-    coEvery { repository.logIn(any(), any()) } returns LogInResult.Success(user)
+    coEvery { repository.logIn(any(), any()) } answers
+        {
+          session = user
+          LogInResult.Success(user)
+        }
     compose.setContent {
       PolySocialTheme {
         AuthFlow(
@@ -493,6 +542,7 @@ class SignUpScreenTest {
             onExit = {},
             loginViewModel = loginViewModel,
             startViewModel = startViewModel,
+            verificationViewModel = verificationViewModel,
         )
       }
     }
@@ -500,13 +550,31 @@ class SignUpScreenTest {
     compose.onNodeWithTag(SignUpTags.LogIn).performScrollTo().performClick()
     compose.onNodeWithTag(LoginScreenTestTags.EMAIL).performTextInput("student.test@epfl.ch")
     compose.onNodeWithTag(LoginScreenTestTags.PASSWORD).performTextInput("password1")
+    // Finish text/IME layout and scrolling before pausing the clock for the redirect assertions.
+    compose.waitForIdle()
+    compose.runOnIdle {
+      androidx.core.view.WindowCompat.getInsetsController(
+              compose.activity.window,
+              compose.activity.window.decorView,
+          )
+          .hide(androidx.core.view.WindowInsetsCompat.Type.ime())
+    }
+    compose.onNodeWithTag(LoginScreenTestTags.LOG_IN).performScrollTo()
     compose.mainClock.autoAdvance = false
     try {
-      compose.onNodeWithTag(LoginScreenTestTags.LOG_IN).performScrollTo().performClick()
+      compose.onNodeWithTag(LoginScreenTestTags.LOG_IN).performClick()
       compose.mainClock.advanceTimeByFrame()
       compose.onNodeWithTag(LoginScreenTestTags.UNVERIFIED_BANNER).assertIsDisplayed()
       compose.onNodeWithTag(SignUpTags.VerifyEmailDestination).assertDoesNotExist()
-      compose.mainClock.advanceTimeBy(1_700, ignoreFrameDuration = true)
+      // The verification destination now starts lifecycle-aware work and Material animations.
+      // Keep the delayed-login assertions above, then let the destination settle normally.
+      compose.mainClock.autoAdvance = true
+      compose.waitUntil(timeoutMillis = 5_000) {
+        compose
+            .onAllNodesWithTag(SignUpTags.VerifyEmailDestination)
+            .fetchSemanticsNodes()
+            .isNotEmpty()
+      }
       compose.onNodeWithTag(SignUpTags.VerifyEmailDestination).assertIsDisplayed()
       compose.onNodeWithTag(C.Tag.app_shell).assertDoesNotExist()
       compose.onNodeWithTag(LoginScreenTestTags.SCREEN).assertDoesNotExist()
@@ -527,6 +595,7 @@ class SignUpScreenTest {
             onExit = {},
             loginViewModel = loginViewModel,
             startViewModel = startViewModel,
+            verificationViewModel = verificationViewModel,
         )
       }
     }

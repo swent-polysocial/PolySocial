@@ -1,5 +1,6 @@
 // Contributors: OpenAI Codex (isolated SDK setup for session-aware activity startup).
 // Contributors: Claude Opus 5.5 (wrote these tests).
+// Contributors: OpenAI Codex (mocked Firebase session before activity startup for #31).
 package com.polysocial
 
 import androidx.activity.compose.setContent
