@@ -1,5 +1,5 @@
 // Contributors: Claude (isEpflUser helper, #33; own users/{uid} rule and no catch-all, #35;
-// fixed uid and accountType after review, #35).; OpenAI Codex (public/private event read rules, #52).
+// fixed uid and accountType after review, #35); OpenAI Codex (public/private event read rules, #52).
 rules_version = '2';
 
 service cloud.firestore {
