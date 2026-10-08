@@ -1,13 +1,18 @@
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; tested welcome actions, placeholders and
-// scrolling in a short window and landscape action visibility).
+// scrolling in a short window, landscape action visibility and privacy-copy regression).
 package com.polysocial.ui.auth
 
 import android.app.Application
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.test.*
+import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -42,6 +47,7 @@ class WelcomeScreenTest {
   fun emailAndLoginActionsRemainReachableInShortWindow() {
     launch(shortWindow = true)
     compose.onNodeWithText(message(R.string.welcome_title)).assertExists()
+    compose.onNodeWithText("By continuing you agree", substring = true).assertDoesNotExist()
     compose.onNodeWithTag(WelcomeTags.SignUp).performScrollTo().assertIsDisplayed().performClick()
     assertEquals(1, signUps)
     assertEquals(0, logins)

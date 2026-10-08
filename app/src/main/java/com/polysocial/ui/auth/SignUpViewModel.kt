@@ -3,7 +3,12 @@ package com.polysocial.ui.auth
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.polysocial.model.auth.*
+import com.polysocial.model.auth.AuthRepository
+import com.polysocial.model.auth.AuthUser
+import com.polysocial.model.auth.FieldError
+import com.polysocial.model.auth.SignUpField
+import com.polysocial.model.auth.SignUpForm
+import com.polysocial.model.auth.SignUpResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException

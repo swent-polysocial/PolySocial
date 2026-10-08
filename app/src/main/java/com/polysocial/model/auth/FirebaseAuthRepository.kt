@@ -15,7 +15,11 @@ import com.google.firebase.auth.UserProfileChangeRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.tasks.await
 
-/** [AuthRepository] backed by Firebase Authentication. */
+/**
+ * [AuthRepository] backed by Firebase Authentication. FirebaseAuth is resolved on the first
+ * operation so idle Compose rendering and Robolectric screen tests need no initialized Firebase
+ * app.
+ */
 class FirebaseAuthRepository private constructor(authProvider: () -> FirebaseAuth) :
     AuthRepository {
   // Idle screen rendering needs no SDK access; resolve Firebase only for an operation.
