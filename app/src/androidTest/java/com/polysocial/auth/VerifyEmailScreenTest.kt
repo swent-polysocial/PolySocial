@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (verification UI and session/navigation regression tests for #31;
+// Contributors: OpenAI Codex (verification UI, Back sign-out and session/navigation regression
+// tests for #31;
 // synchronized Continue checks with startup work and semantic actions for PR #99's CI failures).
 package com.polysocial.auth
 
@@ -106,23 +107,22 @@ class VerifyEmailScreenTest {
     compose.onNodeWithTag(VerifyEmailTags.Back).performScrollTo().performClick()
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
     compose.onNodeWithTag(SignUpTags.Screen).assertDoesNotExist()
-    verify(exactly = 0) { repository.logOut() }
+    verify(exactly = 1) { repository.logOut() }
   }
 
   @Test
-  fun systemBackFromVerificationReturnsToWelcomeWithoutLoggingOut() {
+  fun systemBackFromVerificationSignsOutAndReturnsToWelcome() {
     flow()
     compose.onNodeWithTag(VerifyEmailTags.Screen).assertIsDisplayed()
     compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
-    verify(exactly = 0) { repository.logOut() }
+    verify(exactly = 1) { repository.logOut() }
   }
 
   @Test
-  fun browserVerificationFromWelcomeContinuesToProfilePlaceholderOnResume() {
+  fun browserVerificationFromVerificationContinuesToProfilePlaceholderOnResume() {
     flow()
-    compose.onNodeWithTag(VerifyEmailTags.Back).performScrollTo().performClick()
-    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    compose.onNodeWithTag(VerifyEmailTags.Screen).assertIsDisplayed()
     coEvery { repository.reloadAndCheckVerified() } answers
         {
           every { repository.currentUser() } returns user.copy(isEmailVerified = true)

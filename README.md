@@ -1,5 +1,5 @@
 <!-- Contributors: Claude (drafted the README structure, Setup, Running and testing, Tech stack and Project links sections; Firestore index deployment, #49); OpenAI Codex (documented startup routing and rebase reconciliation). -->
-<!-- Contributors: OpenAI Codex (documented browser verification and startup integration for #31). -->
+<!-- Contributors: OpenAI Codex (documented browser verification, startup integration and Back sign-out for #31). -->
 
 # PolySocial
 
@@ -41,7 +41,7 @@ The barrier to campus life is social rather than informational: PolySocial answe
 
 **Offline:** events you've loaded, your registered events and their schedule, and reminders stay available offline. The map shows cached events on whatever map tiles are already cached.
 
-Signed-out users see Welcome on launch. Unverified sessions reopen Verify Email; verified sessions load their profile before opening the app or profile setup. The screen sends a verification email, supports resend with a persistent cooldown, and checks verification on Continue or browser return. After verification, shared startup routing loads the profile and opens the app or the profile-setup placeholder (#34); failed profile reads show Retry. Back preserves the session, while Change address signs out and resets the forms. Verification uses Firebase’s browser action page, so no Hosting or App Links setup is needed.
+Signed-out users see Welcome on launch. Unverified sessions reopen Verify Email; verified sessions load their profile before opening the app or profile setup. The screen sends a verification email, supports resend with a persistent cooldown, and checks verification on Continue or browser return. After verification, shared startup routing loads the profile and opens the app or the profile-setup placeholder (#34); failed profile reads show Retry. Both the system Back action and the back icon sign out and reset the forms, so reopening shows Welcome. Change address also signs out and opens a fresh sign-up form. Verification uses Firebase’s browser action page, so no Hosting or App Links setup is needed.
 
 ## Tech stack
 

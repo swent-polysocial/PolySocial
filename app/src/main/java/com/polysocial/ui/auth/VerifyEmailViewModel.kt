@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (verification state, startup routing and persistent cooldown for #31).
+// Contributors: OpenAI Codex (verification state, startup routing, persistent cooldown and Back
+// sign-out for #31).
 package com.polysocial.ui.auth
 
 import androidx.lifecycle.ViewModel
@@ -44,8 +45,8 @@ data class VerifyEmailUiState(
 }
 
 /**
- * Owns verification and resend timing. Going back to Welcome preserves the Firebase session;
- * lifecycle checks can therefore finish verification from either screen.
+ * Owns verification and resend timing. Back and change-address actions cancel pending work and sign
+ * out; browser return checks verification while the account remains signed in.
  */
 @HiltViewModel
 class VerifyEmailViewModel
@@ -77,13 +78,14 @@ constructor(
   private var sendJob: Job? = null
   private var checkJob: Job? = null
 
-  /** Explicit change-address action; ordinary Back never signs the user out. */
+  /** Signs out and resets verification for Back or the explicit change-address action. */
   fun changeAddress() {
     entryJob?.cancel()
     sendJob?.cancel()
     checkJob?.cancel()
     ticker?.cancel()
     repository.logOut()
+    startupRoutingPending = false
     accountUid = null
     entryReady = false
     screenEntered = false
