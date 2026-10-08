@@ -107,6 +107,31 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
+  fun recreationKeepsConsumedSnackbarWhileExplicitReentryAndRestartNotify() = runTest {
+    store.timings[user.uid] = VerificationTiming(now - 15_000, now + 30_000)
+    val vm = viewModel()
+    vm.enter()
+    runCurrent()
+    assertEquals(VerificationMessage.AlreadySent, vm.uiState.value.snackbar)
+    vm.snackbarShown()
+    vm.enter()
+    runCurrent()
+    assertNull(vm.uiState.value.snackbar)
+    assertEquals(30L, vm.uiState.value.remainingSeconds)
+    vm.leave()
+    vm.enter()
+    runCurrent()
+    assertEquals(VerificationMessage.AlreadySent, vm.uiState.value.snackbar)
+    val restarted = viewModel()
+    restarted.enter()
+    runCurrent()
+    assertEquals(VerificationMessage.AlreadySent, restarted.uiState.value.snackbar)
+    assertEquals(0, repository.sendCalls)
+    dispose(vm)
+    dispose(restarted)
+  }
+
+  @Test
   fun expiredCooldownDoesNotAutomaticallySendOnRestart() = runTest {
     store.timings[user.uid] = VerificationTiming(now - 90_000, now - 45_000)
     val vm = viewModel()

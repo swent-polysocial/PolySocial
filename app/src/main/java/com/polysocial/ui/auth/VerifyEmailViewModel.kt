@@ -71,6 +71,7 @@ constructor(
   private var accountUid: String? = null
   private var ticker: Job? = null
   private var entryReady = false
+  private var screenEntered = false
   private var initialSendAttempted = false
   private var entryJob: Job? = null
   private var sendJob: Job? = null
@@ -85,6 +86,7 @@ constructor(
     repository.logOut()
     accountUid = null
     entryReady = false
+    screenEntered = false
     initialSendAttempted = false
     timing = VerificationTiming()
     mutableState.value = VerifyEmailUiState()
@@ -97,6 +99,8 @@ constructor(
       mutableState.update { it.copy(banner = VerificationMessage.NotSignedIn) }
       return
     }
+    if (screenEntered && entryReady && accountUid == user.uid) return
+    screenEntered = true
     if (accountUid != null && accountUid != user.uid) {
       entryJob?.cancel()
       sendJob?.cancel()
@@ -144,6 +148,12 @@ constructor(
         }
       }
     }
+  }
+
+  /** An explicit navigation away allows a later entry; recreation keeps the current entry. */
+  fun leave() {
+    screenEntered = false
+    snackbarShown()
   }
 
   fun resend() {

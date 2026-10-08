@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.polysocial.R
 import com.polysocial.ui.theme.*
+import kotlinx.coroutines.flow.filterNotNull
 
 object VerifyEmailTags {
   const val Screen = "verify_email_destination"
@@ -57,11 +58,15 @@ fun VerifyEmailScreen(
   val snackbar = remember { SnackbarHostState() }
   val snackbarMessage = state.snackbar?.let { stringResource(it.resource()) }
   val latestOnSnackbarShown by rememberUpdatedState(onSnackbarShown)
-  LaunchedEffect(snackbarMessage) {
-    snackbarMessage?.let {
-      snackbar.showSnackbar(it)
-      latestOnSnackbarShown()
-    }
+  val latestSnackbarMessage by rememberUpdatedState(snackbarMessage)
+  LaunchedEffect(snackbar) {
+    snapshotFlow { latestSnackbarMessage }
+        .filterNotNull()
+        .collect {
+          // Consume before display so recreation cannot replay an in-flight snackbar.
+          latestOnSnackbarShown()
+          snackbar.showSnackbar(it)
+        }
   }
   Box(Modifier.fillMaxSize().background(Bg).testTag(VerifyEmailTags.Screen)) {
     BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {

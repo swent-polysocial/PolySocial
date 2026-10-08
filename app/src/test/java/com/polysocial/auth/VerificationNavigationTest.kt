@@ -79,6 +79,19 @@ class VerificationNavigationTest {
   }
 
   @Test
+  fun recreationDoesNotReplayTheAlreadySentSnackbar() {
+    val restoration = launch()
+    compose.onNodeWithTag(VerifyEmailTags.Snackbar).assertIsDisplayed()
+    compose.runOnIdle { assertNull(verification.uiState.value.snackbar) }
+    restoration.emulateSavedInstanceStateRestore()
+    compose.onNodeWithTag(VerifyEmailTags.Screen).assertIsDisplayed()
+    compose.runOnIdle { assertNull(verification.uiState.value.snackbar) }
+    compose.onNodeWithTag(VerifyEmailTags.Snackbar).onChildren().assertCountEquals(0)
+    assertEquals(0, repository.sendCalls)
+    compose.onNodeWithTag(VerifyEmailTags.Resend).assertTextContains("0:45", substring = true)
+  }
+
+  @Test
   fun changeAddressResetsSignUpAndLoginStateBeforeShowingForm() {
     val restoration = launch()
     signup.update(SignUpField.FullName, "Test Student")
