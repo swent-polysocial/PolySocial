@@ -10,6 +10,7 @@
     <string name="tab_profile">Profile</string>
     <string name="placeholder_coming_soon">%1$s — coming soon</string>
     <string name="placeholder_detail_coming_soon">Details — coming soon</string>
+    <string name="create_event_button">Create event</string>
     <string name="loading_events">Loading events…</string>
     <string name="loading_map">Loading the map…</string>
     <string name="loading_chats">Loading chats…</string>

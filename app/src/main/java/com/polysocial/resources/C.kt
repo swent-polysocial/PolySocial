@@ -1,5 +1,5 @@
 // Contributors: Claude (app shell and tab test tags, #41; loading state tag, #43; Create Event
-// tags, #46).
+// tags and its "+" button, #46).
 package com.polysocial.resources
 
 // Like R, but C
@@ -24,6 +24,7 @@ object C {
     const val screen_chats = "screen_chats"
     const val screen_profile = "screen_profile"
 
+    const val create_event_button = "create_event_button"
     const val create_event_screen = "create_event_screen"
     const val create_event_close = "create_event_close"
     const val create_event_title = "create_event_title"

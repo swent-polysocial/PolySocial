@@ -1,7 +1,8 @@
 // Contributors: Claude (tab definitions for the bottom navigation, #41; loading messages, #43;
-// per-tab routes, #42).
+// per-tab routes, #42; Create Event and event detail routes, #46).
 package com.polysocial.ui.navigation
 
+import android.net.Uri
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import com.polysocial.R
@@ -72,4 +73,19 @@ enum class Tab(
   /** Test tag of the tab's placeholder detail screen. */
   val detailTag: String
     get() = "detail_$route"
+
+  /** Whether the tab's root shows the "+" button that opens Create Event (Events and Map). */
+  val canCreateEvent: Boolean
+    get() = this == EVENTS || this == MAP
+
+  /** Route of the Create Event screen, in the back stack of the tab whose "+" opened it. */
+  val createEventRoute: String
+    get() = "$route/create"
+
+  /** Route pattern of an event's detail screen in this tab's back stack. */
+  val eventDetailRoute: String
+    get() = "$route/event/{eventId}"
+
+  /** Route of the detail screen of the event [eventId] in this tab's back stack. */
+  fun eventDetailRoute(eventId: String): String = "$route/event/${Uri.encode(eventId)}"
 }
