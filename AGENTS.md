@@ -206,8 +206,10 @@ guessing. It also shows how the design evolved.
   covered. Never stage with `git add -A` or `git add .` without reviewing what
   it includes. If a secret is already public, stop and tell the human: the key
   must be rotated, and deleting the file does not remove it from history.
-- Mapbox is approved in #50, replacing Google Maps. Use a dedicated public
-  `pk.` token with only `styles:read` and `fonts:read`, stored as
+- Mapbox is approved in #50, replacing Google Maps. The account's signup
+  public `pk.` token is approved for initial development; one token can serve
+  the prototype's local builds. Before production, use a dedicated public
+  token with only `styles:read` and `fonts:read`, stored as
   `MAPBOX_ACCESS_TOKEN` in git-ignored `local.properties`. Gradle generates the
   SDK string resource, with an empty-token setup state so CI can build. Never
   package a secret `sk.` token. Mapbox mobile tokens do not support Google's
