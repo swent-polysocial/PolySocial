@@ -2,10 +2,11 @@
 package com.polysocial.ui.map
 
 import com.polysocial.model.event.Coordinates
+import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.validEvent
 import com.polysocial.model.map.MapEventResult
 import com.polysocial.model.map.MapEventSource
-import com.polysocial.model.map.NotConfiguredMapEventSource
+import com.polysocial.model.map.RepositoryMapEventSource
 import com.polysocial.utils.MainDispatcherRule
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
@@ -122,9 +123,10 @@ class MapViewModelTest {
   @Test
   fun defaultBindingNeverManufacturesAnEmptySuccess() =
       kotlinx.coroutines.test.runTest {
+        val repository = FakeEventRepository().apply { readFailure = true }
         assertEquals(
-            MapEventResult.Unavailable,
-            NotConfiguredMapEventSource().observePublicUpcomingEvents().first(),
+            MapEventResult.Error,
+            RepositoryMapEventSource(repository).observePublicUpcomingEvents().first(),
         )
       }
 
