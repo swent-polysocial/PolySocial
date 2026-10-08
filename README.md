@@ -42,7 +42,7 @@ For Map distance badges, the app requests only approximate location. On first en
 
 **Offline:** events you've loaded, your registered events and their schedule, and reminders stay available offline. The map shows cached events on whatever map tiles are already cached.
 
-On launch, signed-out users see Welcome. A retained unverified session opens the Verify Email placeholder. Verified sessions load their profile before opening the app or the profile-setup placeholder; a failed profile read shows Retry. Verified login uses the same check. The full verification and profile screens follow in #31 and #34.
+Unverified sessions reopen Verify Email on launch. The screen sends a verification email, supports resend with a persistent cooldown, and checks verification on Continue or browser return. After verification, shared startup routing loads the profile and opens the app or the profile-setup placeholder (#34); failed profile reads show Retry. Back preserves the session, while Change address signs out and resets the forms. Verification uses Firebase’s browser action page, so no Hosting or App Links setup is needed.
 
 ## Tech stack
 

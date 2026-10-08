@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.auth.*
 import com.polysocial.model.user.*
@@ -19,6 +20,7 @@ import com.polysocial.ui.navigation.TabRootScreen
 import com.polysocial.ui.start.AppStartViewModel
 import com.polysocial.ui.theme.PolySocialTheme
 import kotlinx.coroutines.CompletableDeferred
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -35,13 +37,25 @@ class AuthFlowTest {
   private val restoration = StateRestorationTester(compose)
 
   private var exits = 0
+  private val verificationModels = mutableListOf<VerifyEmailViewModel>()
+
+  @After
+  fun clearVerification() {
+    ViewModelStore().apply {
+      verificationModels.forEachIndexed { index, model -> put("verification$index", model) }
+      clear()
+    }
+  }
 
   private fun launch() {
     val start = AppStartViewModel(auth, profiles)
-    // The real Events tab needs Hilt; these tests only check that the shell opens.
+    val verification =
+        VerifyEmailViewModel(auth, MemoryVerificationStore(), VerificationClock { 1000 }).also {
+          verificationModels.add(it)
+        }
     restoration.setContent {
       PolySocialTheme {
-        AuthFlow(signUp, { exits++ }, login, start) {
+        AuthFlow(signUp, { exits++ }, login, start, verification) {
           AppShell(eventsContent = { TabRootScreen(Tab.EVENTS) })
         }
       }

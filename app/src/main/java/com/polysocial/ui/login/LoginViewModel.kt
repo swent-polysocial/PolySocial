@@ -1,5 +1,6 @@
 // Contributors: Claude (Log in screen state for #32); Claude Opus 5.5 (block Log in while
 // redirecting).
+// Contributors: OpenAI Codex (cleared login state when verification changes account for #31).
 package com.polysocial.ui.login
 
 import androidx.lifecycle.ViewModel
@@ -56,6 +57,11 @@ data class LoginUiState(
 class LoginViewModel @Inject constructor(private val auth: AuthRepository) : ViewModel() {
   private val _uiState = MutableStateFlow(LoginUiState())
   val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
+
+  /** Drops the previous account's login result when verification explicitly signs out. */
+  fun reset() {
+    _uiState.value = LoginUiState()
+  }
 
   fun onEmailChange(email: String) = _uiState.update {
     it.copy(email = email, status = editedStatus(it))
