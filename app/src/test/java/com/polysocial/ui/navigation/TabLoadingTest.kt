@@ -1,5 +1,6 @@
 // Contributors: Claude (UI tests for the tab loading state, #43; placeholder Events root without
 // Hilt, #105).
+// OpenAI Codex (injected map placeholder to keep shared-loading tests offline after #50).
 package com.polysocial.ui.navigation
 
 import android.content.Context
@@ -36,7 +37,13 @@ class TabLoadingTest {
   @Before
   fun setUp() {
     composeTestRule.setContent {
-      PolySocialTheme { AppShell(eventsContent = { TabRootScreen(Tab.EVENTS) }) }
+      PolySocialTheme {
+        // Exercise the shared tab loader; MapScreen's own states have separate map tests.
+        AppShell(
+            eventsContent = { TabRootScreen(Tab.EVENTS) },
+            mapContent = { TabRootScreen(Tab.MAP) },
+        )
+      }
     }
   }
 
