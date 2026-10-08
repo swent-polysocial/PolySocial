@@ -1,0 +1,13 @@
+<!-- Source: exported directly from an AI-generated Figma design (AI model unknown).
+Contributors: OpenAI Codex (GPT-6.1 Sol Medium; documented source attribution). -->
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="18" height="18" viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Spinner" clip-path="url(#clip0_0_4)">
+<path id="Vector" d="M9 16.2C12.9764 16.2 16.2 12.9764 16.2 9C16.2 5.02355 12.9764 1.8 9 1.8C5.02355 1.8 1.8 5.02355 1.8 9C1.8 12.9764 5.02355 16.2 9 16.2Z" stroke="white" stroke-opacity="0.3" stroke-width="2.16"/>
+<path id="Vector_2" d="M9 1.8C10.9096 1.8 12.7409 2.55857 14.0912 3.90883C15.4414 5.25909 16.2 7.09044 16.2 9" stroke="white" stroke-width="2.16" stroke-linecap="round"/>
+</g>
+<defs>
+<clipPath id="clip0_0_4">
+<rect width="18" height="18" fill="white"/>
+</clipPath>
+</defs>
+</svg>
