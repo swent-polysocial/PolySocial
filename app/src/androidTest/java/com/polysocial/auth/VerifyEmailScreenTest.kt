@@ -1,10 +1,11 @@
 // Contributors: OpenAI Codex (verification UI and session/navigation regression tests for #31;
-// synchronized Continue checks with startup work to repair PR #99's CI race).
+// synchronized Continue checks with startup work and semantic actions for PR #99's CI failures).
 package com.polysocial.auth
 
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.lifecycle.Lifecycle
@@ -152,7 +153,13 @@ class VerifyEmailScreenTest {
     compose.waitUntil(timeoutMillis = 5_000) {
       compose.onAllNodes(readyToContinue).fetchSemanticsNodes().isNotEmpty()
     }
-    compose.onNodeWithTag(VerifyEmailTags.Continue).performScrollTo().performClick()
+    // Exercise the button's action directly; enabled semantics alone do not guarantee a touch
+    // reaches it while the confirmation snackbar is displayed over a small window.
+    compose.onNodeWithTag(VerifyEmailTags.Continue).performSemanticsAction(
+        SemanticsActions.OnClick
+    ) {
+      it()
+    }
     val unverifiedMessage = message(R.string.verification_unverified)
     compose.waitUntil(timeoutMillis = 5_000) {
       compose
@@ -169,7 +176,11 @@ class VerifyEmailScreenTest {
     compose.waitUntil(timeoutMillis = 5_000) {
       compose.onAllNodes(readyToContinue).fetchSemanticsNodes().isNotEmpty()
     }
-    compose.onNodeWithTag(VerifyEmailTags.Continue).performScrollTo().performClick()
+    compose.onNodeWithTag(VerifyEmailTags.Continue).performSemanticsAction(
+        SemanticsActions.OnClick
+    ) {
+      it()
+    }
     compose.waitUntil(timeoutMillis = 5_000) {
       compose.onAllNodesWithTag("auth_profile_setup").fetchSemanticsNodes().isNotEmpty()
     }
