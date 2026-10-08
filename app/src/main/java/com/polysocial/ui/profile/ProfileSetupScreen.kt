@@ -389,7 +389,7 @@ private fun EmailLabel() {
   ) {
     FieldLabel(R.string.profile_email)
     Spacer(Modifier.weight(1f))
-    Image(painterResource(R.drawable.ic_check), contentDescription = null)
+    Image(painterResource(R.drawable.ic_check_small), contentDescription = null)
     Spacer(Modifier.width(4.dp))
     Text(
         stringResource(R.string.profile_verified),
@@ -600,7 +600,7 @@ private fun MenuItem(
     )
     if (selected) {
       Image(
-          painterResource(R.drawable.ic_check),
+          painterResource(R.drawable.ic_check_small),
           contentDescription = null,
           colorFilter = ColorFilter.tint(Ink),
       )
