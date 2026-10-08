@@ -1,4 +1,4 @@
-<!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42); OpenAI Codex (Google and welcome copy). -->
+<!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42; Create Event texts, #46); OpenAI Codex (Google and welcome copy). -->
 <resources>
     <string name="app_name">PolySocial</string>
     <string name="title_activity_main">MainActivity</string>
