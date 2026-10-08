@@ -19,7 +19,7 @@ import kotlinx.coroutines.launch
 sealed interface CreateEventStatus {
   data object Editing : CreateEventStatus
 
-  data object Submitting : CreateEventStatus
+  data object Saving : CreateEventStatus
 
   /** The event was saved; the screen shows the "Event created" confirmation. */
   data class Created(val eventId: String, val title: String, val isPrivate: Boolean) :
@@ -104,7 +104,7 @@ class CreateEventViewModel(
    */
   fun onSubmit() {
     val state = _uiState.value
-    if (state.status == CreateEventStatus.Submitting || state.status is CreateEventStatus.Created) {
+    if (state.status == CreateEventStatus.Saving || state.status is CreateEventStatus.Created) {
       return
     }
     val errors = currentErrors(state.form)
@@ -114,7 +114,7 @@ class CreateEventViewModel(
       publish(state.form, state.status)
       return
     }
-    _uiState.update { it.copy(status = CreateEventStatus.Submitting, canSubmit = false) }
+    _uiState.update { it.copy(status = CreateEventStatus.Saving, canSubmit = false) }
     viewModelScope.launch {
       val status =
           when (val result = repository.createEvent(event)) {
@@ -136,7 +136,7 @@ class CreateEventViewModel(
 
   private fun edit(field: Field?, change: (CreateEventForm) -> CreateEventForm) {
     val state = _uiState.value
-    if (state.status == CreateEventStatus.Submitting || state.status is CreateEventStatus.Created) {
+    if (state.status == CreateEventStatus.Saving || state.status is CreateEventStatus.Created) {
       return
     }
     field?.let { changedFields += it }
@@ -154,7 +154,7 @@ class CreateEventViewModel(
             form = form,
             visibleErrors = shown,
             canSubmit =
-                status != CreateEventStatus.Submitting && !(submitAttempted && errors.isNotEmpty()),
+                status != CreateEventStatus.Saving && !(submitAttempted && errors.isNotEmpty()),
             status = status,
         )
   }
