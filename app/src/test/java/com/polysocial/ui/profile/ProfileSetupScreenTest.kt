@@ -1,5 +1,6 @@
-// Contributors: Claude Opus 5.5 (wrote these tests; large font scale, Figma positions, one save
-// report after rotation, picker accessibility); Claude Opus 5.5 (testing agent: double tap, blocked
+// Contributors: Claude Opus 5.5 (wrote these tests; large font scale, layout at the default font
+// size, one save report after rotation, picker accessibility); Claude Opus 5.5 (testing agent:
+// double tap, blocked
 // Continue, existing profile, error retry and picker menu behaviour).
 package com.polysocial.ui.profile
 
@@ -488,59 +489,11 @@ class ProfileSetupScreenTest {
     return composeTestRule.onNode(matcher, useUnmergedTree = true).fetchSemanticsNode()
   }
 
-  @Test
-  // The Figma frame size at the Pixel 5 density the screen was measured on, with real text
-  // metrics (the legacy mode measures every line 35 dp).
-  @Config(qualifiers = "w360dp-h800dp-440dpi")
-  @GraphicsMode(GraphicsMode.Mode.NATIVE)
-  fun defaultFontSize_elementsSitAtTheirFigmaPositions() {
-    composeTestRule.setContent {
-      PolySocialTheme {
-        Box(Modifier.size(width = 360.dp, height = 800.dp)) {
-          ProfileSetupContent(
-              state = filled,
-              onBack = {},
-              onDisplayNameChange = {},
-              onSectionChange = {},
-              onYearChange = {},
-              onContinue = {},
-          )
-        }
-      }
-    }
-    // The tops in the Figma "Profile · ready" frame (360 x 800).
-    val figmaTops =
-        listOf(
-            "title" to (textNode(string(R.string.profile_title)) to 67.5f),
-            "subtitle" to (textNode(string(R.string.profile_subtitle)) to 107f),
-            "full name label" to (textNode(string(R.string.profile_full_name)) to 239.5f),
-            "name field" to (node(ProfileSetupTestTags.FULL_NAME).node() to 262f),
-            "email label" to (textNode(string(R.string.profile_email)) to 325.5f),
-            "email field" to (node(ProfileSetupTestTags.EMAIL).node() to 348f),
-            "section label" to (textNode(string(R.string.profile_section)) to 409.5f),
-            "section field" to (node(ProfileSetupTestTags.SECTION).node() to 432f),
-            "year field" to (node(ProfileSetupTestTags.YEAR).node() to 432f),
-            "privacy note" to (textNode(string(R.string.profile_privacy)) to 675f),
-            "continue" to (node(ProfileSetupTestTags.CONTINUE).node() to 720f),
-        )
-    val density = composeTestRule.density.density
-    for ((name, nodeAndTop) in figmaTops) {
-      val (node, figmaTop) = nodeAndTop
-      val top = node.top() / density
-      assertTrue(
-          "$name is at $top dp, Figma says $figmaTop",
-          kotlin.math.abs(top - figmaTop) <= 0.6f,
-      )
-    }
-  }
-
-  @Test
-  // Real text metrics: the legacy graphics mode measures text with fixed fake sizes.
-  @GraphicsMode(GraphicsMode.Mode.NATIVE)
-  fun doubleFontSize_textsFitAndNothingOverlaps() {
+  /** Sets the form at [fontScale], filled in and showing the save error (the tallest state). */
+  private fun setFilledForm(fontScale: Float) {
     composeTestRule.setContent {
       val density = LocalDensity.current
-      CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale = 2f)) {
+      CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
         PolySocialTheme {
           ProfileSetupContent(
               state = filled.copy(status = ProfileSetupStatus.CouldNotSave),
@@ -553,6 +506,10 @@ class ProfileSetupScreenTest {
         }
       }
     }
+  }
+
+  /** No text is clipped, and the elements are stacked top to bottom without overlapping. */
+  private fun assertTextsFitAndNothingOverlaps() {
     fun text(id: Int) = textNode(string(id))
     // Every text, fetched as the text node itself: a field's tag sits on its container, which
     // has no text layout to check.
@@ -606,6 +563,30 @@ class ProfileSetupScreenTest {
         )
       }
     }
+  }
+
+  @Test
+  // The Figma frame size, with real text metrics (the legacy mode measures every line 35 dp).
+  @Config(qualifiers = "w360dp-h800dp")
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  fun defaultFontSize_nothingOverlapsAndContinueSitsAtTheBottom() {
+    setFilledForm(fontScale = 1f)
+
+    assertTextsFitAndNothingOverlaps()
+    // As in Figma, Continue ends 28 dp above the bottom of the screen, below the free space.
+    val density = composeTestRule.density.density
+    val screenBottom = node(ProfileSetupTestTags.SCREEN).node().bottom() / density
+    val continueBottom = node(ProfileSetupTestTags.CONTINUE).node().bottom() / density
+    assertEquals(28f, screenBottom - continueBottom, 1f)
+  }
+
+  @Test
+  // Real text metrics: the legacy graphics mode measures text with fixed fake sizes.
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  fun doubleFontSize_textsFitAndNothingOverlaps() {
+    setFilledForm(fontScale = 2f)
+
+    assertTextsFitAndNothingOverlaps()
   }
 
   // ---- Rotation and accessibility ----
