@@ -1,9 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Contributors: Claude (Log in screen texts from the Figma "First proposal revamped" frames); OpenAI Codex (GPT-6.1 Sol, medium; removed labels superseded by official Google artwork). -->
+<!-- Contributors: Claude (Log in screen texts from the Figma "First proposal revamped" frames). -->
 <resources>
     <string name="login_back">Back</string>
     <string name="login_title">Welcome back</string>
     <string name="login_subtitle">Log in with the account you signed up with.</string>
+    <string name="login_google_initial">G</string>
+    <string name="login_continue_with_google">Continue with Google</string>
     <string name="login_or_with_email">or with email</string>
     <string name="login_email_label">EPFL email</string>
     <string name="login_email_placeholder">name@epfl.ch</string>

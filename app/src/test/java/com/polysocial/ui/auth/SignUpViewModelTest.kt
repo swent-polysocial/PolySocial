@@ -1,39 +1,42 @@
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; tested sign-up state and failure paths with
-// MockK).
-package com.polysocial.auth
+// the shared fake and MainDispatcherRule).
+package com.polysocial.ui.auth
 
-import com.polysocial.model.auth.*
-import com.polysocial.ui.auth.*
-import io.mockk.coEvery
-import io.mockk.coVerify
-import io.mockk.mockk
+import com.polysocial.model.auth.AuthUser
+import com.polysocial.model.auth.FakeAuthRepository
+import com.polysocial.model.auth.FieldError
+import com.polysocial.model.auth.SignUpField
+import com.polysocial.model.auth.SignUpResult
+import com.polysocial.utils.MainDispatcherRule
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.*
-import org.junit.After
-import org.junit.Assert.*
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SignUpViewModelTest {
-  private val dispatcher = StandardTestDispatcher()
-  private lateinit var repository: AuthRepository
+  @get:Rule val mainDispatcherRule = MainDispatcherRule()
+  private val dispatcher
+    get() = mainDispatcherRule.dispatcher
+
+  private lateinit var repository: FakeAuthRepository
   private val user = AuthUser("test-uid", "student.test@epfl.ch", false, "Test Student")
   private lateinit var viewModel: SignUpViewModel
 
   @Before
   fun setup() {
-    Dispatchers.setMain(dispatcher)
-    repository = mockk()
-    coEvery { repository.signUp(any(), any(), any()) } returns SignUpResult.Success(user)
+    repository =
+        FakeAuthRepository().apply {
+          signUpResult = SignUpResult.Success(this@SignUpViewModelTest.user)
+        }
     viewModel = SignUpViewModel(repository)
-  }
-
-  @After
-  fun tearDown() {
-    Dispatchers.resetMain()
   }
 
   private fun validForm() {
@@ -66,7 +69,7 @@ class SignUpViewModelTest {
                   viewModel.uiState.value.visibleError(SignUpField.Email),
               )
             }
-        coVerify(exactly = 0) { repository.signUp(any(), any(), any()) }
+        assertEquals(0, repository.signUpCalls)
       }
 
   @Test
@@ -96,7 +99,7 @@ class SignUpViewModelTest {
           )
         }
         runCurrent()
-        coVerify(exactly = 0) { repository.signUp(any(), any(), any()) }
+        assertEquals(0, repository.signUpCalls)
       }
 
   @Test
@@ -116,7 +119,7 @@ class SignUpViewModelTest {
         viewModel.uiState.value.visibleError(SignUpField.ConfirmPassword),
     )
     viewModel.signUp()
-    coVerify(exactly = 0) { repository.signUp(any(), any(), any()) }
+    assertEquals(0, repository.signUpCalls)
   }
 
   @Test
@@ -128,16 +131,17 @@ class SignUpViewModelTest {
         runCurrent()
         val signedUp = viewModel.uiState.value.status as SignUpStatus.SignedUp
         assertEquals("Test Student", signedUp.user.displayName)
-        coVerify(exactly = 1) {
-          repository.signUp("Test Student", "student.test@epfl.ch", "password1")
-        }
+        assertEquals(1, repository.signUpCalls)
+        assertEquals("Test Student", repository.lastSignUpFullName)
+        assertEquals("student.test@epfl.ch", repository.lastSignUpEmail)
+        assertEquals("password1", repository.lastSignUpPassword)
         assertEquals(user, signedUp.user)
         assertFalse(signedUp.user.isEmailVerified)
         assertEquals("", viewModel.uiState.value.form.password)
         assertEquals("", viewModel.uiState.value.form.confirmPassword)
         viewModel.signUp()
         viewModel.update(SignUpField.Email, "changed@epfl.ch")
-        coVerify(exactly = 1) { repository.signUp(any(), any(), any()) }
+        assertEquals(1, repository.signUpCalls)
         assertEquals(signedUp, viewModel.uiState.value.status)
       }
 
@@ -145,14 +149,14 @@ class SignUpViewModelTest {
   fun duplicateEmailIsDistinctAndEditingClearsError() =
       runTest(dispatcher) {
         validForm()
-        coEvery { repository.signUp(any(), any(), any()) } returns SignUpResult.AlreadyInUse
+        repository.signUpResult = SignUpResult.AlreadyInUse
         viewModel.signUp()
         runCurrent()
         assertEquals(SignUpStatus.Error(SignUpResult.AlreadyInUse), viewModel.uiState.value.status)
         assertTrue(viewModel.uiState.value.canSubmit)
         viewModel.update(SignUpField.Email, "another.test@epfl.ch")
         assertEquals(SignUpStatus.Idle, viewModel.uiState.value.status)
-        coEvery { repository.signUp(any(), any(), any()) } returns SignUpResult.Success(user)
+        repository.signUpResult = SignUpResult.Success(user)
         viewModel.signUp()
         runCurrent()
         assertTrue(viewModel.uiState.value.status is SignUpStatus.SignedUp)
@@ -162,16 +166,16 @@ class SignUpViewModelTest {
   fun networkFailureCanBeRetried() =
       runTest(dispatcher) {
         validForm()
-        coEvery { repository.signUp(any(), any(), any()) } returns SignUpResult.NetworkError
+        repository.signUpResult = SignUpResult.NetworkError
         viewModel.signUp()
         runCurrent()
         assertEquals(SignUpStatus.Error(SignUpResult.NetworkError), viewModel.uiState.value.status)
         assertTrue(viewModel.uiState.value.canSubmit)
-        coEvery { repository.signUp(any(), any(), any()) } returns SignUpResult.Success(user)
+        repository.signUpResult = SignUpResult.Success(user)
         viewModel.signUp()
         runCurrent()
         assertTrue(viewModel.uiState.value.status is SignUpStatus.SignedUp)
-        coVerify(exactly = 2) { repository.signUp(any(), any(), any()) }
+        assertEquals(2, repository.signUpCalls)
       }
 
   @Test
@@ -179,11 +183,7 @@ class SignUpViewModelTest {
       runTest(dispatcher) {
         validForm()
         val gate = CompletableDeferred<Unit>()
-        coEvery { repository.signUp(any(), any(), any()) } coAnswers
-            {
-              gate.await()
-              SignUpResult.Success(user)
-            }
+        repository.signUpGate = gate
         viewModel.signUp()
         runCurrent()
         viewModel.signUp()
@@ -191,7 +191,7 @@ class SignUpViewModelTest {
         assertEquals(SignUpStatus.Loading, viewModel.uiState.value.status)
         assertFalse(viewModel.uiState.value.canSubmit)
         assertEquals(" Test Student ", viewModel.uiState.value.form.fullName)
-        coVerify(exactly = 1) { repository.signUp(any(), any(), any()) }
+        assertEquals(1, repository.signUpCalls)
         gate.complete(Unit)
         runCurrent()
         assertTrue(viewModel.uiState.value.status is SignUpStatus.SignedUp)
@@ -201,8 +201,7 @@ class SignUpViewModelTest {
   fun unexpectedExceptionBecomesSafeError() =
       runTest(dispatcher) {
         validForm()
-        coEvery { repository.signUp(any(), any(), any()) } throws
-            IllegalStateException("private backend detail")
+        repository.signUpException = IllegalStateException("private backend detail")
         viewModel.signUp()
         runCurrent()
         assertEquals(
@@ -215,7 +214,7 @@ class SignUpViewModelTest {
   fun displayNameFailureDoesNotOfferAccountCreationAgain() =
       runTest(dispatcher) {
         validForm()
-        coEvery { repository.signUp(any(), any(), any()) } returns SignUpResult.DisplayNameError
+        repository.signUpResult = SignUpResult.DisplayNameError
         viewModel.signUp()
         runCurrent()
         viewModel.update(SignUpField.FullName, "Different Name")
@@ -226,7 +225,7 @@ class SignUpViewModelTest {
             viewModel.uiState.value.status,
         )
         assertFalse(viewModel.uiState.value.canSubmit)
-        coVerify(exactly = 1) { repository.signUp(any(), any(), any()) }
+        assertEquals(1, repository.signUpCalls)
       }
 
   @Test

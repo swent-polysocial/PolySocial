@@ -1,6 +1,5 @@
 // Contributors: Claude Opus 5.5 (wrote these tests; eye icon label, exact redirect delay,
-// compact-height scrolling and locked fields while redirecting after review); OpenAI Codex
-// (GPT-6.1 Sol, medium; checked the official Google button label and placeholder behavior).
+// compact-height scrolling and locked fields while redirecting after review).
 package com.polysocial.ui.login
 
 import android.app.Application
@@ -10,7 +9,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
-import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotDisplayed
@@ -234,9 +232,7 @@ class LoginScreenTest {
     setScreen()
     typeCredentials()
 
-    node(LoginScreenTestTags.GOOGLE)
-        .assertContentDescriptionEquals(string(R.string.google_sign_in))
-        .performClick()
+    node(LoginScreenTestTags.GOOGLE).performClick()
 
     composeTestRule.onNodeWithText(string(R.string.not_available_yet)).assertIsDisplayed()
     assertEquals(0, auth.logInCalls)

@@ -1,13 +1,28 @@
 // Contributors: Figma mockup (event/group illustration assets); OpenAI Codex (GPT-6.1 Sol,
 // medium; implemented the welcome layout, navigation callbacks and unavailable actions;
-// added a compact two-column layout for landscape).
+// added a compact two-column layout for landscape and reused theme typography after review).
 package com.polysocial.ui.auth
 
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
@@ -34,7 +49,20 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.polysocial.R
-import com.polysocial.ui.theme.*
+import com.polysocial.ui.theme.Accent
+import com.polysocial.ui.theme.AccentSoft
+import com.polysocial.ui.theme.AccentText
+import com.polysocial.ui.theme.Bg
+import com.polysocial.ui.theme.Border
+import com.polysocial.ui.theme.Info
+import com.polysocial.ui.theme.Ink
+import com.polysocial.ui.theme.Ink2
+import com.polysocial.ui.theme.Ink3
+import com.polysocial.ui.theme.Success
+import com.polysocial.ui.theme.SuccessSoft
+import com.polysocial.ui.theme.Surface
+import com.polysocial.ui.theme.Warning
+import com.polysocial.ui.theme.WarningSoft
 import kotlinx.coroutines.launch
 
 object WelcomeTags {
@@ -113,9 +141,6 @@ private fun WelcomeHeading() {
       stringResource(R.string.welcome_title),
       style =
           MaterialTheme.typography.displaySmall.copy(
-              fontSize = 32.sp,
-              lineHeight = 38.sp,
-              letterSpacing = (-0.64).sp,
               color = Ink,
               textAlign = TextAlign.Center,
           ),
