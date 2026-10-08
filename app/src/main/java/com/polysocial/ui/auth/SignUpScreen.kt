@@ -177,7 +177,10 @@ fun AuthFlow(
       AuthDestination.ProfileSetup,
       AuthDestination.Loading,
       AuthDestination.Error -> onExit()
-      AuthDestination.VerifyEmail -> destination = AuthDestination.Welcome
+      AuthDestination.VerifyEmail -> {
+        verificationViewModel.leave()
+        destination = AuthDestination.Welcome
+      }
       AuthDestination.LogIn -> destination = loginOrigin
       else -> destination = AuthDestination.Welcome
     }
@@ -226,7 +229,10 @@ fun AuthFlow(
     AuthDestination.VerifyEmail ->
         VerifyEmailScreen(
             verificationState,
-            onBack = { destination = AuthDestination.Welcome },
+            onBack = {
+              verificationViewModel.leave()
+              destination = AuthDestination.Welcome
+            },
             onChangeAddress = {
               verificationViewModel.changeAddress()
               viewModel.reset()
