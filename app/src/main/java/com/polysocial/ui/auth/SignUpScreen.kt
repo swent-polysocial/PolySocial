@@ -1,7 +1,7 @@
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; translated the Figma sign-up form to Compose
 // Foundation, reusing the shared app theme; connected login and added the official Google
 // placeholder button; connected the welcome entry screen and app-start/profile routing;
-// preserved submission handoffs on system Back).
+// preserved submission handoffs on Back and aligned form hints, loading and recovery layout).
 package com.polysocial.ui.auth
 
 import androidx.activity.compose.BackHandler
@@ -28,6 +28,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.onFocusChanged
@@ -276,52 +277,60 @@ fun SignUpScreen(
           modifier = Modifier.widthIn(max = 300.dp),
       )
       Spacer(Modifier.height(18.dp))
-      SignUpField.entries.forEach { field ->
-        val fieldError = state.visibleError(field)
-        val isEmailFailure =
-            field == SignUpField.Email &&
-                backendError in listOf(SignUpResult.AlreadyInUse, SignUpResult.InvalidDomain)
-        FormField(
-            field,
-            state.form,
-            fieldError != null || isEmailFailure,
-            editingEnabled,
-            { onChange(field, it) },
-            { onBlur(field) },
-        )
-        if (fieldError != null) {
-          ErrorLabel(stringResource(fieldError.message()), SignUpTags.error(field))
-        }
-        if (field == SignUpField.Email) {
-          when {
-            isEmailFailure -> {
-              ErrorLabel(stringResource(backendError!!.message()), SignUpTags.BackendError)
-              if (backendError == SignUpResult.AlreadyInUse) {
-                Link(
-                    stringResource(R.string.signup_log_in_instead),
-                    SignUpTags.LogInInstead,
-                    onLogIn,
-                )
-              }
-            }
-            state.form.email.isNotEmpty() && state.form.error(SignUpField.Email) == null ->
-                Rule(stringResource(R.string.signup_epfl_address), true, "sign_up_epfl_address")
+      Column(Modifier.alpha(if (state.status is SignUpStatus.Loading) 0.5f else 1f)) {
+        SignUpField.entries.forEach { field ->
+          val fieldError = state.visibleError(field)
+          val isEmailFailure =
+              field == SignUpField.Email &&
+                  backendError in listOf(SignUpResult.AlreadyInUse, SignUpResult.InvalidDomain)
+          FormField(
+              field,
+              state.form,
+              fieldError != null || isEmailFailure,
+              editingEnabled,
+              { onChange(field, it) },
+              { onBlur(field) },
+          )
+          if (fieldError != null) {
+            ErrorLabel(stringResource(fieldError.message()), SignUpTags.error(field))
           }
+          if (field == SignUpField.Email) {
+            when {
+              isEmailFailure -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                  ErrorLabel(
+                      stringResource(backendError!!.message()),
+                      SignUpTags.BackendError,
+                      Modifier.weight(1f),
+                  )
+                  if (backendError == SignUpResult.AlreadyInUse) {
+                    Link(
+                        stringResource(R.string.signup_log_in_instead),
+                        SignUpTags.LogInInstead,
+                        onLogIn,
+                    )
+                  }
+                }
+              }
+              state.form.email.isNotEmpty() && state.form.error(SignUpField.Email) == null ->
+                  Rule(stringResource(R.string.signup_epfl_address), true, "sign_up_epfl_address")
+            }
+          }
+          if (field == SignUpField.Password) {
+            Spacer(Modifier.height(8.dp))
+            Rule(
+                stringResource(R.string.signup_minimum_length),
+                state.form.hasMinimumLength,
+                SignUpTags.LengthRule,
+            )
+            Rule(
+                stringResource(R.string.signup_contains_number),
+                state.form.hasNumber,
+                SignUpTags.NumberRule,
+            )
+          }
+          Spacer(Modifier.height(14.dp))
         }
-        if (field == SignUpField.Password) {
-          Spacer(Modifier.height(8.dp))
-          Rule(
-              stringResource(R.string.signup_minimum_length),
-              state.form.hasMinimumLength,
-              SignUpTags.LengthRule,
-          )
-          Rule(
-              stringResource(R.string.signup_contains_number),
-              state.form.hasNumber,
-              SignUpTags.NumberRule,
-          )
-        }
-        Spacer(Modifier.height(14.dp))
       }
       if (
           backendError != null &&
@@ -495,7 +504,15 @@ private fun FormField(
                 .padding(start = 14.dp, end = if (passwordField) 2.dp else 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-          Box(Modifier.weight(1f).padding(vertical = 14.dp)) { input() }
+          Box(Modifier.weight(1f).padding(vertical = 14.dp)) {
+            if (value.isEmpty() && field == SignUpField.FullName) {
+              Label(
+                  stringResource(R.string.signup_full_name_placeholder),
+                  color = MaterialTheme.colorScheme.onSurfaceVariant,
+              )
+            }
+            input()
+          }
           if (passwordField) {
             val action =
                 stringResource(
@@ -556,9 +573,9 @@ private fun Rule(text: String, satisfied: Boolean, tag: String) {
 }
 
 @Composable
-private fun ErrorLabel(text: String, tag: String) {
+private fun ErrorLabel(text: String, tag: String, modifier: Modifier = Modifier) {
   Row(
-      Modifier.padding(top = 6.dp).semantics(mergeDescendants = true) {
+      modifier.padding(top = 6.dp).semantics(mergeDescendants = true) {
         testTag = tag
         liveRegion = LiveRegionMode.Polite
         error(text)
