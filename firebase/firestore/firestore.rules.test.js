@@ -16,12 +16,14 @@ const {
   documentId,
   getDoc,
   getDocs,
+  orderBy,
   query,
   runTransaction,
   setDoc,
   updateDoc,
   where,
   writeBatch,
+  Timestamp,
 } = require("firebase/firestore");
 
 // A "demo-" project never reaches a real Firebase project.
@@ -535,6 +537,35 @@ for (const [name, db] of [
 }
 
 // ---- events/{id} read access (#52); writes remain denied until #47 ----
+
+test("the map's public upcoming query is allowed and keeps its sorted time window", async () => {
+  const start = Timestamp.fromDate(new Date("2026-01-01T12:00:00Z"));
+  const end = Timestamp.fromDate(new Date("2026-01-15T12:00:00Z"));
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    for (const [id, isPrivate, date] of [
+      ["sooner", false, "2026-01-02T12:00:00Z"],
+      ["later", false, "2026-01-14T12:00:00Z"],
+      ["hidden", true, "2026-01-03T12:00:00Z"],
+      ["started", false, "2026-01-01T11:59:59Z"],
+      ["outside", false, "2026-01-15T12:00:00Z"],
+    ]) {
+      await setDoc(doc(db, `events/${id}`), {
+        isPrivate, startTime: Timestamp.fromDate(new Date(date)), allowedUids: ["u2"],
+      });
+    }
+  });
+  const events = collection(studentDb("u1"), "events");
+  const constraints = [
+    where("startTime", ">=", start), where("startTime", "<", end), orderBy("startTime"),
+  ];
+  const snapshot = await assertSucceeds(getDocs(query(events, where("isPrivate", "==", false), ...constraints)));
+  const ids = snapshot.docs.map((event) => event.id);
+  if (JSON.stringify(ids) !== JSON.stringify(["sooner", "later"])) {
+    throw new Error(`Unexpected public upcoming events: ${JSON.stringify(ids)}`);
+  }
+  await assertFails(getDocs(query(events, ...constraints)));
+});
 
 test("any verified EPFL student can get a public event", async () => {
   const snapshot = await assertSucceeds(getDoc(doc(studentDb("u1"), "events/e1")));
