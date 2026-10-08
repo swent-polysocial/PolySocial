@@ -1,5 +1,5 @@
 // Contributors: Claude (app shell with bottom navigation and app bar, #41; theme title style after
-// review; bottom bar matched to the Figma; loading state, #43).
+// review; bottom bar matched to the Figma; loading state, #43; per-tab back stacks, #42).
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.layout.Box
@@ -31,6 +31,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import com.polysocial.resources.C
 import com.polysocial.ui.theme.Ink3
@@ -64,14 +65,22 @@ fun AppShell(
         startDestination = Tab.EVENTS.route,
         modifier = Modifier.padding(padding),
     ) {
-      Tab.entries.forEach { tab -> composable(tab.route) { TabRootScreen(tab) } }
+      // One nested graph per tab, so each tab keeps its own back stack.
+      Tab.entries.forEach { tab ->
+        navigation(startDestination = tab.rootRoute, route = tab.route) {
+          composable(tab.rootRoute) { TabRootScreen(tab) }
+          composable(tab.detailRoute) { PlaceholderDetailScreen(tab) }
+        }
+      }
     }
   }
 }
 
 /**
- * Opens [tab]'s root screen. Going back to the start tab clears the other tabs from the back stack,
- * and selecting the current tab again does not stack a second copy of it.
+ * Shows [tab] with the screen it was on. The other tabs' stacks are saved and removed, so the back
+ * stack holds the Events tab (the start destination) and at most one other tab: back from another
+ * tab's root goes to Events, and back from the Events root exits. [tab]'s saved stack (or its root)
+ * is restored, and selecting the current tab again does not stack a second copy of it.
  */
 private fun NavHostController.navigateToTab(tab: Tab) {
   navigate(tab.route) {
