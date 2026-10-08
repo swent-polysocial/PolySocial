@@ -1,5 +1,5 @@
 // Contributors: OpenAI Codex (verification, restart, cooldown and failure regression tests for
-// #31).
+// #31; pending-operation account isolation and persistence failure coverage).
 package com.polysocial.auth
 
 import androidx.lifecycle.ViewModelStore
@@ -16,8 +16,11 @@ import org.junit.Test
 class MemoryVerificationStore : VerificationStore {
   val timings = mutableMapOf<String, VerificationTiming>()
   var failure: Exception? = null
+  var readGate: CompletableDeferred<Unit>? = null
+  var clearFailure: Exception? = null
 
   override suspend fun read(uid: String): VerificationTiming {
+    readGate?.await()
     failure?.let { throw it }
     return timings[uid] ?: VerificationTiming()
   }
@@ -28,6 +31,7 @@ class MemoryVerificationStore : VerificationStore {
   }
 
   override suspend fun clear(uid: String) {
+    clearFailure?.let { throw it }
     timings.remove(uid)
   }
 }
@@ -396,6 +400,192 @@ class VerifyEmailViewModelTest {
     runCurrent()
     assertEquals(180L, vm.uiState.value.remainingSeconds)
     assertFalse(vm.uiState.value.canResend)
+    dispose(vm)
+  }
+
+  @Test
+  fun replacingAccountCancelsPendingSendAndCheckAndLoadsItsOwnCooldown() = runTest {
+    val vm = viewModel()
+    vm.enter()
+    runCurrent()
+    now += 45_000
+    advanceTimeBy(1000)
+    runCurrent()
+    val oldSend = CompletableDeferred<Unit>()
+    repository.sendGate = oldSend
+    vm.resend()
+    runCurrent()
+    vm.checkVerified()
+    runCurrent()
+    assertTrue(vm.uiState.value.sending)
+    assertTrue(vm.uiState.value.checking)
+
+    val replacement = user.copy(uid = "other-uid", email = "other.test@epfl.ch")
+    store.timings[replacement.uid] = VerificationTiming(now - 15_000, now + 30_000)
+    repository.user = replacement
+    repository.sendGate = null
+    vm.enter()
+    runCurrent()
+    assertEquals(replacement.email, vm.uiState.value.email)
+    assertEquals(30L, vm.uiState.value.remainingSeconds)
+    assertEquals(VerificationMessage.AlreadySent, vm.uiState.value.snackbar)
+    assertFalse(vm.uiState.value.busy)
+    assertFalse(vm.uiState.value.verified)
+    assertNull(vm.uiState.value.banner)
+
+    repository.verificationResult = VerificationResult.Verified
+    oldSend.complete(Unit)
+    runCurrent()
+    assertFalse(vm.uiState.value.verified)
+    assertEquals(0, repository.checkCalls)
+    assertEquals(2, repository.sendCalls)
+    assertEquals(VerificationTiming(now - 45_000, now), store.timings[user.uid])
+    assertEquals(VerificationTiming(now - 15_000, now + 30_000), store.timings[replacement.uid])
+    dispose(vm)
+  }
+
+  @Test
+  fun sessionLostDuringTimingReadDoesNotSendForTheSignedOutAccount() = runTest {
+    store.readGate = CompletableDeferred()
+    val vm = viewModel()
+    vm.enter()
+    runCurrent()
+    assertTrue(vm.uiState.value.preparing)
+    vm.enter()
+    repository.user = null
+    store.readGate!!.complete(Unit)
+    runCurrent()
+    assertFalse(vm.uiState.value.busy)
+    assertFalse(vm.uiState.value.hasSentEmail)
+    assertFalse(vm.uiState.value.verified)
+    assertEquals(0, repository.sendCalls)
+    assertTrue(store.timings.isEmpty())
+    vm.checkVerified(manual = false)
+    assertNull(vm.uiState.value.banner)
+    vm.checkVerified()
+    assertEquals(VerificationMessage.NotSignedIn, vm.uiState.value.banner)
+    assertEquals(0, repository.checkCalls)
+    dispose(vm)
+  }
+
+  @Test
+  fun persistenceFailureKeepsTheResendDeadlineWithoutClaimingSuccessfulDelivery() = runTest {
+    for ((result, deadline) in
+        listOf(
+            SendVerificationResult.Sent to 45_000L,
+            SendVerificationResult.Throttled to 180_000L,
+        )) {
+      store.failure = null
+      repository.sendResult = result
+      repository.sendGate = CompletableDeferred()
+      val vm = viewModel()
+      vm.enter()
+      runCurrent()
+      store.failure = IllegalStateException("test disk failure")
+      repository.sendGate!!.complete(Unit)
+      runCurrent()
+      assertEquals(VerificationMessage.UnexpectedError, vm.uiState.value.banner)
+      assertEquals(deadline / 1000, vm.uiState.value.remainingSeconds)
+      assertFalse(vm.uiState.value.canResend)
+      assertFalse(vm.uiState.value.busy)
+      assertNull(vm.uiState.value.snackbar)
+      assertNull(store.timings[user.uid])
+
+      store.failure = null
+      now += deadline
+      advanceTimeBy(1000)
+      runCurrent()
+      assertTrue(vm.uiState.value.canResend)
+      repository.sendResult = SendVerificationResult.Sent
+      vm.resend()
+      runCurrent()
+      assertEquals(VerificationMessage.Sent, vm.uiState.value.banner)
+      assertEquals(VerificationTiming(now, now + 45_000), store.timings[user.uid])
+      store.timings.clear()
+      dispose(vm)
+    }
+  }
+
+  @Test
+  fun checkFailureAllowsRetryAndCleanupFailureDoesNotUndoVerification() = runTest {
+    var failCheck = true
+    val failingRepository =
+        object : AuthRepository by repository {
+          override suspend fun reloadAndCheckVerified(): VerificationResult {
+            if (failCheck) throw IllegalStateException("test check failure")
+            return repository.reloadAndCheckVerified()
+          }
+        }
+    store.timings[user.uid] = VerificationTiming(now, now + 45_000)
+    val vm = VerifyEmailViewModel(failingRepository, store, VerificationClock { now })
+    vm.enter()
+    runCurrent()
+    vm.checkVerified()
+    runCurrent()
+    assertEquals(VerificationMessage.UnexpectedError, vm.uiState.value.banner)
+    assertFalse(vm.uiState.value.verified)
+    assertFalse(vm.uiState.value.busy)
+    assertEquals(VerificationTiming(now, now + 45_000), store.timings[user.uid])
+
+    failCheck = false
+    repository.verificationResult = VerificationResult.Verified
+    store.clearFailure = IllegalStateException("test cleanup failure")
+    vm.checkVerified()
+    runCurrent()
+    assertTrue(vm.uiState.value.verified)
+    assertFalse(vm.uiState.value.busy)
+    assertNull(vm.uiState.value.banner)
+    assertNull(vm.uiState.value.snackbar)
+    assertEquals(1, repository.checkCalls)
+    assertEquals(0, repository.logInCalls)
+    assertEquals(0, repository.logOutCalls)
+    dispose(vm)
+  }
+
+  @Test
+  fun sessionLostDuringSendDiscardsDeliveryAndTheWaitingVerificationCheck() = runTest {
+    repository.sendGate = CompletableDeferred()
+    val vm = viewModel()
+    vm.enter()
+    runCurrent()
+    vm.checkVerified(manual = false)
+    runCurrent()
+    assertTrue(vm.uiState.value.sending)
+    assertTrue(vm.uiState.value.checking)
+    repository.user = null
+    repository.sendGate!!.complete(Unit)
+    runCurrent()
+    assertFalse(vm.uiState.value.busy)
+    assertFalse(vm.uiState.value.hasSentEmail)
+    assertFalse(vm.uiState.value.verified)
+    assertNull(vm.uiState.value.banner)
+    assertNull(vm.uiState.value.snackbar)
+    assertEquals(0L, vm.uiState.value.remainingSeconds)
+    assertTrue(store.timings.isEmpty())
+    assertEquals(1, repository.sendCalls)
+    assertEquals(0, repository.checkCalls)
+    dispose(vm)
+  }
+
+  @Test
+  fun replacingAccountAfterResumeBeforeScreenEntrySendsOnlyForTheNewAccount() = runTest {
+    val vm = viewModel()
+    vm.checkVerified(manual = false)
+    runCurrent()
+    assertFalse(vm.uiState.value.verified)
+    assertEquals(1, repository.checkCalls)
+    val replacement = user.copy(uid = "other-uid", email = "other.test@epfl.ch")
+    repository.user = replacement
+    vm.enter()
+    runCurrent()
+    assertEquals(replacement.email, vm.uiState.value.email)
+    assertEquals(VerificationMessage.Sent, vm.uiState.value.banner)
+    assertEquals(45L, vm.uiState.value.remainingSeconds)
+    assertFalse(vm.uiState.value.busy)
+    assertFalse(vm.uiState.value.verified)
+    assertEquals(1, repository.sendCalls)
+    assertNull(store.timings[user.uid])
+    assertEquals(VerificationTiming(now, now + 45_000), store.timings[replacement.uid])
     dispose(vm)
   }
 }
