@@ -1,4 +1,5 @@
-// Contributors: Claude (UI tests for the tab loading state, #43).
+// Contributors: Claude (UI tests for the tab loading state, #43);
+// OpenAI Codex (injected map placeholder to keep shared-loading tests offline after #50).
 package com.polysocial.ui.navigation
 
 import android.content.Context
@@ -34,7 +35,12 @@ class TabLoadingTest {
 
   @Before
   fun setUp() {
-    composeTestRule.setContent { PolySocialTheme { AppShell() } }
+    composeTestRule.setContent {
+      PolySocialTheme {
+        // Exercise the shared tab loader; MapScreen's own states have separate map tests.
+        AppShell(mapContent = { TabRootScreen(Tab.MAP) })
+      }
+    }
   }
 
   /** Lets Compose show the current tab (creating its ViewModel), then runs its loading. */

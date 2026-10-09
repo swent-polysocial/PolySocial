@@ -1,4 +1,5 @@
 // Contributors: Claude (app shell and tab test tags, #41; loading state tag, #43).
+// Contributors: OpenAI Codex (map event-detail tags, #50).
 package com.polysocial.resources
 
 // Like R, but C
@@ -12,6 +13,8 @@ object C {
     const val app_bar_title = "app_bar_title"
     const val bottom_nav = "bottom_nav"
     const val loading_state = "loading_state"
+    const val event_detail_placeholder = "event_detail_placeholder"
+    const val event_detail_back = "event_detail_back"
 
     const val nav_item_events = "nav_item_events"
     const val nav_item_map = "nav_item_map"

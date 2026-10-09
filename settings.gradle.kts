@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (Mapbox Maven repository, #50).
 pluginManagement {
     repositories {
         google {
@@ -16,6 +17,10 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven {
+            url = uri("https://api.mapbox.com/downloads/v2/releases/maven")
+            content { includeGroupByRegex("com\\.mapbox.*") }
+        }
     }
 }
 

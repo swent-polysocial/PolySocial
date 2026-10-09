@@ -1,4 +1,4 @@
-<!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42); OpenAI Codex (Google and welcome copy). OpenAI Codex (sign-up form, startup integration, name hint and unused-title cleanup). -->
+<!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42); OpenAI Codex (Google and welcome copy). OpenAI Codex (sign-up form, startup integration, name hint and unused-title cleanup).; OpenAI Codex (Mapbox integration and setup, #50). -->
 <resources>
     <string name="auth_start_error">Could not load your profile. Check your connection and try again.</string>
     <string name="auth_start_retry">Retry</string>
@@ -59,4 +59,27 @@
     <string name="welcome_avatar_tr">TR</string>
     <string name="welcome_avatar_ak">AK</string>
     <string name="welcome_group_size">Group of 4</string>
+    <string name="map_loading">Loading events…</string>
+    <string name="map_render_loading">Loading map…</string>
+    <string name="map_empty_title">No events nearby</string>
+    <string name="map_empty_message">No public events in the next two weeks around here. Try another filter, or create one with +.</string>
+    <string name="map_events_error">Unable to load events. Previously loaded events remain available.</string>
+    <string name="map_tiles_error">Unable to load the map. Check your connection or map setup.</string>
+    <string name="map_retry">Retry</string>
+    <string name="map_setup_title">Map setup needed</string>
+    <string name="map_setup_message">The map is unavailable in this build. Add the team’s Mapbox public access token to local.properties.</string>
+    <string name="map_close">Close</string>
+    <string name="map_view_details">Details</string>
+    <string name="map_find_group">Find a group</string>
+    <string name="map_category_day">%1$s · %2$s</string>
+    <string name="map_tonight">Tonight</string>
+    <string name="map_time_range">%1$s – %2$s</string>
+    <string name="map_category_study">Study</string>
+    <string name="map_category_sports">Sports</string>
+    <string name="map_category_culture">Culture</string>
+    <string name="map_category_party">Party</string>
+    <string name="map_category_other">Other</string>
+    <string name="event_detail_title">Event details</string>
+    <string name="event_detail_placeholder">Event details are coming soon.</string>
+    <string name="event_detail_back">Back to map</string>
 </resources>

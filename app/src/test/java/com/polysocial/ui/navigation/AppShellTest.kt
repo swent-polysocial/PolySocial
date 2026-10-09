@@ -1,8 +1,14 @@
 // Contributors: Claude (UI tests for the bottom navigation and app bar, #41; nested tab routes,
 // #42).
+// Contributors: OpenAI Codex (map tab chrome and detail-route regression tests, #50).
 package com.polysocial.ui.navigation
 
 import android.content.Context
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -43,21 +49,77 @@ class AppShellTest {
   fun setUp() {
     composeTestRule.setContent {
       navController = rememberNavController()
-      PolySocialTheme { AppShell(navController = navController) }
+      PolySocialTheme {
+        AppShell(
+            navController = navController,
+            mapContent = { details ->
+              Box(Modifier.testTag(C.Tag.screen_map)) {
+                TextButton({ details("event/one") }, Modifier.testTag("fake_map_details")) {
+                  Text("Open test event")
+                }
+              }
+            },
+        )
+      }
     }
   }
 
   private fun assertOnTab(tab: Tab) {
     composeTestRule.onNodeWithTag(tab.screenTag).assertIsDisplayed()
-    composeTestRule.onNodeWithTag(C.Tag.app_bar_title).assertTextEquals(label(tab))
-    composeTestRule
-        .onNodeWithText(context.getString(R.string.placeholder_coming_soon, label(tab)))
-        .assertIsDisplayed()
+    if (tab == Tab.MAP) {
+      composeTestRule.onNodeWithTag(C.Tag.app_bar_title).assertDoesNotExist()
+    } else {
+      composeTestRule.onNodeWithTag(C.Tag.app_bar_title).assertTextEquals(label(tab))
+      composeTestRule
+          .onNodeWithText(context.getString(R.string.placeholder_coming_soon, label(tab)))
+          .assertIsDisplayed()
+    }
     Tab.entries.forEach { other ->
       val item = composeTestRule.onNodeWithTag(other.navItemTag)
       if (other == tab) item.assertIsSelected() else item.assertIsNotSelected()
       if (other != tab) composeTestRule.onAllNodesWithTag(other.screenTag).assertCountEquals(0)
     }
+  }
+
+  @Test
+  fun mapDetailsPlaceholderKeepsMapSelectedAndReturnsToMap() {
+    composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).performClick()
+    composeTestRule.onNodeWithTag("fake_map_details").performClick()
+    composeTestRule.onNodeWithTag("event_detail_placeholder").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).assertIsSelected()
+    composeTestRule.onNodeWithTag(C.Tag.app_bar_title).assertTextEquals(label(Tab.MAP))
+    composeTestRule.runOnIdle {
+      assertEquals(
+          "event/one",
+          navController.currentBackStackEntry?.arguments?.getString("eventId"),
+      )
+    }
+    composeTestRule.onNodeWithTag("event_detail_back").performClick()
+    assertOnTab(Tab.MAP)
+  }
+
+  @Test
+  fun selectedMapEventDetailSurvivesSwitchingTabsAndRetappingMap() {
+    composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).performClick()
+    composeTestRule.onNodeWithTag("fake_map_details").performClick()
+    val entryId = composeTestRule.runOnIdle { navController.currentBackStackEntry?.id }
+
+    composeTestRule.onNodeWithTag(Tab.CHATS.navItemTag).performClick()
+    composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).performClick()
+    composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).performClick()
+
+    composeTestRule.onNodeWithTag("event_detail_placeholder").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).assertIsSelected()
+    composeTestRule.onNodeWithTag(C.Tag.app_bar_title).assertTextEquals(label(Tab.MAP))
+    composeTestRule.runOnIdle {
+      assertEquals(entryId, navController.currentBackStackEntry?.id)
+      assertEquals(
+          "event/one",
+          navController.currentBackStackEntry?.arguments?.getString("eventId"),
+      )
+    }
+    composeTestRule.onNodeWithTag("event_detail_back").performClick()
+    assertOnTab(Tab.MAP)
   }
 
   @Test
