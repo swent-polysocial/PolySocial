@@ -1,11 +1,12 @@
 // Contributors: OpenAI Codex (tested startup/session routing, profile failure recovery and system
-// Back handoffs).
+// Back handoffs and verification/profile integration).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.auth.*
 import com.polysocial.model.user.*
@@ -16,6 +17,7 @@ import com.polysocial.ui.login.LoginViewModel
 import com.polysocial.ui.start.AppStartViewModel
 import com.polysocial.ui.theme.PolySocialTheme
 import kotlinx.coroutines.CompletableDeferred
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -32,10 +34,25 @@ class AuthFlowTest {
   private val restoration = StateRestorationTester(compose)
 
   private var exits = 0
+  private val verificationModels = mutableListOf<VerifyEmailViewModel>()
+
+  @After
+  fun clearVerification() {
+    ViewModelStore().apply {
+      verificationModels.forEachIndexed { index, model -> put("verification$index", model) }
+      clear()
+    }
+  }
 
   private fun launch() {
     val start = AppStartViewModel(auth, profiles)
-    restoration.setContent { PolySocialTheme { AuthFlow(signUp, { exits++ }, login, start) } }
+    val verification =
+        VerifyEmailViewModel(auth, MemoryVerificationStore(), VerificationClock { 1000 }).also {
+          verificationModels.add(it)
+        }
+    restoration.setContent {
+      PolySocialTheme { AuthFlow(signUp, { exits++ }, login, start, verification) }
+    }
   }
 
   @Test
@@ -111,6 +128,56 @@ class AuthFlowTest {
     compose.onNodeWithTag("auth_profile_setup").assertIsDisplayed()
     assertEquals(1, auth.logInCalls)
     assertEquals(1, profiles.getProfileCalls)
+  }
+
+  private fun completeVerification() {
+    auth.verificationResult = VerificationResult.Verified
+    compose.onNodeWithTag(VerifyEmailTags.Continue).performScrollTo().performClick()
+  }
+
+  @Test
+  fun verificationWithExistingProfileOpensTheAppWithoutLoggingIn() {
+    auth.user = user.copy(isEmailVerified = false)
+    profiles.getProfileResult =
+        ProfileResult.Found(UserProfile(user.uid, user.email, "Test Student", "IN", "BA1"))
+    launch()
+    compose.onNodeWithTag(VerifyEmailTags.Screen).assertIsDisplayed()
+    completeVerification()
+    compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
+    compose.onNodeWithTag("auth_profile_setup").assertDoesNotExist()
+    assertEquals(1, profiles.getProfileCalls)
+    assertEquals(user.uid, profiles.lastRequestedUid)
+    assertEquals(0, auth.logInCalls)
+  }
+
+  @Test
+  fun verificationWithoutProfileOpensSetupWithoutLoggingIn() {
+    auth.user = user.copy(isEmailVerified = false)
+    launch()
+    completeVerification()
+    compose.onNodeWithTag("auth_profile_setup").assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.app_shell).assertDoesNotExist()
+    assertEquals(1, profiles.getProfileCalls)
+    assertEquals(0, auth.logInCalls)
+  }
+
+  @Test
+  fun verificationWaitsForProfileAndFailedReadCanRetry() {
+    auth.user = user.copy(isEmailVerified = false)
+    profiles.gate = CompletableDeferred()
+    profiles.getProfileResult = ProfileResult.NetworkError
+    launch()
+    completeVerification()
+    compose.onNodeWithTag("auth_start_loading").assertIsDisplayed()
+    compose.runOnIdle { profiles.gate!!.complete(Unit) }
+    compose.onNodeWithTag("auth_start_error").assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.app_shell).assertDoesNotExist()
+    profiles.getProfileResult =
+        ProfileResult.Found(UserProfile(user.uid, user.email, "Test Student", "IN", "BA1"))
+    compose.onNodeWithTag("auth_start_retry").performClick()
+    compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
+    assertEquals(2, profiles.getProfileCalls)
+    assertEquals(0, auth.logInCalls)
   }
 
   private fun pressSystemBack() {

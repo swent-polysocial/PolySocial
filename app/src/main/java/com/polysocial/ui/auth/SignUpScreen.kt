@@ -2,6 +2,7 @@
 // Foundation, reusing the shared app theme; connected login and added the official Google
 // placeholder button; connected the welcome entry screen and app-start/profile routing;
 // preserved submission handoffs on Back and aligned form hints, loading and recovery layout).
+// Contributors: OpenAI Codex (verification routing and Back sign-out for #31).
 package com.polysocial.ui.auth
 
 import androidx.activity.compose.BackHandler
@@ -45,6 +46,9 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
 import com.polysocial.model.auth.*
@@ -67,7 +71,7 @@ object SignUpTags {
   const val LogInInstead = "sign_up_log_in_instead"
   const val LogIn = "sign_up_log_in"
   const val Back = "sign_up_back"
-  const val VerifyEmailDestination = "verify_email_destination"
+  const val VerifyEmailDestination = VerifyEmailTags.Screen
   const val LengthRule = "sign_up_length_rule"
   const val NumberRule = "sign_up_number_rule"
 
@@ -110,22 +114,25 @@ private enum class AuthDestination {
   SignedIn,
 }
 
-/** Connects auth screens to session/profile routing; #31 and #34 supply the remaining screens. */
+/** Connects auth screens and verification to shared session/profile routing. */
 @Composable
 fun AuthFlow(
     viewModel: SignUpViewModel,
     onExit: () -> Unit,
     loginViewModel: LoginViewModel = hiltViewModel(),
     startViewModel: AppStartViewModel = hiltViewModel(),
+    verificationViewModel: VerifyEmailViewModel = hiltViewModel(),
 ) {
   var destination by rememberSaveable { mutableStateOf(AuthDestination.Loading) }
   var startupApplied by rememberSaveable { mutableStateOf(false) }
   val startDestination by startViewModel.destination.collectAsStateWithLifecycle()
   LaunchedEffect(startDestination) {
-    // Preserve the active signed-out form on recreation; fresh launches resolve the session.
+    // Preserve the active auth screen on recreation, including Back from verification.
+    // Fresh launches still resolve the session.
     if (
         !startupApplied ||
-            startDestination != StartDestination.Login ||
+            (startDestination != StartDestination.Login &&
+                startDestination != StartDestination.VerifyEmail) ||
             destination == AuthDestination.Loading
     ) {
       destination =
@@ -140,13 +147,39 @@ fun AuthFlow(
       if (startDestination != StartDestination.Loading) startupApplied = true
     }
   }
+  val verificationState by verificationViewModel.uiState.collectAsStateWithLifecycle()
+  LaunchedEffect(verificationViewModel) {
+    if (verificationViewModel.takeStartupVerification()) destination = AuthDestination.VerifyEmail
+  }
+  val lifecycleOwner = LocalLifecycleOwner.current
+  DisposableEffect(lifecycleOwner, verificationViewModel) {
+    val observer = LifecycleEventObserver { _, event ->
+      if (event == Lifecycle.Event.ON_RESUME) verificationViewModel.checkVerified(manual = false)
+    }
+    lifecycleOwner.lifecycle.addObserver(observer)
+    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+  }
+  LaunchedEffect(destination) {
+    if (destination == AuthDestination.VerifyEmail) verificationViewModel.enter()
+  }
+  LaunchedEffect(verificationState.verified) {
+    if (verificationState.verified) startViewModel.refresh()
+  }
   var loginOrigin by rememberSaveable { mutableStateOf(AuthDestination.Welcome) }
+  val backFromVerification = {
+    verificationViewModel.changeAddress()
+    viewModel.reset()
+    loginViewModel.reset()
+    loginOrigin = AuthDestination.Welcome
+    startViewModel.refresh()
+    destination = AuthDestination.Welcome
+  }
   BackHandler(destination != AuthDestination.Welcome && destination != AuthDestination.SignedIn) {
     when (destination) {
-      AuthDestination.VerifyEmail,
       AuthDestination.ProfileSetup,
       AuthDestination.Loading,
       AuthDestination.Error -> onExit()
+      AuthDestination.VerifyEmail -> backFromVerification()
       AuthDestination.LogIn -> destination = loginOrigin
       else -> destination = AuthDestination.Welcome
     }
@@ -193,9 +226,19 @@ fun AuthFlow(
             onBack = { destination = AuthDestination.Welcome },
         )
     AuthDestination.VerifyEmail ->
-        Label(
-            stringResource(R.string.verify_email_title),
-            Modifier.safeDrawingPadding().semantics { testTag = SignUpTags.VerifyEmailDestination },
+        VerifyEmailScreen(
+            verificationState,
+            onBack = backFromVerification,
+            onChangeAddress = {
+              verificationViewModel.changeAddress()
+              viewModel.reset()
+              loginViewModel.reset()
+              loginOrigin = AuthDestination.Welcome
+              destination = AuthDestination.SignUp
+            },
+            onContinue = { verificationViewModel.checkVerified() },
+            onResend = verificationViewModel::resend,
+            onSnackbarShown = verificationViewModel::snackbarShown,
         )
     AuthDestination.LogIn ->
         LoginScreen(

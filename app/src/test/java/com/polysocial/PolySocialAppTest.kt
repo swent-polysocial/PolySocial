@@ -1,6 +1,7 @@
 // Contributors: OpenAI Codex (isolated SDK setup for session-aware activity startup and tested
 // real-Hilt auth navigation).
 // Contributors: Claude Opus 5.5 (wrote these tests and revised them after review).
+// Contributors: OpenAI Codex (mocked Firebase session before activity startup for #31).
 package com.polysocial
 
 import android.app.Application
