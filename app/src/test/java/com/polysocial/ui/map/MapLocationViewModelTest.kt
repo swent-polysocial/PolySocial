@@ -26,7 +26,7 @@ class MapLocationViewModelTest {
   private val service = FakeLocationService()
 
   private fun model(location: LocationService = service): MapViewModel =
-      MapViewModel(source, location)
+      MapViewModel(source, location, MAP_TEST_CLOCK)
 
   private fun settle() = dispatcherRule.dispatcher.scheduler.advanceUntilIdle()
 

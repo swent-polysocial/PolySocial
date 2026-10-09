@@ -158,9 +158,18 @@ class MapViewModelTest {
 
   @Test
   fun thrownSourceAndFlowFailuresSurfaceWithoutCrashing() {
-    val factoryFailure = MapViewModel(MapEventSource { error("test failure") }, FakeLocationService(), MAP_TEST_CLOCK)
+    val factoryFailure =
+        MapViewModel(
+            MapEventSource { error("test failure") },
+            FakeLocationService(),
+            MAP_TEST_CLOCK,
+        )
     val flowFailure =
-        MapViewModel(MapEventSource { flow { error("test failure") } }, FakeLocationService(), MAP_TEST_CLOCK)
+        MapViewModel(
+            MapEventSource { flow { error("test failure") } },
+            FakeLocationService(),
+            MAP_TEST_CLOCK,
+        )
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     assertEquals(MapContentStatus.ERROR, factoryFailure.uiState.value.status)
     assertEquals(MapContentStatus.ERROR, flowFailure.uiState.value.status)
@@ -216,6 +225,7 @@ class MapViewModelTest {
                 }
               }
             },
+            FakeLocationService(),
             MAP_TEST_CLOCK,
         )
     emit(MapEventResult.Events(listOf(event)))
@@ -244,6 +254,7 @@ class MapViewModelTest {
                 kotlinx.coroutines.awaitCancellation()
               }
             },
+            FakeLocationService(),
             MAP_TEST_CLOCK,
         )
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()

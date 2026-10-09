@@ -83,6 +83,7 @@ class MapRouteTest {
       MapViewModel(
           MapEventSource { flowOf(MapEventResult.Events(listOf(event))) },
           service,
+          MAP_TEST_CLOCK,
       )
 
   private fun show(initialState: Lifecycle.State = Lifecycle.State.RESUMED) {

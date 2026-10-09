@@ -265,7 +265,8 @@ fun MapScreen(
           onClosePreview,
           { onViewDetails(event.id) },
           state.selectedEventIsTonight,
-          state.selectedDistanceMeters,          Modifier.align(Alignment.BottomCenter).padding(12.dp).onSizeChanged {
+          state.selectedDistanceMeters,
+          Modifier.align(Alignment.BottomCenter).padding(12.dp).onSizeChanged {
             previewHeight = it.height
           },
       )
