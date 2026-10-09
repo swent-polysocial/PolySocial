@@ -60,6 +60,8 @@ The issues for the last four points (#12, #31, #32, #34, #35, #44–#47, #52) st
 
 ## Traps
 
+- **Mapbox annotation groups:** one manager owns a normal source/layer plus an SDK-created drag source/layer, even with non-draggable markers. Native tests verify the matched pair stays shared as event count changes; counting every circle layer as a separate manager is incorrect. ([SDK source](https://github.com/mapbox/mapbox-maps-android/blob/v11.32.0/plugin-annotation/src/main/java/com/mapbox/maps/plugin/annotation/AnnotationManagerImpl.kt))
+
 - **Auth completion effects leave with the screen.** System Back must keep sign-up and login in composition during submission and successful routing; otherwise the account can be created or signed in without reaching its destination. In-screen login Back/Create account are locked too; failures unlock navigation. Regression tests use deferred fake repositories ([#87](https://github.com/swent-polysocial/PolySocial/pull/87)).
 
 - **Local Java version:** the host default Java 27 causes JaCoCo test instrumentation errors (`Unsupported class file major version 71`). Run Gradle with the installed Java 21 via `JAVA_HOME`; do not upgrade project dependencies to match the host.
@@ -94,6 +96,7 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 
+- 2026-10-09 · Mapbox annotation managers allocate a normal and drag source/layer pair even when dragging is disabled; native regression checks must verify one shared manager pair. ([#94](https://github.com/swent-polysocial/PolySocial/pull/94))
 - 2026-10-09 · Preserve a loaded map on partial resource failures, retry only the failed event/renderer path, group annotations, and track the shared privacy notice without assigning an owner. ([#94](https://github.com/swent-polysocial/PolySocial/pull/94), [#103](https://github.com/swent-polysocial/PolySocial/issues/103))
 - 2026-10-09 · Record #47 owner's confirmation that association writes build on the existing own-events read policy; broader association public-event access still needs a team decision. ([#93](https://github.com/swent-polysocial/PolySocial/pull/93#issuecomment-6069094805))
 - 2026-10-09 · [#87](https://github.com/swent-polysocial/PolySocial/pull/87): preserve sign-up/login completion effects by blocking Back during submission and handoff; failures restore navigation.
