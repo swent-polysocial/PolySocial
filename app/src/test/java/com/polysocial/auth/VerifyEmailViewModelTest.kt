@@ -1,5 +1,5 @@
 // Contributors: OpenAI Codex (verification, restart, cooldown and failure regression tests for
-// #31; pending-operation account isolation and persistence failure coverage).
+// #31; pending-operation account isolation, persistence failures and browser-return entry races).
 package com.polysocial.auth
 
 import androidx.lifecycle.ViewModelStore
@@ -362,6 +362,37 @@ class VerifyEmailViewModelTest {
     assertEquals(VerifyEmailUiState(), vm.uiState.value)
     assertEquals(VerificationTiming(now, now + 45_000), store.timings[user.uid])
     dispose(vm)
+  }
+
+  @Test
+  fun browserVerificationBeforeScreenEntryDoesNotSendAnotherEmailOrResetSuccess() = runTest {
+    store.timings[user.uid] = VerificationTiming(now, now + 45_000)
+    val vm = viewModel()
+    try {
+      // Firebase can expose the verified account before the screen's entry effect runs.
+      repository.user = user.copy(isEmailVerified = true)
+      repository.verificationResult = VerificationResult.Verified
+      vm.checkVerified(manual = false)
+      runCurrent()
+      assertTrue(vm.uiState.value.verified)
+      assertFalse(vm.uiState.value.busy)
+      assertNull(store.timings[user.uid])
+
+      vm.enter()
+      runCurrent()
+      assertTrue(vm.uiState.value.verified)
+      assertFalse(vm.uiState.value.busy)
+      assertFalse(vm.uiState.value.canResend)
+      assertNull(vm.uiState.value.banner)
+      assertNull(vm.uiState.value.snackbar)
+      assertEquals(1, repository.checkCalls)
+      assertEquals(0, repository.sendCalls)
+      assertEquals(0, repository.logInCalls)
+      assertEquals(0, repository.logOutCalls)
+      assertTrue(store.timings.isEmpty())
+    } finally {
+      dispose(vm)
+    }
   }
 
   @Test
