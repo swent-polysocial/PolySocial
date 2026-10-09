@@ -133,9 +133,7 @@ class MapboxRendererTest {
     val map = nativeMap()
     val points = renderedPoints(map, events.size)
     assertEquals(events.size, points.size)
-    compose.runOnIdle {
-      assertEquals(1, checkNotNull(map.mapboxMap.style).styleLayers.count { it.type == "circle" })
-    }
+    assertSingleAnnotationManager(map)
     compose.runOnIdle {
       assertEquals(6.6323, map.mapboxMap.cameraState.center.longitude(), 0.000001)
       assertEquals(46.5197, map.mapboxMap.cameraState.center.latitude(), 0.000001)
@@ -179,7 +177,7 @@ class MapboxRendererTest {
   }
 
   @Test
-  fun liveMarkerUpdatesKeepOneLayerAndClicksSelectTheNewEventId() {
+  fun liveMarkerUpdatesKeepOneManagerAndClicksSelectTheNewEventId() {
     val first = event("old", "Old meetup", 6.6323, 46.5197)
     show(listOf(first))
     awaitStatus(MapRenderStatus.READY)
@@ -200,9 +198,7 @@ class MapboxRendererTest {
     compose.waitUntil(TIMEOUT) { state.value.selectedEvent?.id == replacement.id }
     compose.onNodeWithTag(MapTags.TITLE).assertTextEquals(replacement.title)
     assertSame(map, nativeMap())
-    compose.runOnIdle {
-      assertEquals(1, checkNotNull(map.mapboxMap.style).styleLayers.count { it.type == "circle" })
-    }
+    assertSingleAnnotationManager(map)
   }
 
   @Test
@@ -275,6 +271,29 @@ class MapboxRendererTest {
         }
       }
     }
+  }
+
+  private fun assertSingleAnnotationManager(map: MapView) = compose.runOnIdle {
+    val style = checkNotNull(map.mapboxMap.style)
+    val layers = style.styleLayers.filter { it.type == "circle" }
+    val prefix = "mapbox-android-circleAnnotation-layer-"
+    val primary = layers.single { it.id.startsWith(prefix) }
+    val managerId = primary.id.removePrefix(prefix)
+    // SDK managers always allocate a drag companion, including for non-draggable markers.
+    assertEquals(
+        setOf(primary.id, "mapbox-android-circleAnnotation-draglayer-$managerId"),
+        layers.map { it.id }.toSet(),
+    )
+    assertEquals(
+        setOf(
+            "mapbox-android-circleAnnotation-source-$managerId",
+            "mapbox-android-circleAnnotation-dragsource-$managerId",
+        ),
+        style.styleSources
+            .filter { it.id.startsWith("mapbox-android-circleAnnotation-") }
+            .map { it.id }
+            .toSet(),
+    )
   }
 
   private fun awaitStatus(status: MapRenderStatus) {
