@@ -13,6 +13,7 @@ import androidx.compose.ui.test.performClick
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.resources.C
 import com.polysocial.ui.theme.PolySocialTheme
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -21,10 +22,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/**
- * Each tab keeps its own back stack. No screen opens a detail yet, so the tests open each tab's
- * placeholder detail route directly through the NavController.
- */
+/** Each tab keeps its own back stack, including the Map detail's required event id. */
 @RunWith(AndroidJUnit4::class)
 class TabBackStackTest {
 
@@ -45,9 +43,16 @@ class TabBackStackTest {
   private fun select(tab: Tab) = composeTestRule.onNodeWithTag(tab.navItemTag).performClick()
 
   private fun openDetail(tab: Tab) {
-    composeTestRule.runOnIdle { navController.navigate(tab.detailRoute) }
-    composeTestRule.onNodeWithTag(tab.detailTag).assertIsDisplayed()
+    composeTestRule.runOnIdle {
+      navController.navigate(
+          if (tab == Tab.MAP) "${tab.detailRoute}/synthetic-event" else tab.detailRoute
+      )
+    }
+    composeTestRule.onNodeWithTag(detailTag(tab)).assertIsDisplayed()
   }
+
+  private fun detailTag(tab: Tab) =
+      if (tab == Tab.MAP) C.Tag.event_detail_placeholder else tab.detailTag
 
   private fun pressBack() {
     composeTestRule.runOnIdle { composeTestRule.activity.onBackPressedDispatcher.onBackPressed() }
@@ -68,11 +73,11 @@ class TabBackStackTest {
       select(other)
       // The other tab shows its own stack, which earlier rounds may have left on a detail screen
       composeTestRule.onNodeWithTag(other.navItemTag).assertIsSelected()
-      composeTestRule.onAllNodesWithTag(tab.detailTag).assertCountEquals(0)
+      composeTestRule.onAllNodesWithTag(detailTag(tab)).assertCountEquals(0)
 
       select(tab)
 
-      composeTestRule.onNodeWithTag(tab.detailTag).assertIsDisplayed()
+      composeTestRule.onNodeWithTag(detailTag(tab)).assertIsDisplayed()
       composeTestRule.onNodeWithTag(tab.navItemTag).assertIsSelected()
     }
   }
@@ -86,7 +91,7 @@ class TabBackStackTest {
       pressBack()
 
       assertOnRootOf(tab)
-      composeTestRule.onAllNodesWithTag(tab.detailTag).assertCountEquals(0)
+      composeTestRule.onAllNodesWithTag(detailTag(tab)).assertCountEquals(0)
     }
   }
 

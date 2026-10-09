@@ -62,7 +62,10 @@ fun AppShell(
 
   Scaffold(
       modifier = modifier.testTag(C.Tag.app_shell),
-      topBar = { if (currentTab != Tab.MAP) AppBar(title = stringResource(currentTab.label)) },
+      topBar = {
+        if (destination?.route != Tab.MAP.rootRoute)
+            AppBar(title = stringResource(currentTab.label))
+      },
       bottomBar = {
         BottomNavBar(currentTab = currentTab, onTabSelected = { navController.navigateToTab(it) })
       },
@@ -78,7 +81,7 @@ fun AppShell(
           composable(tab.rootRoute) {
             if (tab == Tab.MAP) {
               mapContent { id ->
-                navController.navigate("${tab.detailRoute}?eventId=${android.net.Uri.encode(id)}")
+                navController.navigate("${tab.detailRoute}/${android.net.Uri.encode(id)}")
               }
             } else {
               TabRootScreen(tab)
@@ -86,32 +89,22 @@ fun AppShell(
           }
           if (tab == Tab.MAP) {
             composable(
-                "${tab.detailRoute}?eventId={eventId}",
-                arguments =
-                    listOf(
-                        navArgument("eventId") {
-                          type = NavType.StringType
-                          nullable = true
-                          defaultValue = null
-                        }
-                    ),
-            ) { entry ->
-              if (entry.arguments?.getString("eventId") == null) {
-                PlaceholderDetailScreen(tab)
-              } else
-                  Column(Modifier.padding(20.dp).testTag(C.Tag.event_detail_placeholder)) {
-                    Text(
-                        stringResource(R.string.event_detail_title),
-                        style = MaterialTheme.typography.titleLarge,
-                    )
-                    Text(stringResource(R.string.event_detail_placeholder))
-                    TextButton(
-                        onClick = { navController.popBackStack() },
-                        modifier = Modifier.testTag(C.Tag.event_detail_back),
-                    ) {
-                      Text(stringResource(R.string.event_detail_back))
-                    }
-                  }
+                "${tab.detailRoute}/{eventId}",
+                arguments = listOf(navArgument("eventId") { type = NavType.StringType }),
+            ) {
+              Column(Modifier.padding(20.dp).testTag(C.Tag.event_detail_placeholder)) {
+                Text(
+                    stringResource(R.string.event_detail_title),
+                    style = MaterialTheme.typography.titleLarge,
+                )
+                Text(stringResource(R.string.event_detail_placeholder))
+                TextButton(
+                    onClick = { navController.popBackStack() },
+                    modifier = Modifier.testTag(C.Tag.event_detail_back),
+                ) {
+                  Text(stringResource(R.string.event_detail_back))
+                }
+              }
             }
           } else {
             composable(tab.detailRoute) { PlaceholderDetailScreen(tab) }

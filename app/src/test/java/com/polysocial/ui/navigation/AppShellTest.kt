@@ -87,7 +87,7 @@ class AppShellTest {
     composeTestRule.onNodeWithTag("fake_map_details").performClick()
     composeTestRule.onNodeWithTag("event_detail_placeholder").assertIsDisplayed()
     composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).assertIsSelected()
-    composeTestRule.onNodeWithTag(C.Tag.app_bar_title).assertDoesNotExist()
+    composeTestRule.onNodeWithTag(C.Tag.app_bar_title).assertTextEquals(label(Tab.MAP))
     composeTestRule.runOnIdle {
       assertEquals(
           "event/one",
@@ -110,6 +110,7 @@ class AppShellTest {
 
     composeTestRule.onNodeWithTag("event_detail_placeholder").assertIsDisplayed()
     composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).assertIsSelected()
+    composeTestRule.onNodeWithTag(C.Tag.app_bar_title).assertTextEquals(label(Tab.MAP))
     composeTestRule.runOnIdle {
       assertEquals(entryId, navController.currentBackStackEntry?.id)
       assertEquals(
