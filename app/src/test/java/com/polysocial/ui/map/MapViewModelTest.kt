@@ -12,6 +12,7 @@ import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import org.junit.Assert.assertEquals
@@ -28,7 +29,7 @@ class MapViewModelTest {
 
   @Before
   fun setUp() {
-    vm = MapViewModel(MapEventSource { result })
+    vm = MapViewModel(MapEventSource { result }, MAP_TEST_CLOCK)
   }
 
   private fun emit(value: MapEventResult) {
@@ -150,8 +151,9 @@ class MapViewModelTest {
 
   @Test
   fun thrownSourceAndFlowFailuresSurfaceWithoutCrashing() {
-    val factoryFailure = MapViewModel(MapEventSource { error("test failure") })
-    val flowFailure = MapViewModel(MapEventSource { flow { error("test failure") } })
+    val factoryFailure = MapViewModel(MapEventSource { error("test failure") }, MAP_TEST_CLOCK)
+    val flowFailure =
+        MapViewModel(MapEventSource { flow { error("test failure") } }, MAP_TEST_CLOCK)
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     assertEquals(MapContentStatus.ERROR, factoryFailure.uiState.value.status)
     assertEquals(MapContentStatus.ERROR, flowFailure.uiState.value.status)
@@ -176,17 +178,73 @@ class MapViewModelTest {
         starts++
         active++
         try {
+          emit(MapEventResult.Error)
           kotlinx.coroutines.awaitCancellation()
         } finally {
           active--
         }
       }
     }
-    val model = MapViewModel(source)
+    val model = MapViewModel(source, MAP_TEST_CLOCK)
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     model.retry()
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     assertEquals(2, starts)
     assertEquals(1, active)
+  }
+
+  @Test
+  fun retryingRendererKeepsTheHealthyEventListenerAndPreview() {
+    var starts = 0
+    var cancellations = 0
+    val model =
+        MapViewModel(
+            MapEventSource {
+              flow {
+                starts++
+                try {
+                  emitAll(result)
+                } finally {
+                  cancellations++
+                }
+              }
+            },
+            MAP_TEST_CLOCK,
+        )
+    emit(MapEventResult.Events(listOf(event)))
+    model.selectEvent(event.id)
+    model.onRenderStatus(MapRenderStatus.ERROR)
+    model.retry()
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+    assertEquals(1, starts)
+    assertEquals(0, cancellations)
+    assertEquals(MapContentStatus.READY, model.uiState.value.status)
+    assertEquals(event, model.uiState.value.selectedEvent)
+    assertEquals(MapRenderStatus.LOADING, model.uiState.value.renderStatus)
+    assertEquals(1, model.uiState.value.renderGeneration)
+    emit(MapEventResult.Events(listOf(event.copy(title = "Live update during renderer retry"))))
+    assertEquals("Live update during renderer retry", model.uiState.value.selectedEvent?.title)
+  }
+
+  @Test
+  fun rendererRetryWhileEventsAreLoadingDoesNotRestartTheirCollection() {
+    var starts = 0
+    val model =
+        MapViewModel(
+            MapEventSource {
+              flow {
+                starts++
+                kotlinx.coroutines.awaitCancellation()
+              }
+            },
+            MAP_TEST_CLOCK,
+        )
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+    model.onRenderStatus(MapRenderStatus.ERROR)
+    model.retry()
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+    assertEquals(1, starts)
+    assertEquals(MapContentStatus.LOADING, model.uiState.value.status)
+    assertEquals(MapRenderStatus.LOADING, model.uiState.value.renderStatus)
   }
 }

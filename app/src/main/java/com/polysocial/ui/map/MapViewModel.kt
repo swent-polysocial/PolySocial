@@ -51,7 +51,7 @@ class MapViewModel
 @Inject
 constructor(
     private val source: MapEventSource,
-    private val clock: Clock = Clock.systemUTC(),
+    private val clock: Clock,
 ) : ViewModel() {
   private val mutableState = MutableStateFlow(MapUiState())
   val uiState: StateFlow<MapUiState> = mutableState.asStateFlow()
@@ -73,15 +73,16 @@ constructor(
   }
 
   fun retry() {
+    val restartEvents = mutableState.value.status == MapContentStatus.ERROR
     mutableState.update {
       val restartRenderer = it.renderStatus == MapRenderStatus.ERROR
       it.copy(
-          status = MapContentStatus.LOADING,
+          status = if (restartEvents) MapContentStatus.LOADING else it.status,
           renderStatus = if (restartRenderer) MapRenderStatus.LOADING else it.renderStatus,
           renderGeneration = it.renderGeneration + if (restartRenderer) 1 else 0,
       )
     }
-    observeEvents()
+    if (restartEvents) observeEvents()
   }
 
   private fun observeEvents() {

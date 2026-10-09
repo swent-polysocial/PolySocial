@@ -2,13 +2,20 @@
 package com.polysocial.ui.map
 
 import android.content.Context
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -22,6 +29,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
@@ -54,10 +63,12 @@ class MapScreenTest {
   private var detailId: String? = null
   private var rendererCalled = false
   private var renderedEvents = emptyList<com.polysocial.model.event.Event>()
+  private var rendererDensity = 1f
+  private val textScale = mutableFloatStateOf(1f)
 
   @Before
   fun setUp() {
-    vm = MapViewModel(MapEventSource { source })
+    vm = MapViewModel(MapEventSource { source }, MAP_TEST_CLOCK)
   }
 
   private fun show(
@@ -71,29 +82,40 @@ class MapScreenTest {
     dispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     composeRule.setContent {
       val state by vm.uiState.collectAsState()
-      PolySocialTheme {
-        MapScreen(
-            if (loadingEvents) state.copy(status = MapContentStatus.LOADING)
-            else state.copy(selectedEventIsTonight = selectedIsTonight),
-            vm::selectEvent,
-            vm::closePreview,
-            { detailId = it },
-            vm::retry,
-            vm::onRenderStatus,
-            modifier = modifier,
-            tokenConfigured = token,
-            renderer = { events, select, _, _ ->
-              rendererCalled = true
-              renderedEvents = events
-              Column(Modifier.fillMaxSize().testTag(MapTags.CANVAS)) {
-                events.forEach { event ->
-                  TextButton({ select(event.id) }, Modifier.testTag(MapTags.marker(event.id))) {
-                    Text(event.title)
+      val density = LocalDensity.current
+      CompositionLocalProvider(
+          LocalDensity provides Density(density.density, textScale.floatValue)
+      ) {
+        PolySocialTheme {
+          MapScreen(
+              if (loadingEvents) state.copy(status = MapContentStatus.LOADING)
+              else state.copy(selectedEventIsTonight = selectedIsTonight),
+              vm::selectEvent,
+              vm::closePreview,
+              { detailId = it },
+              vm::retry,
+              vm::onRenderStatus,
+              modifier = modifier,
+              tokenConfigured = token,
+              renderer = { events, select, _, inset ->
+                rendererCalled = true
+                renderedEvents = events
+                rendererDensity = LocalDensity.current.density
+                Box(Modifier.fillMaxSize().testTag(MapTags.CANVAS)) {
+                  Column {
+                    events.forEach { event ->
+                      TextButton({ select(event.id) }, Modifier.testTag(MapTags.marker(event.id))) {
+                        Text(event.title)
+                      }
+                    }
+                  }
+                  Box(Modifier.align(Alignment.BottomStart).padding(bottom = inset)) {
+                    Text("Synthetic attribution", Modifier.testTag("fake_attribution"))
                   }
                 }
-              }
-            },
-        )
+              },
+          )
+        }
       }
     }
   }
@@ -108,6 +130,60 @@ class MapScreenTest {
     assertEquals(first.location, renderedEvents[0].location)
     assertEquals(second.location, renderedEvents[1].location)
     composeRule.onNodeWithTag(MapTags.PREVIEW).assertDoesNotExist()
+  }
+
+  @Test
+  fun attributionStaysTwelveDpAboveThePreviewWhenTextSizeChanges() {
+    show(modifier = Modifier.requiredWidth(320.dp))
+    composeRule.onNodeWithTag(MapTags.marker(first.id)).performClick()
+    fun assertGap() {
+      val card = composeRule.onNodeWithTag(MapTags.PREVIEW).fetchSemanticsNode().boundsInRoot
+      val ornament = composeRule.onNodeWithTag("fake_attribution").fetchSemanticsNode().boundsInRoot
+      assertEquals(12.0 * rendererDensity, (card.top - ornament.bottom).toDouble(), 1.0)
+    }
+    assertGap()
+    val initialHeight =
+        composeRule.onNodeWithTag(MapTags.PREVIEW).fetchSemanticsNode().boundsInRoot.height
+    composeRule.runOnIdle {
+      textScale.floatValue = 2f
+      source.value =
+          MapEventResult.Events(
+              listOf(
+                  first.copy(
+                      title = "An evening meetup with a longer title to wrap onto another line"
+                  )
+              )
+          )
+    }
+    dispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+    composeRule.waitForIdle()
+    composeRule
+        .onNodeWithTag(MapTags.TITLE)
+        .assertTextEquals("An evening meetup with a longer title to wrap onto another line")
+    val updatedCard = composeRule.onNodeWithTag(MapTags.PREVIEW).fetchSemanticsNode().boundsInRoot
+    assertTrue(
+        "Preview width=${updatedCard.width}, height=$initialHeight -> ${updatedCard.height}",
+        updatedCard.height > initialHeight,
+    )
+    assertGap()
+    composeRule.onNodeWithTag(MapTags.CLOSE).performClick()
+    val canvas = composeRule.onNodeWithTag(MapTags.CANVAS).fetchSemanticsNode().boundsInRoot
+    val ornament = composeRule.onNodeWithTag("fake_attribution").fetchSemanticsNode().boundsInRoot
+    assertEquals(12.0 * rendererDensity, (canvas.bottom - ornament.bottom).toDouble(), 1.0)
+  }
+
+  @Test
+  fun rendererRetryKeepsReadyEventsAndShowsOnlyMapLoading() {
+    show(renderStatus = MapRenderStatus.ERROR)
+    composeRule.onNodeWithTag(MapTags.RETRY).performClick()
+    assertEquals(MapContentStatus.READY, vm.uiState.value.status)
+    assertEquals(listOf(first, second), renderedEvents)
+    composeRule
+        .onNodeWithTag(MapTags.LOADING_LABEL)
+        .assertTextEquals(context.getString(R.string.map_render_loading))
+    composeRule.runOnIdle { vm.onRenderStatus(MapRenderStatus.READY) }
+    composeRule.onNodeWithTag(MapTags.LOADING).assertDoesNotExist()
+    composeRule.onNodeWithTag(MapTags.marker(first.id)).assertIsDisplayed()
   }
 
   @Test

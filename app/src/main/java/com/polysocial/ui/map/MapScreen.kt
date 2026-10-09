@@ -121,9 +121,10 @@ fun MapScreen(
         defaultMapRenderer,
 ) {
   var previewHeight by remember { mutableIntStateOf(0) }
+  // Card height excludes padding: reserve its 12 dp bottom margin and a 12 dp ornament gap.
   val bottomInset =
       with(LocalDensity.current) {
-        if (state.selectedEvent == null) 12.dp else previewHeight.toDp() + 12.dp
+        if (state.selectedEvent == null) 12.dp else previewHeight.toDp() + 24.dp
       }
   Box(
       modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).testTag(C.Tag.screen_map)
@@ -173,7 +174,10 @@ fun MapScreen(
                   color = MaterialTheme.colorScheme.onSurface,
               )
               Text(
-                  stringResource(R.string.map_loading),
+                  stringResource(
+                      if (state.status == MapContentStatus.LOADING) R.string.map_loading
+                      else R.string.map_render_loading
+                  ),
                   modifier = Modifier.testTag(MapTags.LOADING_LABEL),
                   textAlign = TextAlign.Center,
               )
@@ -193,9 +197,9 @@ fun MapScreen(
           onClosePreview,
           { onViewDetails(event.id) },
           state.selectedEventIsTonight,
-          Modifier.align(Alignment.BottomCenter)
-              .onSizeChanged { previewHeight = it.height }
-              .padding(12.dp),
+          Modifier.align(Alignment.BottomCenter).padding(12.dp).onSizeChanged {
+            previewHeight = it.height
+          },
       )
     }
   }
