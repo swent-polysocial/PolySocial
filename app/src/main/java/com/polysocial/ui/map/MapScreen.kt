@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (map overlays and event preview for #50).
+// Contributors: OpenAI Codex (map overlays and event preview for #50;
+// optional location notices and straight-line badges for #51).
 package com.polysocial.ui.map
 
 import androidx.annotation.StringRes
@@ -32,29 +33,32 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
 import com.polysocial.resources.C
 import com.polysocial.ui.theme.Accent
 import com.polysocial.ui.theme.Info
+import com.polysocial.ui.theme.InfoSoft
 import com.polysocial.ui.theme.Ink3
 import com.polysocial.ui.theme.Success
 import com.polysocial.ui.theme.Warning
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
+import kotlin.math.roundToInt
 
 object MapTags {
   const val CANVAS = "map_canvas"
@@ -74,6 +78,11 @@ object MapTags {
   const val ERROR = "map_error"
   const val RETRY = "map_retry"
   const val SETUP = "map_setup"
+  const val LOCATION_NOTICE = "map_location_notice"
+  const val LOCATION_ACTION = "map_location_action"
+  const val LOCATION_REFRESH = "map_location_refresh"
+  const val LOCATION_ICON = "map_location_icon"
+  const val DISTANCE = "map_preview_distance"
 
   fun marker(id: String) = "map_marker_$id"
 }
@@ -85,28 +94,6 @@ internal val defaultMapRenderer:
       MapboxRenderer(events, select, status, inset)
     }
 
-/** Hilt boundary observing map state; tests inject the repository-backed model and renderer. */
-@Composable
-fun MapRoute(
-    onViewDetails: (String) -> Unit,
-    viewModel: MapViewModel = hiltViewModel(),
-    tokenConfigured: Boolean = stringResource(R.string.mapbox_access_token).startsWith("pk."),
-    renderer: @Composable (List<Event>, (String) -> Unit, (MapRenderStatus) -> Unit, Dp) -> Unit =
-        defaultMapRenderer,
-) {
-  val state by viewModel.uiState.collectAsStateWithLifecycle()
-  MapScreen(
-      state = state,
-      onSelectEvent = viewModel::selectEvent,
-      onClosePreview = viewModel::closePreview,
-      onViewDetails = onViewDetails,
-      onRetry = viewModel::retry,
-      onRenderStatus = viewModel::onRenderStatus,
-      tokenConfigured = tokenConfigured,
-      renderer = renderer,
-  )
-}
-
 @Composable
 fun MapScreen(
     state: MapUiState,
@@ -116,11 +103,20 @@ fun MapScreen(
     onRetry: () -> Unit,
     onRenderStatus: (MapRenderStatus) -> Unit,
     modifier: Modifier = Modifier,
+    onTurnOnLocation: () -> Unit = {},
     tokenConfigured: Boolean = stringResource(R.string.mapbox_access_token).startsWith("pk."),
     renderer: @Composable (List<Event>, (String) -> Unit, (MapRenderStatus) -> Unit, Dp) -> Unit =
         defaultMapRenderer,
 ) {
   var previewHeight by remember { mutableIntStateOf(0) }
+  var locationNoticeHeight by remember { mutableIntStateOf(0) }
+  val hasLocationNotice =
+      state.locationState == MapLocationState.Denied ||
+          state.locationState == MapLocationState.Unavailable
+  val noticeTop =
+      with(LocalDensity.current) {
+        if (hasLocationNotice) locationNoticeHeight.toDp() + 76.dp else 64.dp
+      }
   // Card height excludes padding: reserve its 12 dp bottom margin and a 12 dp ornament gap.
   val bottomInset =
       with(LocalDensity.current) {
@@ -146,13 +142,15 @@ fun MapScreen(
           MapError(
               R.string.map_tiles_error,
               onRetry,
-              Modifier.align(Alignment.TopCenter).padding(start = 12.dp, top = 64.dp, end = 12.dp),
+              Modifier.align(Alignment.TopCenter)
+                  .padding(start = 12.dp, top = noticeTop, end = 12.dp),
           )
       state.status == MapContentStatus.ERROR ->
           MapError(
               R.string.map_events_error,
               onRetry,
-              Modifier.align(Alignment.TopCenter).padding(start = 12.dp, top = 64.dp, end = 12.dp),
+              Modifier.align(Alignment.TopCenter)
+                  .padding(start = 12.dp, top = noticeTop, end = 12.dp),
           )
       tokenConfigured &&
           (state.status == MapContentStatus.LOADING ||
@@ -191,12 +189,83 @@ fun MapScreen(
               Modifier.align(Alignment.Center).padding(24.dp),
           )
     }
+    if (hasLocationNotice) {
+      val noticeText =
+          stringResource(
+              if (state.locationState == MapLocationState.Denied) R.string.map_location_denied
+              else R.string.map_location_unavailable
+          )
+      val titleLength = stringResource(R.string.map_location_off_title).length
+      Card(
+          Modifier.align(Alignment.TopCenter)
+              .padding(start = 12.dp, top = 64.dp, end = 12.dp)
+              .onSizeChanged { locationNoticeHeight = it.height }
+              .testTag(MapTags.LOCATION_NOTICE),
+          shape = RoundedCornerShape(20.dp),
+      ) {
+        Row(
+            Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+          Icon(
+              painterResource(R.drawable.ic_map_location),
+              null,
+              Modifier.size(32.dp)
+                  .background(InfoSoft, RoundedCornerShape(50))
+                  .padding(7.dp)
+                  .testTag(MapTags.LOCATION_ICON),
+              tint = Info,
+          )
+          Text(
+              buildAnnotatedString {
+                append(noticeText)
+                if (state.locationState == MapLocationState.Denied) {
+                  addStyle(SpanStyle(fontWeight = FontWeight.Bold), 0, titleLength)
+                }
+              },
+              modifier = Modifier.weight(1f),
+              style = MaterialTheme.typography.bodyMedium,
+          )
+          Button(onTurnOnLocation, Modifier.testTag(MapTags.LOCATION_ACTION)) {
+            Text(
+                stringResource(
+                    if (state.locationState == MapLocationState.Denied)
+                        R.string.map_location_turn_on
+                    else R.string.map_location_refresh
+                )
+            )
+          }
+        }
+      }
+    }
+    IconButton(
+        onTurnOnLocation,
+        Modifier.align(Alignment.BottomEnd)
+            .padding(end = 20.dp, bottom = bottomInset)
+            .size(48.dp)
+            .shadow(6.dp, RoundedCornerShape(50))
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(50))
+            .testTag(MapTags.LOCATION_REFRESH),
+        enabled =
+            state.locationState != MapLocationState.Locating &&
+                state.locationState != MapLocationState.Waiting,
+    ) {
+      Icon(
+          painterResource(
+              if (hasLocationNotice) R.drawable.ic_map_location_off else R.drawable.ic_map_location
+          ),
+          stringResource(R.string.map_location_refresh),
+          tint = Ink3,
+      )
+    }
     state.selectedEvent?.let { event ->
       EventPreview(
           event,
           onClosePreview,
           { onViewDetails(event.id) },
           state.selectedEventIsTonight,
+          state.selectedDistanceMeters,
           Modifier.align(Alignment.BottomCenter).padding(12.dp).onSizeChanged {
             previewHeight = it.height
           },
@@ -268,6 +337,7 @@ private fun EventPreview(
     onClose: () -> Unit,
     onDetails: () -> Unit,
     isToday: Boolean,
+    distanceMeters: Double?,
     modifier: Modifier,
 ) {
   Card(
@@ -334,6 +404,14 @@ private fun EventPreview(
           style = MaterialTheme.typography.bodyMedium,
           modifier = Modifier.testTag(MapTags.TIME),
       )
+      distanceMeters?.let { meters ->
+        Text(
+            if (meters < 1000) stringResource(R.string.map_distance_meters, meters.roundToInt())
+            else stringResource(R.string.map_distance_kilometers, meters / 1000),
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.testTag(MapTags.DISTANCE),
+        )
+      }
       Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
         OutlinedButton(onDetails, Modifier.weight(1f).testTag(MapTags.DETAILS)) {
           Text(stringResource(R.string.map_view_details))

@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (fake-renderer map UI tests for #50).
+// Contributors: OpenAI Codex (fake-renderer map UI tests for #50;
+// denied and granted location preview tests for #51).
 package com.polysocial.ui.map
 
 import android.content.Context
@@ -34,8 +35,11 @@ import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
+import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.validEvent
+import com.polysocial.model.location.FakeLocationService
+import com.polysocial.model.location.LocationResult
 import com.polysocial.model.map.MapEventResult
 import com.polysocial.model.map.MapEventSource
 import com.polysocial.ui.theme.PolySocialTheme
@@ -59,6 +63,7 @@ class MapScreenTest {
           .copy(id = "two", category = EventCategory.SPORTS)
   private val source =
       MutableStateFlow<MapEventResult>(MapEventResult.Events(listOf(first, second)))
+  private val location = FakeLocationService()
   private lateinit var vm: MapViewModel
   private var detailId: String? = null
   private var rendererCalled = false
@@ -68,7 +73,7 @@ class MapScreenTest {
 
   @Before
   fun setUp() {
-    vm = MapViewModel(MapEventSource { source }, MAP_TEST_CLOCK)
+    vm = MapViewModel(MapEventSource { source }, location, MAP_TEST_CLOCK)
   }
 
   private fun show(
@@ -97,6 +102,7 @@ class MapScreenTest {
               vm::onRenderStatus,
               modifier = modifier,
               tokenConfigured = token,
+              onTurnOnLocation = { vm.turnOnLocation() },
               renderer = { events, select, _, inset ->
                 rendererCalled = true
                 renderedEvents = events
@@ -355,5 +361,120 @@ class MapScreenTest {
       composeRule.onNodeWithTag(MapTags.FIND_GROUP).assertIsNotEnabled()
       composeRule.onNodeWithTag(MapTags.CLOSE).performClick()
     }
+  }
+
+  @Test
+  fun permissionDenied_keepsMarkersPreviewAndDetailsUsableWithoutDistance() {
+    location.markPermissionRequested()
+    vm.onMapEntered()
+    show()
+    composeRule.onNodeWithTag(MapTags.LOCATION_NOTICE).assertIsDisplayed()
+    composeRule.onNodeWithTag(MapTags.LOCATION_ICON).assertIsDisplayed()
+    composeRule.onNodeWithText(context.getString(R.string.map_location_denied)).assertIsDisplayed()
+    composeRule.onNodeWithTag(MapTags.marker(first.id)).performClick()
+    composeRule.onNodeWithTag(MapTags.TITLE).assertTextEquals(first.title)
+    composeRule.onNodeWithTag(MapTags.DISTANCE).assertDoesNotExist()
+    composeRule.onNodeWithTag(MapTags.DETAILS).performClick()
+    assertEquals(first.id, detailId)
+    composeRule.onNodeWithTag(MapTags.LOCATION_ACTION).performClick()
+    assertEquals(MapLocationState.RequestPermission, vm.uiState.value.locationState)
+    assertEquals(0, location.requestCount)
+  }
+
+  @Test
+  fun returningToGrantedMapShowsNoFalseErrorAndExplicitRefreshRestoresDistance() {
+    location.permissionGranted = true
+    location.result = LocationResult.Available(first.location)
+    vm.onMapEntered()
+    dispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+    vm.onMapInactive()
+    vm.onMapEntered()
+    show()
+    composeRule.onNodeWithTag(MapTags.LOCATION_NOTICE).assertDoesNotExist()
+    composeRule.onNodeWithTag(MapTags.marker(first.id)).performClick()
+    composeRule.onNodeWithTag(MapTags.DISTANCE).assertDoesNotExist()
+    composeRule.onNodeWithTag(MapTags.LOCATION_REFRESH).performClick()
+    dispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+    composeRule
+        .onNodeWithTag(MapTags.DISTANCE)
+        .assertTextEquals(context.getString(R.string.map_distance_meters, 0))
+    assertEquals(2, location.requestCount)
+  }
+
+  @Test
+  fun grantedLocation_previewClearlyLabelsStraightLineMeters() {
+    location.permissionGranted = true
+    location.result = LocationResult.Available(first.location)
+    vm.onMapEntered()
+    show()
+    composeRule.onNodeWithTag(MapTags.marker(first.id)).performClick()
+    composeRule
+        .onNodeWithTag(MapTags.DISTANCE)
+        .assertTextEquals(context.getString(R.string.map_distance_meters, 0))
+    composeRule.onNodeWithTag(MapTags.LOCATION_NOTICE).assertDoesNotExist()
+  }
+
+  @Test
+  fun grantedLocation_fartherPreviewUsesKilometers() {
+    location.permissionGranted = true
+    location.result = LocationResult.Available(Coordinates(0.0, 0.0))
+    vm.onMapEntered()
+    show()
+    composeRule.onNodeWithTag(MapTags.marker(first.id)).performClick()
+    composeRule
+        .onNodeWithTag(MapTags.DISTANCE)
+        .assertTextEquals(
+            context.getString(
+                R.string.map_distance_kilometers,
+                vm.uiState.value.selectedDistanceMeters!! / 1000,
+            )
+        )
+  }
+
+  @Test
+  fun unavailableFix_keepsMapUsableAndOffersExplicitRetry() {
+    location.permissionGranted = true
+    vm.onMapEntered()
+    show()
+    composeRule
+        .onNodeWithText(context.getString(R.string.map_location_unavailable))
+        .assertIsDisplayed()
+    composeRule.onNodeWithText(context.getString(R.string.map_location_refresh)).assertIsDisplayed()
+    composeRule.onNodeWithTag(MapTags.marker(first.id)).performClick()
+    composeRule.onNodeWithTag(MapTags.DISTANCE).assertDoesNotExist()
+    composeRule.onNodeWithTag(MapTags.LOCATION_ACTION).performClick()
+    dispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+    assertEquals(2, location.requestCount)
+  }
+
+  @Test
+  fun revokedPermission_removesVisibleDistanceWithoutRemovingPreview() {
+    location.permissionGranted = true
+    location.result = LocationResult.Available(first.location)
+    vm.onMapEntered()
+    show()
+    composeRule.onNodeWithTag(MapTags.marker(first.id)).performClick()
+    composeRule.onNodeWithTag(MapTags.DISTANCE).assertIsDisplayed()
+    composeRule.runOnIdle {
+      location.permissionGranted = false
+      vm.onMapEntered()
+    }
+    composeRule.onNodeWithTag(MapTags.DISTANCE).assertDoesNotExist()
+    composeRule.onNodeWithTag(MapTags.TITLE).assertTextEquals(first.title)
+  }
+
+  @Test
+  fun deniedLocationAndEventFailure_leaveBothNoticesAndMarkersReachable() {
+    location.markPermissionRequested()
+    vm.onMapEntered()
+    show()
+    composeRule.runOnIdle { source.value = MapEventResult.Error }
+    dispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+    composeRule.onNodeWithTag(MapTags.LOCATION_NOTICE).assertIsDisplayed()
+    composeRule.onNodeWithTag(MapTags.ERROR).assertIsDisplayed()
+    composeRule.onNodeWithTag("map_privacy").assertDoesNotExist()
+    composeRule.onNodeWithTag(MapTags.marker(first.id)).performClick()
+    composeRule.onNodeWithTag(MapTags.TITLE).assertTextEquals(first.title)
+    composeRule.onNodeWithTag(MapTags.DISTANCE).assertDoesNotExist()
   }
 }

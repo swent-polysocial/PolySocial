@@ -1,9 +1,11 @@
-// Contributors: OpenAI Codex (map stream, selection and privacy regression tests for #50).
+// Contributors: OpenAI Codex (map stream, selection and privacy regression tests for #50;
+// optional location test dependency and lifecycle-safe setup for #51).
 package com.polysocial.ui.map
 
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.validEvent
+import com.polysocial.model.location.FakeLocationService
 import com.polysocial.model.map.MapEventResult
 import com.polysocial.model.map.MapEventSource
 import com.polysocial.model.map.RepositoryMapEventSource
@@ -29,7 +31,7 @@ class MapViewModelTest {
 
   @Before
   fun setUp() {
-    vm = MapViewModel(MapEventSource { result }, MAP_TEST_CLOCK)
+    vm = MapViewModel(MapEventSource { result }, FakeLocationService(), MAP_TEST_CLOCK)
   }
 
   private fun emit(value: MapEventResult) {
@@ -73,7 +75,12 @@ class MapViewModelTest {
   @Test
   fun tonightUsesZurichDateAndUpdatesWithSelectedEvent() {
     val now = Instant.parse("2026-10-08T22:30:00Z")
-    val model = MapViewModel(MapEventSource { result }, Clock.fixed(now, ZoneOffset.UTC))
+    val model =
+        MapViewModel(
+            MapEventSource { result },
+            FakeLocationService(),
+            Clock.fixed(now, ZoneOffset.UTC),
+        )
     val tonight = event.copy(startTime = Instant.parse("2026-10-09T18:00:00Z"))
     val tomorrow = event.copy(id = "tomorrow", startTime = Instant.parse("2026-10-10T18:00:00Z"))
     emit(MapEventResult.Events(listOf(tonight, tomorrow)))
@@ -151,9 +158,18 @@ class MapViewModelTest {
 
   @Test
   fun thrownSourceAndFlowFailuresSurfaceWithoutCrashing() {
-    val factoryFailure = MapViewModel(MapEventSource { error("test failure") }, MAP_TEST_CLOCK)
+    val factoryFailure =
+        MapViewModel(
+            MapEventSource { error("test failure") },
+            FakeLocationService(),
+            MAP_TEST_CLOCK,
+        )
     val flowFailure =
-        MapViewModel(MapEventSource { flow { error("test failure") } }, MAP_TEST_CLOCK)
+        MapViewModel(
+            MapEventSource { flow { error("test failure") } },
+            FakeLocationService(),
+            MAP_TEST_CLOCK,
+        )
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     assertEquals(MapContentStatus.ERROR, factoryFailure.uiState.value.status)
     assertEquals(MapContentStatus.ERROR, flowFailure.uiState.value.status)
@@ -185,7 +201,7 @@ class MapViewModelTest {
         }
       }
     }
-    val model = MapViewModel(source, MAP_TEST_CLOCK)
+    val model = MapViewModel(source, FakeLocationService(), MAP_TEST_CLOCK)
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     model.retry()
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
@@ -209,6 +225,7 @@ class MapViewModelTest {
                 }
               }
             },
+            FakeLocationService(),
             MAP_TEST_CLOCK,
         )
     emit(MapEventResult.Events(listOf(event)))
@@ -237,6 +254,7 @@ class MapViewModelTest {
                 kotlinx.coroutines.awaitCancellation()
               }
             },
+            FakeLocationService(),
             MAP_TEST_CLOCK,
         )
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()

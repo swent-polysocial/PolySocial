@@ -1,4 +1,4 @@
-<!-- Contributors: Claude (drafted the README structure, Setup, Running and testing, Tech stack and Project links sections; Firestore index deployment, #49); OpenAI Codex (documented startup routing and rebase reconciliation); OpenAI Codex (Mapbox integration and setup, #50). -->
+<!-- Contributors: Claude (drafted the README structure, Setup, Running and testing, Tech stack and Project links sections; Firestore index deployment, #49); OpenAI Codex (documented startup routing and rebase reconciliation); OpenAI Codex (Mapbox integration and setup, #50; one-off Map location privacy note, #51). -->
 
 # PolySocial
 
@@ -37,6 +37,8 @@ The barrier to campus life is social rather than informational: PolySocial answe
 | Event reminders (also offline) and in-app notifications | Planned |
 
 **Privacy:** location is never tracked continuously. It is read once for a feature, or shared only with your group, only during the event, and only when you choose to. Profiles, photos, chats and locations are personal data under the Swiss nLPD, and you can delete your account and data.
+
+For Map distance badges, the app requests only approximate location. On first entry, the Map requests permission once if it is not already granted. The location service reads one foreground snapshot and keeps coordinates only in screen memory; it never stores or uploads them. Leaving the Map or backgrounding the app cancels any pending request and discards the snapshot without showing a location error. On return, use the floating **Refresh distance** button for another one-off fix; permission prompts and location reads do not repeat automatically. Only whether the permission prompt was requested is saved. Denying permission keeps map browsing available. **Turn on** asks again when Android allows another request, or opens this app's settings after a permanent denial. Granting permission there starts one fix on return.
 
 **Offline:** events you've loaded, your registered events and their schedule, and reminders stay available offline. The map shows cached events on whatever map tiles are already cached.
 

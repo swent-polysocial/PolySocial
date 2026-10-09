@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Contributors: Claude (registered the Hilt application class, #70; network state permission for the online check); OpenAI Codex (GPT-6.1 Sol Medium; removed activity labels to inherit the PolySocial app name; enabled keyboard resizing for the auth forms). -->
+<!-- Contributors: Claude (registered the Hilt application class, #70; network state permission for the online check); OpenAI Codex (GPT-6.1 Sol Medium; removed activity labels to inherit the PolySocial app name; enabled keyboard resizing for the auth forms; foreground location permissions, #51). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Lets NetworkMonitor check whether the device is online before writing to Firestore. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
     <application
         android:name=".PolySocialApp"
