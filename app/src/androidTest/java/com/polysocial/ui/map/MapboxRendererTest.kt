@@ -15,6 +15,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.mapbox.bindgen.ExpectedFactory
+import com.mapbox.bindgen.Value
 import com.mapbox.common.HttpRequest
 import com.mapbox.common.HttpRequestError
 import com.mapbox.common.HttpRequestErrorType
@@ -27,6 +28,8 @@ import com.mapbox.common.HttpServiceInterceptorRequestContinuation
 import com.mapbox.common.HttpServiceInterceptorResponseContinuation
 import com.mapbox.common.MapboxOptions
 import com.mapbox.geojson.Point
+import com.mapbox.maps.CameraOptions
+import com.mapbox.maps.MapLoadingErrorType
 import com.mapbox.maps.MapView
 import com.mapbox.maps.MapboxMapsOptions
 import com.mapbox.maps.RenderedQueryGeometry
@@ -51,6 +54,7 @@ import java.util.concurrent.atomic.AtomicReference
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -130,6 +134,9 @@ class MapboxRendererTest {
     val points = renderedPoints(map, events.size)
     assertEquals(events.size, points.size)
     compose.runOnIdle {
+      assertEquals(1, checkNotNull(map.mapboxMap.style).styleLayers.count { it.type == "circle" })
+    }
+    compose.runOnIdle {
       assertEquals(6.6323, map.mapboxMap.cameraState.center.longitude(), 0.000001)
       assertEquals(46.5197, map.mapboxMap.cameraState.center.latitude(), 0.000001)
       assertEquals(12.0, map.mapboxMap.cameraState.zoom, 0.000001)
@@ -171,6 +178,76 @@ class MapboxRendererTest {
     assertTrue(http.styleRequests.get() >= 2)
   }
 
+  @Test
+  fun liveMarkerUpdatesKeepOneLayerAndClicksSelectTheNewEventId() {
+    val first = event("old", "Old meetup", 6.6323, 46.5197)
+    show(listOf(first))
+    awaitStatus(MapRenderStatus.READY)
+    val map = nativeMap()
+    renderedPoints(map, 1)
+    val replacement = event("new", "New meetup", 6.6370, 46.5230)
+    val second =
+        event("second", "Sports meetup", 6.6410, 46.5260).copy(category = EventCategory.SPORTS)
+    compose.runOnIdle { state.value = state.value.copy(events = listOf(replacement, second)) }
+    val pixel = compose.runOnIdle {
+      map.mapboxMap.pixelForCoordinate(Point.fromLngLat(6.6370, 46.5230))
+    }
+    renderedPoints(map, 1, RenderedQueryGeometry(pixel))
+    assertEquals(2, renderedPoints(map, 2).size)
+    compose.onNodeWithTag(MapTags.CANVAS).performTouchInput {
+      click(Offset(pixel.x.toFloat(), pixel.y.toFloat()))
+    }
+    compose.waitUntil(TIMEOUT) { state.value.selectedEvent?.id == replacement.id }
+    compose.onNodeWithTag(MapTags.TITLE).assertTextEquals(replacement.title)
+    assertSame(map, nativeMap())
+    compose.runOnIdle {
+      assertEquals(1, checkNotNull(map.mapboxMap.style).styleLayers.count { it.type == "circle" })
+    }
+  }
+
+  @Test
+  fun missingTileAfterLoadKeepsTheMapAndCameraUsable() {
+    show(listOf(event("cached", "Cached meetup", 6.6323, 46.5197)))
+    awaitStatus(MapRenderStatus.READY)
+    val map = nativeMap()
+    val failures = AtomicInteger(0)
+    val subscription = compose.runOnIdle {
+      map.mapboxMap.subscribeMapLoadingError {
+        if (it.type == MapLoadingErrorType.TILE) failures.incrementAndGet()
+      }
+    }
+    try {
+      compose.runOnIdle {
+        map.mapboxMap.setCamera(
+            CameraOptions.Builder().center(Point.fromLngLat(6.6330, 46.5200)).zoom(13.0).build()
+        )
+        val style = checkNotNull(map.mapboxMap.style)
+        assertEquals(
+            null,
+            style
+                .addStyleSource("uncached", checkNotNull(Value.fromJson(OFFLINE_SOURCE).value))
+                .error,
+        )
+        assertEquals(
+            null,
+            style.addStyleLayer(checkNotNull(Value.fromJson(OFFLINE_LAYER).value), null).error,
+        )
+      }
+      compose.waitUntil(TIMEOUT) { failures.get() > 0 }
+      compose.waitForIdle()
+      compose.onNodeWithTag(MapTags.ERROR).assertDoesNotExist()
+      assertSame(map, nativeMap())
+      compose.runOnIdle {
+        assertEquals(MapRenderStatus.READY, state.value.renderStatus)
+        assertEquals(13.0, map.mapboxMap.cameraState.zoom, 0.000001)
+        assertEquals(6.6330, map.mapboxMap.cameraState.center.longitude(), 0.000001)
+      }
+      assertEquals(1, renderedPoints(map, 1).size)
+    } finally {
+      compose.runOnIdle { subscription.cancel() }
+    }
+  }
+
   private fun show(events: List<Event>) {
     state.value = MapUiState(status = MapContentStatus.READY, events = events)
     contentInstalled = true
@@ -180,7 +257,8 @@ class MapboxRendererTest {
           MapScreen(
               state.value,
               onSelectEvent = { id ->
-                state.value = state.value.copy(selectedEvent = events.first { it.id == id })
+                state.value =
+                    state.value.copy(selectedEvent = state.value.events.first { it.id == id })
               },
               onClosePreview = { state.value = state.value.copy(selectedEvent = null) },
               onViewDetails = { viewedEvent = it },
@@ -309,6 +387,10 @@ class MapboxRendererTest {
                         .toByteArray(Charsets.UTF_8),
                 )
             )
+          } else if (uri?.host == "offline.invalid") {
+            ExpectedFactory.createValue<HttpRequestError, HttpResponseData>(
+                HttpResponseData(hashMapOf("Cache-Control" to "no-store"), 403, ByteArray(0))
+            )
           } else {
             ExpectedFactory.createError<HttpRequestError, HttpResponseData>(
                 HttpRequestError(
@@ -343,5 +425,8 @@ class MapboxRendererTest {
     const val TIMEOUT = 20_000L
     const val LOCAL_STYLE =
         """{"version":8,"name":"hermetic","sources":{},"layers":[{"id":"background","type":"background","paint":{"background-color":"#ffffff"}}]}"""
+    const val OFFLINE_SOURCE =
+        """{"type":"raster","tiles":["https://offline.invalid/{z}/{x}/{y}.png"],"tileSize":256}"""
+    const val OFFLINE_LAYER = """{"id":"uncached-layer","type":"raster","source":"uncached"}"""
   }
 }

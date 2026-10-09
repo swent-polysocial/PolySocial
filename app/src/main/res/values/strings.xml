@@ -128,6 +128,7 @@
     <string name="event_created_view_event">View event</string>
     <string name="event_created_back_to_map">Back to map</string>
     <string name="map_loading">Loading events…</string>
+    <string name="map_render_loading">Loading map…</string>
     <string name="map_empty_title">No events nearby</string>
     <string name="map_empty_message">No public events in the next two weeks around here. Try another filter, or create one with +.</string>
     <string name="map_events_error">Unable to load events. Previously loaded events remain available.</string>
