@@ -44,7 +44,7 @@ class MapRepositoryRouteTest {
   private var detailId: String? = null
 
   private fun model(repository: FakeEventRepository) =
-      MapViewModel(RepositoryMapEventSource(repository))
+      MapViewModel(RepositoryMapEventSource(repository), MAP_TEST_CLOCK)
 
   private fun show(repository: FakeEventRepository, tokenConfigured: Boolean = true) {
     val model = model(repository)
