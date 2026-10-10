@@ -2,6 +2,9 @@
 package com.polysocial.ui.event.create
 
 import android.app.Application
+import androidx.activity.OnBackPressedDispatcher
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -55,10 +58,15 @@ class CreateEventScreenTest {
   private var locationRequested = false
   private var viewedEventId: String? = null
   private var backToMap = false
+  private var leftWithBack = false
+  private lateinit var backDispatcher: OnBackPressedDispatcher
 
   @Before
   fun showScreen() {
     composeTestRule.setContent {
+      // Stands in for the navigation, which handles Back unless the screen blocks it.
+      BackHandler { leftWithBack = true }
+      backDispatcher = LocalOnBackPressedDispatcherOwner.current!!.onBackPressedDispatcher
       CreateEventScreen(
           viewModel = viewModel,
           onClose = { closed = true },
@@ -209,6 +217,9 @@ class CreateEventScreenTest {
     node(C.Tag.create_event_submit).assertTextContains("Creating event…").assertIsNotEnabled()
     node(C.Tag.create_event_title).assertIsNotEnabled()
     node(C.Tag.create_event_public).performScrollTo().assertIsNotEnabled()
+    node(C.Tag.create_event_close).assertIsNotEnabled()
+    composeTestRule.runOnIdle { backDispatcher.onBackPressed() }
+    assertFalse(leftWithBack)
     assertTrue(repository.events.isEmpty())
 
     save.complete(Unit)
@@ -377,6 +388,13 @@ class CreateEventScreenTest {
       assertNull(form().date)
       assertNull(form().startTime)
     }
+  }
+
+  @Test
+  fun back_leavesTheScreenWhenNotSaving() {
+    composeTestRule.runOnIdle { backDispatcher.onBackPressed() }
+
+    assertTrue(leftWithBack)
   }
 
   @Test
