@@ -1,5 +1,6 @@
 // Contributors: OpenAI Codex (tested startup/session routing, profile failure recovery and system
-// Back handoffs and verification/profile integration); Claude (signed-in shell without Hilt, #105).
+// Back handoffs and verification/profile integration); Claude (signed-in shell without Hilt, #105;
+// signed-out back stack, profile step, sign-out and Figma start states, #74).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -7,7 +8,9 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.R
 import com.polysocial.model.auth.*
 import com.polysocial.model.user.*
 import com.polysocial.resources.C
@@ -17,11 +20,15 @@ import com.polysocial.ui.login.LoginViewModel
 import com.polysocial.ui.navigation.AppShell
 import com.polysocial.ui.navigation.Tab
 import com.polysocial.ui.navigation.TabRootScreen
+import com.polysocial.ui.profile.ProfileSetupTestTags
+import com.polysocial.ui.profile.ProfileSetupViewModel
 import com.polysocial.ui.start.AppStartViewModel
 import com.polysocial.ui.theme.PolySocialTheme
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -55,7 +62,16 @@ class AuthFlowTest {
         }
     restoration.setContent {
       PolySocialTheme {
-        AuthFlow(signUp, { exits++ }, login, start, verification) {
+        AuthFlow(
+            signUp,
+            { exits++ },
+            login,
+            start,
+            verification,
+            profileSetupViewModel = { key ->
+              viewModel(key = key) { ProfileSetupViewModel(auth, profiles) }
+            },
+        ) {
           AppShell(eventsContent = { TabRootScreen(Tab.EVENTS) })
         }
       }
@@ -87,7 +103,7 @@ class AuthFlowTest {
   fun verifiedSessionWithoutProfileStartsAtProfileSetup() {
     auth.user = user
     launch()
-    compose.onNodeWithTag("auth_profile_setup").assertIsDisplayed()
+    compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.app_shell).assertDoesNotExist()
     assertEquals(user.uid, profiles.lastRequestedUid)
   }
@@ -111,13 +127,13 @@ class AuthFlowTest {
     profiles.gate = CompletableDeferred()
     profiles.getProfileResult = ProfileResult.NetworkError
     launch()
-    compose.onNodeWithTag("auth_start_loading").assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.loading_state).assertIsDisplayed()
     compose.runOnIdle { profiles.gate!!.complete(Unit) }
-    compose.onNodeWithTag("auth_start_error").assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.error_state).assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.app_shell).assertDoesNotExist()
     profiles.getProfileResult = ProfileResult.NotFound
-    compose.onNodeWithTag("auth_start_retry").performClick()
-    compose.onNodeWithTag("auth_profile_setup").assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.error_retry).performClick()
+    compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertIsDisplayed()
     assertEquals(2, profiles.getProfileCalls)
   }
 
@@ -129,10 +145,10 @@ class AuthFlowTest {
     compose.onNodeWithTag(LoginScreenTestTags.EMAIL).performTextInput(user.email)
     compose.onNodeWithTag(LoginScreenTestTags.PASSWORD).performTextInput("password1")
     compose.onNodeWithTag(LoginScreenTestTags.LOG_IN).performScrollTo().performClick()
-    compose.onNodeWithTag("auth_profile_setup").assertIsDisplayed()
+    compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertIsDisplayed()
     compose.onNodeWithTag(LoginScreenTestTags.SCREEN).assertDoesNotExist()
     restoration.emulateSavedInstanceStateRestore()
-    compose.onNodeWithTag("auth_profile_setup").assertIsDisplayed()
+    compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertIsDisplayed()
     assertEquals(1, auth.logInCalls)
     assertEquals(1, profiles.getProfileCalls)
   }
@@ -234,7 +250,7 @@ class AuthFlowTest {
     compose.onNodeWithTag(LoginScreenTestTags.CREATE_ACCOUNT).performScrollTo().assertIsNotEnabled()
     pressSystemBack()
     compose.runOnIdle { auth.logInGate!!.complete(Unit) }
-    compose.onNodeWithTag("auth_profile_setup").assertIsDisplayed()
+    compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertIsDisplayed()
     compose.onNodeWithTag(WelcomeTags.Screen).assertDoesNotExist()
     assertEquals(1, auth.logInCalls)
     assertEquals(1, profiles.getProfileCalls)
@@ -306,13 +322,15 @@ class AuthFlowTest {
   }
 
   @Test
-  fun systemBackFromProfileSetupExitsWithoutChangingTheSession() {
+  fun systemBackFromProfileSetupSignsOutToWelcome() {
     auth.user = user
     launch()
-    compose.onNodeWithTag("auth_profile_setup").assertIsDisplayed()
+    compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertIsDisplayed()
     pressSystemBack()
-    assertEquals(1, exits)
-    assertEquals(user, auth.currentUser())
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    assertEquals(0, exits)
+    assertEquals(1, auth.logOutCalls)
+    assertEquals(null, auth.currentUser())
   }
 
   @Test
@@ -320,7 +338,7 @@ class AuthFlowTest {
     auth.user = user
     profiles.getProfileResult = ProfileResult.NetworkError
     launch()
-    compose.onNodeWithTag("auth_start_error").assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.error_state).assertIsDisplayed()
     pressSystemBack()
     assertEquals(1, exits)
     assertEquals(1, profiles.getProfileCalls)
@@ -331,7 +349,7 @@ class AuthFlowTest {
     auth.user = user
     profiles.gate = CompletableDeferred()
     launch()
-    compose.onNodeWithTag("auth_start_loading").assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.loading_state).assertIsDisplayed()
     pressSystemBack()
     assertEquals(1, exits)
     assertEquals(1, profiles.getProfileCalls)
@@ -355,5 +373,166 @@ class AuthFlowTest {
       compose.mainClock.autoAdvance = true
     }
     assertEquals(1, auth.signUpCalls)
+  }
+
+  // ---- #74: the profile step, sign-out, the signed-out back stack and the start states ----
+
+  private val profile = UserProfile(user.uid, user.email, "Test Student", "IN", "BA3")
+
+  private fun string(id: Int) = compose.activity.getString(id)
+
+  /** The profile step's texts sit in child nodes, so its tags are found in the unmerged tree. */
+  private fun profileNode(tag: String) = compose.onNodeWithTag(tag, useUnmergedTree = true)
+
+  private fun pick(fieldTag: String, optionTag: String) {
+    profileNode(fieldTag).performClick()
+    profileNode(optionTag).performScrollTo().performClick()
+    compose.waitForIdle()
+  }
+
+  private fun completeProfileStep() {
+    pick(ProfileSetupTestTags.SECTION, ProfileSetupTestTags.sectionOption("IN"))
+    pick(ProfileSetupTestTags.YEAR, ProfileSetupTestTags.yearOption("BA3"))
+    profileNode(ProfileSetupTestTags.CONTINUE).performScrollTo().performClick()
+  }
+
+  @Test
+  fun startStatesShowTheFigmaTextsAndRetry() {
+    auth.user = user
+    profiles.gate = CompletableDeferred()
+    profiles.getProfileResult = ProfileResult.NetworkError
+    launch()
+    compose.onNodeWithText(string(R.string.app_start_loading)).assertIsDisplayed()
+    compose.runOnIdle { profiles.gate!!.complete(Unit) }
+    compose.onNodeWithText(string(R.string.app_start_error_title)).assertIsDisplayed()
+    compose.onNodeWithText(string(R.string.app_start_error_message)).assertIsDisplayed()
+    profiles.getProfileResult = ProfileResult.Found(profile)
+    compose.onNodeWithTag(C.Tag.error_retry).assertTextEquals(string(R.string.retry)).performClick()
+    compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
+    assertEquals(2, profiles.getProfileCalls)
+  }
+
+  @Test
+  fun profileStepContinueOpensTheAppShell() {
+    auth.user = user
+    launch()
+    compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertIsDisplayed()
+    // Once written, the routing reads the profile again and finds it.
+    profiles.getProfileResult = ProfileResult.Found(profile)
+    completeProfileStep()
+    compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
+    compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertDoesNotExist()
+    assertEquals(listOf(profile), profiles.createdProfiles)
+    assertEquals(2, profiles.getProfileCalls)
+  }
+
+  @Test
+  fun profileStepBackArrowSignsOutAndTheNextAccountGetsAFreshStep() {
+    auth.user = user
+    launch()
+    profileNode(ProfileSetupTestTags.FULL_NAME).performTextReplacement("Edited Name")
+    profileNode(ProfileSetupTestTags.BACK).performClick()
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    assertEquals(1, auth.logOutCalls)
+    assertNull(auth.currentUser())
+
+    val other = AuthUser("other-uid", "other.student@epfl.ch", true, "Other Student")
+    auth.logInResult = LogInResult.Success(other)
+    openLoginAndSubmit()
+    compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertIsDisplayed()
+    // A new step for the new account: its name, not the previous account's edit.
+    profileNode(ProfileSetupTestTags.FULL_NAME).assertTextEquals("Other Student")
+    assertEquals(other.uid, profiles.lastRequestedUid)
+  }
+
+  @Test
+  fun backIsIgnoredWhileTheProfileIsSaving() {
+    auth.user = user
+    profiles.createGate = CompletableDeferred()
+    launch()
+    profiles.getProfileResult = ProfileResult.Found(profile)
+    completeProfileStep()
+    profileNode(ProfileSetupTestTags.BACK).assertIsNotEnabled()
+    pressSystemBack()
+    compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertIsDisplayed()
+    assertEquals(0, auth.logOutCalls)
+    compose.runOnIdle { profiles.createGate!!.complete(Unit) }
+    compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
+    assertEquals(0, exits)
+  }
+
+  @Test
+  fun createAccountFromLogInReturnsToLogInThenWelcome() {
+    launch()
+    compose.onNodeWithTag(WelcomeTags.LogIn).performScrollTo().performClick()
+    compose.onNodeWithTag(LoginScreenTestTags.CREATE_ACCOUNT).performScrollTo().performClick()
+    compose.onNodeWithTag(SignUpTags.Screen).assertIsDisplayed()
+    compose.onNodeWithTag(SignUpTags.Back).performClick()
+    compose.onNodeWithTag(LoginScreenTestTags.SCREEN).assertIsDisplayed()
+    compose.onNodeWithTag(LoginScreenTestTags.BACK).performClick()
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    assertEquals(0, exits)
+  }
+
+  @Test
+  fun signUpAndLogInLinksDoNotStackUp() {
+    launch()
+    compose.onNodeWithTag(WelcomeTags.SignUp).performScrollTo().performClick()
+    compose.onNodeWithTag(SignUpTags.LogIn).performScrollTo().performClick()
+    compose.onNodeWithTag(LoginScreenTestTags.CREATE_ACCOUNT).performScrollTo().performClick()
+    compose.onNodeWithTag(SignUpTags.Screen).assertIsDisplayed()
+    // Back to Sign up's own previous screen, not to the Log in it just left.
+    pressSystemBack()
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    assertEquals(0, exits)
+  }
+
+  @Test
+  fun theSignedOutBackStackSurvivesRecreation() {
+    launch()
+    compose.onNodeWithTag(WelcomeTags.LogIn).performScrollTo().performClick()
+    compose.onNodeWithTag(LoginScreenTestTags.CREATE_ACCOUNT).performScrollTo().performClick()
+    restoration.emulateSavedInstanceStateRestore()
+    compose.onNodeWithTag(SignUpTags.Screen).assertIsDisplayed()
+    pressSystemBack()
+    compose.onNodeWithTag(LoginScreenTestTags.SCREEN).assertIsDisplayed()
+    pressSystemBack()
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+  }
+
+  @Test
+  fun backFromVerifyEmailAfterAnUnverifiedLogInDoesNotLoop() {
+    auth.logInGate = CompletableDeferred()
+    auth.logInResult = LogInResult.Success(user.copy(isEmailVerified = false))
+    launch()
+    openLoginAndSubmit()
+    // Log in shows its "verify your email" banner, whose spinner never lets the clock settle,
+    // before redirecting: complete the login and move time on by hand.
+    compose.mainClock.autoAdvance = false
+    try {
+      compose.runOnIdle { auth.logInGate!!.complete(Unit) }
+      compose.mainClock.advanceTimeBy(com.polysocial.ui.login.UNVERIFIED_REDIRECT_DELAY_MS + 100)
+      compose.onNodeWithTag(SignUpTags.VerifyEmailDestination).assertIsDisplayed()
+    } finally {
+      compose.mainClock.autoAdvance = true
+    }
+    pressSystemBack()
+    // Log in left the stack: Back leaves the app instead of reopening Log in, which would
+    // redirect to Verify Email again.
+    assertEquals(1, exits)
+    compose.onNodeWithTag(LoginScreenTestTags.SCREEN).assertDoesNotExist()
+  }
+
+  @Test
+  fun backFromTheAppAfterAVerifiedLogInDoesNotReturnToLogIn() {
+    auth.logInResult = LogInResult.Success(user)
+    profiles.getProfileResult = ProfileResult.Found(profile)
+    launch()
+    openLoginAndSubmit()
+    compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
+    pressSystemBack()
+    compose.runOnIdle { assertTrue(compose.activity.isFinishing) }
+    compose.onNodeWithTag(LoginScreenTestTags.SCREEN).assertDoesNotExist()
+    assertEquals(0, exits)
   }
 }
