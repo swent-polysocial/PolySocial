@@ -1,43 +1,46 @@
-// Contributors: Claude (drafted the Create Event screen from the Figma, section 04).
+// Contributors: Claude (drafted the Create Event screen and restyled it from the Figma, section 04,
+// following the Log in and profile screens).
 package com.polysocial.ui.event.create
 
 import androidx.activity.compose.BackHandler
+import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedCard
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SelectableDates
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
@@ -45,19 +48,33 @@ import androidx.compose.material3.TimePickerDialog
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
@@ -66,6 +83,16 @@ import com.polysocial.model.event.MAX_DESCRIPTION_LENGTH
 import com.polysocial.model.event.MAX_TITLE_LENGTH
 import com.polysocial.model.event.MIN_CAPACITY
 import com.polysocial.resources.C
+import com.polysocial.ui.theme.Accent
+import com.polysocial.ui.theme.AccentSoft
+import com.polysocial.ui.theme.AccentText
+import com.polysocial.ui.theme.Bg
+import com.polysocial.ui.theme.Border
+import com.polysocial.ui.theme.Disabled
+import com.polysocial.ui.theme.Ink
+import com.polysocial.ui.theme.Ink2
+import com.polysocial.ui.theme.Ink3
+import com.polysocial.ui.theme.SuccessSoft
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -129,6 +156,10 @@ data class CreateEventFormActions(
 /**
  * The Create Event form, drawn from [state] alone and reporting through [actions], so it can be
  * previewed and tested without a ViewModel.
+ *
+ * The layout follows the Figma frames (section 04): the gaps are the frame's, and a taller element
+ * (a larger font size, an error message) pushes the ones below it down. The form scrolls above the
+ * action bar, which stays at the bottom.
  */
 @Composable
 fun CreateEventFormContent(
@@ -139,180 +170,199 @@ fun CreateEventFormContent(
   val form = state.form
   val editable = state.status != CreateEventStatus.Saving
   var dialog by remember { mutableStateOf<PickerDialog?>(null) }
+  val scroll = rememberScrollState()
+  val failed = state.status is CreateEventStatus.Failed
+
+  // Figma puts the failure banner at the end of the form, which is off screen after tapping
+  // Create: scroll down so the organizer sees why nothing happened.
+  LaunchedEffect(failed) { if (failed) scroll.animateScrollTo(scroll.maxValue) }
 
   // Leaving while saving would hide the result: the write can still succeed after the screen is
   // gone, and the organizer would never see the confirmation.
   BackHandler(enabled = !editable) {}
 
-  Scaffold(
-      modifier = modifier.testTag(C.Tag.create_event_screen),
-      topBar = { TopRow(R.string.create_event_title, actions.onClose, closeEnabled = editable) },
-      bottomBar = { ActionBar(state, actions.onSubmit) },
-  ) { padding ->
-    Column(
-        modifier =
-            Modifier.padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-      Text(
-          stringResource(R.string.create_event_organized_by_you),
-          style = MaterialTheme.typography.labelLarge,
-      )
+  Box(modifier.fillMaxSize().background(Bg).testTag(C.Tag.create_event_screen)) {
+    Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+      Column(Modifier.weight(1f).verticalScroll(scroll).padding(horizontal = 20.dp)) {
+        TopBar(R.string.create_event_title, actions.onClose, closeEnabled = editable)
+        // While saving, Figma fades the whole form (not the top bar) to 45%.
+        Column(Modifier.alpha(if (editable) 1f else SAVING_ALPHA)) {
+          Spacer(Modifier.height(4.dp))
+          Text(
+              stringResource(R.string.create_event_organized_by_you),
+              style = MaterialTheme.typography.labelMedium,
+              color = Ink2,
+              modifier = Modifier.heightIn(min = 24.dp).padding(top = 3.dp),
+          )
 
-      Labeled(R.string.create_event_title_label) {
-        OutlinedTextField(
-            value = form.title,
-            onValueChange = actions.onTitleChange,
-            placeholder = { Text(stringResource(R.string.create_event_title_placeholder)) },
-            singleLine = true,
-            enabled = editable,
-            isError =
-                state.hasError(
-                    CreateEventFormError.MISSING_TITLE,
-                    CreateEventFormError.TITLE_TOO_LONG,
-                ),
-            modifier = Modifier.fillMaxWidth().testTag(C.Tag.create_event_title),
-        )
-        Errors(state, CreateEventFormError.MISSING_TITLE, CreateEventFormError.TITLE_TOO_LONG)
-      }
-
-      Labeled(R.string.create_event_description_label) {
-        OutlinedTextField(
-            value = form.description,
-            onValueChange = actions.onDescriptionChange,
-            minLines = 3,
-            enabled = editable,
-            isError = state.hasError(CreateEventFormError.DESCRIPTION_TOO_LONG),
-            modifier = Modifier.fillMaxWidth().testTag(C.Tag.create_event_description),
-        )
-        Errors(state, CreateEventFormError.DESCRIPTION_TOO_LONG)
-      }
-
-      Labeled(R.string.create_event_category_label) {
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          EventCategory.entries.forEach { category ->
-            FilterChip(
-                selected = form.category == category,
-                onClick = { actions.onCategorySelect(category) },
-                label = { Text(stringResource(category.label)) },
+          Section(R.string.create_event_title_label) {
+            InputField(
+                value = form.title,
+                onValueChange = actions.onTitleChange,
                 enabled = editable,
-                modifier = Modifier.testTag(C.Tag.createEventCategory(category.name)),
+                isError =
+                    state.hasError(
+                        CreateEventFormError.MISSING_TITLE,
+                        CreateEventFormError.TITLE_TOO_LONG,
+                    ),
+                tag = C.Tag.create_event_title,
+                placeholder = stringResource(R.string.create_event_title_placeholder),
+            )
+            Errors(state, CreateEventFormError.MISSING_TITLE, CreateEventFormError.TITLE_TOO_LONG)
+          }
+
+          Section(R.string.create_event_description_label) {
+            InputField(
+                value = form.description,
+                onValueChange = actions.onDescriptionChange,
+                enabled = editable,
+                isError = state.hasError(CreateEventFormError.DESCRIPTION_TOO_LONG),
+                tag = C.Tag.create_event_description,
+                minHeight = DESCRIPTION_HEIGHT,
+            )
+            Errors(state, CreateEventFormError.DESCRIPTION_TOO_LONG)
+          }
+
+          Section(R.string.create_event_category_label, labelGap = 8.dp) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+              EventCategory.entries.forEach { category ->
+                CategoryChip(
+                    label = category.label,
+                    selected = form.category == category,
+                    enabled = editable,
+                    tag = C.Tag.createEventCategory(category.name),
+                ) {
+                  actions.onCategorySelect(category)
+                }
+              }
+            }
+            Errors(state, CreateEventFormError.MISSING_CATEGORY)
+          }
+
+          Spacer(Modifier.height(SECTION_GAP))
+          // Figma's Date, Starts and Ends fields are 128, 88 and 88 dp wide.
+          Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            PickerField(
+                label = R.string.create_event_date_label,
+                value = form.date?.format(DATE_FORMAT),
+                placeholder = R.string.create_event_pick_date,
+                enabled = editable,
+                isError =
+                    state.hasError(
+                        CreateEventFormError.MISSING_DATE,
+                        CreateEventFormError.START_IN_PAST,
+                    ),
+                tag = C.Tag.create_event_date,
+                modifier = Modifier.weight(128f),
+            ) {
+              dialog = PickerDialog.DATE
+            }
+            PickerField(
+                label = R.string.create_event_starts_label,
+                value = form.startTime?.format(TIME_FORMAT),
+                placeholder = R.string.create_event_pick_date,
+                enabled = editable,
+                isError = false,
+                tag = C.Tag.create_event_start,
+                modifier = Modifier.weight(88f),
+            ) {
+              dialog = PickerDialog.START
+            }
+            Column(Modifier.weight(88f)) {
+              PickerField(
+                  label = R.string.create_event_ends_label,
+                  value = form.endTime?.format(TIME_FORMAT),
+                  placeholder = R.string.create_event_ends_optional,
+                  enabled = editable,
+                  isError = state.hasError(CreateEventFormError.END_SAME_AS_START),
+                  tag = C.Tag.create_event_end,
+              ) {
+                dialog = PickerDialog.END
+              }
+              if (form.endsNextDay) {
+                Text(
+                    stringResource(R.string.create_event_ends_next_day),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Ink2,
+                    modifier =
+                        Modifier.padding(top = 6.dp).testTag(C.Tag.create_event_end_next_day),
+                )
+              }
+            }
+          }
+          Errors(
+              state,
+              CreateEventFormError.MISSING_DATE,
+              CreateEventFormError.START_IN_PAST,
+              CreateEventFormError.END_SAME_AS_START,
+          )
+
+          Section(R.string.create_event_location_label) {
+            LocationField(
+                name = form.location?.name,
+                enabled = editable,
+                isError = state.hasError(CreateEventFormError.MISSING_LOCATION),
+                onClick = actions.onPickLocation,
+            )
+            Errors(state, CreateEventFormError.MISSING_LOCATION)
+          }
+
+          Section(R.string.create_event_capacity_label) {
+            InputField(
+                value = form.capacityText,
+                onValueChange = actions.onCapacityChange,
+                enabled = editable,
+                isError =
+                    state.hasError(
+                        CreateEventFormError.CAPACITY_NOT_A_NUMBER,
+                        CreateEventFormError.CAPACITY_TOO_SMALL,
+                    ),
+                tag = C.Tag.create_event_capacity,
+                keyboardType = KeyboardType.Number,
+                suffix = stringResource(R.string.create_event_capacity_suffix),
+            )
+            Errors(
+                state,
+                CreateEventFormError.CAPACITY_NOT_A_NUMBER,
+                CreateEventFormError.CAPACITY_TOO_SMALL,
             )
           }
-        }
-        Errors(state, CreateEventFormError.MISSING_CATEGORY)
-      }
 
-      Column {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          PickerField(
-              label = R.string.create_event_date_label,
-              value = form.date?.format(DATE_FORMAT),
-              enabled = editable,
-              tag = C.Tag.create_event_date,
-              modifier = Modifier.weight(1.4f),
-          ) {
-            dialog = PickerDialog.DATE
-          }
-          PickerField(
-              label = R.string.create_event_starts_label,
-              value = form.startTime?.format(TIME_FORMAT),
-              enabled = editable,
-              tag = C.Tag.create_event_start,
-              modifier = Modifier.weight(1f),
-          ) {
-            dialog = PickerDialog.START
-          }
-          Column(Modifier.weight(1f)) {
-            PickerField(
-                label = R.string.create_event_ends_label,
-                value = form.endTime?.format(TIME_FORMAT),
-                placeholder = R.string.create_event_ends_optional,
+          Section(R.string.create_event_visibility_label, labelGap = 8.dp) {
+            VisibilityOption(
+                title = R.string.create_event_private,
+                hint = R.string.create_event_private_hint,
+                unselectedIcon = R.drawable.ic_radio_unselected,
+                selected = form.isPrivate,
                 enabled = editable,
-                tag = C.Tag.create_event_end,
+                tag = C.Tag.create_event_private,
             ) {
-              dialog = PickerDialog.END
+              actions.onVisibilityChange(true)
             }
-            if (form.endsNextDay) {
-              Text(
-                  stringResource(R.string.create_event_ends_next_day),
-                  style = MaterialTheme.typography.labelSmall,
-                  color = MaterialTheme.colorScheme.onSurfaceVariant,
-                  modifier = Modifier.padding(top = 4.dp).testTag(C.Tag.create_event_end_next_day),
-              )
+            Spacer(Modifier.height(8.dp))
+            VisibilityOption(
+                title = R.string.create_event_public,
+                hint = R.string.create_event_public_hint,
+                unselectedIcon = R.drawable.ic_globe,
+                selected = !form.isPrivate,
+                enabled = editable,
+                tag = C.Tag.create_event_public,
+            ) {
+              actions.onVisibilityChange(false)
             }
           }
-        }
-        Errors(
-            state,
-            CreateEventFormError.MISSING_DATE,
-            CreateEventFormError.START_IN_PAST,
-            CreateEventFormError.END_SAME_AS_START,
-        )
-      }
 
-      Labeled(R.string.create_event_location_label) {
-        OutlinedCard(
-            onClick = actions.onPickLocation,
-            enabled = editable,
-            modifier = Modifier.fillMaxWidth().testTag(C.Tag.create_event_location),
-        ) {
-          Text(
-              form.location?.name ?: stringResource(R.string.create_event_location_placeholder),
-              color =
-                  if (form.location == null) MaterialTheme.colorScheme.onSurfaceVariant
-                  else MaterialTheme.colorScheme.onSurface,
-              modifier = Modifier.padding(16.dp),
-          )
-        }
-        Errors(state, CreateEventFormError.MISSING_LOCATION)
-      }
-
-      Labeled(R.string.create_event_capacity_label) {
-        OutlinedTextField(
-            value = form.capacityText,
-            onValueChange = actions.onCapacityChange,
-            suffix = { Text(stringResource(R.string.create_event_capacity_suffix)) },
-            singleLine = true,
-            enabled = editable,
-            isError =
-                state.hasError(
-                    CreateEventFormError.CAPACITY_NOT_A_NUMBER,
-                    CreateEventFormError.CAPACITY_TOO_SMALL,
-                ),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            modifier = Modifier.fillMaxWidth().testTag(C.Tag.create_event_capacity),
-        )
-        Errors(
-            state,
-            CreateEventFormError.CAPACITY_NOT_A_NUMBER,
-            CreateEventFormError.CAPACITY_TOO_SMALL,
-        )
-      }
-
-      Labeled(R.string.create_event_visibility_label) {
-        VisibilityOption(
-            title = R.string.create_event_private,
-            hint = R.string.create_event_private_hint,
-            selected = form.isPrivate,
-            enabled = editable,
-            tag = C.Tag.create_event_private,
-        ) {
-          actions.onVisibilityChange(true)
-        }
-        Spacer(Modifier.height(8.dp))
-        VisibilityOption(
-            title = R.string.create_event_public,
-            hint = R.string.create_event_public_hint,
-            selected = !form.isPrivate,
-            enabled = editable,
-            tag = C.Tag.create_event_public,
-        ) {
-          actions.onVisibilityChange(false)
+          (state.status as? CreateEventStatus.Failed)?.let {
+            Spacer(Modifier.height(12.dp))
+            FailureBanner(it.reason)
+          }
+          Spacer(Modifier.height(24.dp))
         }
       }
+      ActionBar(state, actions.onSubmit)
     }
   }
 
@@ -348,113 +398,189 @@ fun CreateEventFormContent(
 }
 
 @Composable
-private fun TopRow(@StringRes title: Int, onClose: () -> Unit, closeEnabled: Boolean = true) {
+private fun TopBar(@StringRes title: Int, onClose: () -> Unit, closeEnabled: Boolean = true) {
+  // Close: 22 dp icon at (19, 23), inside a 44 dp touch target; the title starts at x = 56.
   Row(
+      Modifier.padding(top = 12.dp).offset(x = (-12).dp),
       verticalAlignment = Alignment.CenterVertically,
-      modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
   ) {
-    IconButton(
-        onClick = onClose,
-        enabled = closeEnabled,
-        modifier = Modifier.testTag(C.Tag.create_event_close),
+    Box(
+        Modifier.size(44.dp)
+            .clickable(enabled = closeEnabled, role = Role.Button, onClick = onClose)
+            .testTag(C.Tag.create_event_close),
+        contentAlignment = Alignment.Center,
     ) {
-      Icon(
-          painterResource(R.drawable.ic_close),
-          contentDescription = stringResource(R.string.create_event_close),
-      )
+      Image(painterResource(R.drawable.ic_close), stringResource(R.string.create_event_close))
     }
-    Text(stringResource(title), style = MaterialTheme.typography.titleMedium)
+    Spacer(Modifier.width(4.dp))
+    Text(stringResource(title), style = MaterialTheme.typography.titleMedium, color = Ink)
   }
 }
 
+/** A field label, the field and its errors, below the previous section. */
 @Composable
-private fun ActionBar(state: CreateEventUiState, onSubmit: () -> Unit) {
-  Surface(tonalElevation = 2.dp) {
-    Column(Modifier.fillMaxWidth().padding(20.dp)) {
-      val failure = state.status as? CreateEventStatus.Failed
-      if (failure != null) {
-        FailureBanner(failure.reason)
-        Spacer(Modifier.height(12.dp))
-      }
-      Button(
-          onClick = onSubmit,
-          enabled = state.canSubmit,
-          modifier = Modifier.fillMaxWidth().testTag(C.Tag.create_event_submit),
-      ) {
-        when {
-          state.status == CreateEventStatus.Saving -> {
-            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-            Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.create_event_saving))
-          }
-          failure != null -> Text(stringResource(R.string.create_event_try_again))
-          state.form.isPrivate -> Text(stringResource(R.string.create_event_submit_private))
-          else -> Text(stringResource(R.string.create_event_submit_public))
-        }
-      }
-    }
-  }
+private fun Section(
+    @StringRes label: Int,
+    labelGap: Dp = 6.dp,
+    content: @Composable () -> Unit,
+) {
+  Spacer(Modifier.height(SECTION_GAP))
+  FieldLabel(label)
+  Spacer(Modifier.height(labelGap))
+  content()
 }
 
 @Composable
-private fun FailureBanner(reason: CreateEventStatus.Failed.Reason) {
-  Column(
-      Modifier.fillMaxWidth()
-          .background(MaterialTheme.colorScheme.errorContainer, MaterialTheme.shapes.medium)
-          .padding(14.dp)
-          .testTag(C.Tag.create_event_failure)
-  ) {
-    Text(
-        stringResource(R.string.create_event_offline_title),
-        style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.onErrorContainer,
-    )
-    Text(
-        stringResource(
-            when (reason) {
-              CreateEventStatus.Failed.Reason.OFFLINE -> R.string.create_event_offline_body
-              CreateEventStatus.Failed.Reason.UNEXPECTED -> R.string.create_event_unexpected_body
+private fun FieldLabel(@StringRes text: Int) {
+  Text(stringResource(text), style = MaterialTheme.typography.labelMedium, color = Ink2)
+}
+
+/** The outline every Figma field shares: white, 12 dp corners, a 2 dp accent border on error. */
+private fun Modifier.fieldOutline(isError: Boolean, shape: RoundedCornerShape) =
+    background(Bg, shape)
+        .border(if (isError) 2.dp else 1.dp, if (isError) Accent else Border, shape)
+
+@Composable
+private fun fieldTextStyle(): TextStyle =
+    MaterialTheme.typography.bodyLarge.copy(lineHeight = 20.sp, color = Ink)
+
+@Composable
+private fun InputField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    enabled: Boolean,
+    isError: Boolean,
+    tag: String,
+    placeholder: String = "",
+    minHeight: Dp = FIELD_HEIGHT,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    suffix: String? = null,
+) {
+  val singleLine = minHeight == FIELD_HEIGHT
+  val textStyle = fieldTextStyle()
+  val shape = RoundedCornerShape(FIELD_RADIUS)
+  BasicTextField(
+      value = value,
+      onValueChange = onValueChange,
+      enabled = enabled,
+      singleLine = singleLine,
+      textStyle = textStyle,
+      cursorBrush = SolidColor(Ink),
+      keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+      // Figma shows the capacity as "8 people": the unit follows the number once there is one.
+      visualTransformation =
+          if (suffix == null) VisualTransformation.None else SuffixTransformation(" $suffix"),
+      modifier = Modifier.fillMaxWidth().testTag(tag),
+      decorationBox = { innerTextField ->
+        Row(
+            Modifier.fillMaxWidth()
+                .heightIn(min = minHeight)
+                .fieldOutline(isError, shape)
+                .padding(horizontal = 14.dp, vertical = if (singleLine) 0.dp else 13.dp),
+            verticalAlignment = if (singleLine) Alignment.CenterVertically else Alignment.Top,
+        ) {
+          Box(Modifier.weight(1f)) {
+            if (value.isEmpty() && placeholder.isNotEmpty()) {
+              Text(placeholder, style = textStyle, color = Ink3)
             }
-        ),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onErrorContainer,
-    )
-  }
-}
-
-@Composable
-private fun Labeled(@StringRes label: Int, content: @Composable () -> Unit) {
-  Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-    Text(stringResource(label), style = MaterialTheme.typography.labelLarge)
-    content()
-  }
+            innerTextField()
+          }
+        }
+      },
+  )
 }
 
 @Composable
 private fun PickerField(
     @StringRes label: Int,
     value: String?,
+    @StringRes placeholder: Int,
     enabled: Boolean,
+    isError: Boolean,
     tag: String,
     modifier: Modifier = Modifier,
-    @StringRes placeholder: Int = R.string.create_event_pick_date,
     onClick: () -> Unit,
 ) {
-  Column(modifier, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-    Text(stringResource(label), style = MaterialTheme.typography.labelLarge)
-    OutlinedCard(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = Modifier.fillMaxWidth().testTag(tag),
+  val shape = RoundedCornerShape(FIELD_RADIUS)
+  Column(modifier) {
+    FieldLabel(label)
+    Spacer(Modifier.height(6.dp))
+    Box(
+        Modifier.fillMaxWidth()
+            .height(FIELD_HEIGHT)
+            .clip(shape)
+            .fieldOutline(isError, shape)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(horizontal = 14.dp)
+            .testTag(tag),
+        contentAlignment = Alignment.CenterStart,
     ) {
       Text(
           value ?: stringResource(placeholder),
-          color =
-              if (value == null) MaterialTheme.colorScheme.onSurfaceVariant
-              else MaterialTheme.colorScheme.onSurface,
-          modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
+          style = fieldTextStyle(),
+          color = if (value == null) Ink3 else Ink,
+          maxLines = 1,
       )
     }
+  }
+}
+
+@Composable
+private fun LocationField(name: String?, enabled: Boolean, isError: Boolean, onClick: () -> Unit) {
+  val shape = RoundedCornerShape(FIELD_RADIUS)
+  Row(
+      Modifier.fillMaxWidth()
+          .height(LOCATION_HEIGHT)
+          .clip(shape)
+          .fieldOutline(isError, shape)
+          .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+          .padding(start = 14.dp, end = 16.dp)
+          .testTag(C.Tag.create_event_location),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    // The pin is red once a place is picked, grey on the placeholder (Figma).
+    Icon(
+        painterResource(R.drawable.ic_pin),
+        contentDescription = null,
+        tint = if (name == null) Ink3 else AccentText,
+    )
+    Spacer(Modifier.width(10.dp))
+    Text(
+        name ?: stringResource(R.string.create_event_location_placeholder),
+        style = fieldTextStyle(),
+        color = if (name == null) Ink3 else Ink,
+        maxLines = 1,
+        modifier = Modifier.weight(1f),
+    )
+    Image(painterResource(R.drawable.ic_chevron_right), contentDescription = null)
+  }
+}
+
+@Composable
+private fun CategoryChip(
+    @StringRes label: Int,
+    selected: Boolean,
+    enabled: Boolean,
+    tag: String,
+    onSelect: () -> Unit,
+) {
+  Box(
+      Modifier.height(36.dp)
+          .clip(CircleShape)
+          .background(if (selected) Ink else Bg)
+          .then(if (selected) Modifier else Modifier.border(1.dp, Border, CircleShape))
+          .selectable(selected, enabled = enabled, role = Role.RadioButton, onClick = onSelect)
+          // 14 dp rather than Figma's 16: the rendered font is slightly wider, and 16 would push
+          // Party onto the second row, where Figma only has Other.
+          .padding(horizontal = 14.dp)
+          .testTag(tag),
+      contentAlignment = Alignment.Center,
+  ) {
+    Text(
+        stringResource(label),
+        style = MaterialTheme.typography.labelLarge,
+        color = if (selected) Bg else Ink,
+    )
   }
 }
 
@@ -462,49 +588,176 @@ private fun PickerField(
 private fun VisibilityOption(
     @StringRes title: Int,
     @StringRes hint: Int,
+    @DrawableRes unselectedIcon: Int,
     selected: Boolean,
     enabled: Boolean,
     tag: String,
     onSelect: () -> Unit,
 ) {
-  OutlinedCard(
-      border =
-          BorderStroke(
-              if (selected) 2.dp else 1.dp,
-              if (selected) MaterialTheme.colorScheme.onSurface
-              else MaterialTheme.colorScheme.outlineVariant,
-          ),
-      modifier =
-          Modifier.fillMaxWidth()
-              .selectable(selected, enabled = enabled, role = Role.RadioButton, onClick = onSelect)
-              .testTag(tag),
+  val shape = RoundedCornerShape(14.dp)
+  Row(
+      Modifier.fillMaxWidth()
+          .heightIn(min = 85.dp)
+          .clip(shape)
+          .background(Bg)
+          .border(if (selected) 2.dp else 1.dp, if (selected) Ink else Border, shape)
+          .selectable(selected, enabled = enabled, role = Role.RadioButton, onClick = onSelect)
+          .padding(horizontal = 14.dp, vertical = 12.dp)
+          .testTag(tag),
   ) {
-    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.Top) {
-      RadioButton(selected = selected, onClick = null, enabled = enabled)
-      Spacer(Modifier.width(8.dp))
-      Column {
-        Text(stringResource(title), style = MaterialTheme.typography.titleSmall)
-        Text(
-            stringResource(hint),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
+    // Figma: a filled radio on the selected option; the unselected one shows its own icon.
+    if (selected) {
+      Box(Modifier.size(20.dp).background(Ink, CircleShape), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(8.dp).background(Bg, CircleShape))
       }
+    } else {
+      Image(painterResource(unselectedIcon), contentDescription = null)
+    }
+    Spacer(Modifier.width(12.dp))
+    Column {
+      Text(stringResource(title), style = MaterialTheme.typography.titleSmall, color = Ink)
+      Spacer(Modifier.height(3.dp))
+      Text(stringResource(hint), style = secondaryTextStyle(), color = Ink2)
     }
   }
 }
 
+/** Shows [suffix] after a non-empty value, without making it part of the value. */
+private class SuffixTransformation(private val suffix: String) : VisualTransformation {
+  override fun filter(text: AnnotatedString): TransformedText {
+    if (text.isEmpty()) return TransformedText(text, OffsetMapping.Identity)
+    val length = text.length
+    return TransformedText(
+        text + AnnotatedString(suffix),
+        object : OffsetMapping {
+          override fun originalToTransformed(offset: Int) = offset
+
+          override fun transformedToOriginal(offset: Int) = offset.coerceAtMost(length)
+        },
+    )
+  }
+}
+
+/** Figma's 13 sp regular text with 18 sp lines, used under the visibility options and banners. */
+@Composable
+private fun secondaryTextStyle(): TextStyle =
+    MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, lineHeight = 18.sp)
+
+@Composable
+private fun ActionBar(state: CreateEventUiState, onSubmit: () -> Unit) {
+  val failed = state.status is CreateEventStatus.Failed
+  Column(Modifier.fillMaxWidth().background(Bg)) {
+    Box(Modifier.fillMaxWidth().height(1.dp).background(Border))
+    Box(Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp)) {
+      PrimaryButton(
+          text =
+              when {
+                state.status == CreateEventStatus.Saving -> R.string.create_event_saving
+                failed -> R.string.create_event_try_again
+                state.form.isPrivate -> R.string.create_event_submit_private
+                else -> R.string.create_event_submit_public
+              },
+          enabled = state.canSubmit,
+          loading = state.status == CreateEventStatus.Saving,
+          tag = C.Tag.create_event_submit,
+          onClick = onSubmit,
+      )
+    }
+  }
+}
+
+/** Figma's dark pill button; greyed out when disabled, with a spinner while [loading]. */
+@Composable
+private fun PrimaryButton(
+    @StringRes text: Int,
+    enabled: Boolean,
+    tag: String,
+    loading: Boolean = false,
+    onClick: () -> Unit,
+) {
+  val greyed = !enabled && !loading
+  Row(
+      Modifier.fillMaxWidth()
+          .height(BUTTON_HEIGHT)
+          .clip(MaterialTheme.shapes.large)
+          .background(if (greyed) Disabled else Ink)
+          .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+          .testTag(tag),
+      horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    if (loading) {
+      CircularProgressIndicator(
+          modifier = Modifier.size(18.dp),
+          color = Bg,
+          trackColor = Bg.copy(alpha = 0.3f),
+          strokeWidth = 2.dp,
+      )
+    }
+    Text(
+        stringResource(text),
+        style = MaterialTheme.typography.titleSmall,
+        color = if (greyed) Ink3 else Bg,
+    )
+  }
+}
+
+@Composable
+private fun FailureBanner(reason: CreateEventStatus.Failed.Reason) {
+  Row(
+      Modifier.fillMaxWidth()
+          .background(AccentSoft, RoundedCornerShape(14.dp))
+          .padding(14.dp)
+          .testTag(C.Tag.create_event_failure),
+      horizontalArrangement = Arrangement.spacedBy(12.dp),
+  ) {
+    Image(
+        painterResource(
+            when (reason) {
+              CreateEventStatus.Failed.Reason.OFFLINE -> R.drawable.ic_wifi_off
+              CreateEventStatus.Failed.Reason.UNEXPECTED -> R.drawable.ic_error
+            }
+        ),
+        contentDescription = null,
+        modifier = Modifier.size(20.dp),
+    )
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+      Text(
+          stringResource(R.string.create_event_offline_title),
+          style = secondaryTextStyle().copy(fontSize = 14.sp, fontWeight = FontWeight.Bold),
+          color = Ink,
+      )
+      Text(
+          stringResource(
+              when (reason) {
+                CreateEventStatus.Failed.Reason.OFFLINE -> R.string.create_event_offline_body
+                CreateEventStatus.Failed.Reason.UNEXPECTED -> R.string.create_event_unexpected_body
+              }
+          ),
+          style = secondaryTextStyle(),
+          color = Ink2,
+      )
+    }
+  }
+}
+
+/** The visible errors among [errors], each as Figma's red marker and message under its field. */
 @Composable
 private fun Errors(state: CreateEventUiState, vararg errors: CreateEventFormError) {
   errors
       .filter { it in state.visibleErrors }
       .forEach { error ->
-        Text(
-            error.message(),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.error,
-            modifier = Modifier.padding(top = 4.dp).testTag(C.Tag.createEventError(error.name)),
-        )
+        Row(
+            // One semantic node, so the message is read (and found by tests) with its marker.
+            Modifier.padding(top = 6.dp)
+                .semantics(mergeDescendants = true) {}
+                .testTag(C.Tag.createEventError(error.name)),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+          Image(painterResource(R.drawable.ic_error), contentDescription = null)
+          Text(error.message(), style = MaterialTheme.typography.bodySmall, color = AccentText)
+        }
       }
 }
 
@@ -637,57 +890,60 @@ private fun EventCreated(
     onViewEvent: () -> Unit,
     onBackToMap: () -> Unit,
 ) {
-  Scaffold(
-      modifier = Modifier.testTag(C.Tag.event_created_screen),
-      topBar = { TopRow(R.string.create_event_title, onClose) },
-  ) { padding ->
+  Box(Modifier.fillMaxSize().background(Bg).testTag(C.Tag.event_created_screen)) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(padding).padding(20.dp),
+        Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(20.dp, 0.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
+      Box(Modifier.fillMaxWidth()) { TopBar(R.string.create_event_title, onClose) }
+      // Figma centers the message between the top bar and the buttons.
       Spacer(Modifier.weight(1f))
-      Box(
-          contentAlignment = Alignment.Center,
-          modifier =
-              Modifier.size(80.dp)
-                  .background(MaterialTheme.colorScheme.primaryContainer, CircleShape),
-      ) {
-        Icon(
-            painterResource(R.drawable.ic_check),
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onPrimaryContainer,
-            modifier = Modifier.size(36.dp),
-        )
+      Box(Modifier.size(80.dp).background(SuccessSoft, CircleShape), Alignment.Center) {
+        Image(painterResource(R.drawable.ic_check), contentDescription = null)
       }
       Spacer(Modifier.height(16.dp))
       Text(
           stringResource(R.string.event_created_title),
-          style = MaterialTheme.typography.headlineSmall,
+          style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.ExtraBold),
+          color = Ink,
       )
-      Spacer(Modifier.height(8.dp))
+      Spacer(Modifier.height(17.dp))
       Text(
           stringResource(
               if (status.isPrivate) R.string.event_created_private_message
               else R.string.event_created_public_message,
               status.title,
           ),
-          style = MaterialTheme.typography.bodyMedium,
-          color = MaterialTheme.colorScheme.onSurfaceVariant,
+          style = MaterialTheme.typography.bodyLarge,
+          color = Ink2,
+          textAlign = TextAlign.Center,
+          modifier = Modifier.widthIn(max = 287.dp),
       )
       Spacer(Modifier.weight(1f))
-      Button(
+      PrimaryButton(
+          text = R.string.event_created_view_event,
+          enabled = true,
+          tag = C.Tag.event_created_view_event,
           onClick = onViewEvent,
-          modifier = Modifier.fillMaxWidth().testTag(C.Tag.event_created_view_event),
-      ) {
-        Text(stringResource(R.string.event_created_view_event))
-      }
+      )
       Spacer(Modifier.height(12.dp))
-      OutlinedButton(
-          onClick = onBackToMap,
-          modifier = Modifier.fillMaxWidth().testTag(C.Tag.event_created_back_to_map),
+      Box(
+          Modifier.fillMaxWidth()
+              .height(BUTTON_HEIGHT)
+              .clip(MaterialTheme.shapes.large)
+              .background(Bg)
+              .border(1.dp, Border, MaterialTheme.shapes.large)
+              .clickable(role = Role.Button, onClick = onBackToMap)
+              .testTag(C.Tag.event_created_back_to_map),
+          contentAlignment = Alignment.Center,
       ) {
-        Text(stringResource(R.string.event_created_back_to_map))
+        Text(
+            stringResource(R.string.event_created_back_to_map),
+            style = MaterialTheme.typography.titleSmall,
+            color = Ink,
+        )
       }
+      Spacer(Modifier.height(28.dp))
     }
   }
 }
@@ -716,3 +972,12 @@ private val DATE_FORMAT = DateTimeFormatter.ofPattern("EEE d MMM")
 private val TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm")
 private const val MILLIS_PER_DAY = 86_400_000L
 private const val DEFAULT_HOUR = 18
+
+// Sizes from the Figma frames (section 04).
+private val SECTION_GAP = 14.dp
+private val FIELD_HEIGHT = 50.dp
+private val DESCRIPTION_HEIGHT = 92.dp
+private val LOCATION_HEIGHT = 48.dp
+private val FIELD_RADIUS = 12.dp
+private val BUTTON_HEIGHT = 52.dp
+private const val SAVING_ALPHA = 0.45f

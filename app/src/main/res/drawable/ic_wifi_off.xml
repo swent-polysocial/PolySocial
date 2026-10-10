@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (vector from the Figma Create Event screens, section 04, #46). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="20dp" android:height="20dp" android:viewportWidth="20" android:viewportHeight="20">
+    <path android:pathData="M10,16.6667H10.0083"
+        android:strokeColor="#B3202A" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" />    <path android:pathData="M7.08333,13.6908C7.8622,12.9274 8.90936,12.4998 10,12.4998C11.0906,12.4998 12.1378,12.9274 12.9167,13.6908"
+        android:strokeColor="#B3202A" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" />    <path android:pathData="M4.16667,10.7158C5.34836,9.55742 6.84817,8.77705 8.475,8.47417"
+        android:strokeColor="#B3202A" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" />    <path android:pathData="M15.8333,10.7158C15.3316,10.224 14.7696,9.79752 14.1608,9.44667"
+        android:strokeColor="#B3202A" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" />    <path android:pathData="M1.66667,7.35C2.69716,6.4284 3.87341,5.68413 5.1475,5.1475"
+        android:strokeColor="#B3202A" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" />    <path android:pathData="M18.3333,7.35C17.0623,6.21318 15.572,5.34845 13.9543,4.80903C12.3366,4.2696 10.6256,4.06688 8.92667,4.21333"
+        android:strokeColor="#B3202A" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" />    <path android:pathData="M1.66667,1.66667L18.3333,18.3333"
+        android:strokeColor="#B3202A" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" /></vector>
