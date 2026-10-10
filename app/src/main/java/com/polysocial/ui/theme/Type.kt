@@ -1,5 +1,6 @@
 // Contributors: Claude (v2 type scale from Figma "First proposal revamped"); Claude Opus 5.5 (font
-// for the Material styles the v2 sheet does not define).
+// for the Material styles the v2 sheet does not define; exact text, shared from the profile step
+// for #74).
 package com.polysocial.ui.theme
 
 import androidx.compose.material3.Typography
@@ -8,6 +9,7 @@ import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextMotion
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.sp
 import com.polysocial.R
@@ -71,3 +73,9 @@ val Typography =
         labelMedium = style(FontWeight.SemiBold, 13), // Field label
         labelSmall = style(FontWeight.Medium, 12, 16.sp), // Caption
     )
+
+/**
+ * Positions glyphs at fractional pixels, like Figma. By default Android rounds each glyph to a
+ * whole pixel, which makes long texts about 1 dp narrower than in Figma.
+ */
+fun TextStyle.exact(): TextStyle = copy(textMotion = TextMotion.Animated)
