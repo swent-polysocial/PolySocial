@@ -274,7 +274,7 @@ fun AuthFlow(
     AuthDestination.ProfileSetup ->
         ProfileSetupScreen(
             onBack = startViewModel::logOut,
-            onProfileSaved = startViewModel::refresh,
+            onProfileSaved = startViewModel::onProfileCreated,
             viewModel = profileSetupViewModel,
         )
     AuthDestination.Welcome ->

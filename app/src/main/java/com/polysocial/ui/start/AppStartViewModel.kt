@@ -1,5 +1,5 @@
 // Contributors: Claude (app-start routing for #32; refresh after Log in, not while loading; log
-// out, #74).
+// out and the created profile, #74).
 package com.polysocial.ui.start
 
 import androidx.lifecycle.ViewModel
@@ -60,6 +60,15 @@ constructor(
    */
   fun refresh() {
     if (_destination.value != StartDestination.Loading) resolve()
+  }
+
+  /**
+   * The profile step created the profile (or found that it exists): opens the main app without
+   * reading the profile again. Ignored unless the profile step is the current destination.
+   */
+  fun onProfileCreated() {
+    if (_destination.value == StartDestination.ProfileSetup)
+        _destination.value = StartDestination.Main
   }
 
   /**
