@@ -1,6 +1,6 @@
 // Contributors: Claude (Log in screen state for #32); Claude Opus 5.5 (block Log in while
-// redirecting).
-// Contributors: OpenAI Codex (cleared login state when verification changes account for #31).
+// redirecting). Contributors: OpenAI Codex (cleared login state when verification changes account
+// for #31; ); Claude (fresh form after a sign-out, #74).
 package com.polysocial.ui.login
 
 import androidx.lifecycle.ViewModel
@@ -58,7 +58,11 @@ class LoginViewModel @Inject constructor(private val auth: AuthRepository) : Vie
   private val _uiState = MutableStateFlow(LoginUiState())
   val uiState: StateFlow<LoginUiState> = _uiState.asStateFlow()
 
-  /** Drops the previous account's login result when verification explicitly signs out. */
+  /**
+   * Starts a fresh form after any sign-out (#31, #74). The screen navigates on
+   * [LoginStatus.LoggedIn] and [LoginStatus.Unverified], so keeping either would redirect the next
+   * visit straight away.
+   */
   fun reset() {
     _uiState.value = LoginUiState()
   }

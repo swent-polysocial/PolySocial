@@ -1,4 +1,4 @@
-// Contributors: Claude Opus 5.5 (wrote these tests).
+// Contributors: Claude Opus 5.5 (wrote these tests); Claude (reset after a sign-out, #74).
 package com.polysocial.ui.login
 
 import com.polysocial.model.auth.AuthUser
@@ -238,5 +238,15 @@ class LoginViewModelTest {
 
     viewModel.onTogglePasswordVisibility()
     assertFalse(viewModel.uiState.value.passwordVisible)
+  }
+
+  @Test
+  fun reset_afterALogIn_startsAnEmptyIdleForm() {
+    assertEquals(LoginStatus.LoggedIn, logInWith(LogInResult.Success(verifiedUser)))
+
+    viewModel.reset()
+
+    // A kept LoggedIn status would make the next visit navigate away at once.
+    assertEquals(LoginUiState(), viewModel.uiState.value)
   }
 }
