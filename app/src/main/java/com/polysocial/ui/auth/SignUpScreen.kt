@@ -140,9 +140,9 @@ private val BackStackSaver =
  * and Log in link to each other). Leaving the signed-out screens clears the stack, so Back from
  * Verify Email or the app never returns to a form that would redirect again.
  *
- * Signing out (Back on the profile step) resets both forms and returns to Welcome. Each new session
- * gets a new profile step, since [profileSetupViewModel] reads the signed-in account when it is
- * created.
+ * Signing out goes through [AppStartViewModel.logOut], from anywhere (Back on the profile step, Log
+ * out in the app, #109). Whatever started it, the move to the signed-out start resets the forms and
+ * the profile step, which outlive their screens, and returns to Welcome with an empty stack.
  *
  * @param signedInContent the app once the user is signed in. Tests replace it, because the real
  *   [AppShell] needs Hilt.
@@ -154,19 +154,34 @@ fun AuthFlow(
     loginViewModel: LoginViewModel = hiltViewModel(),
     startViewModel: AppStartViewModel = hiltViewModel(),
     verificationViewModel: VerifyEmailViewModel = hiltViewModel(),
+    profileSetupViewModel: ProfileSetupViewModel = hiltViewModel(),
     recoveryViewModel: PasswordRecoveryViewModel? = null,
-    profileSetupViewModel: @Composable (key: String) -> ProfileSetupViewModel = {
-      hiltViewModel(key = it)
-    },
     signedInContent: @Composable () -> Unit = { AppShell() },
 ) {
   var destination by rememberSaveable { mutableStateOf(AuthDestination.Loading) }
   var backStack by
       rememberSaveable(stateSaver = BackStackSaver) { mutableStateOf(emptyList<AuthDestination>()) }
-  var session by rememberSaveable { mutableIntStateOf(0) }
   var startupApplied by rememberSaveable { mutableStateOf(false) }
+  // The start destination last applied, to tell a sign-out (a move to Login) from a recreation,
+  // which applies the current one again.
+  var appliedStart by rememberSaveable { mutableStateOf<String?>(null) }
   val startDestination by startViewModel.destination.collectAsStateWithLifecycle()
   LaunchedEffect(startDestination) {
+    val previousStart = appliedStart
+    appliedStart = startDestination.toString()
+    if (
+        startDestination == StartDestination.Login &&
+            previousStart != null &&
+            previousStart != StartDestination.Login.toString()
+    ) {
+      // Signed out: nothing of the previous account may stay in the forms or the profile step.
+      viewModel.reset()
+      loginViewModel.reset()
+      profileSetupViewModel.reset()
+      backStack = emptyList()
+      destination = AuthDestination.Welcome
+      return@LaunchedEffect
+    }
     // Preserve the active auth screen on recreation, including Back from verification.
     // Fresh launches still resolve the session.
     if (
@@ -175,7 +190,7 @@ fun AuthFlow(
                 startDestination != StartDestination.VerifyEmail) ||
             destination == AuthDestination.Loading
     ) {
-      destination =
+      val target =
           when (startDestination) {
             StartDestination.Loading -> AuthDestination.Loading
             StartDestination.Login -> AuthDestination.Welcome
@@ -184,6 +199,11 @@ fun AuthFlow(
             StartDestination.Main -> AuthDestination.SignedIn
             StartDestination.Error -> AuthDestination.Error
           }
+      // A step left half-done (or already saved) before must not come back: open it fresh.
+      if (target == AuthDestination.ProfileSetup && destination != AuthDestination.ProfileSetup) {
+        profileSetupViewModel.reset()
+      }
+      destination = target
       backStack = emptyList()
       if (startDestination != StartDestination.Loading) startupApplied = true
     }
@@ -231,19 +251,11 @@ fun AuthFlow(
     backStack = emptyList()
     destination = AuthDestination.VerifyEmail
   }
-  fun logOut() {
-    startViewModel.logOut()
-    viewModel.reset()
-    loginViewModel.reset()
-    session++
-    backStack = emptyList()
-    destination = AuthDestination.Welcome
-  }
   BackHandler(destination != AuthDestination.Welcome && destination != AuthDestination.SignedIn) {
     when (destination) {
       AuthDestination.SignUp,
       AuthDestination.LogIn -> back()
-      AuthDestination.ProfileSetup -> logOut()
+      AuthDestination.ProfileSetup -> startViewModel.logOut()
       AuthDestination.VerifyEmail -> backFromVerification()
       AuthDestination.PasswordRecovery -> back()
       else -> onExit()
@@ -260,13 +272,11 @@ fun AuthFlow(
             modifier = Modifier.background(Bg),
         )
     AuthDestination.ProfileSetup ->
-        key(session) {
-          ProfileSetupScreen(
-              onBack = ::logOut,
-              onProfileSaved = startViewModel::refresh,
-              viewModel = profileSetupViewModel("profile_setup_$session"),
-          )
-        }
+        ProfileSetupScreen(
+            onBack = startViewModel::logOut,
+            onProfileSaved = startViewModel::refresh,
+            viewModel = profileSetupViewModel,
+        )
     AuthDestination.Welcome ->
         WelcomeScreen(
             onSignUp = { open(AuthDestination.SignUp) },

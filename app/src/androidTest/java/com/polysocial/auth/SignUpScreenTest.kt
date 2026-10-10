@@ -1,7 +1,7 @@
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; tested tagged validation, backend errors and
 // sign-up handoff with MockK; backend failure messages, recovery actions, login navigation and
 // official Google placeholder behavior, welcome navigation and startup routing injection); Claude
-// (signed-in shell without Hilt, #105).
+// (signed-in shell without Hilt, #105; profile step ViewModel injection, #74).
 // Contributors: OpenAI Codex (updated verification/back sign-out expectations and integration for
 // #31).
 package com.polysocial.auth
@@ -24,6 +24,7 @@ import com.polysocial.ui.login.LoginViewModel
 import com.polysocial.ui.navigation.AppShell
 import com.polysocial.ui.navigation.Tab
 import com.polysocial.ui.navigation.TabRootScreen
+import com.polysocial.ui.profile.ProfileSetupViewModel
 import com.polysocial.ui.start.AppStartViewModel
 import com.polysocial.ui.theme.PolySocialTheme
 import io.mockk.coEvery
@@ -62,6 +63,7 @@ class SignUpScreenTest {
       }
   private lateinit var verificationViewModel: VerifyEmailViewModel
   private var session: AuthUser? = null
+  private lateinit var profileSetupViewModel: ProfileSetupViewModel
   private var signedUp = 0
   private var logIn = 0
 
@@ -93,6 +95,8 @@ class SignUpScreenTest {
     coEvery { profiles.getProfile(any()) } returns
         ProfileResult.Found(UserProfile(user.uid, user.email, "Test Student", "IN", "BA1"))
     startViewModel = AppStartViewModel(repository, profiles)
+    profileSetupViewModel = ProfileSetupViewModel(repository, profiles)
+    coEvery { repository.signUp(any(), any(), any()) } returns SignUpResult.Success(user)
   }
 
   private fun launch() {
@@ -398,6 +402,7 @@ class SignUpScreenTest {
             loginViewModel = loginViewModel,
             startViewModel = startViewModel,
             verificationViewModel = verificationViewModel,
+            profileSetupViewModel = profileSetupViewModel,
         )
       }
     }
@@ -425,6 +430,7 @@ class SignUpScreenTest {
             loginViewModel = loginViewModel,
             startViewModel = startViewModel,
             verificationViewModel = verificationViewModel,
+            profileSetupViewModel = profileSetupViewModel,
         )
       }
     }
@@ -453,6 +459,7 @@ class SignUpScreenTest {
             loginViewModel = loginViewModel,
             startViewModel = startViewModel,
             verificationViewModel = verificationViewModel,
+            profileSetupViewModel = profileSetupViewModel,
         )
       }
     }
@@ -481,6 +488,7 @@ class SignUpScreenTest {
             loginViewModel = loginViewModel,
             startViewModel = startViewModel,
             verificationViewModel = verificationViewModel,
+            profileSetupViewModel = profileSetupViewModel,
         )
       }
     }
@@ -510,6 +518,7 @@ class SignUpScreenTest {
             onExit = {},
             loginViewModel = loginViewModel,
             startViewModel = startViewModel,
+            profileSetupViewModel = profileSetupViewModel,
             signedInContent = { AppShell(eventsContent = { TabRootScreen(Tab.EVENTS) }) },
             verificationViewModel = verificationViewModel,
         )
@@ -551,6 +560,7 @@ class SignUpScreenTest {
             loginViewModel = loginViewModel,
             startViewModel = startViewModel,
             verificationViewModel = verificationViewModel,
+            profileSetupViewModel = profileSetupViewModel,
         )
       }
     }
@@ -604,6 +614,7 @@ class SignUpScreenTest {
             loginViewModel = loginViewModel,
             startViewModel = startViewModel,
             verificationViewModel = verificationViewModel,
+            profileSetupViewModel = profileSetupViewModel,
         )
       }
     }

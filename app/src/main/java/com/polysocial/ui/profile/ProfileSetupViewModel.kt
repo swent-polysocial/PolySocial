@@ -1,4 +1,6 @@
-// Contributors: Claude (profile step state for #34; unverified accounts refused after review).
+// Contributors: Claude (profile step state for #34; unverified accounts refused after review;
+// reset,
+// #74).
 package com.polysocial.ui.profile
 
 import androidx.lifecycle.ViewModel
@@ -9,6 +11,7 @@ import com.polysocial.model.user.UserProfile
 import com.polysocial.model.user.UserProfileRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -62,16 +65,21 @@ constructor(
     private val auth: AuthRepository,
     private val profiles: UserProfileRepository,
 ) : ViewModel() {
-  private val _uiState =
-      MutableStateFlow(
-          auth.currentUser().let {
-            ProfileSetupUiState(
-                displayName = it?.displayName.orEmpty(),
-                email = it?.email.orEmpty(),
-            )
-          }
-      )
+  private val _uiState = MutableStateFlow(stateForCurrentAccount())
   val uiState: StateFlow<ProfileSetupUiState> = _uiState.asStateFlow()
+
+  /** The running save, cancelled by [reset]. */
+  private var save: Job? = null
+
+  /**
+   * Starts the step again for the account signed in now (an empty form when nobody is), with no
+   * save running. The app calls it when the step opens and when the user signs out, since this
+   * ViewModel outlives the step: no name or email of a previous account stays in it.
+   */
+  fun reset() {
+    save?.cancel()
+    _uiState.value = stateForCurrentAccount()
+  }
 
   fun onDisplayNameChange(displayName: String) = edit { it.copy(displayName = displayName) }
 
@@ -95,7 +103,7 @@ constructor(
       return
     }
     _uiState.update { it.copy(status = ProfileSetupStatus.Saving) }
-    viewModelScope.launch {
+    save = viewModelScope.launch {
       val profile =
           UserProfile(
               uid = user.uid,
@@ -114,6 +122,11 @@ constructor(
       _uiState.update { it.copy(status = status) }
     }
   }
+
+  private fun stateForCurrentAccount(): ProfileSetupUiState =
+      auth.currentUser().let {
+        ProfileSetupUiState(displayName = it?.displayName.orEmpty(), email = it?.email.orEmpty())
+      }
 
   /** Applies a form change; after a failed save, editing clears the error message. */
   private fun edit(change: (ProfileSetupUiState) -> ProfileSetupUiState) = _uiState.update {
