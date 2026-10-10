@@ -1,9 +1,10 @@
-<!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42; Create Event texts, #46; "+" button, #110; app bar actions, #84); OpenAI Codex (Google and welcome copy). OpenAI Codex (sign-up form, startup integration, name hint and unused-title cleanup; Mapbox integration and setup, #50; location permission and distance text, #51). -->
+<!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42; Create Event texts, #46; "+" button, #110; app bar actions, #84); OpenAI Codex (Google and welcome copy). OpenAI Codex (sign-up form, startup integration, name hint and unused-title cleanup; Mapbox integration and setup, #50; location permission and distance text, #51). Claude (Retry, #74). -->
 <!-- Contributors: OpenAI Codex (verification screen and failure messages for #31). -->
 <resources>
     <string name="auth_start_error">Could not load your profile. Check your connection and try again.</string>
     <string name="auth_start_retry">Retry</string>
     <string name="auth_profile_setup">Complete your profile — coming soon</string>
+    <string name="retry">Retry</string>
     <string name="app_name">PolySocial</string>
 
     <string name="tab_events">Events</string>
