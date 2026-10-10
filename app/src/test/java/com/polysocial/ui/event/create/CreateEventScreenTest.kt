@@ -313,13 +313,33 @@ class CreateEventScreenTest {
   }
 
   @Test
-  fun theEndTimeDialog_setsOrClearsTheEndTime() {
+  fun theEndTimeDialog_setsTheEndTimeAndOffersNoClearWithoutOne() {
     node(C.Tag.create_event_end).performScrollTo().performClick()
+    node(C.Tag.create_event_dialog_clear).assertDoesNotExist()
     node(C.Tag.create_event_dialog_confirm).performClick()
+
     composeTestRule.runOnIdle { assertEquals(LocalTime.of(18, 0), form().endTime) }
+  }
+
+  @Test
+  fun cancellingTheEndTimeDialog_keepsTheEndTime() {
+    composeTestRule.runOnIdle { viewModel.onEndTimePick(LocalTime.of(20, 0)) }
 
     node(C.Tag.create_event_end).performScrollTo().performClick()
-    node(C.Tag.create_event_dialog_dismiss).assertTextContains("Clear").performClick()
+    node(C.Tag.create_event_dialog_dismiss).assertTextContains("Cancel").performClick()
+
+    node(C.Tag.create_event_dialog_dismiss).assertDoesNotExist()
+    composeTestRule.runOnIdle { assertEquals(LocalTime.of(20, 0), form().endTime) }
+  }
+
+  @Test
+  fun clearingTheEndTime_removesIt() {
+    composeTestRule.runOnIdle { viewModel.onEndTimePick(LocalTime.of(20, 0)) }
+
+    node(C.Tag.create_event_end).performScrollTo().performClick()
+    node(C.Tag.create_event_dialog_clear).assertTextContains("Clear end time").performClick()
+
+    node(C.Tag.create_event_dialog_clear).assertDoesNotExist()
     composeTestRule.runOnIdle { assertNull(form().endTime) }
   }
 
