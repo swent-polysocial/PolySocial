@@ -89,17 +89,52 @@ fun CreateEventScreen(
   when (val status = state.status) {
     is CreateEventStatus.Created ->
         EventCreated(status, onClose, onViewEvent = { onViewEvent(status.eventId) }, onBackToMap)
-    else -> CreateEventFormContent(state, viewModel, onClose, onPickLocation, modifier)
+    else ->
+        CreateEventFormContent(
+            state = state,
+            actions =
+                CreateEventFormActions(
+                    onTitleChange = viewModel::onTitleChange,
+                    onDescriptionChange = viewModel::onDescriptionChange,
+                    onCategorySelect = viewModel::onCategorySelect,
+                    onDatePick = viewModel::onDatePick,
+                    onStartTimePick = viewModel::onStartTimePick,
+                    onEndTimePick = viewModel::onEndTimePick,
+                    onCapacityChange = viewModel::onCapacityChange,
+                    onVisibilityChange = viewModel::onVisibilityChange,
+                    onSubmit = viewModel::onSubmit,
+                    onClose = onClose,
+                    onPickLocation = onPickLocation,
+                ),
+            modifier = modifier,
+        )
   }
 }
 
+/** What the Create Event form reports: field edits, submit, close and the location picker. */
+data class CreateEventFormActions(
+    val onTitleChange: (String) -> Unit,
+    val onDescriptionChange: (String) -> Unit,
+    val onCategorySelect: (EventCategory) -> Unit,
+    val onDatePick: (LocalDate) -> Unit,
+    val onStartTimePick: (LocalTime) -> Unit,
+    val onEndTimePick: (LocalTime?) -> Unit,
+    val onCapacityChange: (String) -> Unit,
+    val onVisibilityChange: (isPrivate: Boolean) -> Unit,
+    val onSubmit: () -> Unit,
+    val onClose: () -> Unit,
+    val onPickLocation: () -> Unit,
+)
+
+/**
+ * The Create Event form, drawn from [state] alone and reporting through [actions], so it can be
+ * previewed and tested without a ViewModel.
+ */
 @Composable
-private fun CreateEventFormContent(
+fun CreateEventFormContent(
     state: CreateEventUiState,
-    viewModel: CreateEventViewModel,
-    onClose: () -> Unit,
-    onPickLocation: () -> Unit,
-    modifier: Modifier,
+    actions: CreateEventFormActions,
+    modifier: Modifier = Modifier,
 ) {
   val form = state.form
   val editable = state.status != CreateEventStatus.Saving
@@ -111,8 +146,8 @@ private fun CreateEventFormContent(
 
   Scaffold(
       modifier = modifier.testTag(C.Tag.create_event_screen),
-      topBar = { TopRow(R.string.create_event_title, onClose, closeEnabled = editable) },
-      bottomBar = { ActionBar(state, viewModel::onSubmit) },
+      topBar = { TopRow(R.string.create_event_title, actions.onClose, closeEnabled = editable) },
+      bottomBar = { ActionBar(state, actions.onSubmit) },
   ) { padding ->
     Column(
         modifier =
@@ -129,7 +164,7 @@ private fun CreateEventFormContent(
       Labeled(R.string.create_event_title_label) {
         OutlinedTextField(
             value = form.title,
-            onValueChange = viewModel::onTitleChange,
+            onValueChange = actions.onTitleChange,
             placeholder = { Text(stringResource(R.string.create_event_title_placeholder)) },
             singleLine = true,
             enabled = editable,
@@ -146,7 +181,7 @@ private fun CreateEventFormContent(
       Labeled(R.string.create_event_description_label) {
         OutlinedTextField(
             value = form.description,
-            onValueChange = viewModel::onDescriptionChange,
+            onValueChange = actions.onDescriptionChange,
             minLines = 3,
             enabled = editable,
             isError = state.hasError(CreateEventFormError.DESCRIPTION_TOO_LONG),
@@ -160,7 +195,7 @@ private fun CreateEventFormContent(
           EventCategory.entries.forEach { category ->
             FilterChip(
                 selected = form.category == category,
-                onClick = { viewModel.onCategorySelect(category) },
+                onClick = { actions.onCategorySelect(category) },
                 label = { Text(stringResource(category.label)) },
                 enabled = editable,
                 modifier = Modifier.testTag(C.Tag.createEventCategory(category.name)),
@@ -220,7 +255,7 @@ private fun CreateEventFormContent(
 
       Labeled(R.string.create_event_location_label) {
         OutlinedCard(
-            onClick = onPickLocation,
+            onClick = actions.onPickLocation,
             enabled = editable,
             modifier = Modifier.fillMaxWidth().testTag(C.Tag.create_event_location),
         ) {
@@ -238,7 +273,7 @@ private fun CreateEventFormContent(
       Labeled(R.string.create_event_capacity_label) {
         OutlinedTextField(
             value = form.capacityText,
-            onValueChange = viewModel::onCapacityChange,
+            onValueChange = actions.onCapacityChange,
             suffix = { Text(stringResource(R.string.create_event_capacity_suffix)) },
             singleLine = true,
             enabled = editable,
@@ -265,7 +300,7 @@ private fun CreateEventFormContent(
             enabled = editable,
             tag = C.Tag.create_event_private,
         ) {
-          viewModel.onVisibilityChange(true)
+          actions.onVisibilityChange(true)
         }
         Spacer(Modifier.height(8.dp))
         VisibilityOption(
@@ -275,7 +310,7 @@ private fun CreateEventFormContent(
             enabled = editable,
             tag = C.Tag.create_event_public,
         ) {
-          viewModel.onVisibilityChange(false)
+          actions.onVisibilityChange(false)
         }
       }
     }
@@ -284,12 +319,12 @@ private fun CreateEventFormContent(
   when (dialog) {
     PickerDialog.DATE ->
         DateDialog(form.date, state.today, onDismiss = { dialog = null }) {
-          viewModel.onDatePick(it)
+          actions.onDatePick(it)
           dialog = null
         }
     PickerDialog.START ->
         TimeDialog(R.string.create_event_starts_label, form.startTime, null, { dialog = null }) {
-          viewModel.onStartTimePick(it)
+          actions.onStartTimePick(it)
           dialog = null
         }
     PickerDialog.END ->
@@ -299,13 +334,13 @@ private fun CreateEventFormContent(
             onClear =
                 form.endTime?.let {
                   {
-                    viewModel.onEndTimePick(null)
+                    actions.onEndTimePick(null)
                     dialog = null
                   }
                 },
             onDismiss = { dialog = null },
         ) {
-          viewModel.onEndTimePick(it)
+          actions.onEndTimePick(it)
           dialog = null
         }
     null -> Unit
