@@ -1,4 +1,5 @@
-// Contributors: Claude Opus 5.5 (wrote these tests; cancelled tasks and wrong-typed fields).
+// Contributors: Claude Opus 5.5 (wrote these tests; cancelled tasks and wrong-typed fields);
+// Claude (isAssociationVerified tests, #45).
 package com.polysocial.model.user
 
 import com.google.android.gms.tasks.TaskCompletionSource
@@ -55,6 +56,7 @@ class FirestoreUserProfileRepositoryTest {
   private fun snapshot(fields: Map<String, Any?>?): DocumentSnapshot = mockk {
     every { exists() } returns (fields != null)
     every { getString(any()) } answers { fields?.get(firstArg()) as String? }
+    every { this@mockk.get(any<String>()) } answers { fields?.get(firstArg()) }
     every { getTimestamp(any()) } answers { fields?.get(firstArg()) as Timestamp? }
   }
 
@@ -108,6 +110,47 @@ class FirestoreUserProfileRepositoryTest {
     val result = repository.getProfile("u1") as ProfileResult.Found
 
     assertEquals(AccountType.ASSOCIATION, result.profile.accountType)
+  }
+
+  @Test
+  fun getProfile_readsAVerifiedAssociation() = runTest {
+    every { ref.get() } returns
+        Tasks.forResult(
+            snapshot(
+                storedFields + ("accountType" to "association") + ("isAssociationVerified" to true)
+            )
+        )
+
+    val result = repository.getProfile("u1") as ProfileResult.Found
+
+    assertTrue(result.profile.isAssociationVerified)
+    assertTrue(result.profile.isVerifiedAssociation)
+  }
+
+  @Test
+  fun getProfile_withoutTheVerifiedFlag_isNotVerified() = runTest {
+    every { ref.get() } returns
+        Tasks.forResult(snapshot(storedFields + ("accountType" to "association")))
+
+    val result = repository.getProfile("u1") as ProfileResult.Found
+
+    assertFalse(result.profile.isAssociationVerified)
+  }
+
+  @Test
+  fun getProfile_verifiedFlagOfTheWrongType_readsAsNotVerified() = runTest {
+    every { ref.get() } returns
+        Tasks.forResult(
+            snapshot(
+                storedFields +
+                    ("accountType" to "association") +
+                    ("isAssociationVerified" to "true")
+            )
+        )
+
+    val result = repository.getProfile("u1") as ProfileResult.Found
+
+    assertFalse(result.profile.isAssociationVerified)
   }
 
   @Test
@@ -190,6 +233,19 @@ class FirestoreUserProfileRepositoryTest {
     val fields = written.captured as Map<*, *>
     assertEquals("association", fields["accountType"])
     assertFalse(fields.containsKey("isAssociationVerified"))
+  }
+
+  @Test
+  fun createProfile_aClaimedVerification_isNotWritten() = runTest {
+    transactionsSee(snapshot(null))
+    val written = slot<Any>()
+    every { transaction.set(ref, capture(written)) } returns transaction
+
+    repository.createProfile(
+        profile.copy(accountType = AccountType.ASSOCIATION, isAssociationVerified = true)
+    )
+
+    assertFalse((written.captured as Map<*, *>).containsKey("isAssociationVerified"))
   }
 
   @Test

@@ -1,13 +1,16 @@
-// Contributors: Claude (drafted the Firestore event repository and the public upcoming-events
-// listener, #49).
+// Contributors: Claude (drafted the Firestore event repository; verified association badge, #45;
+// the public upcoming-events listener, #49).
 package com.polysocial.model.event
 
 import com.google.firebase.FirebaseException
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.MetadataChanges
+import com.google.firebase.firestore.TransactionOptions
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.network.NetworkMonitor
+import com.polysocial.model.user.ProfileResult
+import com.polysocial.model.user.UserProfileRepository
 import java.time.Clock
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
@@ -21,15 +24,14 @@ const val EVENTS_COLLECTION = "events"
 
 /**
  * [EventRepository] backed by Firestore, following the [EventRepository.createEvent] contract: the
- * event is validated, then the signed-in user and the connection are checked, and only then
- * written.
+ * event is validated, then the signed-in user and the connection are checked, then the creator's
+ * profile is read for the association badge, and only then is the event written.
  *
  * The write runs in a transaction. Firestore only runs transactions against the server, so if the
  * connection drops after the [NetworkMonitor] check, the write fails with a network error instead
- * of being queued and finished later.
- *
- * Every event is created without the association badge for now: the creator's verified-association
- * status comes with the profile (#90).
+ * of being queued and finished later. The transaction is tried only once: it only creates a new
+ * document, so it can't conflict with another write, and retries would just delay the offline
+ * error.
  *
  * @param clock the current time, used to reject events that start in the past and to place the
  *   upcoming-events window.
@@ -37,6 +39,7 @@ const val EVENTS_COLLECTION = "events"
 class FirestoreEventRepository(
     private val db: FirebaseFirestore,
     private val auth: AuthRepository,
+    private val profiles: UserProfileRepository,
     private val network: NetworkMonitor,
     private val clock: Clock,
 ) : EventRepository {
@@ -46,11 +49,18 @@ class FirestoreEventRepository(
     if (errors.isNotEmpty()) return CreateEventResult.Invalid(errors)
     val user = auth.currentUser() ?: return CreateEventResult.NotSignedIn
     if (!network.isOnline()) return CreateEventResult.NetworkError
+    val isVerifiedAssociation =
+        when (val profile = profiles.getProfile(user.uid)) {
+          is ProfileResult.Found -> profile.profile.isVerifiedAssociation
+          ProfileResult.NotFound -> false
+          ProfileResult.NetworkError -> return CreateEventResult.NetworkError
+          ProfileResult.UnexpectedError -> return CreateEventResult.UnexpectedError
+        }
 
     val document = db.collection(EVENTS_COLLECTION).document()
-    val fields = event.withCreator(user.uid, isVerifiedAssociation = false).toFirestoreMap()
+    val fields = event.withCreator(user.uid, isVerifiedAssociation).toFirestoreMap()
     return try {
-      db.runTransaction { it.set(document, fields) }.await()
+      db.runTransaction(SINGLE_ATTEMPT) { it.set(document, fields) }.await()
       CreateEventResult.Created(document.id)
     } catch (e: FirebaseException) {
       if (e.isOffline()) CreateEventResult.NetworkError else CreateEventResult.UnexpectedError
@@ -99,4 +109,8 @@ class FirestoreEventRepository(
 
   private fun FirebaseException.isOffline() =
       this is FirebaseFirestoreException && code == FirebaseFirestoreException.Code.UNAVAILABLE
+
+  private companion object {
+    val SINGLE_ATTEMPT: TransactionOptions = TransactionOptions.Builder().setMaxAttempts(1).build()
+  }
 }

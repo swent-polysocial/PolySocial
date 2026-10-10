@@ -1,4 +1,4 @@
-<!-- Contributors: Claude (drafted this page and its diagrams from the README, the Scrum Board and the issue descriptions; association accounts without an EPFL email; Create Event design update, #44; ViewModel rule wording; Security Rules state after #35). -->
+<!-- Contributors: Claude (drafted this page and its diagrams from the README, the Scrum Board and the issue descriptions; association accounts without an EPFL email; Create Event design update, #44; ViewModel rule wording; Security Rules state after #35; association badge from the profile, #45). -->
 
 How PolySocial is built, as we currently envision it. The page follows the [Android App Architecture guide](https://developer.android.com/topic/architecture/intro): a **UI layer** (Compose screens and ViewModels), a **domain layer** of pure Kotlin logic, and a **data layer** of repositories in front of Firebase, the map and geocoding services, and the device sensors.
 
@@ -159,7 +159,8 @@ flowchart TB
   createS["Create Event screen<br/>form · map-pin location"]:::s1 --> createVM["<b>CreateEventViewModel</b><br/>Editing · Saving · Created · Failed"]:::s1
   createVM --> valid["Event validation<br/><i>domain</i>"]:::s1
   createVM --> ev["<b>EventRepository</b><br/>createEvent"]:::s1
-  createVM --> prof["<b>UserProfileRepository</b><br/>association badge"]:::s1
+  createVM -. "association name, later" .-> prof["<b>UserProfileRepository</b>"]:::s1
+  ev -- "creator's badge" --> prof
   createVM -.-> geo["<b>GeocodingRepository</b><br/>address search, later"]:::pb
   ev --> fs[("Firestore<br/>events · users")]:::ext
   prof --> fs

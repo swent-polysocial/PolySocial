@@ -1,5 +1,5 @@
-// Contributors: Claude (drafted the EventRepository interface and the public upcoming-events
-// query, #49); Mohamed Khellaf (reviewed).
+// Contributors: Claude (drafted the EventRepository interface; the creator's profile, #45; the
+// public upcoming-events query, #49); Mohamed Khellaf (reviewed).
 package com.polysocial.model.event
 
 import kotlinx.coroutines.flow.Flow
@@ -55,6 +55,11 @@ interface EventRepository {
    * [CreateEventResult.NotSignedIn], then an offline device returns
    * [CreateEventResult.NetworkError]. Firestore would queue a write made offline instead of
    * failing, so the repository must not start one.
+   *
+   * Then the creator's profile decides [Event.isAssociationEvent]: true only for a verified
+   * association. If the profile can't be read, nothing is written and the result is
+   * [CreateEventResult.NetworkError] or [CreateEventResult.UnexpectedError], so a verified
+   * association never publishes without its badge. A user without a profile gets no badge.
    */
   suspend fun createEvent(event: Event): CreateEventResult
 
