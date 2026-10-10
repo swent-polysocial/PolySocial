@@ -1,5 +1,5 @@
 // Contributors: Claude Opus 5.5 (wrote these tests; refresh after Log in; full profile fixture,
-// #34).
+// #34); Claude (log out, #74).
 package com.polysocial.ui.start
 
 import com.polysocial.model.auth.AuthUser
@@ -195,5 +195,54 @@ class AppStartViewModelTest {
 
     assertEquals(StartDestination.Login, nextLaunch.destination.value)
     assertEquals(1, profiles.getProfileCalls)
+  }
+
+  @Test
+  fun logOut_signsOutAndRoutesToLogin() = runTest {
+    auth.user = verified
+    profiles.getProfileResult = found
+    val viewModel = AppStartViewModel(auth, profiles)
+    advanceUntilIdle()
+    assertEquals(StartDestination.Main, viewModel.destination.value)
+
+    viewModel.logOut()
+
+    assertEquals(StartDestination.Login, viewModel.destination.value)
+    assertEquals(1, auth.logOutCalls)
+    assertEquals(null, auth.currentUser())
+  }
+
+  @Test
+  fun logOutWhileTheProfileIsLoading_ignoresTheLateResult() = runTest {
+    auth.user = verified
+    profiles.getProfileResult = found
+    profiles.gate = CompletableDeferred()
+    val viewModel = AppStartViewModel(auth, profiles)
+    advanceUntilIdle()
+    assertEquals(StartDestination.Loading, viewModel.destination.value)
+
+    viewModel.logOut()
+    profiles.gate?.complete(Unit)
+    advanceUntilIdle()
+
+    // The read finished after the sign-out: it must not open the app for nobody.
+    assertEquals(StartDestination.Login, viewModel.destination.value)
+  }
+
+  @Test
+  fun refreshAfterLogOut_routesTheNextAccount() = runTest {
+    auth.user = verified
+    profiles.getProfileResult = found
+    val viewModel = AppStartViewModel(auth, profiles)
+    advanceUntilIdle()
+    viewModel.logOut()
+
+    auth.user = verified.copy(uid = "u2", email = "b@epfl.ch")
+    profiles.getProfileResult = ProfileResult.NotFound
+    viewModel.refresh()
+    advanceUntilIdle()
+
+    assertEquals(StartDestination.ProfileSetup, viewModel.destination.value)
+    assertEquals("u2", profiles.lastRequestedUid)
   }
 }
