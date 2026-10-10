@@ -239,6 +239,8 @@ fun AuthFlow(
     destination = AuthDestination.Welcome
   }
   fun open(target: AuthDestination) {
+    // A double tap reports the same screen twice; it must not be stacked on itself.
+    if (target == destination) return
     backStack =
         if (target in backStack) backStack.takeWhile { it != target } else backStack + destination
     destination = target
