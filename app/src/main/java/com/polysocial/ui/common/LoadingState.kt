@@ -1,5 +1,5 @@
 // Contributors: Claude (shared loading state from the Figma "App shell" section, #43; spinner and
-// text matched to the Figma frames, #74).
+// text matched to the Figma frames, #74; rotation in the draw phase after review).
 package com.polysocial.ui.common
 
 import androidx.compose.animation.core.LinearEasing
@@ -19,11 +19,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -70,7 +70,8 @@ private fun Spinner() {
                   infiniteRepeatable(tween(durationMillis = 1000, easing = LinearEasing)),
               label = "Spinner rotation",
           )
-  Canvas(Modifier.size(32.dp).progressSemantics().rotate(rotation)) {
+  // Rotating in the graphics layer redraws the spinner each frame without recomposing it.
+  Canvas(Modifier.size(32.dp).progressSemantics().graphicsLayer { rotationZ = rotation }) {
     val stroke = 3.2.dp.toPx()
     // The ring's centre line has a 12.8 dp radius: it starts 3.2 dp inside the 32 dp box.
     val inset = 3.2.dp.toPx()
