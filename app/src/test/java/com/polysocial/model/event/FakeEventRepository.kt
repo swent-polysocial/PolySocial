@@ -1,8 +1,9 @@
-// Contributors: Claude (wrote this fake for tests, including the upcoming-events query, #49);
-// Mohamed Khellaf (reviewed).
+// Contributors: Claude (wrote this fake for tests, including the upcoming-events query, #49, and
+// the pending save, #46); Mohamed Khellaf (reviewed).
 package com.polysocial.model.event
 
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
@@ -10,8 +11,8 @@ import kotlinx.coroutines.flow.map
 
 /**
  * In-memory [EventRepository] for tests. It follows the [EventRepository.createEvent] contract,
- * with a fixed clock: validation, then the signed-in user, then [failure], then the save. Tests
- * that read events [seed] them first.
+ * with a fixed clock: validation, then the signed-in user, then [pending], then [failure], then the
+ * save. Tests that read events [seed] them first.
  *
  * @property currentUid the signed-in user, or null when nobody is signed in.
  * @property creatorIsVerifiedAssociation whether the signed-in user is a verified association.
@@ -30,6 +31,12 @@ class FakeEventRepository(
    * failure such as [CreateEventResult.NetworkError].
    */
   var failure: CreateEventResult? = null
+
+  /**
+   * When set, [createEvent] waits for it to complete before going on, so a test can check what the
+   * screen shows while the event is being saved.
+   */
+  var pending: CompletableDeferred<Unit>? = null
 
   /** When true, [getUpcomingPublicEvents] emits [PublicEventsResult.Error], like a denied query. */
   var readFailure = false
@@ -50,6 +57,7 @@ class FakeEventRepository(
     val errors = validateNewEvent(event, now)
     if (errors.isNotEmpty()) return CreateEventResult.Invalid(errors)
     val uid = currentUid ?: return CreateEventResult.NotSignedIn
+    pending?.await()
     failure?.let {
       return it
     }

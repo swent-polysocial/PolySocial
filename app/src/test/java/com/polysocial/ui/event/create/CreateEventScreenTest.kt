@@ -26,6 +26,7 @@ import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
+import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -194,6 +195,27 @@ class CreateEventScreenTest {
     submit()
 
     node(C.Tag.event_created_screen).assertIsDisplayed()
+  }
+
+  @Test
+  fun whileSaving_theFormIsLockedUntilTheEventIsCreated() {
+    node(C.Tag.create_event_title).performTextInput("Study together")
+    pickDateTimeAndLocation()
+    val save = CompletableDeferred<Unit>()
+    repository.pending = save
+
+    submit()
+
+    node(C.Tag.create_event_submit).assertTextContains("Creating event…").assertIsNotEnabled()
+    node(C.Tag.create_event_title).assertIsNotEnabled()
+    node(C.Tag.create_event_public).performScrollTo().assertIsNotEnabled()
+    assertTrue(repository.events.isEmpty())
+
+    save.complete(Unit)
+    composeTestRule.waitForIdle()
+
+    node(C.Tag.event_created_screen).assertIsDisplayed()
+    assertEquals(1, repository.events.size)
   }
 
   @Test
