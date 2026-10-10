@@ -624,6 +624,19 @@ class AuthFlowTest {
   }
 
   @Test
+  fun backAfterAFailedProfileSaveSignsOut() {
+    auth.user = user
+    profiles.createProfileResult = CreateProfileResult.NetworkError
+    launch()
+    completeProfileStep()
+    profileNode(ProfileSetupTestTags.BACK).assertIsEnabled()
+    pressSystemBack()
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    assertEquals(1, auth.logOutCalls)
+    assertEquals(0, exits)
+  }
+
+  @Test
   fun aSavedProfileOpensTheAppEvenIfAReadWouldNotFindItYet() {
     auth.user = user
     launch()
@@ -634,6 +647,37 @@ class AuthFlowTest {
     compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
     compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertDoesNotExist()
     assertEquals(1, profiles.getProfileCalls)
+  }
+
+  @Test
+  fun rotationDuringALogInNavigatesOnce() {
+    auth.logInGate = CompletableDeferred()
+    auth.logInResult = LogInResult.Success(user)
+    launch()
+    openLoginAndSubmit()
+    restoration.emulateSavedInstanceStateRestore()
+    compose.onNodeWithTag(LoginScreenTestTags.SCREEN).assertIsDisplayed()
+    compose.runOnIdle { auth.logInGate!!.complete(Unit) }
+    compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertIsDisplayed()
+    restoration.emulateSavedInstanceStateRestore()
+    compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertIsDisplayed()
+    assertEquals(1, auth.logInCalls)
+    assertEquals(1, profiles.getProfileCalls)
+  }
+
+  @Test
+  fun rotationWhileTheProfileSavesOpensTheAppOnce() {
+    auth.user = user
+    profiles.createGate = CompletableDeferred()
+    launch()
+    profileNode(ProfileSetupTestTags.FULL_NAME).performTextReplacement("Edited Name")
+    completeProfileStep()
+    restoration.emulateSavedInstanceStateRestore()
+    profileNode(ProfileSetupTestTags.BACK).assertIsNotEnabled()
+    compose.runOnIdle { profiles.createGate!!.complete(Unit) }
+    compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
+    assertEquals(1, profiles.getProfileCalls)
+    assertEquals("Edited Name", profiles.createdProfiles.single().displayName)
   }
 
   @Test
