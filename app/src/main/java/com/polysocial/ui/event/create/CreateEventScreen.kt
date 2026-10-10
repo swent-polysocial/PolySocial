@@ -1,6 +1,7 @@
 // Contributors: Claude (drafted the Create Event screen from the Figma, section 04).
 package com.polysocial.ui.event.create
 
+import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -104,9 +105,13 @@ private fun CreateEventFormContent(
   val editable = state.status != CreateEventStatus.Saving
   var dialog by remember { mutableStateOf<PickerDialog?>(null) }
 
+  // Leaving while saving would hide the result: the write can still succeed after the screen is
+  // gone, and the organizer would never see the confirmation.
+  BackHandler(enabled = !editable) {}
+
   Scaffold(
       modifier = modifier.testTag(C.Tag.create_event_screen),
-      topBar = { TopRow(R.string.create_event_title, onClose) },
+      topBar = { TopRow(R.string.create_event_title, onClose, closeEnabled = editable) },
       bottomBar = { ActionBar(state, viewModel::onSubmit) },
   ) { padding ->
     Column(
@@ -308,12 +313,16 @@ private fun CreateEventFormContent(
 }
 
 @Composable
-private fun TopRow(@StringRes title: Int, onClose: () -> Unit) {
+private fun TopRow(@StringRes title: Int, onClose: () -> Unit, closeEnabled: Boolean = true) {
   Row(
       verticalAlignment = Alignment.CenterVertically,
       modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
   ) {
-    IconButton(onClick = onClose, modifier = Modifier.testTag(C.Tag.create_event_close)) {
+    IconButton(
+        onClick = onClose,
+        enabled = closeEnabled,
+        modifier = Modifier.testTag(C.Tag.create_event_close),
+    ) {
       Icon(
           painterResource(R.drawable.ic_close),
           contentDescription = stringResource(R.string.create_event_close),
