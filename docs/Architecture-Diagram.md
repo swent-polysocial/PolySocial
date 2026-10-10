@@ -60,7 +60,7 @@ flowchart TB
   login -- "verified" --> gate
   verify -- "Continue" --> gate
   gate -- "no profile yet" --> profile["Profile step"]:::s1
-  profile -- "saved" --> gate
+  profile -- "saved" --> main
   profile -- "Back: sign out" --> welcome
   gate -- "ready" --> main(["Main app: 4 tabs"]):::s1
 ```
@@ -268,9 +268,13 @@ flowchart TD
   q1 -- yes --> q2{"Email verified?"}
   q2 -- no --> verify["Verify Email screen"]:::s1
   q2 -- yes --> load["Loading your profile…<br/>(App start · loading)"]:::s1 --> q3{"Profile exists?"}
-  q3 -- no --> create["Profile step:<br/>createProfile(), once"]:::s1 --> main["Main app, Events tab"]:::s1
+  q3 -- no --> create["Profile step:<br/>createProfile(), once"]:::s1
+  main["Main app, Events tab"]:::s1
+  create -- "saved" --> main
+  create -- "Back: sign out" --> welcome
   q3 -- yes --> main
   q3 -- "load failed" --> err["Couldn't load your profile<br/>+ Retry, never a blank screen"]:::s1
+  err -- "Retry" --> load
 ```
 
 ### 4.4 Map: public events and distances (#49–#51)
