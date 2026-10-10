@@ -79,7 +79,7 @@
     <string name="create_event_pick_date">Pick</string>
     <string name="create_event_ends_optional">Optional</string>
     <string name="create_event_ends_next_day">+1 day</string>
-    <string name="create_event_clear_end_time">Clear</string>
+    <string name="create_event_clear_end_time">Clear end time</string>
     <string name="create_event_location_label">Location</string>
     <string name="create_event_location_placeholder">Search or drop a pin</string>
     <string name="create_event_capacity_label">Capacity (optional)</string>

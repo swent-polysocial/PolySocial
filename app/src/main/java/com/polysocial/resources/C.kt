@@ -40,6 +40,7 @@ object C {
     const val create_event_failure = "create_event_failure"
     const val create_event_dialog_confirm = "create_event_dialog_confirm"
     const val create_event_dialog_dismiss = "create_event_dialog_dismiss"
+    const val create_event_dialog_clear = "create_event_dialog_clear"
     const val event_created_screen = "event_created_screen"
     const val event_created_view_event = "event_created_view_event"
     const val event_created_back_to_map = "event_created_back_to_map"

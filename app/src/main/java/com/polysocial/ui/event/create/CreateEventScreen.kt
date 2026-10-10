@@ -291,10 +291,13 @@ private fun CreateEventFormContent(
         TimeDialog(
             R.string.create_event_ends_label,
             form.endTime,
-            onClear = {
-              viewModel.onEndTimePick(null)
-              dialog = null
-            },
+            onClear =
+                form.endTime?.let {
+                  {
+                    viewModel.onEndTimePick(null)
+                    dialog = null
+                  }
+                },
             onDismiss = { dialog = null },
         ) {
           viewModel.onEndTimePick(it)
@@ -567,16 +570,15 @@ private fun TimeDialog(
         }
       },
       dismissButton = {
-        TextButton(
-            onClick = onClear ?: onDismiss,
-            modifier = Modifier.testTag(C.Tag.create_event_dialog_dismiss),
-        ) {
-          Text(
-              stringResource(
-                  if (onClear != null) R.string.create_event_clear_end_time
-                  else R.string.create_event_cancel
-              )
-          )
+        Row {
+          if (onClear != null) {
+            TextButton(onClick = onClear, Modifier.testTag(C.Tag.create_event_dialog_clear)) {
+              Text(stringResource(R.string.create_event_clear_end_time))
+            }
+          }
+          TextButton(onClick = onDismiss, Modifier.testTag(C.Tag.create_event_dialog_dismiss)) {
+            Text(stringResource(R.string.create_event_cancel))
+          }
         }
       },
   ) {
