@@ -1,7 +1,8 @@
 // Contributors: Claude Opus 5.5 (wrote these tests; large font scale, layout at the default font
 // size, one save report after rotation, picker accessibility); Claude Opus 5.5 (testing agent:
 // double tap, blocked
-// Continue, existing profile, error retry and picker menu behaviour).
+// Continue, existing profile, error retry and picker menu behaviour); Claude (Back locked while
+// saving, #74).
 package com.polysocial.ui.profile
 
 import android.app.Application
@@ -287,6 +288,24 @@ class ProfileSetupScreenTest {
 
     assertEquals(1, backCalls)
     assertEquals(0, savedCalls)
+  }
+
+  @Test
+  fun back_isLockedWhileSavingAndUnlockedAfterAFailure() {
+    profiles.createGate = CompletableDeferred()
+    profiles.createProfileResult = CreateProfileResult.NetworkError
+    setScreen()
+    pickSectionAndYear()
+
+    node(ProfileSetupTestTags.CONTINUE).performClick()
+    composeTestRule.waitForIdle()
+    // Leaving now would drop the save's result before the app has used it.
+    node(ProfileSetupTestTags.BACK).assertIsNotEnabled()
+
+    profiles.createGate?.complete(Unit)
+    composeTestRule.waitForIdle()
+    node(ProfileSetupTestTags.BACK).assertIsEnabled().performClick()
+    assertEquals(1, backCalls)
   }
 
   @Test

@@ -1,8 +1,10 @@
 // Contributors: Claude (profile step screen for #34, built from the Figma "First proposal
 // revamped" Profile frames; layout that grows with large text, one save report and picker
-// accessibility after review; plain Column layout after review; exact text from the theme, #74).
+// accessibility after review; plain Column layout after review; exact text from the theme, and
+// Back locked while saving, #74).
 package com.polysocial.ui.profile
 
+import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -120,7 +122,9 @@ object ProfileSetupTestTags {
  * The profile step after email verification. Reports where to go next through the callbacks, so the
  * app's navigation (#74) decides how to get there. [onProfileSaved] is called once per visit, when
  * the profile exists: the caller must then leave this step and remove it from the back stack, or
- * the user could come back to a finished, locked form.
+ * the user could come back to a finished, locked form. Back (the arrow and the system button) does
+ * nothing while the profile is being saved or is saved, so the step stays on screen until
+ * [onProfileSaved] has run.
  */
 @Composable
 fun ProfileSetupScreen(
@@ -137,6 +141,7 @@ fun ProfileSetupScreen(
       onProfileSaved()
     }
   }
+  BackHandler(enabled = state.status.locksBack) {}
   ProfileSetupContent(
       state = state,
       onBack = onBack,
@@ -146,6 +151,10 @@ fun ProfileSetupScreen(
       onContinue = viewModel::onContinue,
   )
 }
+
+/** While saving or saved, leaving would drop the save's result before the app has used it. */
+private val ProfileSetupStatus.locksBack: Boolean
+  get() = this == ProfileSetupStatus.Saving || this == ProfileSetupStatus.Saved
 
 /** Draws the profile step for [state]; all measurements come from the Figma Profile frames. */
 @Composable
@@ -175,7 +184,7 @@ fun ProfileSetupContent(
         // The gaps are the Figma frame's; a taller element (larger font size) pushes the ones below
         // it down.
         Column(Modifier.fillMaxWidth()) {
-          TopBar(onBack)
+          TopBar(onBack, backEnabled = !state.status.locksBack)
           Spacer(Modifier.height(11.5.dp))
           Text(
               stringResource(R.string.profile_title),
@@ -252,14 +261,14 @@ fun ProfileSetupContent(
 }
 
 @Composable
-private fun TopBar(onBack: () -> Unit) {
+private fun TopBar(onBack: () -> Unit, backEnabled: Boolean) {
   // Back arrow: 22 dp icon at (19, 23), inside a 44 dp touch target. "Step 1 of 2" (y 26) and the
   // two progress bars (y 32) end at the right margin.
   Row(Modifier.fillMaxWidth().padding(top = 12.dp)) {
     Box(
         Modifier.offset(x = (-12).dp)
             .size(44.dp)
-            .clickable(onClick = onBack)
+            .clickable(enabled = backEnabled, onClick = onBack)
             .testTag(ProfileSetupTestTags.BACK),
         contentAlignment = Alignment.Center,
     ) {
