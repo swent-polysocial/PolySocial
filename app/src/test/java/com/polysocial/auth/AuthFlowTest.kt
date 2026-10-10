@@ -1,6 +1,7 @@
 // Contributors: OpenAI Codex (tested startup/session routing, profile failure recovery and system
 // Back handoffs and verification/profile integration); Claude (signed-in shell without Hilt, #105;
-// signed-out back stack, profile step, sign-out and Figma start states, #74).
+// signed-out back stack, profile step, sign-out and Figma start states, #74; sign-out from
+// anywhere, form resets and rotation cases after review).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -8,7 +9,6 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.lifecycle.ViewModelStore
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
 import com.polysocial.model.auth.*
@@ -54,24 +54,20 @@ class AuthFlowTest {
     }
   }
 
+  private lateinit var start: AppStartViewModel
+
   private fun launch() {
-    val start = AppStartViewModel(auth, profiles)
+    start = AppStartViewModel(auth, profiles)
     val verification =
         VerifyEmailViewModel(auth, MemoryVerificationStore(), VerificationClock { 1000 }).also {
           verificationModels.add(it)
         }
+    // Like the app's, the step's ViewModel is created with the flow and outlives its screen.
+    val profileStep = ProfileSetupViewModel(auth, profiles)
+    // The real Events tab needs Hilt; these tests only check that the shell opens.
     restoration.setContent {
       PolySocialTheme {
-        AuthFlow(
-            signUp,
-            { exits++ },
-            login,
-            start,
-            verification,
-            profileSetupViewModel = { key ->
-              viewModel(key = key) { ProfileSetupViewModel(auth, profiles) }
-            },
-        ) {
+        AuthFlow(signUp, { exits++ }, login, start, verification, profileStep) {
           AppShell(eventsContent = { TabRootScreen(Tab.EVENTS) })
         }
       }
@@ -534,5 +530,97 @@ class AuthFlowTest {
     compose.runOnIdle { assertTrue(compose.activity.isFinishing) }
     compose.onNodeWithTag(LoginScreenTestTags.SCREEN).assertDoesNotExist()
     assertEquals(0, exits)
+  }
+
+  // ---- Found in review: sign-out from anywhere, form resets and rotation ----
+
+  /** An empty text field (its placeholder is not part of its EditableText). */
+  private fun hasNoInput() =
+      SemanticsMatcher.expectValue(
+          androidx.compose.ui.semantics.SemanticsProperties.EditableText,
+          androidx.compose.ui.text.AnnotatedString(""),
+      )
+
+  @Test
+  fun signOutFromTheAppReturnsToWelcomeWithAFreshLogIn() {
+    auth.logInResult = LogInResult.Success(user)
+    profiles.getProfileResult = ProfileResult.Found(profile)
+    launch()
+    openLoginAndSubmit()
+    compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
+
+    // What Log out on the Profile tab (#109) will do: only the start routing's logOut().
+    compose.runOnIdle { start.logOut() }
+
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.app_shell).assertDoesNotExist()
+    compose.onNodeWithTag(WelcomeTags.LogIn).performScrollTo().performClick()
+    // A kept LoggedIn status would have left Log in at once.
+    compose.onNodeWithTag(LoginScreenTestTags.SCREEN).assertIsDisplayed()
+    compose.onNodeWithTag(LoginScreenTestTags.EMAIL).assert(hasNoInput())
+    compose.onNodeWithTag(LoginScreenTestTags.BACK).assertIsEnabled()
+    assertEquals(1, auth.logInCalls)
+  }
+
+  @Test
+  fun signOutResetsTheLogInAndSignUpForms() {
+    auth.logInResult = LogInResult.Success(user)
+    launch()
+    compose.onNodeWithTag(WelcomeTags.SignUp).performScrollTo().performClick()
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.FullName)).performTextInput("Test Student")
+    compose.onNodeWithTag(SignUpTags.LogIn).performScrollTo().performClick()
+    compose.onNodeWithTag(LoginScreenTestTags.EMAIL).performTextInput(user.email)
+    compose.onNodeWithTag(LoginScreenTestTags.PASSWORD).performTextInput("password1")
+    compose.onNodeWithTag(LoginScreenTestTags.LOG_IN).performScrollTo().performClick()
+    compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertIsDisplayed()
+    profileNode(ProfileSetupTestTags.BACK).performClick()
+
+    compose.onNodeWithTag(WelcomeTags.LogIn).performScrollTo().performClick()
+    compose.onNodeWithTag(LoginScreenTestTags.SCREEN).assertIsDisplayed()
+    compose.onNodeWithTag(LoginScreenTestTags.EMAIL).assert(hasNoInput())
+    compose.onNodeWithTag(LoginScreenTestTags.BACK).assertIsEnabled()
+    compose.onNodeWithTag(LoginScreenTestTags.CREATE_ACCOUNT).performScrollTo().performClick()
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.FullName)).assert(hasNoInput())
+    assertEquals(1, auth.logInCalls)
+    assertEquals(1, profiles.getProfileCalls)
+  }
+
+  @Test
+  fun signOutLeavesAnEmptyBackStack() {
+    auth.logInResult = LogInResult.Success(user)
+    launch()
+    openLoginAndSubmit()
+    profileNode(ProfileSetupTestTags.BACK).performClick()
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    pressSystemBack()
+    // Nothing below Welcome: Back leaves the app instead of reopening Log in.
+    compose.runOnIdle { assertTrue(compose.activity.isFinishing) }
+    compose.onNodeWithTag(LoginScreenTestTags.SCREEN).assertDoesNotExist()
+    assertEquals(0, exits)
+  }
+
+  @Test
+  fun signOutDuringTheProfileReadShowsWelcomeAndIgnoresTheLateResult() {
+    auth.user = user
+    profiles.gate = CompletableDeferred()
+    profiles.getProfileResult = ProfileResult.Found(profile)
+    launch()
+    compose.onNodeWithTag(C.Tag.loading_state).assertIsDisplayed()
+    compose.runOnIdle { start.logOut() }
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    compose.runOnIdle { profiles.gate!!.complete(Unit) }
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.app_shell).assertDoesNotExist()
+  }
+
+  @Test
+  fun recreationOnVerifyEmailDoesNotLookLikeASignOut() {
+    auth.user = user.copy(isEmailVerified = false)
+    launch()
+    compose.onNodeWithTag(SignUpTags.VerifyEmailDestination).assertIsDisplayed()
+    restoration.emulateSavedInstanceStateRestore()
+    compose.onNodeWithTag(SignUpTags.VerifyEmailDestination).assertIsDisplayed()
+    compose.onNodeWithTag(WelcomeTags.Screen).assertDoesNotExist()
+    assertEquals(0, auth.logOutCalls)
   }
 }

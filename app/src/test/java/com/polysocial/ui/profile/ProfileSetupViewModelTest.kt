@@ -1,5 +1,5 @@
 // Contributors: Claude Opus 5.5 (wrote these tests; unverified account refused); Claude Opus 5.5
-// (testing agent: the lock after saving, no signed-in user).
+// (testing agent: the lock after saving, no signed-in user); Claude (reset, #74).
 package com.polysocial.ui.profile
 
 import com.polysocial.model.auth.AuthUser
@@ -282,5 +282,49 @@ class ProfileSetupViewModelTest {
     assertEquals("JD", initialsOf("  jean   paul  doe "))
     assertEquals("A", initialsOf("Ada"))
     assertEquals("", initialsOf("   "))
+  }
+
+  @Test
+  fun reset_startsAgainForTheAccountSignedInNow() {
+    val viewModel = viewModel()
+    viewModel.onDisplayNameChange("Edited Name")
+    viewModel.fill()
+
+    auth.user = user.copy(uid = "u2", email = "b@epfl.ch", displayName = "Other Student")
+    viewModel.reset()
+
+    assertEquals(
+        ProfileSetupUiState(displayName = "Other Student", email = "b@epfl.ch"),
+        viewModel.uiState.value,
+    )
+  }
+
+  @Test
+  fun reset_afterASignOut_keepsNothingOfThePreviousAccount() {
+    val viewModel = viewModel()
+    viewModel.fill()
+    viewModel.continueAndSettle()
+    assertEquals(ProfileSetupStatus.Saved, viewModel.status())
+
+    auth.logOut()
+    viewModel.reset()
+
+    assertEquals(ProfileSetupUiState(), viewModel.uiState.value)
+  }
+
+  @Test
+  fun reset_cancelsASaveStillRunning() {
+    profiles.createGate = CompletableDeferred()
+    val viewModel = viewModel()
+    viewModel.fill()
+    viewModel.continueAndSettle()
+    assertEquals(ProfileSetupStatus.Saving, viewModel.status())
+
+    viewModel.reset()
+    profiles.createGate?.complete(Unit)
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+
+    // The late result must not mark the fresh step as saved.
+    assertEquals(ProfileSetupStatus.Editing, viewModel.status())
   }
 }
