@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (vector from the Figma Create Event screens, section 04, #46). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="36dp" android:height="36dp" android:viewportWidth="36" android:viewportHeight="36">
+    <path android:pathData="M9,19L15,25L27,12"
+        android:strokeColor="#1A7046" android:strokeWidth="3" android:strokeLineCap="round" android:strokeLineJoin="round" /></vector>
