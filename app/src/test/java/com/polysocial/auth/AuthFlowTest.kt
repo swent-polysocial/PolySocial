@@ -413,13 +413,12 @@ class AuthFlowTest {
     auth.user = user
     launch()
     compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertIsDisplayed()
-    // Once written, the routing reads the profile again and finds it.
-    profiles.getProfileResult = ProfileResult.Found(profile)
     completeProfileStep()
     compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
     compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertDoesNotExist()
     assertEquals(listOf(profile), profiles.createdProfiles)
-    assertEquals(2, profiles.getProfileCalls)
+    // The save proves the profile exists: no second read.
+    assertEquals(1, profiles.getProfileCalls)
   }
 
   @Test
@@ -622,5 +621,18 @@ class AuthFlowTest {
     compose.onNodeWithTag(SignUpTags.VerifyEmailDestination).assertIsDisplayed()
     compose.onNodeWithTag(WelcomeTags.Screen).assertDoesNotExist()
     assertEquals(0, auth.logOutCalls)
+  }
+
+  @Test
+  fun aSavedProfileOpensTheAppEvenIfAReadWouldNotFindItYet() {
+    auth.user = user
+    launch()
+    // A read right after the save would still find nothing (a stale cache, for example). The app
+    // must not depend on it: before, the step came back saved and locked.
+    profiles.getProfileResult = ProfileResult.NotFound
+    completeProfileStep()
+    compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
+    compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertDoesNotExist()
+    assertEquals(1, profiles.getProfileCalls)
   }
 }

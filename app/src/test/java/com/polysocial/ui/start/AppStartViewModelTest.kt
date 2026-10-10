@@ -1,5 +1,5 @@
 // Contributors: Claude Opus 5.5 (wrote these tests; refresh after Log in; full profile fixture,
-// #34); Claude (log out, #74).
+// #34); Claude (log out and the created profile, #74).
 package com.polysocial.ui.start
 
 import com.polysocial.model.auth.AuthUser
@@ -244,5 +244,32 @@ class AppStartViewModelTest {
 
     assertEquals(StartDestination.ProfileSetup, viewModel.destination.value)
     assertEquals("u2", profiles.lastRequestedUid)
+  }
+
+  @Test
+  fun onProfileCreated_opensTheMainAppWithoutReadingTheProfileAgain() = runTest {
+    auth.user = verified
+    profiles.getProfileResult = ProfileResult.NotFound
+    val viewModel = AppStartViewModel(auth, profiles)
+    advanceUntilIdle()
+    assertEquals(StartDestination.ProfileSetup, viewModel.destination.value)
+
+    viewModel.onProfileCreated()
+    advanceUntilIdle()
+
+    assertEquals(StartDestination.Main, viewModel.destination.value)
+    assertEquals(1, profiles.getProfileCalls)
+  }
+
+  @Test
+  fun onProfileCreated_outsideTheProfileStep_changesNothing() = runTest {
+    val viewModel = AppStartViewModel(auth, profiles)
+    advanceUntilIdle()
+    assertEquals(StartDestination.Login, viewModel.destination.value)
+
+    viewModel.onProfileCreated()
+
+    // Only the profile step may open the app this way, never a signed-out user.
+    assertEquals(StartDestination.Login, viewModel.destination.value)
   }
 }
