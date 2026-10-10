@@ -635,4 +635,19 @@ class AuthFlowTest {
     compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertDoesNotExist()
     assertEquals(1, profiles.getProfileCalls)
   }
+
+  @Test
+  fun aDoubleTapOnSignUpStacksItOnce() {
+    launch()
+    val signUp = compose.onNodeWithTag(WelcomeTags.SignUp).performScrollTo().fetchSemanticsNode()
+    // A fast double tap: both taps reach Welcome before it is replaced by Sign up.
+    compose.runOnIdle {
+      repeat(2) {
+        signUp.config[androidx.compose.ui.semantics.SemanticsActions.OnClick].action?.invoke()
+      }
+    }
+    compose.onNodeWithTag(SignUpTags.Screen).assertIsDisplayed()
+    pressSystemBack()
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+  }
 }
