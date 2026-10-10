@@ -1,6 +1,6 @@
 // Contributors: Claude (profile step screen for #34, built from the Figma "First proposal
 // revamped" Profile frames; layout that grows with large text, one save report and picker
-// accessibility after review; plain Column layout after review).
+// accessibility after review; plain Column layout after review; exact text from the theme, #74).
 package com.polysocial.ui.profile
 
 import androidx.annotation.StringRes
@@ -71,7 +71,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.LineHeightStyle
-import androidx.compose.ui.text.style.TextMotion
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.IntOffset
@@ -98,6 +97,7 @@ import com.polysocial.ui.theme.Ink3
 import com.polysocial.ui.theme.Success
 import com.polysocial.ui.theme.SuccessSoft
 import com.polysocial.ui.theme.Surface
+import com.polysocial.ui.theme.exact
 import kotlin.math.roundToInt
 
 /** Test tags of the profile step. */
@@ -287,12 +287,6 @@ private fun ProgressBar(color: Color) {
           .background(color, RoundedCornerShape(2.dp))
   )
 }
-
-/**
- * Positions glyphs at fractional pixels, like Figma. By default Android rounds each glyph to a
- * whole pixel, which made long texts about 1 dp narrower than in Figma.
- */
-private fun TextStyle.exact(): TextStyle = copy(textMotion = TextMotion.Animated)
 
 /**
  * [exact], and lays lines out like Figma: each line takes its full line height, with the text
