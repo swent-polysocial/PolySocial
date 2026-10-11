@@ -43,7 +43,8 @@ android {
     // Tests marked @EmulatorTest need the Firebase emulators, which CI doesn't start: they run
     // only with -Pemulator, and then alone (see the README).
     val emulatorTest = "com.polysocial.emulator.EmulatorTest"
-    if (project.hasProperty("emulator")) {
+    // -Pemulator (or -Pemulator=true) turns them on; -Pemulator=false doesn't.
+    if (providers.gradleProperty("emulator").orNull.let { it != null && it != "false" }) {
       testInstrumentationRunnerArguments["annotation"] = emulatorTest
     } else {
       testInstrumentationRunnerArguments["notAnnotation"] = emulatorTest
@@ -217,6 +218,8 @@ tasks.withType<Test> {
 
 // Espresso's accessibility checks bring the old protobuf-lite 3.0.1, whose classes shadow
 // Firestore's protobuf-javalite in the test APK and crash Firestore in instrumented tests.
+// No test enables AccessibilityChecks today; one that does may need this revisited, since the
+// checker was built against protobuf-lite.
 configurations
     .matching { it.name.contains("AndroidTest") }
     .configureEach { exclude(group = "com.google.protobuf", module = "protobuf-lite") }
