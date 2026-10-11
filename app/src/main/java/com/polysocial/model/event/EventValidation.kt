@@ -13,6 +13,12 @@ const val MAX_TITLE_LENGTH = 80
 /** Longest allowed [Event.description], the same as Meetup's limit. */
 const val MAX_DESCRIPTION_LENGTH = 5000
 
+/**
+ * Longest stored [Event.locationName]. The name comes from the location picker, not from typing, so
+ * the form shortens a longer one instead of showing an error.
+ */
+const val MAX_LOCATION_NAME_LENGTH = 100
+
 /** A rule that a new [Event] breaks. The Create Event form shows one message per error. */
 enum class EventValidationError {
   BLANK_TITLE,
