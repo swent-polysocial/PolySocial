@@ -1,5 +1,6 @@
 // Contributors: Claude (app shell with bottom navigation and app bar, #41; theme title style after
-// review; bottom bar matched to the Figma; loading state, #43; per-tab back stacks, #42).
+// review; bottom bar matched to the Figma; loading state, #43; per-tab back stacks, #42; Events
+// list, #105).
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.layout.Box
@@ -34,17 +35,22 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import com.polysocial.resources.C
+import com.polysocial.ui.event.list.EventsRoute
 import com.polysocial.ui.theme.Ink3
 
 /**
  * Root of the signed-in app: an app bar with the current tab's title, the current tab's screen, and
- * the bottom navigation bar. Each tab shows the shared loading state, then a placeholder until its
- * feature is built.
+ * the bottom navigation bar. The Events tab shows the upcoming events; the other tabs show the
+ * shared loading state, then a placeholder until their feature is built.
+ *
+ * @param eventsContent the Events tab's root screen. Tests replace it, because the real one needs
+ *   Hilt.
  */
 @Composable
 fun AppShell(
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
+    eventsContent: @Composable () -> Unit = { EventsRoute() },
 ) {
   val backStackEntry by navController.currentBackStackEntryAsState()
   val destination = backStackEntry?.destination
@@ -68,7 +74,9 @@ fun AppShell(
       // One nested graph per tab, so each tab keeps its own back stack.
       Tab.entries.forEach { tab ->
         navigation(startDestination = tab.rootRoute, route = tab.route) {
-          composable(tab.rootRoute) { TabRootScreen(tab) }
+          composable(tab.rootRoute) {
+            if (tab == Tab.EVENTS) eventsContent() else TabRootScreen(tab)
+          }
           composable(tab.detailRoute) { PlaceholderDetailScreen(tab) }
         }
       }

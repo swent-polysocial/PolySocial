@@ -1,5 +1,5 @@
 // Contributors: OpenAI Codex (tested startup/session routing, profile failure recovery and system
-// Back handoffs).
+// Back handoffs); Claude (signed-in shell without Hilt, #105).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -13,6 +13,9 @@ import com.polysocial.resources.C
 import com.polysocial.ui.auth.*
 import com.polysocial.ui.login.LoginScreenTestTags
 import com.polysocial.ui.login.LoginViewModel
+import com.polysocial.ui.navigation.AppShell
+import com.polysocial.ui.navigation.Tab
+import com.polysocial.ui.navigation.TabRootScreen
 import com.polysocial.ui.start.AppStartViewModel
 import com.polysocial.ui.theme.PolySocialTheme
 import kotlinx.coroutines.CompletableDeferred
@@ -35,7 +38,14 @@ class AuthFlowTest {
 
   private fun launch() {
     val start = AppStartViewModel(auth, profiles)
-    restoration.setContent { PolySocialTheme { AuthFlow(signUp, { exits++ }, login, start) } }
+    // The real Events tab needs Hilt; these tests only check that the shell opens.
+    restoration.setContent {
+      PolySocialTheme {
+        AuthFlow(signUp, { exits++ }, login, start) {
+          AppShell(eventsContent = { TabRootScreen(Tab.EVENTS) })
+        }
+      }
+    }
   }
 
   @Test

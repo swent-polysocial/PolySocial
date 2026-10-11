@@ -1,6 +1,7 @@
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; tested tagged validation, backend errors and
 // sign-up handoff with MockK; backend failure messages, recovery actions, login navigation and
-// official Google placeholder behavior, welcome navigation and startup routing injection).
+// official Google placeholder behavior, welcome navigation and startup routing injection); Claude
+// (signed-in shell without Hilt, #105).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -17,6 +18,9 @@ import com.polysocial.resources.C
 import com.polysocial.ui.auth.*
 import com.polysocial.ui.login.LoginScreenTestTags
 import com.polysocial.ui.login.LoginViewModel
+import com.polysocial.ui.navigation.AppShell
+import com.polysocial.ui.navigation.Tab
+import com.polysocial.ui.navigation.TabRootScreen
 import com.polysocial.ui.start.AppStartViewModel
 import com.polysocial.ui.theme.PolySocialTheme
 import io.mockk.coEvery
@@ -459,6 +463,7 @@ class SignUpScreenTest {
             onExit = {},
             loginViewModel = loginViewModel,
             startViewModel = startViewModel,
+            signedInContent = { AppShell(eventsContent = { TabRootScreen(Tab.EVENTS) }) },
         )
       }
     }

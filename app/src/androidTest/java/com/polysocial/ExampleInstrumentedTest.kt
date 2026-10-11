@@ -1,5 +1,6 @@
 // Contributors: Claude (app-shell smoke test, #41); OpenAI Codex
-// (GPT-6.1 Sol, medium; welcome entry/navigation test and preserved shell smoke test).
+// (GPT-6.1 Sol, medium; welcome entry/navigation test and preserved shell smoke test); Claude
+// (placeholder Events root, #105).
 package com.polysocial
 
 import androidx.activity.compose.setContent
@@ -16,6 +17,8 @@ import com.polysocial.screen.MainScreen
 import com.polysocial.ui.auth.SignUpTags
 import com.polysocial.ui.auth.WelcomeTags
 import com.polysocial.ui.navigation.AppShell
+import com.polysocial.ui.navigation.Tab
+import com.polysocial.ui.navigation.TabRootScreen
 import com.polysocial.ui.theme.PolySocialTheme
 import io.github.kakaocup.compose.node.element.ComposeScreen
 import org.junit.Rule
@@ -39,7 +42,10 @@ class MainActivityTest : TestCase() {
   @Test
   fun appShellStartsOnEventsTab() = run {
     // Session routing remains for #74; exercise the signed-in shell directly here.
-    composeTestRule.activity.setContent { PolySocialTheme { AppShell() } }
+    // The placeholder Events root keeps this test off the live Firestore backend.
+    composeTestRule.activity.setContent {
+      PolySocialTheme { AppShell(eventsContent = { TabRootScreen(Tab.EVENTS) }) }
+    }
     step("Show signed-in app shell") {
       ComposeScreen.onComposeScreen<MainScreen>(composeTestRule) {
         appBarTitle {

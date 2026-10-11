@@ -1,4 +1,5 @@
-// Contributors: Claude (UI tests for the tab loading state, #43).
+// Contributors: Claude (UI tests for the tab loading state, #43; placeholder Events root without
+// Hilt, #105).
 package com.polysocial.ui.navigation
 
 import android.content.Context
@@ -34,7 +35,9 @@ class TabLoadingTest {
 
   @Before
   fun setUp() {
-    composeTestRule.setContent { PolySocialTheme { AppShell() } }
+    composeTestRule.setContent {
+      PolySocialTheme { AppShell(eventsContent = { TabRootScreen(Tab.EVENTS) }) }
+    }
   }
 
   /** Lets Compose show the current tab (creating its ViewModel), then runs its loading. */

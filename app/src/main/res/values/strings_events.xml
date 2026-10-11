@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (Events tab texts from the Figma "Discover events" frames, #105). -->
+<resources>
+    <string name="event_category_party">Party</string>
+    <string name="event_category_sports">Sports</string>
+    <string name="event_category_culture">Culture</string>
+    <string name="event_category_study">Study</string>
+    <string name="event_category_other">Other</string>
+
+    <string name="events_today">Today</string>
+    <string name="events_tomorrow">Tomorrow</string>
+    <!-- Category and start time on an event card, for example "Party · 20:00". -->
+    <string name="events_card_details">%1$s · %2$s</string>
+    <!-- Start and end time, for example "20:00 – 23:00". -->
+    <string name="events_time_range">%1$s – %2$s</string>
+    <string name="events_offline">You\'re offline. Showing saved events.</string>
+    <string name="events_empty_title">No upcoming events</string>
+    <string name="events_empty_body">No public events in the next two weeks yet.</string>
+    <string name="events_error">Couldn\'t load events. Check your connection and try again.</string>
+    <string name="events_retry">Retry</string>
+</resources>
