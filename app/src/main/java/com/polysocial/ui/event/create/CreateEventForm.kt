@@ -1,11 +1,12 @@
-// Contributors: Claude (drafted the Create Event form logic; picked place's address, #111); Mohamed
-// Khellaf (reviewed).
+// Contributors: Claude (drafted the Create Event form logic; picked place's address, #111; saving
+// the place's name, #112); Mohamed Khellaf (reviewed).
 package com.polysocial.ui.event.create
 
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.EventValidationError
+import com.polysocial.model.event.MAX_LOCATION_NAME_LENGTH
 import com.polysocial.model.event.validateNewEvent
 import java.time.Instant
 import java.time.LocalDate
@@ -61,7 +62,8 @@ val CreateEventForm.endsNextDay: Boolean
 /**
  * Builds the [Event] to create, or returns null while a required field (category, date, start time,
  * location) is missing or the capacity isn't a number. Times are read in [zone], and an end time
- * earlier than the start time is the next day. The title and description are trimmed.
+ * earlier than the start time is the next day. The title and description are trimmed, and the
+ * place's name is shortened to [MAX_LOCATION_NAME_LENGTH] characters.
  */
 fun CreateEventForm.toEvent(zone: ZoneId): Event? {
   val kind = category ?: return null
@@ -76,6 +78,7 @@ fun CreateEventForm.toEvent(zone: ZoneId): Event? {
       description = description.trim(),
       category = kind,
       location = place.coordinates,
+      locationName = place.name.trim().take(MAX_LOCATION_NAME_LENGTH),
       startTime = start.toInstant(),
       endTime = endAfter(start, zone),
       capacity = capacity,

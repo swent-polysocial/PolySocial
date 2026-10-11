@@ -1,4 +1,5 @@
-// Contributors: Claude (wrote these tests, including reading events back, #49).
+// Contributors: Claude (wrote these tests, including reading events back, #49; the place name,
+// #112).
 package com.polysocial.model.event
 
 import com.google.firebase.Timestamp
@@ -14,7 +15,7 @@ class FirestoreEventMappingTest {
   fun toFirestoreMap_writesEveryFieldUnderItsOwnName() {
     val event =
         validEvent()
-            .copy(isPrivate = true, category = EventCategory.PARTY)
+            .copy(isPrivate = true, category = EventCategory.PARTY, locationName = "Satellite")
             .withCreator("creator", isVerifiedAssociation = true)
 
     assertEquals(
@@ -23,6 +24,7 @@ class FirestoreEventMappingTest {
             "description" to "Going through the exercise sheet together.",
             "category" to "PARTY",
             "location" to GeoPoint(46.5191, 6.5668),
+            "locationName" to "Satellite",
             "startTime" to Timestamp(event.startTime.epochSecond, 0),
             "endTime" to Timestamp(event.endTime!!.epochSecond, 0),
             "capacity" to 8,
