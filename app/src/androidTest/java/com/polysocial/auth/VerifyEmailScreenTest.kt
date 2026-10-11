@@ -1,29 +1,66 @@
 // Contributors: OpenAI Codex (verification UI, Back sign-out and session/navigation regression
-// tests for #31;
+// tests for #31; verified app-shell resume and orientation-specific review captures;
 // synchronized Continue checks with startup work and semantic actions for PR #99's CI failures).
 package com.polysocial.auth
 
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.test.*
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
-import com.polysocial.model.auth.*
-import com.polysocial.model.user.*
-import com.polysocial.ui.auth.*
+import com.polysocial.model.auth.AuthRepository
+import com.polysocial.model.auth.AuthUser
+import com.polysocial.model.auth.SendVerificationResult
+import com.polysocial.model.auth.SignUpField
+import com.polysocial.model.auth.VerificationClock
+import com.polysocial.model.auth.VerificationResult
+import com.polysocial.model.auth.VerificationStore
+import com.polysocial.model.auth.VerificationTiming
+import com.polysocial.model.user.ProfileResult
+import com.polysocial.model.user.UserProfile
+import com.polysocial.model.user.UserProfileRepository
+import com.polysocial.resources.C
+import com.polysocial.ui.auth.AuthFlow
+import com.polysocial.ui.auth.SignUpTags
+import com.polysocial.ui.auth.SignUpViewModel
+import com.polysocial.ui.auth.VerifyEmailScreen
+import com.polysocial.ui.auth.VerifyEmailTags
+import com.polysocial.ui.auth.VerifyEmailUiState
+import com.polysocial.ui.auth.VerifyEmailViewModel
+import com.polysocial.ui.auth.WelcomeTags
 import com.polysocial.ui.login.LoginViewModel
 import com.polysocial.ui.start.AppStartViewModel
 import com.polysocial.ui.theme.PolySocialTheme
-import io.mockk.*
+import io.mockk.clearMocks
+import io.mockk.coEvery
+import io.mockk.coVerify
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.verify
 import java.io.File
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.After
-import org.junit.Assert.*
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -134,6 +171,46 @@ class VerifyEmailScreenTest {
     compose.onNodeWithTag(WelcomeTags.Screen).assertDoesNotExist()
     coVerify(exactly = 0) { repository.logIn(any(), any()) }
     verify(exactly = 0) { repository.logOut() }
+  }
+
+  @Test
+  fun alreadyVerifiedUserInAppShellDoesNotReloadOnResume() {
+    every { repository.currentUser() } returns user.copy(isEmailVerified = true)
+    coEvery { profiles.getProfile(user.uid) } returns
+        ProfileResult.Found(UserProfile(user.uid, user.email, "Test Student", "IN", "BA1"))
+    start = AppStartViewModel(repository, profiles)
+    vm = VerifyEmailViewModel(repository, store, VerificationClock { now })
+    flow()
+    compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
+    coVerify(exactly = 0) { repository.reloadAndCheckVerified() }
+    assertAppShellResumeDoesNotReload()
+  }
+
+  @Test
+  fun verificationCompletedIntoAppShellDoesNotReloadOnLaterResume() {
+    coEvery { profiles.getProfile(user.uid) } returns
+        ProfileResult.Found(UserProfile(user.uid, user.email, "Test Student", "IN", "BA1"))
+    flow()
+    compose.onNodeWithTag(VerifyEmailTags.Screen).assertIsDisplayed()
+    coEvery { repository.reloadAndCheckVerified() } answers
+        {
+          every { repository.currentUser() } returns user.copy(isEmailVerified = true)
+          VerificationResult.Verified
+        }
+    compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+    compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+    compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
+    assertAppShellResumeDoesNotReload()
+  }
+
+  private fun assertAppShellResumeDoesNotReload() {
+    compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
+    compose.onNodeWithTag(VerifyEmailTags.Screen).assertDoesNotExist()
+    clearMocks(repository, answers = false)
+    compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
+    compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+    compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
+    coVerify(exactly = 0) { repository.reloadAndCheckVerified() }
   }
 
   @Test
@@ -283,7 +360,18 @@ class VerifyEmailScreenTest {
     compose.onNodeWithTag(VerifyEmailTags.Continue).assertIsDisplayed()
     compose.onNodeWithTag(VerifyEmailTags.Resend).assertIsDisplayed()
     // Preserve a synthetic-account render for visual QA; no live backend is involved.
-    val target = File(compose.activity.getExternalFilesDir(null), "verification-qa.png")
+    val landscape =
+        compose.activity.resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    if (landscape) {
+      compose.onNodeWithTag(VerifyEmailTags.TwoColumns).assertIsDisplayed()
+      val hero = compose.onNodeWithTag(VerifyEmailTags.Hero).fetchSemanticsNode().boundsInRoot
+      val actions = compose.onNodeWithTag(VerifyEmailTags.Actions).fetchSemanticsNode().boundsInRoot
+      assertTrue("actions stay beside the hero", hero.right < actions.left)
+    } else {
+      compose.onNodeWithTag(VerifyEmailTags.TwoColumns).assertDoesNotExist()
+    }
+    val orientation = if (landscape) "landscape" else "portrait"
+    val target = File(compose.activity.getExternalFilesDir(null), "verification-$orientation.png")
     target.outputStream().use {
       assertTrue(
           compose
