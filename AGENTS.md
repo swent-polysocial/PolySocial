@@ -182,14 +182,15 @@ guessing. It also shows how the design evolved.
 - Handle invalid input, network failures, denied permissions (location,
   camera), and loss of connectivity, and surface the failure in UI state rather
   than swallowing it silently.
-- Every call that can fail must have a handled failure path: Firebase and
-  other network calls, reading stored or external data (a missing or
-  wrong-typed field), parsing (QR codes, JSON), and device access (location,
-  camera). Catch the specific exceptions (for example `FirebaseException`),
-  normally at the repository or service boundary, and return a typed result
-  (such as a sealed `…Result` with `NetworkError` and `UnexpectedError`) that
-  the ViewModel turns into an error state. A failure must never crash the app
-  or leave a screen stuck loading. Do not catch `Throwable` (which
+- Anything that can fail must be handled gracefully. Every call that can fail
+  has a handled failure path: Firebase and other network calls, reading stored
+  or external data (a missing or wrong-typed field), parsing (QR codes, JSON),
+  and device access (location, camera, permissions). Catch the specific
+  exceptions (for example `FirebaseException`), normally at the repository or
+  service boundary, and return a typed result (such as a sealed `…Result` with
+  `NetworkError` and `UnexpectedError`) that the ViewModel turns into an error
+  state with a way out (for example a retry). A failure must never crash the
+  app or leave a screen stuck loading. Do not catch `Throwable` (which
   `runCatching` does) or empty-catch an exception, and let coroutine
   cancellation through: rethrow `CancellationException` before any broader
   catch. Test each failure path.
@@ -341,6 +342,9 @@ as the source of truth and flag any mismatch with this list in the PR:
   includes a test that fails without the fix.
 - Keep tests deterministic: no real time, no live network calls (see
   "Backend and configuration"), and no unseeded randomness.
+- Test setup and helpers handle failures too: when something they need is
+  missing (an emulator not running, a sign-in that fails), they fail fast with
+  a clear message instead of hanging or failing with an unrelated error.
 - Coverage, as reported by JaCoCo/SonarCloud in CI: at least 95% line coverage
   and 65% branch coverage on new code, and overall project coverage must not
   decrease. A meaningful test always beats a coverage gain — do not pad
