@@ -1,7 +1,7 @@
 // Contributors: Claude (app shell with bottom navigation and app bar, #41; theme title style after
 // review; bottom bar matched to the Figma; loading state, #43; per-tab back stacks, #42; Events
 // list, #105; "+" button and Create Event navigation from the Events and Map tabs, #110; app bar
-// actions, #84).
+// actions, #84; event detail route, #112).
 // Contributors: OpenAI Codex (map route and detail placeholder, #50).
 package com.polysocial.ui.navigation
 
@@ -52,6 +52,8 @@ import com.polysocial.R
 import com.polysocial.resources.C
 import com.polysocial.ui.event.create.CreateEventButton
 import com.polysocial.ui.event.create.CreateEventScreen
+import com.polysocial.ui.event.detail.EventDetailRoute
+import com.polysocial.ui.event.detail.EventDetailViewModel
 import com.polysocial.ui.event.list.EventsRoute
 import com.polysocial.ui.map.MapRoute
 import com.polysocial.ui.theme.Ink
@@ -80,18 +82,25 @@ data class CreateEventNavigation(
  * Create Event inside the tab, full screen; the other tabs show the shared loading state, then a
  * placeholder until their feature is built. The map uses floating overlays instead of the app bar.
  *
- * @param eventsContent the Events tab's root screen. Tests replace it, because the real one needs
- *   Hilt.
+ * Each tab's graph also holds the event detail ([Tab.eventDetailRoute]), so an event opened from a
+ * tab keeps that tab selected and Back returns to it. The detail has its own header and action bar
+ * (Figma "Event detail"), so the app bar and the bottom bar are hidden there.
+ *
+ * @param eventsContent the Events tab's root screen; it opens an event's detail with the callback
+ *   it gets. Tests replace it, because the real one needs Hilt.
  * @param mapContent the Map tab root, given what opens an event's details and what the "+" opens.
  *   Tests replace its Hilt and native renderer boundary.
  * @param createEventContent the Create Event screen. Tests replace it, because the real one needs
  *   Hilt.
+ * @param eventDetailContent the event detail screen, given the Back action. Tests replace it too.
  */
 @Composable
 fun AppShell(
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
-    eventsContent: @Composable () -> Unit = { EventsRoute() },
+    eventsContent: @Composable (onEventClick: (String) -> Unit) -> Unit = { onEventClick ->
+      EventsRoute(onEventClick = onEventClick)
+    },
     mapContent: @Composable (onViewDetails: (String) -> Unit, onCreateEvent: () -> Unit) -> Unit =
         { onDetails, onCreateEvent ->
           MapRoute(onDetails, onCreateEvent = onCreateEvent)
@@ -104,6 +113,9 @@ fun AppShell(
           onViewEvent = navigation.onViewEvent,
           onBackToMap = navigation.onBackToMap,
       )
+    },
+    eventDetailContent: @Composable (onBack: () -> Unit) -> Unit = { onBack ->
+      EventDetailRoute(onBack = onBack)
     },
 ) {
   val backStackEntry by navController.currentBackStackEntryAsState()
@@ -118,10 +130,12 @@ fun AppShell(
   // screen: it is hidden on the screens opened from there, including the one the action opens.
   val action = currentTab.action.takeIf { destination?.route == currentTab.rootRoute }
 
+  val onEventDetail = destination?.route == currentTab.eventDetailRoute
+
   Scaffold(
       modifier = modifier.testTag(C.Tag.app_shell),
       topBar = {
-        if (showBars && destination?.route != Tab.MAP.rootRoute)
+        if (showBars && !onEventDetail && destination?.route != Tab.MAP.rootRoute)
             AppBar(
                 title = stringResource(currentTab.label),
                 action = action,
@@ -132,7 +146,7 @@ fun AppShell(
             )
       },
       bottomBar = {
-        if (showBars) {
+        if (showBars && !onEventDetail) {
           BottomNavBar(
               currentTab = currentTab,
               onTabSelected = { navController.navigateToTab(it) },
@@ -161,7 +175,7 @@ fun AppShell(
                         openCreateEvent,
                     )
                 Tab.EVENTS -> {
-                  eventsContent()
+                  eventsContent { eventId -> navController.navigate(tab.eventDetailRoute(eventId)) }
                   // Figma: 16 dp from the screen edge and 20 dp above the bottom bar.
                   CreateEventButton(
                       onClick = openCreateEvent,
@@ -220,6 +234,15 @@ fun AppShell(
           }
           tab.action?.let { action ->
             composable(tab.routeOf(action)) { PlaceholderActionScreen(action) }
+          }
+          composable(
+              tab.eventDetailRoute,
+              arguments =
+                  listOf(
+                      navArgument(EventDetailViewModel.EVENT_ID_ARG) { type = NavType.StringType }
+                  ),
+          ) {
+            eventDetailContent { navController.popBackStack() }
           }
         }
       }
