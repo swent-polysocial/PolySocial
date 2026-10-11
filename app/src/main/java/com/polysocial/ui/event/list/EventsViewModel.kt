@@ -7,6 +7,7 @@ import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.PublicEventsResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
+import java.time.ZoneId
 import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -48,6 +49,10 @@ constructor(
 ) : ViewModel() {
   private val _uiState = MutableStateFlow<EventsUiState>(EventsUiState.Loading)
   val uiState: StateFlow<EventsUiState> = _uiState.asStateFlow()
+
+  /** The time zone of the day headings, in which the screen also shows the start times. */
+  val zone: ZoneId
+    get() = clock.zone
 
   private var observation: Job? = null
 

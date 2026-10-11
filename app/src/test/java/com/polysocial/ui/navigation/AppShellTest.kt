@@ -1,5 +1,5 @@
 // Contributors: Claude (UI tests for the bottom navigation and app bar, #41; nested tab routes,
-// #42).
+// #42; placeholder Events root without Hilt, #105).
 package com.polysocial.ui.navigation
 
 import android.content.Context
@@ -43,7 +43,9 @@ class AppShellTest {
   fun setUp() {
     composeTestRule.setContent {
       navController = rememberNavController()
-      PolySocialTheme { AppShell(navController = navController) }
+      PolySocialTheme {
+        AppShell(navController = navController, eventsContent = { TabRootScreen(Tab.EVENTS) })
+      }
     }
   }
 

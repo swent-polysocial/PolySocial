@@ -1,7 +1,8 @@
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; translated the Figma sign-up form to Compose
 // Foundation, reusing the shared app theme; connected login and added the official Google
 // placeholder button; connected the welcome entry screen and app-start/profile routing;
-// preserved submission handoffs on Back and aligned form hints, loading and recovery layout).
+// preserved submission handoffs on Back and aligned form hints, loading and recovery layout);
+// Claude (injectable signed-in content, so tests run without Hilt, #105).
 package com.polysocial.ui.auth
 
 import androidx.activity.compose.BackHandler
@@ -110,13 +111,19 @@ private enum class AuthDestination {
   SignedIn,
 }
 
-/** Connects auth screens to session/profile routing; #31 and #34 supply the remaining screens. */
+/**
+ * Connects auth screens to session/profile routing; #31 and #34 supply the remaining screens.
+ *
+ * @param signedInContent the app once the user is signed in. Tests replace it, because the real
+ *   [AppShell] needs Hilt.
+ */
 @Composable
 fun AuthFlow(
     viewModel: SignUpViewModel,
     onExit: () -> Unit,
     loginViewModel: LoginViewModel = hiltViewModel(),
     startViewModel: AppStartViewModel = hiltViewModel(),
+    signedInContent: @Composable () -> Unit = { AppShell() },
 ) {
   var destination by rememberSaveable { mutableStateOf(AuthDestination.Loading) }
   var startupApplied by rememberSaveable { mutableStateOf(false) }
@@ -205,7 +212,7 @@ fun AuthFlow(
             onCreateAccount = { destination = AuthDestination.SignUp },
             viewModel = loginViewModel,
         )
-    AuthDestination.SignedIn -> AppShell()
+    AuthDestination.SignedIn -> signedInContent()
   }
 }
 
