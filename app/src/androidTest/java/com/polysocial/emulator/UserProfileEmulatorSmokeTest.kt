@@ -2,6 +2,7 @@
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.polysocial.model.user.CreateProfileResult
 import com.polysocial.model.user.FirestoreUserProfileRepository
@@ -80,6 +81,8 @@ class UserProfileEmulatorSmokeTest {
             "displayName" to "Name with \"quotes\"",
             "isAssociationVerified" to true,
             "count" to 3,
+            "createdAt" to CREATED_AT,
+            "allowedUids" to listOf(uid, OTHER_UID),
         ),
     )
 
@@ -87,11 +90,14 @@ class UserProfileEmulatorSmokeTest {
     assertEquals("Name with \"quotes\"", stored.getString("displayName"))
     assertEquals(true, stored.getBoolean("isAssociationVerified"))
     assertEquals(3L, stored.getLong("count"))
+    assertEquals(CREATED_AT, stored.getTimestamp("createdAt"))
+    assertEquals(listOf(uid, OTHER_UID), stored.get("allowedUids"))
   }
 
   private companion object {
     /** Fictional accounts: no real user data in tests. */
     const val STUDENT_EMAIL = "test.student@epfl.ch"
     const val OTHER_UID = "fictional-other-user"
+    val CREATED_AT = Timestamp(1_790_000_000, 0)
   }
 }
