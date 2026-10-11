@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (event detail texts from the Figma "Event detail" frames, #112). -->
+<resources>
+    <string name="event_detail_navigate_back">Back</string>
+    <string name="event_detail_loading">Loading event…</string>
+    <string name="event_detail_verified">Verified association</string>
+    <!-- The end time when the event ends on a later day, for example "01:00 (+1 day)". -->
+    <plurals name="event_detail_end_later">
+        <item quantity="one">%1$s (+%2$d day)</item>
+        <item quantity="other">%1$s (+%2$d days)</item>
+    </plurals>
+    <!-- Shown instead of the place's name for events saved before the name was stored. -->
+    <string name="event_detail_unnamed_location">Place on the map</string>
+    <!-- Capacity is at least 2, but every quantity has a form for languages that need one. -->
+    <plurals name="event_detail_capacity">
+        <item quantity="one">Up to %1$d person</item>
+        <item quantity="other">Up to %1$d people</item>
+    </plurals>
+    <string name="event_detail_find_group">Find a group</string>
+    <string name="event_detail_find_group_unavailable">Finding a group isn\'t available yet.</string>
+    <string name="event_detail_offline">You\'re offline. Showing the details saved on this phone.</string>
+    <string name="event_detail_not_found_title">Event not available</string>
+    <string name="event_detail_not_found_body">It may have been cancelled, or it\'s private.</string>
+    <string name="event_detail_offline_not_saved_title">You\'re offline</string>
+    <string name="event_detail_offline_not_saved_body">This event isn\'t saved on this phone yet. It loads once you\'re back online.</string>
+</resources>
