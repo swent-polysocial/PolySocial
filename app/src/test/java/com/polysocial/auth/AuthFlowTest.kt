@@ -87,6 +87,33 @@ class AuthFlowTest {
   }
 
   @Test
+  fun signedOutStartNeverShowsTheProfileLoadingState() {
+    // The clock is paused, so only the first frame is drawn: a session that needs no profile read
+    // must not flash "Loading your profile…" before its screen.
+    compose.mainClock.autoAdvance = false
+    try {
+      launch()
+      compose.onNodeWithText(string(R.string.app_start_loading)).assertDoesNotExist()
+      compose.onNodeWithTag(WelcomeTags.Screen).assertExists()
+    } finally {
+      compose.mainClock.autoAdvance = true
+    }
+  }
+
+  @Test
+  fun unverifiedStartNeverShowsTheProfileLoadingState() {
+    auth.user = user.copy(isEmailVerified = false)
+    compose.mainClock.autoAdvance = false
+    try {
+      launch()
+      compose.onNodeWithText(string(R.string.app_start_loading)).assertDoesNotExist()
+      compose.onNodeWithTag(SignUpTags.VerifyEmailDestination).assertExists()
+    } finally {
+      compose.mainClock.autoAdvance = true
+    }
+  }
+
+  @Test
   fun unverifiedSessionStartsAtVerificationWithoutReadingProfile() {
     auth.user = user.copy(isEmailVerified = false)
     launch()
