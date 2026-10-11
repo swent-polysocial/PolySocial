@@ -722,7 +722,7 @@ private fun FailureBanner(reason: CreateEventStatus.Failed.Reason) {
     )
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
       Text(
-          stringResource(R.string.create_event_offline_title),
+          stringResource(R.string.create_event_failed_title),
           style = secondaryTextStyle().copy(fontSize = 14.sp, fontWeight = FontWeight.Bold),
           color = Ink,
       )

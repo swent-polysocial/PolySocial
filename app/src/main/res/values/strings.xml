@@ -118,7 +118,7 @@
         <item quantity="other">Enter at least %1$d people</item>
     </plurals>
 
-    <string name="create_event_offline_title">Couldn\'t create your event</string>
+    <string name="create_event_failed_title">Couldn\'t create your event</string>
     <string name="create_event_offline_body">You\'re offline. Your details are kept, so try again once you\'re back online.</string>
     <string name="create_event_unexpected_body">Something went wrong. Your details are kept, so try again.</string>
 
