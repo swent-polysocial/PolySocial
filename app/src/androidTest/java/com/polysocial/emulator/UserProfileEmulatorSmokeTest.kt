@@ -65,6 +65,26 @@ class UserProfileEmulatorSmokeTest {
     }
   }
 
+  @Test
+  fun adminWritesKeepTheirValueTypes() = runBlocking {
+    val uid = emulator.signInVerifiedUser(STUDENT_EMAIL).uid
+    emulator.createAsAdmin(
+        USERS_COLLECTION,
+        uid,
+        mapOf(
+            "uid" to uid,
+            "displayName" to "Name with \"quotes\"",
+            "isAssociationVerified" to true,
+            "count" to 3,
+        ),
+    )
+
+    val stored = emulator.firestore.collection(USERS_COLLECTION).document(uid).get().await()
+    assertEquals("Name with \"quotes\"", stored.getString("displayName"))
+    assertEquals(true, stored.getBoolean("isAssociationVerified"))
+    assertEquals(3L, stored.getLong("count"))
+  }
+
   private companion object {
     /** Fictional accounts: no real user data in tests. */
     const val STUDENT_EMAIL = "test.student@epfl.ch"
