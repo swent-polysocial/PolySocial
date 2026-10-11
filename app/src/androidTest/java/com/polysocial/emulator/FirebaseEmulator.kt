@@ -6,6 +6,7 @@ import android.os.Build
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
+import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.FirebaseFirestore
@@ -14,10 +15,12 @@ import com.google.firebase.firestore.memoryCacheSettings
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
+import java.time.Instant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.rules.ExternalResource
 
@@ -75,7 +78,8 @@ class FirebaseEmulator : ExternalResource() {
   /**
    * Creates the document [id] in [collection] with [data] as an administrator would, bypassing the
    * Security Rules (for example to set `isAssociationVerified`, which only an admin may set).
-   * Values keep their type: a [String], [Boolean], [Int] or [Long], or [Double].
+   * Values keep their type: a [String], [Boolean], [Int] or [Long], [Double], [Timestamp] or
+   * [Instant], or a [List] of these (for example an event's `organizerIds` and `startTime`).
    */
   suspend fun createAsAdmin(collection: String, id: String, data: Map<String, Any>) {
     val fields = JSONObject()
@@ -97,6 +101,14 @@ class FirebaseEmulator : ExternalResource() {
         is Int,
         is Long -> JSONObject().put("integerValue", value.toString())
         is Double -> JSONObject().put("doubleValue", value)
+        is Timestamp -> firestoreValue(value.toInstant())
+        // Instant.toString() is the RFC 3339 form the REST API expects.
+        is Instant -> JSONObject().put("timestampValue", value.toString())
+        is List<*> -> {
+          val values = JSONArray()
+          value.forEach { values.put(firestoreValue(requireNotNull(it) { "Null list item" })) }
+          JSONObject().put("arrayValue", JSONObject().put("values", values))
+        }
         else -> throw IllegalArgumentException("Unsupported field type: ${value::class.simpleName}")
       }
 
