@@ -1,10 +1,12 @@
 // Contributors: OpenAI Codex (isolated SDK setup for session-aware activity startup).
-// Contributors: Claude Opus 5.5 (wrote these tests).
-// Contributors: OpenAI Codex (mocked Firebase session before activity startup for #31).
+// Contributors: Claude Opus 5.5 (wrote these tests). Contributors: OpenAI Codex (mocked Firebase
+// session before activity startup for #31; ); Claude (the event detail ViewModel, #112).
 package com.polysocial
 
 import androidx.activity.compose.setContent
 import androidx.compose.material3.Text
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertTextEquals
@@ -13,6 +15,8 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.ui.event.detail.EventDetailUiState
+import com.polysocial.ui.event.detail.EventDetailViewModel
 import com.polysocial.utils.FirebaseStartupRule
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.testing.HiltAndroidRule
@@ -68,5 +72,20 @@ class HiltViewModelInjectionTest {
     composeTestRule.waitForIdle()
 
     assertSame(first, second)
+  }
+
+  /**
+   * Hilt builds the event detail ViewModel with the app's repository and clock. Without an
+   * `eventId` argument it reads nothing and reports not found.
+   */
+  @Test
+  fun hiltViewModel_providesTheEventDetailViewModel() {
+    composeTestRule.activity.setContent {
+      val viewModel: EventDetailViewModel = hiltViewModel()
+      val state by viewModel.uiState.collectAsState()
+      Text(state.toString(), Modifier.testTag("detail"))
+    }
+
+    composeTestRule.onNodeWithTag("detail").assertTextEquals(EventDetailUiState.NotFound.toString())
   }
 }
