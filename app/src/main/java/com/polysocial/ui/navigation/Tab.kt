@@ -1,11 +1,13 @@
 // Contributors: Claude (tab definitions for the bottom navigation, #41; loading messages, #43;
-// per-tab routes, #42; Create Event route, #110; app bar actions, #84).
+// per-tab routes, #42; Create Event route, #110; app bar actions, #84; event detail route, #112).
 package com.polysocial.ui.navigation
 
+import android.net.Uri
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import com.polysocial.R
 import com.polysocial.resources.C
+import com.polysocial.ui.event.detail.EventDetailViewModel
 
 /**
  * The four top-level tabs of the app, in the order they appear in the bottom navigation bar.
@@ -86,4 +88,14 @@ enum class Tab(
   /** Test tag of the tab's placeholder detail screen. */
   val detailTag: String
     get() = "detail_$route"
+
+  /**
+   * Route pattern of an event's detail screen inside this tab's graph, so opening an event keeps
+   * the tab selected and Back returns to where it was opened (Events list, map, "View event").
+   */
+  val eventDetailRoute: String
+    get() = "$route/event/{${EventDetailViewModel.EVENT_ID_ARG}}"
+
+  /** The route that opens the detail of the event [eventId] inside this tab. */
+  fun eventDetailRoute(eventId: String): String = "$route/event/${Uri.encode(eventId)}"
 }

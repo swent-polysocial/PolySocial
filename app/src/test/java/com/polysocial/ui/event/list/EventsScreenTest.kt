@@ -326,7 +326,9 @@ class EventsScreenTest {
         }
     val viewModel =
         EventsViewModel(repository, network, FakeLocationService(), clock, SavedStateHandle())
-    composeTestRule.setContent { PolySocialTheme { EventsRoute(viewModel = viewModel) } }
+    composeTestRule.setContent {
+      PolySocialTheme { EventsRoute(onEventClick = {}, viewModel = viewModel) }
+    }
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     composeTestRule.onNodeWithTag(EventsTags.ERROR).assertIsDisplayed()
 

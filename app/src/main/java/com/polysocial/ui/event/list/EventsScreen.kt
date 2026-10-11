@@ -1,5 +1,6 @@
 // Contributors: Claude (Events tab list from the Figma "Discover events" frames, #105; no matching
-// event state, search field, filter chips, Filters sheet and its location permission, #115).
+// event state, search field, filter chips, Filters sheet and its location permission, #115;
+// opening an event's detail, #112).
 package com.polysocial.ui.event.list
 
 import android.Manifest
@@ -42,6 +43,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -122,6 +124,7 @@ object EventsTags {
  */
 @Composable
 fun EventsRoute(
+    onEventClick: (eventId: String) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: EventsViewModel = hiltViewModel(),
     showRationale: (() -> Boolean)? = null,
@@ -170,12 +173,13 @@ fun EventsRoute(
         }
       },
       modifier = modifier,
+      onEventClick = onEventClick,
   )
 }
 
 /**
  * Draws [state]; start times and dates are shown in [zone]. The Filters sheet lists the 14 days
- * from [today]; whether it is open is kept across rotation.
+ * from [today]; whether it is open is kept across rotation. Tapping a card calls [onEventClick].
  */
 @Composable
 fun EventsScreen(
@@ -191,6 +195,7 @@ fun EventsScreen(
     onSelectDistance: (Int?) -> Unit,
     onTurnOnLocation: () -> Unit,
     modifier: Modifier = Modifier,
+    onEventClick: (eventId: String) -> Unit = {},
 ) {
   val list = state.list
   var showFilters by rememberSaveable { mutableStateOf(false) }
@@ -247,7 +252,7 @@ fun EventsScreen(
           ClearFiltersLink(onClearFilters)
         }
       }
-      is EventsListState.Events -> EventList(list, zone)
+      is EventsListState.Events -> EventList(list, zone, onEventClick)
       EventsListState.Error -> ErrorState(onRetry)
     }
   }
@@ -292,7 +297,11 @@ private fun Header(
 }
 
 @Composable
-private fun EventList(state: EventsListState.Events, zone: ZoneId) {
+private fun EventList(
+    state: EventsListState.Events,
+    zone: ZoneId,
+    onEventClick: (eventId: String) -> Unit,
+) {
   LazyColumn(
       modifier = Modifier.fillMaxSize().testTag(EventsTags.LIST),
       contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 20.dp),
@@ -303,7 +312,12 @@ private fun EventList(state: EventsListState.Events, zone: ZoneId) {
     state.sections.forEachIndexed { index, section ->
       item(key = "day-$index") { DayHeader(section.date, state.today, index) }
       items(section.events, key = { it.id }) { event ->
-        EventCard(event, zone, Modifier.padding(bottom = 14.dp))
+        EventCard(
+            event,
+            zone,
+            onClick = { onEventClick(event.id) },
+            Modifier.padding(bottom = 14.dp),
+        )
       }
     }
   }
@@ -331,7 +345,12 @@ private fun DayHeader(date: LocalDate, today: LocalDate, index: Int) {
 
 /** An event as a Figma card: the category tile, the title, then the category and time. */
 @Composable
-private fun EventCard(event: Event, zone: ZoneId, modifier: Modifier = Modifier) {
+private fun EventCard(
+    event: Event,
+    zone: ZoneId,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
   val category = event.category.style
   val start = event.startTime.atZone(zone).format(timeFormat)
   val time =
@@ -342,6 +361,8 @@ private fun EventCard(event: Event, zone: ZoneId, modifier: Modifier = Modifier)
       modifier =
           modifier
               .fillMaxWidth()
+              .clip(RoundedCornerShape(18.dp))
+              .clickable(onClick = onClick)
               .border(1.dp, Border, RoundedCornerShape(18.dp))
               .padding(14.dp)
               .testTag(EventsTags.card(event.id)),
