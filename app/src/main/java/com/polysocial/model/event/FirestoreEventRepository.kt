@@ -141,11 +141,12 @@ class FirestoreEventRepository(
    * A missing document is [EventResult.NotCached] when the snapshot comes from the cache (offline,
    * and never read before) and [EventResult.NotFound] when it comes from the server. Any listener
    * error, in practice a read the Security Rules deny, is [EventResult.NotFound]: Firestore stops a
-   * listener after an error, so the flow ends. Like [getUpcomingPublicEvents], the flow is
-   * conflated and the final result is never dropped.
+   * listener after an error, so the flow ends. #52's read rule checks the document's fields, so a
+   * document that doesn't exist may also reach the app as a denied read, with the same result. Like
+   * [getUpcomingPublicEvents], the flow is conflated and the final result is never dropped.
    */
   override fun getEvent(id: String): Flow<EventResult> {
-    if (id.isBlank() || id.contains('/')) return flowOf(EventResult.NotFound)
+    if (!isReadableEventId(id)) return flowOf(EventResult.NotFound)
     return callbackFlow {
           val registration =
               db.collection(EVENTS_COLLECTION).document(id).addSnapshotListener(

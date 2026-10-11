@@ -67,6 +67,12 @@ sealed interface EventResult {
   data object NotCached : EventResult
 }
 
+/**
+ * True if [id] can name a document in `events`: not blank and without a slash, which would point to
+ * another path. [EventRepository.getEvent] reads nothing for any other ID.
+ */
+fun isReadableEventId(id: String): Boolean = id.isNotBlank() && '/' !in id
+
 /** Stores events in `events/{id}`. */
 interface EventRepository {
   /**
@@ -109,9 +115,8 @@ interface EventRepository {
    * The flow emits a new result whenever the event changes, including [EventResult.NotFound] once
    * it is deleted, and [EventResult.Found] with `fromCache` from the offline cache while the device
    * is offline. A slow collector gets only the latest result. If the read is denied, the flow emits
-   * [EventResult.NotFound] and ends. An ID that can't be a document ID (blank or containing a
-   * slash) is [EventResult.NotFound] without reading anything. Cancelling the collection stops
-   * listening.
+   * [EventResult.NotFound] and ends. An ID that can't be a document ID (see [isReadableEventId]) is
+   * [EventResult.NotFound] without reading anything. Cancelling the collection stops listening.
    */
   fun getEvent(id: String): Flow<EventResult>
 }

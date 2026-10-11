@@ -98,7 +98,7 @@ class FakeEventRepository(
    * that can't be a document ID (blank or containing a slash), like the real repository.
    */
   override fun getEvent(id: String): Flow<EventResult> {
-    if (id.isBlank() || id.contains('/') || id in deniedIds) return flowOf(EventResult.NotFound)
+    if (!isReadableEventId(id) || id in deniedIds) return flowOf(EventResult.NotFound)
     return changes.map {
       val event = events.firstOrNull { it.id == id }
       when {
