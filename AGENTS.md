@@ -1,4 +1,4 @@
-<!-- Contributors: OpenAI Codex (initial draft); Claude (revised: definition of done, conventions, course rules, project context, Security Rules process, team-agreement reconciliation, session context, secrets check, test and PR-size rules; association accounts without an EPFL email). -->
+<!-- Contributors: OpenAI Codex (initial draft); Claude (revised: definition of done, conventions, course rules, project context, Security Rules process, team-agreement reconciliation, session context, secrets check, test and PR-size rules; association accounts without an EPFL email; handling every failure). -->
 
 # Instructions for coding agents
 
@@ -182,6 +182,17 @@ guessing. It also shows how the design evolved.
 - Handle invalid input, network failures, denied permissions (location,
   camera), and loss of connectivity, and surface the failure in UI state rather
   than swallowing it silently.
+- Every call that can fail must have a handled failure path: Firebase and
+  other network calls, reading stored or external data (a missing or
+  wrong-typed field), parsing (QR codes, JSON), and device access (location,
+  camera). Catch the specific exceptions (for example `FirebaseException`),
+  normally at the repository or service boundary, and return a typed result
+  (such as a sealed `…Result` with `NetworkError` and `UnexpectedError`) that
+  the ViewModel turns into an error state. A failure must never crash the app
+  or leave a screen stuck loading. Do not catch `Throwable` (which
+  `runCatching` does) or empty-catch an exception, and let coroutine
+  cancellation through: rethrow `CancellationException` before any broader
+  catch. Test each failure path.
 - Do not change generated files or Gradle wrapper binaries to make a build or
   test pass. Do not weaken existing tests.
 
