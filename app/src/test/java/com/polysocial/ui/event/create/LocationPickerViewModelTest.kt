@@ -114,7 +114,10 @@ class LocationPickerViewModelTest {
     geocoding.reverseResult = ReverseGeocodeResult.NetworkError
     settle()
 
-    assertEquals(PickedLocation(ELSEWHERE, "Dropped pin", ""), viewModel.selection("Dropped pin"))
+    assertEquals(
+        PickedLocation(ELSEWHERE, "Dropped pin", "", isNamed = false),
+        viewModel.selection("Dropped pin"),
+    )
   }
 
   @Test
@@ -434,6 +437,26 @@ class LocationPickerViewModelTest {
   }
 
   @Test
+  fun openingOnAPlaceConfirmedWithoutAName_looksItUpAgain() = runTest {
+    // Confirmed offline, so the form holds only the placeholder name: reopening online must look
+    // the pin up instead of showing the placeholder as a found place.
+    val unnamed = PickedLocation(ELSEWHERE, "Dropped pin", "", isNamed = false)
+    geocoding.reverseResult = ReverseGeocodeResult.Found(OTHER)
+
+    viewModel.open(unnamed)
+    assertEquals(ELSEWHERE, state().pin)
+    assertEquals(PinPlaceState.Resolving, state().pinPlace)
+    advanceUntilIdle()
+
+    assertEquals(listOf(ELSEWHERE), geocoding.reverses)
+    assertEquals(PinPlaceState.Found(OTHER), state().pinPlace)
+    assertEquals(
+        PickedLocation(ELSEWHERE, OTHER.name, OTHER.address),
+        viewModel.selection("Dropped pin"),
+    )
+  }
+
+  @Test
   fun aSecondOpen_isIgnored() = runTest {
     viewModel.open(INITIAL)
     viewModel.open(null)
@@ -475,7 +498,10 @@ class LocationPickerViewModelTest {
     viewModel.open(INITIAL)
     viewModel.onPinMove(ELSEWHERE)
 
-    assertEquals(PickedLocation(ELSEWHERE, "Dropped pin", ""), viewModel.selection("Dropped pin"))
+    assertEquals(
+        PickedLocation(ELSEWHERE, "Dropped pin", "", isNamed = false),
+        viewModel.selection("Dropped pin"),
+    )
   }
 
   @Test
@@ -486,7 +512,7 @@ class LocationPickerViewModelTest {
 
     assertEquals(PinPlaceState.Unnamed(LookupFailure.OFFLINE), state().pinPlace)
     assertEquals(
-        PickedLocation(LocationPickerViewModel.LAUSANNE, "Dropped pin", ""),
+        PickedLocation(LocationPickerViewModel.LAUSANNE, "Dropped pin", "", isNamed = false),
         viewModel.selection("Dropped pin"),
     )
   }
@@ -498,7 +524,7 @@ class LocationPickerViewModelTest {
     viewModel.onPinMove(ELSEWHERE)
     settle()
 
-    assertEquals(PickedLocation(ELSEWHERE, "Pin", ""), viewModel.selection("Pin"))
+    assertEquals(PickedLocation(ELSEWHERE, "Pin", "", isNamed = false), viewModel.selection("Pin"))
   }
 
   @Test
