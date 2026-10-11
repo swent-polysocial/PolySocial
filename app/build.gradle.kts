@@ -1,6 +1,6 @@
 // Contributors: Claude (Hilt, KSP and Hilt testing setup, JaCoCo on Hilt-rewritten classes, #70;
-// Navigation Compose dependency, #41; MockK and kotlinx-coroutines-play-services, #32; no
-// protobuf-lite in instrumented tests, #117);
+// Navigation Compose dependency, #41; MockK and kotlinx-coroutines-play-services, #32; emulator
+// tests only with -Pemulator and no protobuf-lite in instrumented tests, #117);
 // OpenAI Codex (sign-up test dependencies, review cleanup and Android UI-test MockK binding).
 plugins {
   alias(libs.plugins.androidApplication)
@@ -25,6 +25,14 @@ android {
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    // Tests marked @EmulatorTest need the Firebase emulators, which CI doesn't start: they run
+    // only with -Pemulator, and then alone (see the README).
+    val emulatorTest = "com.polysocial.emulator.EmulatorTest"
+    if (project.hasProperty("emulator")) {
+      testInstrumentationRunnerArguments["annotation"] = emulatorTest
+    } else {
+      testInstrumentationRunnerArguments["notAnnotation"] = emulatorTest
+    }
     vectorDrawables { useSupportLibrary = true }
   }
 
