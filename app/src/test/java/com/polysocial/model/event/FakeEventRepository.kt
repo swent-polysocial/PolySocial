@@ -1,5 +1,5 @@
-// Contributors: Claude (wrote this fake for tests, including the upcoming-events query, #49, and
-// the pending save, #46); Mohamed Khellaf (reviewed).
+// Contributors: Claude (wrote this fake for tests, including the upcoming-events query, #49, the
+// pending save, #46, and reading one event, #112); Mohamed Khellaf (reviewed).
 package com.polysocial.model.event
 
 import java.time.Instant
@@ -47,9 +47,18 @@ class FakeEventRepository(
   /** Bumped on every change to [events], so [getUpcomingPublicEvents] emits again. */
   private val changes = MutableStateFlow(0)
 
+  /** IDs [getEvent] treats as unreadable, like a private event the Security Rules deny. */
+  val deniedIds = mutableSetOf<String>()
+
   /** Adds [seeded] as events already stored, for tests that read events. */
   fun seed(vararg seeded: Event) {
     events += seeded
+    changes.value++
+  }
+
+  /** Deletes the event [id], so [getEvent] emits [EventResult.NotFound] for it. */
+  fun remove(id: String) {
+    events.removeAll { it.id == id }
     changes.value++
   }
 
@@ -78,6 +87,23 @@ class FakeEventRepository(
           events.filter { it.isUpcomingPublicEvent(start, windowDays) }.sortedBy { it.startTime },
           readFromCache,
       )
+    }
+  }
+
+  /**
+   * Emits the stored event [id] and again on changes. A missing event is [EventResult.NotCached]
+   * while [readFromCache] is true (offline) and [EventResult.NotFound] otherwise. An ID in
+   * [deniedIds] is [EventResult.NotFound] and ends the flow, like a denied read.
+   */
+  override fun getEvent(id: String): Flow<EventResult> {
+    if (id in deniedIds) return flowOf(EventResult.NotFound)
+    return changes.map {
+      val event = events.firstOrNull { it.id == id }
+      when {
+        event != null -> EventResult.Found(event, readFromCache)
+        readFromCache -> EventResult.NotCached
+        else -> EventResult.NotFound
+      }
     }
   }
 }

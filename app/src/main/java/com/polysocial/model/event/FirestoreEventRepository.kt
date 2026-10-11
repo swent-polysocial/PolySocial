@@ -1,5 +1,6 @@
 // Contributors: Claude (drafted the Firestore event repository; verified association badge, #45;
-// the public upcoming-events listener, #49; unexpected failures reported as errors, #182).
+// the public upcoming-events listener, #49; unexpected failures reported as errors, #182; the
+// single-event listener, #112).
 package com.polysocial.model.event
 
 import com.google.firebase.FirebaseException
@@ -20,6 +21,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.tasks.await
 
 /** Firestore collection holding the events, one document per event. */
@@ -128,6 +130,45 @@ class FirestoreEventRepository(
                 null
               }
           awaitClose { registration?.remove() }
+        }
+        .buffer(Channel.CONFLATED)
+  }
+
+  /**
+   * Listens to `events/[id]`. Metadata changes are included, so the flow also emits when only
+   * [EventResult.Found]'s `fromCache` changes, for example when the device comes back online.
+   *
+   * A missing document is [EventResult.NotCached] when the snapshot comes from the cache (offline,
+   * and never read before) and [EventResult.NotFound] when it comes from the server. Any listener
+   * error, in practice a read the Security Rules deny, is [EventResult.NotFound]: Firestore stops a
+   * listener after an error, so the flow ends. Like [getUpcomingPublicEvents], the flow is
+   * conflated and the final result is never dropped.
+   */
+  override fun getEvent(id: String): Flow<EventResult> {
+    if (id.isBlank() || id.contains('/')) return flowOf(EventResult.NotFound)
+    return callbackFlow {
+          val registration =
+              db.collection(EVENTS_COLLECTION).document(id).addSnapshotListener(
+                  MetadataChanges.INCLUDE
+              ) { snapshot, error ->
+                if (error != null || snapshot == null) {
+                  trySend(EventResult.NotFound)
+                  close()
+                } else {
+                  val fromCache = snapshot.metadata.isFromCache
+                  val event =
+                      if (snapshot.exists()) eventFromFirestore(id, snapshot.data.orEmpty())
+                      else null
+                  trySend(
+                      when {
+                        event != null -> EventResult.Found(event, fromCache)
+                        !snapshot.exists() && fromCache -> EventResult.NotCached
+                        else -> EventResult.NotFound
+                      }
+                  )
+                }
+              }
+          awaitClose { registration.remove() }
         }
         .buffer(Channel.CONFLATED)
   }

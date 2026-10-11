@@ -1,9 +1,11 @@
-// Contributors: OpenAI Codex (repository-to-map stream tests for #50; location fakes for #51).
+// Contributors: OpenAI Codex (repository-to-map stream tests for #50; location fakes for #51);
+// Claude (getEvent stub, #112).
 package com.polysocial.model.map
 
 import com.polysocial.model.event.CreateEventResult
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventRepository
+import com.polysocial.model.event.EventResult
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.PublicEventsResult
 import com.polysocial.model.event.TEST_NOW
@@ -114,6 +116,9 @@ class RepositoryMapEventSourceTest {
     val repository =
         object : EventRepository {
           override suspend fun createEvent(event: Event): CreateEventResult =
+              error("This test only observes events")
+
+          override fun getEvent(id: String): Flow<EventResult> =
               error("This test only observes events")
 
           override fun getUpcomingPublicEvents(windowDays: Int): Flow<PublicEventsResult> = flow {
