@@ -55,7 +55,11 @@ class UserProfileEmulatorSmokeTest {
   @Test
   fun rulesDenyReadingAnotherUsersProfile() = runBlocking {
     emulator.createAsAdmin(USERS_COLLECTION, OTHER_UID, mapOf("uid" to OTHER_UID))
-    emulator.signInVerifiedUser(STUDENT_EMAIL)
+    val uid = emulator.signInVerifiedUser(STUDENT_EMAIL).uid
+    emulator.createAsAdmin(USERS_COLLECTION, uid, mapOf("uid" to uid))
+    // The student can read their own profile, so the denial below comes from the other uid, not
+    // from an unverified sign-in that every rule would reject.
+    assertTrue(emulator.firestore.collection(USERS_COLLECTION).document(uid).get().await().exists())
 
     try {
       emulator.firestore.collection(USERS_COLLECTION).document(OTHER_UID).get().await()
