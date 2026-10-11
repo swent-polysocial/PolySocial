@@ -38,6 +38,7 @@ import org.json.JSONException
  *
  * @param timeSource measures the time between requests, so tests can use virtual time.
  * @param baseUrl the server, so tests can point it at a local one.
+ * @param ioDispatcher runs the blocking HTTP call off the main thread.
  */
 class NominatimGeocodingService(
     private val network: NetworkMonitor,
@@ -48,8 +49,8 @@ class NominatimGeocodingService(
 
   private val mutex = Mutex()
   private var lastRequestEnd: TimeMark? = null
-  private val searches = LruCache<String, List<Place>>(CACHE_SIZE)
-  private val reverses = LruCache<String, Place?>(CACHE_SIZE)
+  private val searches = RecentCache<String, List<Place>>(CACHE_SIZE)
+  private val reverses = RecentCache<String, Place?>(CACHE_SIZE)
 
   override suspend fun search(query: String): PlaceSearchResult {
     val trimmed = query.trim()
@@ -156,7 +157,7 @@ class NominatimGeocodingService(
   }
 
   /** Keeps the [capacity] most recently used entries. */
-  private class LruCache<K, V>(private val capacity: Int) :
+  private class RecentCache<K, V>(private val capacity: Int) :
       LinkedHashMap<K, V>(capacity, 0.75f, true) {
     override fun removeEldestEntry(eldest: MutableMap.MutableEntry<K, V>): Boolean = size > capacity
   }
