@@ -158,7 +158,17 @@ fun AuthFlow(
     recoveryViewModel: PasswordRecoveryViewModel? = null,
     signedInContent: @Composable () -> Unit = { AppShell() },
 ) {
-  var destination by rememberSaveable { mutableStateOf(AuthDestination.Loading) }
+  // A session that needs no profile read is resolved at once, so it opens on its screen instead
+  // of showing "Loading your profile…" for the first frame.
+  var destination by rememberSaveable {
+    mutableStateOf(
+        when (startViewModel.destination.value) {
+          StartDestination.Login -> AuthDestination.Welcome
+          StartDestination.VerifyEmail -> AuthDestination.VerifyEmail
+          else -> AuthDestination.Loading
+        }
+    )
+  }
   var backStack by
       rememberSaveable(stateSaver = BackStackSaver) { mutableStateOf(emptyList<AuthDestination>()) }
   var startupApplied by rememberSaveable { mutableStateOf(false) }
