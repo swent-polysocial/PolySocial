@@ -1,5 +1,6 @@
 // Contributors: Claude (Hilt, KSP and Hilt testing setup, JaCoCo on Hilt-rewritten classes, #70;
-// Navigation Compose dependency, #41; MockK and kotlinx-coroutines-play-services, #32);
+// Navigation Compose dependency, #41; MockK and kotlinx-coroutines-play-services, #32; no
+// protobuf-lite in instrumented tests, #117);
 // OpenAI Codex (sign-up test dependencies, review cleanup and Android UI-test MockK binding).
 plugins {
   alias(libs.plugins.androidApplication)
@@ -182,6 +183,12 @@ tasks.withType<Test> {
     excludes = listOf("jdk.internal.*")
   }
 }
+
+// Espresso's accessibility checks bring the old protobuf-lite 3.0.1, whose classes shadow
+// Firestore's protobuf-javalite in the test APK and crash Firestore in instrumented tests.
+configurations
+    .matching { it.name.contains("AndroidTest") }
+    .configureEach { exclude(group = "com.google.protobuf", module = "protobuf-lite") }
 
 dependencyLocking { lockAllConfigurations() }
 
