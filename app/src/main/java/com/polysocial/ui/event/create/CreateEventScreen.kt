@@ -63,6 +63,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
@@ -250,11 +251,7 @@ fun CreateEventFormContent(
                 value = form.date?.format(DATE_FORMAT),
                 placeholder = R.string.create_event_pick_date,
                 enabled = editable,
-                isError =
-                    state.hasError(
-                        CreateEventFormError.MISSING_DATE,
-                        CreateEventFormError.START_IN_PAST,
-                    ),
+                isError = state.dateFieldHasError(),
                 tag = C.Tag.create_event_date,
                 modifier = Modifier.weight(128f),
             ) {
@@ -265,7 +262,7 @@ fun CreateEventFormContent(
                 value = form.startTime?.format(TIME_FORMAT),
                 placeholder = R.string.create_event_pick_date,
                 enabled = editable,
-                isError = false,
+                isError = state.startFieldHasError(),
                 tag = C.Tag.create_event_start,
                 modifier = Modifier.weight(88f),
             ) {
@@ -502,6 +499,7 @@ private fun PickerField(
     onClick: () -> Unit,
 ) {
   val shape = RoundedCornerShape(FIELD_RADIUS)
+  val errorDescription = stringResource(R.string.create_event_field_error)
   Column(modifier) {
     FieldLabel(label)
     Spacer(Modifier.height(6.dp))
@@ -511,6 +509,7 @@ private fun PickerField(
             .clip(shape)
             .fieldOutline(isError, shape)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .semantics { if (isError) error(errorDescription) }
             .padding(horizontal = 14.dp)
             .testTag(tag),
         contentAlignment = Alignment.CenterStart,
@@ -756,13 +755,13 @@ private fun Errors(state: CreateEventUiState, vararg errors: CreateEventFormErro
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
           Image(painterResource(R.drawable.ic_error), contentDescription = null)
-          Text(error.message(), style = MaterialTheme.typography.bodySmall, color = AccentText)
+          Text(error.message(state), style = MaterialTheme.typography.bodySmall, color = AccentText)
         }
       }
 }
 
 @Composable
-private fun CreateEventFormError.message(): String =
+private fun CreateEventFormError.message(state: CreateEventUiState): String =
     when (this) {
       CreateEventFormError.MISSING_TITLE ->
           stringResource(R.string.create_event_error_missing_title)
@@ -782,7 +781,10 @@ private fun CreateEventFormError.message(): String =
           )
       CreateEventFormError.MISSING_DATE -> stringResource(R.string.create_event_error_missing_date)
       CreateEventFormError.START_IN_PAST ->
-          stringResource(R.string.create_event_error_start_in_past)
+          stringResource(
+              if (state.startIsTodayInThePast()) R.string.create_event_error_start_time_in_past
+              else R.string.create_event_error_start_in_past
+          )
       CreateEventFormError.END_SAME_AS_START ->
           stringResource(R.string.create_event_error_end_same_as_start)
       CreateEventFormError.MISSING_LOCATION ->
@@ -951,6 +953,20 @@ private fun EventCreated(
 private fun CreateEventUiState.hasError(vararg errors: CreateEventFormError) = errors.any {
   it in visibleErrors
 }
+
+/** Today was picked and the start time has already passed: the time is wrong, not the date. */
+private fun CreateEventUiState.startIsTodayInThePast() =
+    hasError(CreateEventFormError.START_IN_PAST) && form.date == today
+
+// The date and start errors share one message, so outline only the field that causes them: the
+// one still missing, or the start time when today's start has already passed.
+private fun CreateEventUiState.dateFieldHasError() =
+    (hasError(CreateEventFormError.MISSING_DATE) && form.date == null) ||
+        (hasError(CreateEventFormError.START_IN_PAST) && !startIsTodayInThePast())
+
+private fun CreateEventUiState.startFieldHasError() =
+    (hasError(CreateEventFormError.MISSING_DATE) && form.startTime == null) ||
+        startIsTodayInThePast()
 
 private val EventCategory.label: Int
   get() =

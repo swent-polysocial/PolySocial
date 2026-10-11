@@ -100,8 +100,10 @@
     <string name="create_event_error_missing_category">Pick a category</string>
     <string name="create_event_error_missing_date">Pick a date and a start time</string>
     <string name="create_event_error_start_in_past">Pick a date in the future</string>
+    <string name="create_event_error_start_time_in_past">Pick a start time later than now</string>
     <string name="create_event_error_end_same_as_start">The end time must differ from the start time</string>
     <string name="create_event_error_missing_location">Pick a location</string>
+    <string name="create_event_field_error">Needs a change</string>
     <plurals name="create_event_error_title_too_long">
         <item quantity="one">Use at most %1$d character</item>
         <item quantity="other">Use at most %1$d characters</item>
