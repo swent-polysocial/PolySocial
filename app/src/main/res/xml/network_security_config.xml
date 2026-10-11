@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (HTTPS-only default that debug builds override for the Firebase emulators, #117). -->
+<network-security-config>
+    <!-- Release builds: HTTPS only, Android's default made explicit. The debug source set replaces
+         this file to allow plain HTTP to the Firebase emulators at 10.0.2.2. -->
+    <base-config cleartextTrafficPermitted="false" />
+</network-security-config>
