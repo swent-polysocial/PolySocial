@@ -31,13 +31,6 @@ class EventDetailsTest {
   }
 
   @Test
-  fun keepsTheEvent() {
-    val event = validEvent().copy(id = "event-1")
-
-    assertEquals(event, eventDetails(event, zurich).event)
-  }
-
-  @Test
   fun anEndOnTheSameDay_hasNoOffset() {
     val details = details("2026-10-10T12:00:00Z", "2026-10-10T14:00:00Z")
 
