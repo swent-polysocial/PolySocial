@@ -1,5 +1,5 @@
 // Contributors: Claude (drafted the EventRepository interface; the creator's profile, #45; the
-// public upcoming-events query, #49); Mohamed Khellaf (reviewed).
+// public upcoming-events query, #49; reading one event, #112); Mohamed Khellaf (reviewed).
 package com.polysocial.model.event
 
 import kotlinx.coroutines.flow.Flow
@@ -42,6 +42,31 @@ sealed interface PublicEventsResult {
   data object Error : PublicEventsResult
 }
 
+/** What [EventRepository.getEvent] emits. */
+sealed interface EventResult {
+  /**
+   * The event as stored now.
+   *
+   * @property fromCache true when it comes from Firestore's offline cache, for example while the
+   *   device is offline. It may then be out of date.
+   */
+  data class Found(val event: Event, val fromCache: Boolean) : EventResult
+
+  /**
+   * There is no event the user can read under this ID: it never existed, it was deleted, it is
+   * malformed, or the Security Rules don't let the user read it (a private event they aren't
+   * allowed in). These cases look the same on purpose, so a private event doesn't reveal that it
+   * exists.
+   */
+  data object NotFound : EventResult
+
+  /**
+   * The device is offline and the event isn't in the offline cache, so it can't be read yet. The
+   * flow keeps listening and emits the event once the device is back online.
+   */
+  data object NotCached : EventResult
+}
+
 /** Stores events in `events/{id}`. */
 interface EventRepository {
   /**
@@ -77,4 +102,16 @@ interface EventRepository {
   fun getUpcomingPublicEvents(
       windowDays: Int = DEFAULT_UPCOMING_WINDOW_DAYS
   ): Flow<PublicEventsResult>
+
+  /**
+   * Observes the event `events/[id]`, for its detail screen.
+   *
+   * The flow emits a new result whenever the event changes, including [EventResult.NotFound] once
+   * it is deleted, and [EventResult.Found] with `fromCache` from the offline cache while the device
+   * is offline. A slow collector gets only the latest result. If the read is denied, the flow emits
+   * [EventResult.NotFound] and ends. An ID that can't be a document ID (blank or containing a
+   * slash) is [EventResult.NotFound] without reading anything. Cancelling the collection stops
+   * listening.
+   */
+  fun getEvent(id: String): Flow<EventResult>
 }
