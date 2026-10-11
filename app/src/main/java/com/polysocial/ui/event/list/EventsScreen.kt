@@ -81,19 +81,25 @@ fun EventsScreen(
   when (state) {
     EventsUiState.Loading -> LoadingState(stringResource(R.string.loading_events), modifier)
     is EventsUiState.Empty ->
-        Column(modifier.fillMaxSize().testTag(C.Tag.screen_events)) {
+        ScreenContent(modifier) {
           if (state.isOffline) OfflineBanner(Modifier.padding(horizontal = 20.dp))
           EmptyState()
         }
-    is EventsUiState.Events -> EventList(state, zone, modifier.testTag(C.Tag.screen_events))
-    EventsUiState.Error -> ErrorState(onRetry, modifier.testTag(C.Tag.screen_events))
+    is EventsUiState.Events -> ScreenContent(modifier) { EventList(state, zone) }
+    EventsUiState.Error -> ScreenContent(modifier) { ErrorState(onRetry) }
   }
 }
 
+/** The tab's root once loaded; its own node, so its tag doesn't replace the tags of its content. */
 @Composable
-private fun EventList(state: EventsUiState.Events, zone: ZoneId, modifier: Modifier) {
+private fun ScreenContent(modifier: Modifier, content: @Composable () -> Unit) {
+  Column(modifier.fillMaxSize().testTag(C.Tag.screen_events)) { content() }
+}
+
+@Composable
+private fun EventList(state: EventsUiState.Events, zone: ZoneId) {
   LazyColumn(
-      modifier = modifier.fillMaxSize().testTag(EventsTags.LIST),
+      modifier = Modifier.fillMaxSize().testTag(EventsTags.LIST),
       contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 20.dp),
   ) {
     if (state.isOffline) {
@@ -228,9 +234,9 @@ private fun EmptyState() {
 }
 
 @Composable
-private fun ErrorState(onRetry: () -> Unit, modifier: Modifier = Modifier) {
+private fun ErrorState(onRetry: () -> Unit) {
   Column(
-      modifier = modifier.fillMaxSize().padding(horizontal = 40.dp).testTag(EventsTags.ERROR),
+      modifier = Modifier.fillMaxSize().padding(horizontal = 40.dp).testTag(EventsTags.ERROR),
       verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterVertically),
       horizontalAlignment = Alignment.CenterHorizontally,
   ) {
