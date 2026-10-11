@@ -1,5 +1,5 @@
 // Contributors: Claude (wrote these tests; verified association badge, #45; the upcoming-events
-// listener, #49; unexpected failures and cancellation, #182).
+// listener, #49; unexpected failures and cancellation, #182; the single-event listener, #112).
 package com.polysocial.model.event
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -518,5 +518,232 @@ class FirestoreEventRepositoryTest {
     assertThrows(IllegalArgumentException::class.java) {
       repository.getUpcomingPublicEvents(windowDays = -1)
     }
+  }
+
+  // getEvent (#112)
+
+  private val eventDocument = mockk<DocumentReference>()
+  private val eventListener = slot<EventListener<DocumentSnapshot>>()
+
+  /** Stubs exactly the listener getEvent must register, so any other listener fails the test. */
+  private fun stubEventDocument(id: String = "event-1") {
+    every { collection.document(id) } returns eventDocument
+    every {
+      eventDocument.addSnapshotListener(MetadataChanges.INCLUDE, capture(eventListener))
+    } returns registration
+  }
+
+  /** A snapshot of `events/{id}`: [data] is null when the document doesn't exist. */
+  private fun eventSnapshot(data: Map<String, Any?>?, fromCache: Boolean = false) =
+      mockk<DocumentSnapshot>().also {
+        every { it.exists() } returns (data != null)
+        every { it.data } returns
+            data?.let { d -> buildMap { d.forEach { (k, v) -> if (v != null) put(k, v) } } }
+        every { it.metadata } returns
+            mockk<SnapshotMetadata>().also { m -> every { m.isFromCache } returns fromCache }
+      }
+
+  private fun send(data: Map<String, Any?>?, fromCache: Boolean = false) =
+      eventListener.captured.onEvent(eventSnapshot(data, fromCache), null)
+
+  private fun deny() =
+      eventListener.captured.onEvent(
+          null,
+          FirebaseFirestoreException("denied", FirebaseFirestoreException.Code.PERMISSION_DENIED),
+      )
+
+  private fun TestScope.collectEvent(results: MutableList<EventResult>, id: String = "event-1") =
+      launch(UnconfinedTestDispatcher(testScheduler)) { repository.getEvent(id).toList(results) }
+
+  @Test
+  fun getEvent_listensToItsDocumentIncludingMetadataChanges() = runTest {
+    stubEventDocument()
+    val collecting = collectEvent(mutableListOf())
+
+    verify {
+      db.collection(EVENTS_COLLECTION)
+      collection.document("event-1")
+      eventDocument.addSnapshotListener(MetadataChanges.INCLUDE, any())
+    }
+    collecting.cancel()
+  }
+
+  @Test
+  fun getEvent_emitsTheEventAndSaysWhetherItComesFromTheCache() = runTest {
+    stubEventDocument()
+    val results = mutableListOf<EventResult>()
+    val collecting = collectEvent(results)
+
+    send(stored.toFirestoreMap(), fromCache = true)
+    send(stored.toFirestoreMap(), fromCache = false)
+    collecting.cancel()
+
+    val event = stored.copy(id = "event-1")
+    assertEquals(
+        listOf(
+            EventResult.Found(event, fromCache = true),
+            EventResult.Found(event, fromCache = false),
+        ),
+        results,
+    )
+  }
+
+  @Test
+  fun getEvent_emitsAgainWithTheNewDataWhenTheEventChanges() = runTest {
+    stubEventDocument()
+    val results = mutableListOf<EventResult>()
+    val collecting = collectEvent(results)
+
+    send(stored.toFirestoreMap())
+    send(stored.copy(title = "Moved to Satellite").toFirestoreMap())
+    collecting.cancel()
+
+    assertEquals(
+        listOf(
+            EventResult.Found(stored.copy(id = "event-1"), fromCache = false),
+            EventResult.Found(
+                stored.copy(id = "event-1", title = "Moved to Satellite"),
+                fromCache = false,
+            ),
+        ),
+        results,
+    )
+  }
+
+  @Test
+  fun getEvent_emitsTheEventThenNotFoundOnceItIsDeletedAndKeepsListening() = runTest {
+    stubEventDocument()
+    val results = mutableListOf<EventResult>()
+    val collecting = collectEvent(results)
+
+    send(stored.toFirestoreMap())
+    send(null)
+
+    assertEquals(
+        listOf(EventResult.Found(stored.copy(id = "event-1"), false), EventResult.NotFound),
+        results,
+    )
+    assertTrue(collecting.isActive)
+    verify(exactly = 0) { registration.remove() }
+
+    send(stored.toFirestoreMap())
+    assertEquals(EventResult.Found(stored.copy(id = "event-1"), false), results.last())
+    collecting.cancel()
+  }
+
+  @Test
+  fun getEvent_offlineAndNeverRead_isNotCachedUntilTheServerAnswers() = runTest {
+    stubEventDocument()
+    val results = mutableListOf<EventResult>()
+    val collecting = collectEvent(results)
+
+    send(null, fromCache = true)
+    assertTrue(collecting.isActive)
+    send(stored.toFirestoreMap(), fromCache = false)
+    collecting.cancel()
+
+    assertEquals(
+        listOf(EventResult.NotCached, EventResult.Found(stored.copy(id = "event-1"), false)),
+        results,
+    )
+  }
+
+  @Test
+  fun getEvent_aMalformedDocumentIsNotFoundFromTheServerOrTheCache() = runTest {
+    stubEventDocument()
+    val results = mutableListOf<EventResult>()
+    val collecting = collectEvent(results)
+
+    send(stored.toFirestoreMap() - "title", fromCache = false)
+    send(stored.toFirestoreMap() + ("startTime" to "tomorrow"), fromCache = true)
+    collecting.cancel()
+
+    assertEquals(listOf(EventResult.NotFound, EventResult.NotFound), results)
+  }
+
+  @Test
+  fun getEvent_aDeniedReadIsNotFoundAndEndsTheFlow() = runTest {
+    stubEventDocument()
+    val results = mutableListOf<EventResult>()
+    val collecting = collectEvent(results)
+
+    deny()
+    collecting.join()
+
+    assertEquals(listOf(EventResult.NotFound), results)
+    verify { registration.remove() }
+  }
+
+  @Test
+  fun getEvent_aDeniedReadAfterTheEventWasShownIsNotFoundAndEndsTheFlow() = runTest {
+    stubEventDocument()
+    val results = mutableListOf<EventResult>()
+    val collecting = collectEvent(results)
+
+    send(stored.toFirestoreMap())
+    deny()
+    collecting.join()
+
+    assertEquals(
+        listOf(EventResult.Found(stored.copy(id = "event-1"), false), EventResult.NotFound),
+        results,
+    )
+  }
+
+  @Test
+  fun getEvent_aNullSnapshotWithoutAnErrorIsNotFoundAndEndsTheFlow() = runTest {
+    stubEventDocument()
+    val results = mutableListOf<EventResult>()
+    val collecting = collectEvent(results)
+
+    eventListener.captured.onEvent(null, null)
+    collecting.join()
+
+    assertEquals(listOf(EventResult.NotFound), results)
+    verify { registration.remove() }
+  }
+
+  @Test
+  fun getEvent_anIdThatCannotBeADocumentIdIsNotFoundWithoutReading() = runTest {
+    for (id in listOf("", "   ", "a/b", "events/event-1", "/")) {
+      assertEquals(id, listOf(EventResult.NotFound), repository.getEvent(id).toList())
+    }
+    verify { db wasNot Called }
+  }
+
+  @Test
+  fun getEvent_stopsListeningWhenCollectionIsCancelled() = runTest {
+    stubEventDocument()
+    val collecting = collectEvent(mutableListOf())
+
+    collecting.cancel()
+    collecting.join()
+
+    verify { registration.remove() }
+  }
+
+  @Test
+  fun getEvent_aSlowCollectorStillGetsNotFoundAfterManySnapshotsAndADeniedRead() = runTest {
+    stubEventDocument()
+    val release = CompletableDeferred<Unit>()
+    val results = mutableListOf<EventResult>()
+    launch(UnconfinedTestDispatcher(testScheduler)) {
+      repository.getEvent("event-1").collect {
+        results += it
+        if (results.size == 1) release.await()
+      }
+    }
+
+    send(stored.toFirestoreMap())
+    repeat(200) { send(stored.copy(title = "Update $it").toFirestoreMap()) }
+    deny()
+    release.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals(
+        listOf(EventResult.Found(stored.copy(id = "event-1"), false), EventResult.NotFound),
+        results,
+    )
+    verify { registration.remove() }
   }
 }
