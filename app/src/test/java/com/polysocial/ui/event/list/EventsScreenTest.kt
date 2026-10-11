@@ -1,5 +1,5 @@
 // Contributors: Claude (screen tests for the Events tab list, #105; no matching event, search and
-// filter chips, Filters sheet and location off, #115).
+// filter chips, Filters sheet and location off, #115; opening an event's detail, #112).
 package com.polysocial.ui.event.list
 
 import android.content.Context
@@ -257,6 +257,32 @@ class EventsScreenTest {
     composeTestRule.onNodeWithTag(EventsTags.OFFLINE_BANNER).assertIsDisplayed()
     composeTestRule.onNodeWithText(string(R.string.events_offline)).assertIsDisplayed()
     composeTestRule.onNodeWithTag(EventsTags.card("party")).assertIsDisplayed()
+  }
+
+  @Test
+  fun tappingACard_opensThatEvent() {
+    val party = event("party", "Party", LocalDateTime.of(2026, 10, 11, 20, 0))
+    val climbing = event("climbing", "Climbing", LocalDateTime.of(2026, 10, 11, 22, 0))
+    val opened = mutableListOf<String>()
+    composeTestRule.setContent {
+      PolySocialTheme {
+        EventsScreen(
+            EventsUiState.Events(
+                listOf(EventDaySection(today, listOf(party, climbing))),
+                today = today,
+                isOffline = false,
+            ),
+            zone = lausanne,
+            onRetry = {},
+            onEventClick = { opened += it },
+        )
+      }
+    }
+
+    composeTestRule.onNodeWithTag(EventsTags.card("climbing")).performClick()
+    composeTestRule.onNodeWithTag(EventsTags.card("party")).performClick()
+
+    assertEquals(listOf("climbing", "party"), opened)
   }
 
   @Test
