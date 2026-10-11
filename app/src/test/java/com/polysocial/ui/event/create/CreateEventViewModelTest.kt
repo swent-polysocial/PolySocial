@@ -1,10 +1,15 @@
-// Contributors: Claude (wrote these tests); Mohamed Khellaf (reviewed).
+// Contributors: Claude (wrote these tests; the location picker's selection, #111); Mohamed
+// Khellaf (reviewed).
 package com.polysocial.ui.event.create
 
+import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.CreateEventResult
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.MAX_DESCRIPTION_LENGTH
+import com.polysocial.model.geocoding.FakeGeocodingService
+import com.polysocial.model.geocoding.Place
+import com.polysocial.model.geocoding.ReverseGeocodeResult
 import com.polysocial.utils.MainDispatcherRule
 import java.time.Clock
 import java.time.Instant
@@ -225,5 +230,38 @@ class CreateEventViewModelTest {
     advanceUntilIdle()
 
     assertEquals(Instant.parse("2026-10-11T00:00:00Z"), repository.events.single().endTime)
+  }
+
+  @Test
+  fun aPickedPlace_keepsItsAddress() {
+    val place = PickedLocation(Coordinates(46.52, 6.57), "Rolex Learning Center", "1015 Lausanne")
+
+    viewModel.onLocationPick(place)
+
+    assertEquals(place, state().form.location)
+    assertEquals("1015 Lausanne", state().form.location?.address)
+  }
+
+  @Test
+  fun aPickedPlaceWithoutAnAddress_hasAnEmptyOne() {
+    assertEquals("", PickedLocation(Coordinates(46.52, 6.57), "Rolex Learning Center").address)
+  }
+
+  @Test
+  fun confirmingThePicker_returnsThePinsCoordinatesToTheForm() = runTest {
+    val pin = Coordinates(46.5100, 6.6000)
+    val geocoding =
+        FakeGeocodingService(
+            reverseResult = ReverseGeocodeResult.Found(Place("Some street", "1003 Lausanne", pin))
+        )
+    val picker = LocationPickerViewModel(geocoding)
+    picker.open(null)
+    picker.onPinMove(pin)
+    advanceUntilIdle()
+
+    viewModel.onLocationPick(picker.selection("Dropped pin"))
+
+    assertEquals(PickedLocation(pin, "Some street", "1003 Lausanne"), state().form.location)
+    assertTrue(CreateEventFormError.MISSING_LOCATION !in state().form.errors(FORM_NOW, ZURICH))
   }
 }
