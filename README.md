@@ -1,4 +1,4 @@
-<!-- Contributors: Claude (drafted the README structure, Setup, Running and testing, Tech stack and Project links sections; Firestore index deployment, #49); OpenAI Codex (documented startup routing and rebase reconciliation). -->
+<!-- Contributors: Claude (drafted the README structure, Setup, Running and testing, Tech stack and Project links sections; Firestore index deployment, #49; Firestore emulator tests, #117); OpenAI Codex (documented startup routing and rebase reconciliation). -->
 
 # PolySocial
 
@@ -99,6 +99,14 @@ firebase emulators:exec --project demo-polysocial --only firestore "node firebas
 ```
 
 The `demo-` project ID keeps everything on the local emulator, never a real Firebase project. CI doesn't run these tests yet, so paste their output in any PR that changes the rules.
+
+Repository tests that need the real Firestore and Auth (queries, listeners, transactions, and the Security Rules on top) run against the same emulators. They are instrumented tests marked `@EmulatorTest`, in `app/src/androidTest/java/com/polysocial/emulator`. Start an Android emulator, then run from the repository root:
+
+```bash
+firebase emulators:exec --project demo-polysocial --only firestore,auth "./gradlew connectedDebugAndroidTest -Pemulator"
+```
+
+`-Pemulator` runs only the emulator tests; without it, `connectedCheck` skips them. CI doesn't run them yet, so paste their output in the PR when you add or change one. The tests reach the host machine at `10.0.2.2`, which only works from an Android emulator, not from a physical device.
 
 ## Project links
 
