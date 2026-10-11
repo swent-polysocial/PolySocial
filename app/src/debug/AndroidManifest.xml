@@ -1,12 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Contributors: Claude (cleartext to the Firebase emulators in debug builds only, #117). -->
+<!-- Contributors: Claude (local network access to the Firebase emulators in debug builds only, #117). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- Android 17 blocks apps from local network addresses such as 10.0.2.2 without this
          permission. Debug builds only, for the emulator tests, which grant it themselves. -->
     <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
-
-    <!-- Debug builds only: lets the emulator tests reach the Firebase emulators over plain HTTP.
-         Release builds keep Android's default, which blocks cleartext traffic. -->
-    <application android:networkSecurityConfig="@xml/network_security_config" />
 </manifest>
