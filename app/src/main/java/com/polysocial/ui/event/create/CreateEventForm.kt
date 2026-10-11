@@ -1,4 +1,5 @@
-// Contributors: Claude (drafted the Create Event form logic); Mohamed Khellaf (reviewed).
+// Contributors: Claude (drafted the Create Event form logic; picked place's address, #111); Mohamed
+// Khellaf (reviewed).
 package com.polysocial.ui.event.create
 
 import com.polysocial.model.event.Coordinates
@@ -12,8 +13,11 @@ import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
 
-/** A place picked on the map: its coordinates and the name the form shows. */
-data class PickedLocation(val coordinates: Coordinates, val name: String)
+/**
+ * A place picked on the map: its coordinates, the name the form shows, and its address line, which
+ * the location picker shows again when it reopens on this place.
+ */
+data class PickedLocation(val coordinates: Coordinates, val name: String, val address: String = "")
 
 /** What the organizer has entered on the Create Event form so far. */
 data class CreateEventForm(
