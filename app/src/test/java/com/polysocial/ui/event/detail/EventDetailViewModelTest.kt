@@ -4,6 +4,7 @@ package com.polysocial.ui.event.detail
 import androidx.lifecycle.SavedStateHandle
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.validEvent
+import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.utils.MainDispatcherRule
 import java.time.Clock
 import java.time.Instant
@@ -25,15 +26,22 @@ class EventDetailViewModelTest {
 
   @get:Rule val mainDispatcherRule = MainDispatcherRule()
 
-  private val zurich = ZoneId.of("Europe/Zurich")
-  private val clock = Clock.fixed(Instant.parse("2026-10-07T10:00:00Z"), zurich)
+  // A zone that is neither UTC nor this machine's default, so a ViewModel that ignored the clock's
+  // zone would show other times.
+  private val tokyo = ZoneId.of("Asia/Tokyo")
+  private val clock = Clock.fixed(Instant.parse("2026-10-07T10:00:00Z"), tokyo)
   private val repository = FakeEventRepository()
+  private var online = true
+  private val network =
+      object : NetworkMonitor {
+        override fun isOnline() = online
+      }
 
-  /** Saturday 10 October 2026, 22:00 to 02:00 in Lausanne (20:00 to 00:00 UTC). */
+  /** Saturday 10 October 2026, 22:00 to 02:00 in Tokyo (13:00 to 17:00 UTC, the same UTC day). */
   private val event =
       validEvent(
-              startTime = Instant.parse("2026-10-10T20:00:00Z"),
-              endTime = Instant.parse("2026-10-11T00:00:00Z"),
+              startTime = Instant.parse("2026-10-10T13:00:00Z"),
+              endTime = Instant.parse("2026-10-10T17:00:00Z"),
           )
           .copy(id = "event-1", title = "Late study session")
 
@@ -50,7 +58,7 @@ class EventDetailViewModelTest {
       )
 
   private fun viewModel(args: Map<String, Any?> = mapOf("eventId" to "event-1")) =
-      EventDetailViewModel(SavedStateHandle(args), repository, clock)
+      EventDetailViewModel(SavedStateHandle(args), repository, network, clock)
 
   /** Collects [vm]'s state like the screen does, and returns every state it showed. */
   private fun TestScope.observe(vm: EventDetailViewModel) =
@@ -73,16 +81,8 @@ class EventDetailViewModelTest {
   }
 
   @Test
-  fun anEventFromTheServer_isLoadedWithItsTimesInTheDeviceZone() = runTest {
-    repository.seed(event)
-    val vm = viewModel()
-    observe(vm)
-
-    assertEquals(loadedOnline, vm.uiState.value)
-  }
-
-  @Test
-  fun anEventFromTheCache_isLoadedAndMarkedOffline() = runTest {
+  fun anEventFromTheCacheWhileOffline_isLoadedAndMarkedOffline() = runTest {
+    online = false
     repository.readFromCache = true
     repository.seed(event)
     val vm = viewModel()
@@ -98,7 +98,7 @@ class EventDetailViewModelTest {
     observe(vm)
 
     val moved =
-        event.copy(title = "Moved to Rolex", endTime = Instant.parse("2026-10-10T21:00:00Z"))
+        event.copy(title = "Moved to Rolex", endTime = Instant.parse("2026-10-10T14:00:00Z"))
     repository.remove("event-1")
     repository.seed(moved)
     runCurrent()
@@ -145,6 +145,7 @@ class EventDetailViewModelTest {
 
   @Test
   fun aMissingNavigationArgument_isNotFoundEvenOffline() = runTest {
+    online = false
     repository.readFromCache = true
     repository.seed(event)
     val vm = viewModel(emptyMap())
@@ -155,11 +156,13 @@ class EventDetailViewModelTest {
 
   @Test
   fun offlineAndNeverLoaded_showsOfflineNotSavedThenTheEventOnceOnline() = runTest {
+    online = false
     repository.readFromCache = true
     val vm = viewModel()
     val states = observe(vm)
     assertEquals(EventDetailUiState.OfflineNotSaved, vm.uiState.value)
 
+    online = true
     repository.readFromCache = false
     repository.seed(event)
     runCurrent()
@@ -168,5 +171,26 @@ class EventDetailViewModelTest {
         listOf(EventDetailUiState.Loading, EventDetailUiState.OfflineNotSaved, loadedOnline),
         states,
     )
+  }
+
+  @Test
+  fun aCachedEventWhileOnline_isNotMarkedOffline() = runTest {
+    // Opened from the map or the Events tab, the event is cached, so Firestore's first snapshot
+    // comes from the cache even though the device is online.
+    repository.readFromCache = true
+    repository.seed(event)
+    val vm = viewModel()
+    observe(vm)
+
+    assertEquals(loadedOnline, vm.uiState.value)
+  }
+
+  @Test
+  fun notCachedWhileOnline_keepsLoadingUntilTheServerAnswers() = runTest {
+    repository.readFromCache = true
+    val vm = viewModel()
+    val states = observe(vm)
+
+    assertEquals(listOf(EventDetailUiState.Loading), states)
   }
 }

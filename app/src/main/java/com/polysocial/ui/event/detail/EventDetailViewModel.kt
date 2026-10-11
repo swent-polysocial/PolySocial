@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.EventResult
+import com.polysocial.model.network.NetworkMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
 import java.time.LocalDate
@@ -23,8 +24,9 @@ import kotlinx.coroutines.flow.stateIn
  * An event with its times in the device's time zone, as the detail screen shows them.
  *
  * @property endTime the end time, or null if the organizer didn't give one.
- * @property endDayOffset how many days after [date] the event ends: 1 shows "+1 day" next to the
- *   end time, 0 means it ends the same day (or has no end time).
+ * @property endDayOffset how many days after [date] the event ends: n > 0 shows "+n day(s)" next to
+ *   the end time ("+1 day" for an overnight event), 0 means it ends the same day or has no end
+ *   time.
  */
 data class EventDetails(
     val event: Event,
@@ -55,8 +57,8 @@ sealed interface EventDetailUiState {
   /**
    * The event.
    *
-   * @property isOffline true when it comes from the offline cache, so the screen says it shows the
-   *   details saved on the phone.
+   * @property isOffline true when the device is offline and the event comes from the offline cache,
+   *   so the screen says it shows the details saved on the phone.
    */
   data class Loaded(val details: EventDetails, val isOffline: Boolean) : EventDetailUiState
 
@@ -72,6 +74,11 @@ sealed interface EventDetailUiState {
  * the event changes, shows "not found" once it is deleted, and loads it by itself when the device
  * comes back online.
  *
+ * Firestore's first snapshot often comes from the offline cache even while online (the map and the
+ * Events tab cache every public event), and the server's answer follows a moment later. So "from
+ * the cache" only counts as offline when [network] says the device is offline too; otherwise the
+ * screen shows the cached event normally, or keeps loading while the server answers.
+ *
  * @param clock gives the device's time zone, in which the times are shown.
  */
 @HiltViewModel
@@ -80,6 +87,7 @@ class EventDetailViewModel
 constructor(
     savedStateHandle: SavedStateHandle,
     repository: EventRepository,
+    private val network: NetworkMonitor,
     private val clock: Clock,
 ) : ViewModel() {
 
@@ -96,9 +104,14 @@ constructor(
   private fun EventResult.toUiState(): EventDetailUiState =
       when (this) {
         is EventResult.Found ->
-            EventDetailUiState.Loaded(eventDetails(event, clock.zone), fromCache)
+            EventDetailUiState.Loaded(
+                eventDetails(event, clock.zone),
+                isOffline = fromCache && !network.isOnline(),
+            )
         EventResult.NotFound -> EventDetailUiState.NotFound
-        EventResult.NotCached -> EventDetailUiState.OfflineNotSaved
+        EventResult.NotCached ->
+            if (network.isOnline()) EventDetailUiState.Loading
+            else EventDetailUiState.OfflineNotSaved
       }
 
   companion object {
