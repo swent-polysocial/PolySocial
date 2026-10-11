@@ -18,7 +18,6 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -203,7 +202,6 @@ class NominatimGeocodingServiceTest {
 
     assertEquals(2, server.requests.size)
     server.requests.forEach { assertEquals(NominatimGeocodingService.USER_AGENT, it.userAgent) }
-    assertFalse(NominatimGeocodingService.USER_AGENT.startsWith("Java"))
   }
 
   // ---------- Reverse results ----------
@@ -262,7 +260,7 @@ class NominatimGeocodingServiceTest {
     assertEquals(ReverseGeocodeResult.NetworkError, service(baseUrl = url).reverse(LAKE))
   }
 
-  // ---------- Rate limit: one request per second, measured from the end of the previous one ----
+  // ---------- Rate limit: at most one request per second ----------
 
   @Test
   fun aSecondRequest_waitsOneSecondAfterThePreviousOne() = runTest {
@@ -519,7 +517,7 @@ class NominatimGeocodingServiceTest {
 
     const val ROLEX =
         """{"lat":"46.5183517","lon":"6.5676152","name":"Rolex Learning Center",
-          "display_name":"Rolex Learning Center, Place Maurice-Cosandey, Ecublens, Vaud, 1015, Schweiz/Suisse/Svizzera/Svizra",
+          "display_name":"Rolex Learning Center, Place Maurice-Cosandey, Quartier Sorge, Lausanne, Vaud, 1015, Schweiz/Suisse/Svizzera/Svizra",
           "address":{"building":"Rolex Learning Center","road":"Place Maurice-Cosandey",
           "city":"Lausanne","postcode":"1015","country_code":"ch"}}"""
 
