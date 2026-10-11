@@ -1,0 +1,155 @@
+// Contributors: Claude (wrote these tests, #105).
+package com.polysocial.ui.event.list
+
+import com.polysocial.model.event.FakeEventRepository
+import com.polysocial.model.event.TEST_NOW
+import com.polysocial.model.event.validEvent
+import com.polysocial.utils.MainDispatcherRule
+import java.time.Clock
+import java.time.Duration
+import java.time.ZoneId
+import org.junit.Assert.assertEquals
+import org.junit.Rule
+import org.junit.Test
+
+class EventsViewModelTest {
+
+  @get:Rule val mainDispatcherRule = MainDispatcherRule()
+
+  private val repository = FakeEventRepository()
+  private val clock = Clock.fixed(TEST_NOW, ZoneId.of("Europe/Zurich"))
+
+  // Starts at 13:00 in Lausanne, so these start later today and tomorrow there.
+  private val laterToday = validEvent(title = "Later today", startTime = TEST_NOW.plusSeconds(3600))
+  private val tomorrow =
+      validEvent(title = "Tomorrow", startTime = TEST_NOW.plus(Duration.ofDays(1)))
+
+  private fun createViewModel() = EventsViewModel(repository, clock)
+
+  private fun runPending() = mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+
+  private fun EventsViewModel.state() = uiState.value
+
+  @Test
+  fun beforeTheFirstResult_isLoading() {
+    repository.seed(tomorrow)
+
+    val viewModel = createViewModel()
+
+    assertEquals(EventsUiState.Loading, viewModel.state())
+  }
+
+  @Test
+  fun upcomingEvents_areShownGroupedByDay() {
+    repository.seed(tomorrow, laterToday)
+
+    val viewModel = createViewModel()
+    runPending()
+
+    assertEquals(
+        EventsUiState.Events(
+            listOf(
+                EventDaySection(EventDay.Today, listOf(laterToday)),
+                EventDaySection(EventDay.Tomorrow, listOf(tomorrow)),
+            ),
+            isOffline = false,
+        ),
+        viewModel.state(),
+    )
+  }
+
+  @Test
+  fun noUpcomingEvents_isEmpty() {
+    val viewModel = createViewModel()
+    runPending()
+
+    assertEquals(EventsUiState.Empty(isOffline = false), viewModel.state())
+  }
+
+  @Test
+  fun eventsFromTheOfflineCache_areMarkedOffline() {
+    repository.readFromCache = true
+    repository.seed(tomorrow)
+
+    val viewModel = createViewModel()
+    runPending()
+
+    assertEquals(
+        EventsUiState.Events(
+            listOf(EventDaySection(EventDay.Tomorrow, listOf(tomorrow))),
+            isOffline = true,
+        ),
+        viewModel.state(),
+    )
+  }
+
+  @Test
+  fun anEmptyOfflineCache_isEmptyAndMarkedOffline() {
+    repository.readFromCache = true
+
+    val viewModel = createViewModel()
+    runPending()
+
+    assertEquals(EventsUiState.Empty(isOffline = true), viewModel.state())
+  }
+
+  @Test
+  fun theList_followsChangesToTheEvents() {
+    val viewModel = createViewModel()
+    runPending()
+
+    repository.seed(tomorrow)
+    runPending()
+
+    assertEquals(
+        EventsUiState.Events(
+            listOf(EventDaySection(EventDay.Tomorrow, listOf(tomorrow))),
+            isOffline = false,
+        ),
+        viewModel.state(),
+    )
+  }
+
+  @Test
+  fun aFailedLoad_isAnError() {
+    repository.readFailure = true
+
+    val viewModel = createViewModel()
+    runPending()
+
+    assertEquals(EventsUiState.Error, viewModel.state())
+  }
+
+  @Test
+  fun retryAfterAnError_loadsTheEventsAgain() {
+    repository.readFailure = true
+    repository.seed(tomorrow)
+    val viewModel = createViewModel()
+    runPending()
+
+    repository.readFailure = false
+    viewModel.retry()
+
+    assertEquals(EventsUiState.Loading, viewModel.state())
+    runPending()
+    assertEquals(
+        EventsUiState.Events(
+            listOf(EventDaySection(EventDay.Tomorrow, listOf(tomorrow))),
+            isOffline = false,
+        ),
+        viewModel.state(),
+    )
+  }
+
+  @Test
+  fun retryWhenThereIsNoError_changesNothing() {
+    repository.seed(tomorrow)
+    val viewModel = createViewModel()
+    runPending()
+    val loaded = viewModel.state()
+
+    viewModel.retry()
+
+    assertEquals(loaded, viewModel.state())
+  }
+}
