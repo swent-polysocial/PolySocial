@@ -5,6 +5,9 @@ import android.app.Application
 import androidx.activity.OnBackPressedDispatcher
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -83,6 +86,9 @@ class CreateEventScreenTest {
 
   private fun form() = viewModel.uiState.value.form
 
+  /** A field outlined in red, which also tells TalkBack it needs a change. */
+  private val isOutlinedAsAnError = SemanticsMatcher.keyIsDefined(SemanticsProperties.Error)
+
   /** Picks the category, date, start time and location, which open dialogs or another screen. */
   private fun pickDateTimeAndLocation(date: LocalDate = LocalDate.of(2026, 10, 10)) {
     composeTestRule.runOnIdle {
@@ -148,7 +154,36 @@ class CreateEventScreenTest {
         .performScrollTo()
         .assertIsDisplayed()
         .assertTextContains("Pick a date in the future")
+    node(C.Tag.create_event_date).assert(isOutlinedAsAnError)
+    node(C.Tag.create_event_start).assert(!isOutlinedAsAnError)
     assertTrue(repository.events.isEmpty())
+  }
+
+  @Test
+  fun aStartTimeThatHasPassedToday_pointsAtTheStartTime() {
+    node(C.Tag.create_event_title).performTextInput("Study together")
+    pickDateTimeAndLocation(date = LocalDate.ofInstant(FORM_NOW, ZURICH))
+    composeTestRule.runOnIdle { viewModel.onStartTimePick(LocalTime.of(9, 0)) }
+
+    submit()
+
+    node(error(CreateEventFormError.START_IN_PAST))
+        .performScrollTo()
+        .assertTextContains("Pick a start time later than now")
+    node(C.Tag.create_event_start).assert(isOutlinedAsAnError)
+    node(C.Tag.create_event_date).assert(!isOutlinedAsAnError)
+    assertTrue(repository.events.isEmpty())
+  }
+
+  @Test
+  fun aMissingStartTime_outlinesTheStartTimeOnly() {
+    composeTestRule.runOnIdle { viewModel.onDatePick(LocalDate.of(2026, 10, 10)) }
+
+    submit()
+
+    node(error(CreateEventFormError.MISSING_DATE)).performScrollTo().assertIsDisplayed()
+    node(C.Tag.create_event_start).assert(isOutlinedAsAnError)
+    node(C.Tag.create_event_date).assert(!isOutlinedAsAnError)
   }
 
   @Test
@@ -272,6 +307,8 @@ class CreateEventScreenTest {
     node(error(CreateEventFormError.MISSING_DATE))
         .performScrollTo()
         .assertTextContains("Pick a date and a start time")
+    node(C.Tag.create_event_date).assert(isOutlinedAsAnError)
+    node(C.Tag.create_event_start).assert(isOutlinedAsAnError)
     node(error(CreateEventFormError.MISSING_LOCATION))
         .performScrollTo()
         .assertTextContains("Pick a location")
