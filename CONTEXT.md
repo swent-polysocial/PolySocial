@@ -111,7 +111,6 @@ The issues for the last four points (#12, #31, #32, #34, #35, #44–#47, #52) st
 
 - **Shared privacy notice:** the supplied app mockup places it under Profile → Privacy & data, which is not implemented. Following Ayoub's #94 review and Mehdi's explicit instruction, remove the temporary Map privacy button; Mapbox attribution and telemetry choices stay accessible. The complete app notice is tracked in [#103](https://github.com/swent-polysocial/PolySocial/issues/103); its owner, wording and estimate are to be decided by the team before implementation and production.
 - **Mapbox production account:** the team must decide billing, usage thresholds and token rotation before release; the prototype keeps the current account/token.
-- **Abandoned unverified accounts (#31):** Back/change address signs out without deleting the Firebase account. A mistyped address stays reserved and can block its owner's sign-up. The team must choose correction/deletion or an account-recovery/cleanup policy; no automatic deletion is introduced by [#99's review](https://github.com/swent-polysocial/PolySocial/pull/99). Resend deadlines remain persisted across sign-out so re-login cannot bypass cooldowns.
 
 - **Association access to other public events:** [Ayoub confirmed](https://github.com/swent-polysocial/PolySocial/pull/93#issuecomment-6069094805) that #47's writes will build on #52's own-association-events read policy. Whether associations may also read students' public events remains a separate team question; keep the current policy until a team decision.
 - **Sign-in providers:** add Google or Microsoft sign-in next to email/password? Every student account still needs a verified `@epfl.ch` email (checked by the rules). Only email/password needs our Verify Email screen, because Google and Microsoft deliver already-verified emails.
@@ -124,8 +123,6 @@ The issues for the last four points (#12, #31, #32, #34, #35, #44–#47, #52) st
 Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 ## Decision log
-
-- 2026-10-11 · [#99 review](https://github.com/swent-polysocial/PolySocial/pull/99): record abandoned unverified accounts/address reservation as a team follow-up question; preserve resend timing across sign-out rather than allowing re-login to bypass cooldowns.
 
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 
