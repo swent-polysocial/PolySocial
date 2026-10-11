@@ -92,15 +92,16 @@ class LocationPickerViewModel @Inject constructor(private val geocoding: Geocodi
   private var lookupJob: Job? = null
 
   /**
-   * Places the pin where the picker opens: on [initial], the place already on the form, without a
-   * lookup, or else on Lausanne. Only the first call counts, so the screen can call it again after
-   * a rotation.
+   * Places the pin where the picker opens: on [initial], the place already on the form, or else on
+   * Lausanne. A named [initial] place is shown as it is, without a lookup; an unnamed one
+   * (confirmed while its lookup failed) is looked up again. Only the first call counts, so the
+   * screen can call it again after a rotation.
    */
   fun open(initial: PickedLocation?) {
     if (opened) return
     opened = true
-    if (initial == null) {
-      lookUp(LAUSANNE)
+    if (initial == null || !initial.isNamed) {
+      lookUp(initial?.coordinates ?: LAUSANNE)
     } else {
       val place = Place(initial.name, initial.address, initial.coordinates)
       _uiState.update { it.copy(pin = place.coordinates, pinPlace = PinPlaceState.Found(place)) }
@@ -168,7 +169,12 @@ class LocationPickerViewModel @Inject constructor(private val geocoding: Geocodi
   fun selection(unnamedName: String): PickedLocation {
     val state = _uiState.value
     val place = (state.pinPlace as? PinPlaceState.Found)?.place
-    return PickedLocation(state.pin, place?.name ?: unnamedName, place?.address ?: "")
+    return PickedLocation(
+        coordinates = state.pin,
+        name = place?.name ?: unnamedName,
+        address = place?.address ?: "",
+        isNamed = place != null,
+    )
   }
 
   private fun lookUp(coordinates: Coordinates) {

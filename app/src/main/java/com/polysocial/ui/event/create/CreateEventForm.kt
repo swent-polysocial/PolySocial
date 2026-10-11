@@ -16,8 +16,16 @@ import java.time.ZonedDateTime
 /**
  * A place picked on the map: its coordinates, the name the form shows, and its address line, which
  * the location picker shows again when it reopens on this place.
+ *
+ * @property isNamed false when [name] is only the placeholder for a pin whose address couldn't be
+ *   looked up (for example offline), so the picker looks it up again when it reopens.
  */
-data class PickedLocation(val coordinates: Coordinates, val name: String, val address: String = "")
+data class PickedLocation(
+    val coordinates: Coordinates,
+    val name: String,
+    val address: String = "",
+    val isNamed: Boolean = true,
+)
 
 /** What the organizer has entered on the Create Event form so far. */
 data class CreateEventForm(
