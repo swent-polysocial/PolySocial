@@ -1,4 +1,5 @@
-// Contributors: Claude (Firestore emulator test setup, #117).
+// Contributors: Claude (Firestore emulator test setup, #117; timeouts and the port in the error
+// after an adversarial test review).
 package com.polysocial.emulator
 
 import android.net.Uri
@@ -136,6 +137,9 @@ class FirebaseEmulator : ExternalResource() {
         val connection = URL(url).openConnection() as HttpURLConnection
         try {
           connection.requestMethod = method
+          // A host that drops packets would otherwise block the test forever.
+          connection.connectTimeout = TIMEOUT_MS
+          connection.readTimeout = TIMEOUT_MS
           connection.setRequestProperty("Authorization", "Bearer owner")
           if (body != null) {
             connection.doOutput = true
@@ -147,8 +151,8 @@ class FirebaseEmulator : ExternalResource() {
                 connection.responseCode
               } catch (e: IOException) {
                 throw IllegalStateException(
-                    "Can't reach the Firebase emulators at $HOST. Run these tests with the " +
-                        "firebase emulators:exec command in the README.",
+                    "Can't reach the Firebase emulator at $HOST:${connection.url.port}. Run " +
+                        "these tests with the firebase emulators:exec command in the README.",
                     e,
                 )
               }
@@ -193,5 +197,6 @@ class FirebaseEmulator : ExternalResource() {
     private const val AUTH_URL = "http://$HOST:$AUTH_PORT"
     private const val TEST_PASSWORD = "fictional-password-1"
     private const val API_WITH_LOCAL_NETWORK_PERMISSION = 37
+    private const val TIMEOUT_MS = 10_000
   }
 }
