@@ -247,7 +247,7 @@ class NominatimParsingTest {
     const val ROLEX =
         """{"place_id":1,"lat":"46.5183517","lon":"6.5676152","category":"amenity",
           "type":"university","name":"Rolex Learning Center",
-          "display_name":"Rolex Learning Center, Place Maurice-Cosandey, Ecublens, District de l'Ouest lausannois, Vaud, 1015, Schweiz/Suisse/Svizzera/Svizra",
+          "display_name":"Rolex Learning Center, Place Maurice-Cosandey, Quartier Sorge, Lausanne, District de l'Ouest lausannois, Vaud, 1015, Schweiz/Suisse/Svizzera/Svizra",
           "address":{"building":"Rolex Learning Center","road":"Place Maurice-Cosandey",
           "city":"Lausanne","postcode":"1015","country_code":"ch"}}"""
   }

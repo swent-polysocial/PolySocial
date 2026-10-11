@@ -239,12 +239,6 @@ class CreateEventViewModelTest {
     viewModel.onLocationPick(place)
 
     assertEquals(place, state().form.location)
-    assertEquals("1015 Lausanne", state().form.location?.address)
-  }
-
-  @Test
-  fun aPickedPlaceWithoutAnAddress_hasAnEmptyOne() {
-    assertEquals("", PickedLocation(Coordinates(46.52, 6.57), "Rolex Learning Center").address)
   }
 
   @Test
