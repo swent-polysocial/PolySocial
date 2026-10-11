@@ -1,6 +1,7 @@
 // Contributors: Claude (Firestore emulator test setup, #117).
 package com.polysocial.emulator
 
+import android.net.Uri
 import android.os.Build
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.firebase.FirebaseApp
@@ -17,6 +18,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import org.junit.rules.ExternalResource
 
 /**
@@ -28,6 +30,10 @@ import org.junit.rules.ExternalResource
  * emulators aren't running (it fails instead). The emulator loads
  * firebase/firestore/firestore.rules (see firebase.json), so every read and write also goes through
  * the Security Rules.
+ *
+ * The Firestore instance is shared by all the tests of a run. Its in-memory cache drops documents
+ * nobody listens to, but a snapshot listener left open would keep receiving the next test's data,
+ * so a test removes every listener it adds.
  */
 class FirebaseEmulator : ExternalResource() {
 
@@ -58,7 +64,7 @@ class FirebaseEmulator : ExternalResource() {
     request(
         "POST",
         "$AUTH_URL/identitytoolkit.googleapis.com/v1/projects/$PROJECT_ID/accounts:update",
-        body = """{"localId":"$uid","emailVerified":true}""",
+        body = JSONObject().put("localId", uid).put("emailVerified", true).toString(),
     )
     val user = auth.currentUser!!
     user.reload().await()
@@ -69,17 +75,30 @@ class FirebaseEmulator : ExternalResource() {
   /**
    * Creates the document [id] in [collection] with [data] as an administrator would, bypassing the
    * Security Rules (for example to set `isAssociationVerified`, which only an admin may set).
+   * Values keep their type: a [String], [Boolean], [Int] or [Long], or [Double].
    */
-  suspend fun createAsAdmin(collection: String, id: String, data: Map<String, String>) {
-    val fields =
-        data.entries.joinToString(",") { (key, value) -> """"$key":{"stringValue":"$value"}""" }
+  suspend fun createAsAdmin(collection: String, id: String, data: Map<String, Any>) {
+    val fields = JSONObject()
+    data.forEach { (key, value) -> fields.put(key, firestoreValue(value)) }
     request(
         "POST",
-        "$FIRESTORE_URL/v1/projects/$PROJECT_ID/databases/(default)/documents/$collection" +
-            "?documentId=$id",
-        body = """{"fields":{$fields}}""",
+        "$FIRESTORE_URL/v1/projects/$PROJECT_ID/databases/(default)/documents/" +
+            "${Uri.encode(collection)}?documentId=${Uri.encode(id)}",
+        body = JSONObject().put("fields", fields).toString(),
     )
   }
+
+  /** [value] in the Firestore REST API's typed form, for example `{"booleanValue": true}`. */
+  private fun firestoreValue(value: Any): JSONObject =
+      when (value) {
+        is String -> JSONObject().put("stringValue", value)
+        is Boolean -> JSONObject().put("booleanValue", value)
+        // The REST API takes 64-bit integers as strings.
+        is Int,
+        is Long -> JSONObject().put("integerValue", value.toString())
+        is Double -> JSONObject().put("doubleValue", value)
+        else -> throw IllegalArgumentException("Unsupported field type: ${value::class.simpleName}")
+      }
 
   /**
    * Android 17 (API 37) blocks apps from local network addresses such as 10.0.2.2 until they're
