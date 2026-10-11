@@ -28,7 +28,7 @@ fun groupEventsByDay(events: List<Event>, clock: Clock): List<EventDaySection> {
   val today = LocalDate.now(clock)
   return events
       .sortedBy { it.startTime }
-      .groupBy { LocalDate.ofInstant(it.startTime, clock.zone) }
+      .groupBy { it.startTime.atZone(clock.zone).toLocalDate() }
       .map { (date, eventsThatDay) ->
         val day =
             when (date) {
