@@ -63,7 +63,7 @@ val CreateEventForm.endsNextDay: Boolean
  * Builds the [Event] to create, or returns null while a required field (category, date, start time,
  * location) is missing or the capacity isn't a number. Times are read in [zone], and an end time
  * earlier than the start time is the next day. The title and description are trimmed, and the
- * place's name is shortened to [MAX_LOCATION_NAME_LENGTH] characters.
+ * place's name is shortened to [MAX_LOCATION_NAME_LENGTH] characters (see [shortenPlaceName]).
  */
 fun CreateEventForm.toEvent(zone: ZoneId): Event? {
   val kind = category ?: return null
@@ -78,7 +78,7 @@ fun CreateEventForm.toEvent(zone: ZoneId): Event? {
       description = description.trim(),
       category = kind,
       location = place.coordinates,
-      locationName = place.name.trim().take(MAX_LOCATION_NAME_LENGTH),
+      locationName = shortenPlaceName(place.name),
       startTime = start.toInstant(),
       endTime = endAfter(start, zone),
       capacity = capacity,
@@ -111,6 +111,16 @@ private fun CreateEventForm.startIn(zone: ZoneId): ZonedDateTime? = date?.let { 
 private fun CreateEventForm.endAfter(start: ZonedDateTime, zone: ZoneId): Instant? = endTime?.let {
   val endDate = if (endsNextDay) start.toLocalDate().plusDays(1) else start.toLocalDate()
   endDate.atTime(it).atZone(zone).toInstant()
+}
+
+/**
+ * [name] trimmed and cut to at most [MAX_LOCATION_NAME_LENGTH] characters. The cut never splits an
+ * emoji (a surrogate pair, which Firestore would store as "?") and never leaves a trailing space.
+ */
+private fun shortenPlaceName(name: String): String {
+  val cut = name.trim().take(MAX_LOCATION_NAME_LENGTH)
+  val whole = if (cut.lastOrNull()?.isHighSurrogate() == true) cut.dropLast(1) else cut
+  return whole.trimEnd()
 }
 
 /** Empty means no limit; anything else must be a whole number (the minimum is a model rule). */

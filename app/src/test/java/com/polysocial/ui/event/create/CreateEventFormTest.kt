@@ -228,4 +228,29 @@ class CreateEventFormTest {
 
     assertEquals("z".repeat(100), form.toEvent(ZURICH)!!.locationName)
   }
+
+  @Test
+  fun toEvent_neverSplitsAnEmojiWhenShortening() {
+    // The emoji takes characters 100 and 101, so a plain cut would keep half of it.
+    val name = "a".repeat(99) + "\uD83C\uDF89" + "b"
+    val form = completeForm().copy(location = ROLEX.copy(name = name))
+
+    assertEquals("a".repeat(99), form.toEvent(ZURICH)!!.locationName)
+  }
+
+  @Test
+  fun toEvent_keepsAnEmojiThatFitsWhole() {
+    val name = "a".repeat(98) + "\uD83C\uDF89" + "b"
+    val form = completeForm().copy(location = ROLEX.copy(name = name))
+
+    assertEquals("a".repeat(98) + "\uD83C\uDF89", form.toEvent(ZURICH)!!.locationName)
+  }
+
+  @Test
+  fun toEvent_dropsASpaceLeftAtTheEndOfTheCut() {
+    val name = "a".repeat(99) + " and more"
+    val form = completeForm().copy(location = ROLEX.copy(name = name))
+
+    assertEquals("a".repeat(99), form.toEvent(ZURICH)!!.locationName)
+  }
 }
