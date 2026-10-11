@@ -12,6 +12,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -363,6 +364,15 @@ class CreateEventScreenTest {
     node(C.Tag.create_event_dialog_confirm).performClick()
 
     composeTestRule.runOnIdle { assertEquals(LocalDate.of(2026, 10, 15), form().date) }
+  }
+
+  @Test
+  fun theDate_showsItsYearOnlyWhenItIsNotThisYear() {
+    composeTestRule.runOnIdle { viewModel.onDatePick(LocalDate.of(2026, 10, 10)) }
+    node(C.Tag.create_event_date).assertTextEquals("Sat 10 Oct")
+
+    composeTestRule.runOnIdle { viewModel.onDatePick(LocalDate.of(2027, 1, 8)) }
+    node(C.Tag.create_event_date).assertTextEquals("8 Jan 2027")
   }
 
   @Test

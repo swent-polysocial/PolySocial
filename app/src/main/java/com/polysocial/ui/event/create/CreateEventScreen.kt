@@ -248,7 +248,7 @@ fun CreateEventFormContent(
           Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             PickerField(
                 label = R.string.create_event_date_label,
-                value = form.date?.format(DATE_FORMAT),
+                value = form.date?.let { it.format(dateFormat(it, state.today)) },
                 placeholder = R.string.create_event_pick_date,
                 enabled = editable,
                 isError = state.dateFieldHasError(),
@@ -984,7 +984,12 @@ private enum class PickerDialog {
   END,
 }
 
+// The year shows only when it isn't this year's, without the weekday so it fits the date field.
+private fun dateFormat(date: LocalDate, today: LocalDate) =
+    if (date.year == today.year) DATE_FORMAT else DATE_WITH_YEAR_FORMAT
+
 private val DATE_FORMAT = DateTimeFormatter.ofPattern("EEE d MMM")
+private val DATE_WITH_YEAR_FORMAT = DateTimeFormatter.ofPattern("d MMM yyyy")
 private val TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm")
 private const val MILLIS_PER_DAY = 86_400_000L
 private const val DEFAULT_HOUR = 18
