@@ -1,5 +1,6 @@
 // Contributors: Claude (wrote this fake for tests, including the upcoming-events query, #49, the
-// pending save, #46, and reading one event, #112); Mohamed Khellaf (reviewed).
+// pending save, #46, and reading one event, #112; the ID guard, #112); Mohamed Khellaf
+// (reviewed).
 package com.polysocial.model.event
 
 import java.time.Instant
@@ -93,10 +94,11 @@ class FakeEventRepository(
   /**
    * Emits the stored event [id] and again on changes. A missing event is [EventResult.NotCached]
    * while [readFromCache] is true (offline) and [EventResult.NotFound] otherwise. An ID in
-   * [deniedIds] is [EventResult.NotFound] and ends the flow, like a denied read.
+   * [deniedIds] is [EventResult.NotFound] and ends the flow, like a denied read, and so is an ID
+   * that can't be a document ID (blank or containing a slash), like the real repository.
    */
   override fun getEvent(id: String): Flow<EventResult> {
-    if (id in deniedIds) return flowOf(EventResult.NotFound)
+    if (id.isBlank() || id.contains('/') || id in deniedIds) return flowOf(EventResult.NotFound)
     return changes.map {
       val event = events.firstOrNull { it.id == id }
       when {
