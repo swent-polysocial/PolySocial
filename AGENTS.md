@@ -314,7 +314,8 @@ as the source of truth and flag any mismatch with this list in the PR:
 ./gradlew assembleDebug                # CI: debug build
 ./gradlew lint                         # CI: lint
 ./gradlew testDebugUnitTest            # CI: unit tests
-./gradlew connectedCheck               # CI: instrumented tests (emulator)
+./gradlew connectedCheck               # CI: instrumented tests (emulator), with
+                                       # -Pemulator=all inside the Firebase emulators
 ./gradlew jacocoTestReport             # CI: coverage report for Sonar
 ./gradlew assembleRelease              # CI: release build (separate job)
 ```
@@ -325,7 +326,7 @@ as the source of truth and flag any mismatch with this list in the PR:
 - CI skips the build and tests for PRs that only change Markdown files or
   `docs/`. Every other PR runs all the steps above.
 - Rules tests: see "Firestore Security Rules" (local always; emulator
-  required).
+  required). CI runs them too.
 - `check` does not replace instrumented tests. Start an Android emulator or
   device before `connectedCheck`. Check the workflow for the CI emulator's API
   level and image; CI emulators have no real camera, so tests must not depend

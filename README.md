@@ -114,7 +114,7 @@ npm ci --prefix firebase
 firebase emulators:exec --project demo-polysocial --only firestore "node firebase/firestore/firestore.rules.test.js"
 ```
 
-The `demo-` project ID keeps everything on the local emulator, never a real Firebase project. CI doesn't run these tests yet, so paste their output in any PR that changes the rules.
+The `demo-` project ID keeps everything on the local emulator, never a real Firebase project. CI runs these tests too, but still paste their local output in any PR that changes the rules.
 
 Repository tests that need the real Firestore and Auth (queries, listeners, transactions, and the Security Rules on top) run against the same emulators. They are instrumented tests marked `@EmulatorTest`, in `app/src/androidTest/java/com/polysocial/emulator`. Start an Android emulator, then run from the repository root:
 
@@ -128,7 +128,7 @@ On Windows, `emulators:exec` runs the script with `cmd.exe`, which doesn't under
 firebase emulators:exec --project demo-polysocial --only firestore,auth "gradlew.bat connectedDebugAndroidTest -Pemulator"
 ```
 
-`-Pemulator` runs **only** the emulator tests, in place of the regular instrumented tests, so run `./gradlew connectedCheck` separately for those. Without the flag, `connectedCheck` skips the emulator tests. CI doesn't run them yet, so paste their output in the PR when you add or change one. The tests reach the host machine at `10.0.2.2`, which only works from an Android emulator, not from a physical device.
+`-Pemulator` runs **only** the emulator tests, in place of the regular instrumented tests, so run `./gradlew connectedCheck` separately for those. Without the flag, `connectedCheck` skips the emulator tests. `-Pemulator=all` runs both, which is what CI does inside `firebase emulators:exec`. The tests reach the host machine at `10.0.2.2`, which only works from an Android emulator, not from a physical device.
 
 ## Project links
 
