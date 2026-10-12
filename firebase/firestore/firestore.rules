@@ -18,8 +18,9 @@ service cloud.firestore {
     }
 
     // A student: a verified @epfl.ch account whose profile isn't an association's. An association
-    // can have an @epfl.ch email too, and then gets only association access (#161). An account
-    // without a profile yet (the profile step) or without accountType is a student, as in the app.
+    // can have an @epfl.ch email too, and then gets only association access (#161). Only a
+    // profile with accountType "association" removes student access: a student has no profile
+    // yet during the profile step, and accountType can't change once the profile exists.
     function isStudent() {
       let profile = /databases/$(database)/documents/users/$(request.auth.uid);
       return isEpflUser()
