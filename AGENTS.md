@@ -99,7 +99,9 @@ guessing. It also shows how the design evolved.
   this in Firestore Security Rules, not only in the client. Every rule that
   grants access requires `request.auth != null` and
   `request.auth.token.email_verified == true`, plus one of:
-  - an email matching `@epfl.ch` (a student);
+  - an email matching `@epfl.ch` on an account that is not an association
+    (a student). An association with an `@epfl.ch` email is still an
+    association and gets only association access;
   - a verified association account (`accountType == "association"` and
     `isAssociationVerified`, set by hand in the Firebase console by a
     PolySocial admin), and only for what an association does: set up its
