@@ -1,4 +1,4 @@
-// Contributors: Claude (rules tests for #33; also firebase/package.json, which can't hold a comment); Claude Opus 5.5 (testing agent: added edge-case, operation and path coverage tests, #33); Claude Opus 5.5 (users/{uid} tests and no catch-all, #35); Claude Opus 5.5 (testing agent: batches, transactions, queries, flag edge cases, uid paths, other paths, #35); Claude Opus 5.5 (fixed uid and accountType, #35). OpenAI Codex (event visibility and query tests, #52).
+// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, #161); OpenAI Codex (event visibility and query tests, #52).
 const { after, before, beforeEach, test } = require("node:test");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
@@ -714,6 +714,92 @@ test("association ownership also requires the association-event badge", async ()
   });
   await assertFails(getDoc(doc(associationDb("verifiedClub"), "events/clubPublic")));
 });
+
+// ---- @epfl.ch associations (#161) ----
+
+/** An association account with an @epfl.ch email, signed in as [uid]. */
+function epflAssociationDb(uid) {
+  return firestoreAs("club@epfl.ch", true, uid);
+}
+
+/** Seeds users/[uid] as an association, verified or not, listed in events/private. */
+async function seedEpflAssociation(uid, verified) {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, `users/${uid}`), {
+      uid, accountType: "association", isAssociationVerified: verified,
+    });
+    await updateDoc(doc(db, "events/private"), { allowedUids: ["u2", uid] });
+    await setDoc(doc(db, `events/${uid}Event`), {
+      isPrivate: false, createdBy: uid, allowedUids: [uid], isAssociationEvent: true,
+    });
+  });
+}
+
+for (const verified of [false, true]) {
+  const kind = verified ? "verified" : "unverified";
+
+  test(`an ${kind} @epfl.ch association gets no student access to events`, async () => {
+    await seedEpflAssociation("epflClub", verified);
+    const db = epflAssociationDb("epflClub");
+
+    for (const id of ["e1", "private", "clubPublic"]) {
+      await assertFails(getDoc(doc(db, `events/${id}`)));
+    }
+    await assertFails(getDocs(query(collection(db, "events"), where("isPrivate", "==", false))));
+    await assertFails(getDocs(query(
+      collection(db, "events"), where("isPrivate", "==", true),
+      where("allowedUids", "array-contains", "epflClub"),
+    )));
+  });
+
+  test(`an ${kind} @epfl.ch association can still use its own users/{uid}`, async () => {
+    await seedEpflAssociation("epflClub", verified);
+    const db = epflAssociationDb("epflClub");
+
+    await assertSucceeds(getDoc(doc(db, "users/epflClub")));
+    await assertSucceeds(updateDoc(doc(db, "users/epflClub"), { displayName: "Club" }));
+  });
+}
+
+test("an unverified @epfl.ch association can't read its own association events", async () => {
+  await seedEpflAssociation("epflClub", false);
+
+  await assertFails(getDoc(doc(epflAssociationDb("epflClub"), "events/epflClubEvent")));
+});
+
+test("a verified @epfl.ch association reads its own association events like any association", async () => {
+  await seedEpflAssociation("epflClub", true);
+  const db = epflAssociationDb("epflClub");
+
+  await assertSucceeds(getDoc(doc(db, "events/epflClubEvent")));
+  const snapshot = await assertSucceeds(getDocs(query(
+    collection(db, "events"), where("createdBy", "==", "epflClub"),
+    where("isAssociationEvent", "==", true),
+  )));
+  if (snapshot.docs.map((item) => item.id).join(",") !== "epflClubEvent") {
+    throw new Error("Expected only the association's own event");
+  }
+});
+
+for (const [name, profile] of [
+  ["a student profile", { uid: "u5", accountType: "student" }],
+  ["a profile without accountType", { uid: "u5" }],
+  ["no profile yet", null],
+]) {
+  test(`an @epfl.ch student with ${name} keeps student access to events`, async () => {
+    await env.withSecurityRulesDisabled(async (context) => {
+      const db = context.firestore();
+      if (profile) await setDoc(doc(db, "users/u5"), profile);
+      await updateDoc(doc(db, "events/private"), { allowedUids: ["u2", "u5"] });
+    });
+    const db = studentDb("u5");
+
+    await assertSucceeds(getDoc(doc(db, "events/e1")));
+    await assertSucceeds(getDoc(doc(db, "events/private")));
+    await assertSucceeds(getDocs(query(collection(db, "events"), where("isPrivate", "==", false))));
+  });
+}
 
 test("read access doesn't authorize event writes or event subcollections", async () => {
   for (const db of [studentDb("u2"), associationDb("verifiedClub")]) {
