@@ -4,6 +4,7 @@ package com.polysocial.ui.event.list
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.TEST_NOW
 import com.polysocial.model.event.validEvent
+import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.utils.MainDispatcherRule
 import java.time.Clock
 import java.time.Duration
@@ -26,7 +27,13 @@ class EventsViewModelTest {
   private val tomorrow =
       validEvent(title = "Tomorrow", startTime = TEST_NOW.plus(Duration.ofDays(1)))
 
-  private fun createViewModel() = EventsViewModel(repository, clock)
+  private var online = true
+  private val network =
+      object : NetworkMonitor {
+        override fun isOnline() = online
+      }
+
+  private fun createViewModel() = EventsViewModel(repository, network, clock)
 
   private fun runPending() = mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
 
@@ -71,6 +78,7 @@ class EventsViewModelTest {
 
   @Test
   fun eventsFromTheOfflineCache_areMarkedOffline() {
+    online = false
     repository.readFromCache = true
     repository.seed(tomorrow)
 
@@ -89,12 +97,42 @@ class EventsViewModelTest {
 
   @Test
   fun anEmptyOfflineCache_isEmptyAndMarkedOffline() {
+    online = false
     repository.readFromCache = true
 
     val viewModel = createViewModel()
     runPending()
 
     assertEquals(EventsUiState.Empty(isOffline = true), viewModel.state())
+  }
+
+  // Firestore's first snapshot comes from the cache even online, until the server answers.
+  @Test
+  fun cachedEventsWhileOnline_areNotMarkedOffline() {
+    repository.readFromCache = true
+    repository.seed(tomorrow)
+
+    val viewModel = createViewModel()
+    runPending()
+
+    assertEquals(
+        EventsUiState.Events(
+            listOf(EventDaySection(today.plusDays(1), listOf(tomorrow))),
+            today = today,
+            isOffline = false,
+        ),
+        viewModel.state(),
+    )
+  }
+
+  @Test
+  fun anEmptyCacheWhileOnline_isNotMarkedOffline() {
+    repository.readFromCache = true
+
+    val viewModel = createViewModel()
+    runPending()
+
+    assertEquals(EventsUiState.Empty(isOffline = false), viewModel.state())
   }
 
   @Test

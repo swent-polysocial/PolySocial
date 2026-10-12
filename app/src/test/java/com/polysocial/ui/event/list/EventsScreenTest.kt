@@ -17,6 +17,7 @@ import com.polysocial.R
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.validEvent
+import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.resources.C
 import com.polysocial.ui.theme.PolySocialTheme
 import com.polysocial.utils.MainDispatcherRule
@@ -254,7 +255,11 @@ class EventsScreenTest {
             .copy(id = "tomorrow")
     repository.seed(tomorrow)
     repository.readFailure = true
-    val viewModel = EventsViewModel(repository, clock)
+    val network =
+        object : NetworkMonitor {
+          override fun isOnline() = true
+        }
+    val viewModel = EventsViewModel(repository, network, clock)
     composeTestRule.setContent { PolySocialTheme { EventsRoute(viewModel = viewModel) } }
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     composeTestRule.onNodeWithTag(EventsTags.ERROR).assertIsDisplayed()
