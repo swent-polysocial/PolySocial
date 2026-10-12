@@ -122,7 +122,13 @@ Repository tests that need the real Firestore and Auth (queries, listeners, tran
 firebase emulators:exec --project demo-polysocial --only firestore,auth "./gradlew connectedDebugAndroidTest -Pemulator"
 ```
 
-`-Pemulator` runs only the emulator tests; without it, `connectedCheck` skips them. CI doesn't run them yet, so paste their output in the PR when you add or change one. The tests reach the host machine at `10.0.2.2`, which only works from an Android emulator, not from a physical device.
+On Windows, `emulators:exec` runs the script with `cmd.exe`, which doesn't understand `./gradlew`. Use `gradlew.bat` without `./`:
+
+```powershell
+firebase emulators:exec --project demo-polysocial --only firestore,auth "gradlew.bat connectedDebugAndroidTest -Pemulator"
+```
+
+`-Pemulator` runs **only** the emulator tests, in place of the regular instrumented tests, so run `./gradlew connectedCheck` separately for those. Without the flag, `connectedCheck` skips the emulator tests. CI doesn't run them yet, so paste their output in the PR when you add or change one. The tests reach the host machine at `10.0.2.2`, which only works from an Android emulator, not from a physical device.
 
 ## Project links
 
