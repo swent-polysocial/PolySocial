@@ -48,6 +48,7 @@ import com.polysocial.ui.theme.Ink
 import com.polysocial.ui.theme.Ink2
 import com.polysocial.ui.theme.Warning
 import com.polysocial.ui.theme.WarningSoft
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -106,7 +107,7 @@ private fun EventList(state: EventsUiState.Events, zone: ZoneId) {
       item { OfflineBanner(Modifier.padding(bottom = 14.dp)) }
     }
     state.sections.forEachIndexed { index, section ->
-      item(key = "day-$index") { DayHeader(section.day, index) }
+      item(key = "day-$index") { DayHeader(section.date, state.today, index) }
       items(section.events, key = { it.id }) { event ->
         EventCard(event, zone, Modifier.padding(bottom = 14.dp))
       }
@@ -118,12 +119,12 @@ private val timeFormat = DateTimeFormatter.ofPattern("HH:mm")
 private val dateFormat = DateTimeFormatter.ofPattern("EEE d MMM")
 
 @Composable
-private fun DayHeader(day: EventDay, index: Int) {
+private fun DayHeader(date: LocalDate, today: LocalDate, index: Int) {
   val text =
-      when (day) {
-        EventDay.Today -> stringResource(R.string.events_today)
-        EventDay.Tomorrow -> stringResource(R.string.events_tomorrow)
-        is EventDay.On -> day.date.format(dateFormat)
+      when (date) {
+        today -> stringResource(R.string.events_today)
+        today.plusDays(1) -> stringResource(R.string.events_tomorrow)
+        else -> date.format(dateFormat)
       }
   Text(
       text = text,

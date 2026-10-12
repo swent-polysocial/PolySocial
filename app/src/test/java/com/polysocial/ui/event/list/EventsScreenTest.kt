@@ -39,6 +39,9 @@ class EventsScreenTest {
   private val context = ApplicationProvider.getApplicationContext<Context>()
   private val lausanne = ZoneId.of("Europe/Zurich")
 
+  /** Sunday 11 October 2026. */
+  private val today = LocalDate.of(2026, 10, 11)
+
   private fun string(id: Int) = context.getString(id)
 
   private fun event(
@@ -80,10 +83,11 @@ class EventsScreenTest {
     show(
         EventsUiState.Events(
             listOf(
-                EventDaySection(EventDay.Today, listOf(party)),
-                EventDaySection(EventDay.Tomorrow, listOf(climbing)),
-                EventDaySection(EventDay.On(LocalDate.of(2026, 10, 14)), listOf(film)),
+                EventDaySection(today, listOf(party)),
+                EventDaySection(today.plusDays(1), listOf(climbing)),
+                EventDaySection(LocalDate.of(2026, 10, 14), listOf(film)),
             ),
+            today = today,
             isOffline = false,
         )
     )
@@ -97,6 +101,26 @@ class EventsScreenTest {
     composeTestRule.onNodeWithTag(EventsTags.card("climbing")).assertIsDisplayed()
     composeTestRule.onNodeWithTag(EventsTags.card("film")).assertIsDisplayed()
     composeTestRule.onAllNodesWithTag(EventsTags.OFFLINE_BANNER).assertCountEquals(0)
+  }
+
+  @Test
+  fun tomorrow_followsTheCalendarAcrossMonths() {
+    val halloween = LocalDate.of(2026, 10, 31)
+    val brunch = event("brunch", "Brunch", LocalDateTime.of(2026, 11, 1, 11, 0))
+    val lecture = event("lecture", "Lecture", LocalDateTime.of(2026, 11, 2, 8, 15))
+    show(
+        EventsUiState.Events(
+            listOf(
+                EventDaySection(LocalDate.of(2026, 11, 1), listOf(brunch)),
+                EventDaySection(LocalDate.of(2026, 11, 2), listOf(lecture)),
+            ),
+            today = halloween,
+            isOffline = false,
+        )
+    )
+
+    composeTestRule.onNodeWithTag(EventsTags.dayHeader(0)).assertTextEquals("Tomorrow")
+    composeTestRule.onNodeWithTag(EventsTags.dayHeader(1)).assertTextEquals("Mon 2 Nov")
   }
 
   @Test
@@ -117,7 +141,8 @@ class EventsScreenTest {
         )
     show(
         EventsUiState.Events(
-            listOf(EventDaySection(EventDay.Today, listOf(withoutEnd, withEnd))),
+            listOf(EventDaySection(today, listOf(withoutEnd, withEnd))),
+            today = today,
             isOffline = false,
         )
     )
@@ -138,7 +163,8 @@ class EventsScreenTest {
             .copy(id = "utc", category = EventCategory.STUDY)
     show(
         EventsUiState.Events(
-            listOf(EventDaySection(EventDay.Today, listOf(event))),
+            listOf(EventDaySection(today, listOf(event))),
+            today = today,
             isOffline = false,
         )
     )
@@ -153,7 +179,13 @@ class EventsScreenTest {
         EventCategory.entries.map { category ->
           event(category.name, category.name, start, category = category)
         }
-    show(EventsUiState.Events(listOf(EventDaySection(EventDay.Today, events)), isOffline = false))
+    show(
+        EventsUiState.Events(
+            listOf(EventDaySection(today, events)),
+            today = today,
+            isOffline = false,
+        )
+    )
 
     listOf(
             R.string.event_category_party,
@@ -172,7 +204,8 @@ class EventsScreenTest {
     val event = event("party", "Party", LocalDateTime.of(2026, 10, 11, 20, 0))
     show(
         EventsUiState.Events(
-            listOf(EventDaySection(EventDay.Today, listOf(event))),
+            listOf(EventDaySection(today, listOf(event))),
+            today = today,
             isOffline = true,
         )
     )
