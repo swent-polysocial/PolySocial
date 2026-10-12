@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (map overlays and event preview for #50).
+// Contributors: OpenAI Codex (map overlays and event preview for #50; reuse shared category
+// styles).
 package com.polysocial.ui.map
 
 import androidx.annotation.StringRes
@@ -48,11 +49,8 @@ import com.polysocial.R
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
 import com.polysocial.resources.C
+import com.polysocial.ui.event.style
 import com.polysocial.ui.theme.Accent
-import com.polysocial.ui.theme.Info
-import com.polysocial.ui.theme.Ink3
-import com.polysocial.ui.theme.Success
-import com.polysocial.ui.theme.Warning
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 
@@ -280,7 +278,7 @@ private fun EventPreview(
         Box(
             Modifier.size(52.dp)
                 .background(
-                    categoryColor(event.category).copy(alpha = 0.1f),
+                    event.category.style.tileColor,
                     RoundedCornerShape(16.dp),
                 ),
             contentAlignment = Alignment.Center,
@@ -355,30 +353,8 @@ private val previewTimeFormatter =
     DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withZone(MAP_TIME_ZONE)
 private val previewDateFormatter = DateTimeFormatter.ofPattern("EEE d MMM").withZone(MAP_TIME_ZONE)
 
-internal fun categoryIcon(category: EventCategory): Int =
-    when (category) {
-      EventCategory.STUDY -> R.drawable.ic_map_study
-      EventCategory.SPORTS -> R.drawable.ic_map_sports
-      EventCategory.CULTURE -> R.drawable.ic_map_culture
-      EventCategory.PARTY -> R.drawable.ic_map_party
-      EventCategory.OTHER -> R.drawable.ic_tab_events
-    }
+internal fun categoryIcon(category: EventCategory): Int = category.style.icon
 
-@StringRes
-internal fun categoryLabel(category: EventCategory): Int =
-    when (category) {
-      EventCategory.STUDY -> R.string.map_category_study
-      EventCategory.SPORTS -> R.string.map_category_sports
-      EventCategory.CULTURE -> R.string.map_category_culture
-      EventCategory.PARTY -> R.string.map_category_party
-      EventCategory.OTHER -> R.string.map_category_other
-    }
+@StringRes internal fun categoryLabel(category: EventCategory): Int = category.style.label
 
-internal fun categoryColor(category: EventCategory): Color =
-    when (category) {
-      EventCategory.STUDY -> Warning
-      EventCategory.SPORTS -> Success
-      EventCategory.CULTURE -> Info
-      EventCategory.PARTY -> Accent
-      EventCategory.OTHER -> Ink3
-    }
+internal fun categoryColor(category: EventCategory): Color = category.style.color

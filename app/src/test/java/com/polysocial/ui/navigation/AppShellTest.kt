@@ -1,6 +1,7 @@
 // Contributors: Claude (UI tests for the bottom navigation and app bar, #41; nested tab routes,
 // #42; placeholder Events root without Hilt, #105).
-// Contributors: OpenAI Codex (map tab chrome and detail-route regression tests, #50).
+// Contributors: OpenAI Codex (map tab chrome, detail routes and injected tab regression tests,
+// #50).
 package com.polysocial.ui.navigation
 
 import android.content.Context
@@ -52,7 +53,9 @@ class AppShellTest {
       PolySocialTheme {
         AppShell(
             navController = navController,
-            eventsContent = { TabRootScreen(Tab.EVENTS) },
+            eventsContent = {
+              Box(Modifier.testTag("injected_events_content")) { TabRootScreen(Tab.EVENTS) }
+            },
             mapContent = { details ->
               Box(Modifier.testTag(C.Tag.screen_map)) {
                 TextButton({ details("event/one") }, Modifier.testTag("fake_map_details")) {
@@ -126,6 +129,19 @@ class AppShellTest {
   @Test
   fun startsOnEventsTab() {
     assertOnTab(Tab.EVENTS)
+  }
+
+  @Test
+  fun injectedEventsScreenIsRestoredAfterOpeningMapDetails() {
+    composeTestRule.onNodeWithTag("injected_events_content").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).performClick()
+    composeTestRule.onNodeWithTag("fake_map_details").performClick()
+    composeTestRule.onNodeWithTag(C.Tag.event_detail_placeholder).assertIsDisplayed()
+
+    composeTestRule.onNodeWithTag(Tab.EVENTS.navItemTag).performClick()
+
+    composeTestRule.onNodeWithTag("injected_events_content").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(Tab.EVENTS.navItemTag).assertIsSelected()
   }
 
   @Test
