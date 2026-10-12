@@ -1,6 +1,7 @@
 // Contributors: OpenAI Codex (verification UI, Back sign-out and session/navigation regression
 // tests for #31; verified app-shell resume and orientation-specific review captures;
-// synchronized Continue checks with startup work and semantic actions for PR #99's CI failures).
+// synchronized Continue checks with startup work and semantic actions for PR #99's CI failures;
+// preserved the injected Events tab test shell when rebasing onto main).
 package com.polysocial.auth
 
 import android.content.res.Configuration
@@ -49,6 +50,9 @@ import com.polysocial.ui.auth.VerifyEmailUiState
 import com.polysocial.ui.auth.VerifyEmailViewModel
 import com.polysocial.ui.auth.WelcomeTags
 import com.polysocial.ui.login.LoginViewModel
+import com.polysocial.ui.navigation.AppShell
+import com.polysocial.ui.navigation.Tab
+import com.polysocial.ui.navigation.TabRootScreen
 import com.polysocial.ui.start.AppStartViewModel
 import com.polysocial.ui.theme.PolySocialTheme
 import io.mockk.clearMocks
@@ -121,6 +125,7 @@ class VerifyEmailScreenTest {
             loginViewModel = login,
             verificationViewModel = vm,
             startViewModel = start,
+            signedInContent = { AppShell(eventsContent = { TabRootScreen(Tab.EVENTS) }) },
         )
       }
     }
