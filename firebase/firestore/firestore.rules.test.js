@@ -737,9 +737,9 @@ async function seedEpflAssociation(uid, verified) {
 }
 
 for (const verified of [false, true]) {
-  const kind = verified ? "verified" : "unverified";
+  const kind = verified ? "a verified" : "an unverified";
 
-  test(`an ${kind} @epfl.ch association gets no student access to events`, async () => {
+  test(`${kind} @epfl.ch association gets no student access to events`, async () => {
     await seedEpflAssociation("epflClub", verified);
     const db = epflAssociationDb("epflClub");
 
@@ -753,7 +753,7 @@ for (const verified of [false, true]) {
     )));
   });
 
-  test(`an ${kind} @epfl.ch association can still use its own users/{uid}`, async () => {
+  test(`${kind} @epfl.ch association can still use its own users/{uid}`, async () => {
     await seedEpflAssociation("epflClub", verified);
     const db = epflAssociationDb("epflClub");
 
