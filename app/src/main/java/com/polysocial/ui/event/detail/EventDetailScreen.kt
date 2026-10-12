@@ -10,12 +10,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -43,8 +47,11 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextMotion
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -126,7 +133,12 @@ fun EventDetailScreen(
           EventContent(
               state,
               onBack,
-              onFindGroup = { scope.launch { snackbarHostState.showSnackbar(unavailable) } },
+              snackbarHostState,
+              onFindGroup = {
+                // Replace a message already shown instead of queueing one per tap.
+                snackbarHostState.currentSnackbarData?.dismiss()
+                scope.launch { snackbarHostState.showSnackbar(unavailable) }
+              },
           )
       EventDetailUiState.NotFound ->
           MessageState(
@@ -149,10 +161,6 @@ fun EventDetailScreen(
               tag = EventDetailTags.OFFLINE_NOT_SAVED,
           )
     }
-    SnackbarHost(
-        snackbarHostState,
-        Modifier.align(Alignment.BottomCenter).padding(bottom = ACTION_BAR_HEIGHT),
-    )
   }
 }
 
@@ -160,106 +168,126 @@ fun EventDetailScreen(
 private fun EventContent(
     state: EventDetailUiState.Loaded,
     onBack: () -> Unit,
+    snackbarHostState: SnackbarHostState,
     onFindGroup: () -> Unit,
 ) {
   val details = state.details
   val event = details.event
   val category = event.category.style
   Column(Modifier.fillMaxSize()) {
-    Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-      // The category tile overlaps the bottom of the header, as in Figma.
-      Box {
-        Header(category.tileColor, onBack)
-        CategoryTile(event.category, Modifier.padding(start = 20.dp, top = 88.dp))
-      }
-      Column(Modifier.padding(horizontal = 20.dp)) {
-        Spacer(Modifier.height(16.dp))
-        Pill(
-            text = stringResource(category.label),
-            color = category.color,
-            background = category.tileColor,
-            modifier = Modifier.testTag(EventDetailTags.CATEGORY),
-        )
-        Spacer(Modifier.height(14.dp))
-        Text(
-            text = event.title,
-            style = TITLE_STYLE,
-            color = Ink,
-            modifier = Modifier.semantics { heading() }.testTag(EventDetailTags.TITLE),
-        )
-        if (event.isAssociationEvent) {
-          Spacer(Modifier.height(6.dp))
-          Pill(
-              text = stringResource(R.string.event_detail_verified),
-              color = Info,
-              background = InfoSoft,
-              horizontalPadding = 8.dp,
-              verticalPadding = 3.dp,
-              modifier = Modifier.testTag(EventDetailTags.VERIFIED_BADGE),
+    Box(Modifier.weight(1f)) {
+      Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+        // The category tile overlaps the bottom of the header, as in Figma.
+        Box {
+          Header(category.tileColor, onBack)
+          CategoryTile(
+              event.category,
+              Modifier.windowInsetsPadding(WindowInsets.statusBars)
+                  .padding(start = 20.dp, top = 88.dp),
           )
         }
-        Spacer(Modifier.height(14.dp))
-        InfoRow(
-            icon = R.drawable.ic_tab_events,
-            title = details.date.format(DATE_FORMAT),
-            subtitle = timeText(details),
-            titleTag = EventDetailTags.DATE,
-            subtitleTag = EventDetailTags.TIME,
-        )
-        Spacer(Modifier.height(12.dp))
-        InfoRow(
-            icon = R.drawable.ic_pin,
-            title =
-                event.locationName.ifBlank {
-                  stringResource(R.string.event_detail_unnamed_location)
-                },
-            titleTag = EventDetailTags.LOCATION,
-        )
-        event.capacity?.let {
+        Column(Modifier.padding(horizontal = 20.dp)) {
+          Spacer(Modifier.height(16.dp))
+          Pill(
+              text = stringResource(category.label),
+              color = category.color,
+              background = category.tileColor,
+              height = 24.dp,
+              horizontalPadding = 10.dp,
+              modifier = Modifier.testTag(EventDetailTags.CATEGORY),
+          )
+          Spacer(Modifier.height(14.dp))
+          Text(
+              text = event.title,
+              style = TITLE_STYLE,
+              color = Ink,
+              modifier = Modifier.semantics { heading() }.testTag(EventDetailTags.TITLE),
+          )
+          if (event.isAssociationEvent) {
+            Spacer(Modifier.height(6.dp))
+            Pill(
+                text = stringResource(R.string.event_detail_verified),
+                color = Info,
+                background = InfoSoft,
+                height = 22.dp,
+                horizontalPadding = 8.dp,
+                modifier = Modifier.testTag(EventDetailTags.VERIFIED_BADGE),
+            )
+          }
+          Spacer(Modifier.height(14.dp))
+          InfoRow(
+              icon = R.drawable.ic_tab_events,
+              title = details.date.format(DATE_FORMAT),
+              subtitle = timeText(details),
+              titleTag = EventDetailTags.DATE,
+              subtitleTag = EventDetailTags.TIME,
+          )
           Spacer(Modifier.height(12.dp))
           InfoRow(
-              icon = R.drawable.ic_people,
-              title = pluralStringResource(R.plurals.event_detail_capacity, it, it),
-              titleTag = EventDetailTags.CAPACITY,
+              icon = R.drawable.ic_pin,
+              title =
+                  event.locationName.ifBlank {
+                    stringResource(R.string.event_detail_unnamed_location)
+                  },
+              titleTag = EventDetailTags.LOCATION,
           )
+          event.capacity?.let {
+            Spacer(Modifier.height(12.dp))
+            InfoRow(
+                icon = R.drawable.ic_people,
+                title = pluralStringResource(R.plurals.event_detail_capacity, it, it),
+                titleTag = EventDetailTags.CAPACITY,
+            )
+          }
+          if (event.description.isNotBlank()) {
+            Spacer(Modifier.height(17.dp))
+            Text(
+                text = event.description,
+                style = MaterialTheme.typography.bodyLarge.figmaExact(),
+                color = Ink2,
+                modifier = Modifier.testTag(EventDetailTags.DESCRIPTION),
+            )
+          }
+          Spacer(Modifier.height(20.dp))
         }
-        if (event.description.isNotBlank()) {
-          Spacer(Modifier.height(17.dp))
-          Text(
-              text = event.description,
-              style = MaterialTheme.typography.bodyLarge,
-              color = Ink2,
-              modifier = Modifier.testTag(EventDetailTags.DESCRIPTION),
-          )
-        }
-        Spacer(Modifier.height(20.dp))
       }
+      SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
     }
     if (state.isOffline) OfflineBanner(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp))
     ActionBar(onFindGroup)
   }
 }
 
-/** The colored top of the screen with the round Back button. */
+/**
+ * The colored top of the screen with the round Back button. Its color runs behind the status bar,
+ * and its Figma height starts below it. The Back button is Figma's 44 dp circle inside a 48 dp
+ * touch area, Android's minimum.
+ */
 @Composable
 private fun Header(color: Color, onBack: () -> Unit) {
-  Box(Modifier.fillMaxWidth().height(HEADER_HEIGHT).background(color)) {
+  Box(
+      Modifier.fillMaxWidth()
+          .background(color)
+          .windowInsetsPadding(WindowInsets.statusBars)
+          .height(HEADER_HEIGHT)
+  ) {
     Box(
         modifier =
-            Modifier.padding(12.dp)
-                .size(44.dp)
+            Modifier.padding(10.dp)
+                .size(48.dp)
                 .clip(CircleShape)
-                .background(Bg)
                 .clickable(role = Role.Button, onClick = onBack)
                 .testTag(EventDetailTags.BACK),
         contentAlignment = Alignment.Center,
     ) {
-      Icon(
-          painterResource(R.drawable.ic_back),
-          contentDescription = stringResource(R.string.event_detail_navigate_back),
-          tint = Ink,
-          modifier = Modifier.size(20.dp),
-      )
+      Box(Modifier.size(44.dp).background(Bg, CircleShape), contentAlignment = Alignment.Center) {
+        Icon(
+            painterResource(R.drawable.ic_back),
+            contentDescription = stringResource(R.string.event_detail_navigate_back),
+            tint = Ink,
+            modifier = Modifier.size(20.dp),
+        )
+      }
     }
   }
 }
@@ -291,24 +319,28 @@ private fun CategoryTile(category: EventCategory, modifier: Modifier = Modifier)
   }
 }
 
+/** A rounded label of Figma's fixed [height], with its text centred. */
 @Composable
 private fun Pill(
     text: String,
     color: Color,
     background: Color,
+    height: Dp,
+    horizontalPadding: Dp,
     modifier: Modifier = Modifier,
-    horizontalPadding: Dp = 10.dp,
-    verticalPadding: Dp = 4.dp,
 ) {
-  Text(
-      text = text,
-      style = PILL_STYLE,
-      color = color,
+  Box(
       modifier =
           modifier
+              // Read as one label, the text it holds.
+              .semantics(mergeDescendants = true) {}
+              .height(height)
               .background(background, RoundedCornerShape(50))
-              .padding(horizontal = horizontalPadding, vertical = verticalPadding),
-  )
+              .padding(horizontal = horizontalPadding),
+      contentAlignment = Alignment.Center,
+  ) {
+    Text(text = text, style = PILL_STYLE, color = color)
+  }
 }
 
 /** A row of the details: an icon tile, a bold line and an optional second line. */
@@ -378,21 +410,26 @@ private fun OfflineBanner(modifier: Modifier = Modifier) {
               .padding(horizontal = 14.dp, vertical = 13.dp)
               .testTag(EventDetailTags.OFFLINE_BANNER),
       horizontalArrangement = Arrangement.spacedBy(10.dp),
-      verticalAlignment = Alignment.CenterVertically,
+      // Figma starts the icon and the text on the same line, so a two-line text keeps the icon at
+      // the top.
+      verticalAlignment = Alignment.Top,
   ) {
     Icon(painterResource(R.drawable.ic_offline), contentDescription = null, tint = Warning)
     Text(
         text = stringResource(R.string.event_detail_offline),
-        style = MaterialTheme.typography.labelMedium,
+        style = MaterialTheme.typography.labelMedium.figmaExact(),
         color = Warning,
     )
   }
 }
 
-/** The bottom bar, with a top border: "Find a group" across the whole width. */
+/**
+ * The bottom bar, with a top border: "Find a group" across the whole width, above the navigation
+ * bar.
+ */
 @Composable
 private fun ActionBar(onFindGroup: () -> Unit) {
-  Column(Modifier.fillMaxWidth()) {
+  Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars)) {
     HorizontalDivider(color = Border)
     Box(
         modifier =
@@ -451,16 +488,23 @@ private fun MessageState(
             modifier = Modifier.size(30.dp),
         )
       }
+      // Figma's texts here use the font's own line height ("auto"), like ErrorState's.
       Text(
           text = title,
-          style = MaterialTheme.typography.titleMedium,
+          style =
+              MaterialTheme.typography.titleMedium
+                  .copy(lineHeight = TextUnit.Unspecified)
+                  .figmaExact(),
           color = Ink,
           textAlign = TextAlign.Center,
           modifier = Modifier.widthIn(max = 280.dp).semantics { heading() },
       )
       Text(
           text = body,
-          style = MaterialTheme.typography.bodyLarge,
+          style =
+              MaterialTheme.typography.bodyLarge
+                  .copy(lineHeight = TextUnit.Unspecified)
+                  .figmaExact(),
           color = Ink2,
           textAlign = TextAlign.Center,
           modifier = Modifier.widthIn(max = 280.dp),
@@ -491,9 +535,15 @@ private fun MessageState(
 private val HEADER_HEIGHT = 132.dp
 
 /**
- * Height of the action bar (52 dp button, 12 dp above and below, 1 dp border), for the Snackbar.
+ * Draws this style like Figma (see "Matching Figma in Compose" in CONTEXT.md): glyphs aren't
+ * rounded to whole pixels, and the first and last lines of a multi-line text aren't trimmed.
  */
-private val ACTION_BAR_HEIGHT = 77.dp
+private fun TextStyle.figmaExact(): TextStyle =
+    copy(
+        textMotion = TextMotion.Animated,
+        lineHeightStyle =
+            LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None),
+    )
 
 private val DATE_FORMAT = DateTimeFormatter.ofPattern("EEEE d MMMM")
 private val TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm")
@@ -501,29 +551,33 @@ private val TIME_FORMAT = DateTimeFormatter.ofPattern("HH:mm")
 // Figma's text styles on this screen; the shared type scale has no 24 sp title or 12 sp bold label.
 private val TITLE_STYLE =
     TextStyle(
-        fontFamily = PlusJakartaSans,
-        fontWeight = FontWeight.ExtraBold,
-        fontSize = 24.sp,
-        lineHeight = 30.sp,
-    )
+            fontFamily = PlusJakartaSans,
+            fontWeight = FontWeight.ExtraBold,
+            fontSize = 24.sp,
+            lineHeight = 30.sp,
+        )
+        .figmaExact()
 private val PILL_STYLE =
     TextStyle(
-        fontFamily = PlusJakartaSans,
-        fontWeight = FontWeight.Bold,
-        fontSize = 12.sp,
-        lineHeight = 15.1.sp,
-    )
+            fontFamily = PlusJakartaSans,
+            fontWeight = FontWeight.Bold,
+            fontSize = 12.sp,
+            lineHeight = 15.1.sp,
+        )
+        .figmaExact()
 private val ROW_TITLE_STYLE =
     TextStyle(
-        fontFamily = PlusJakartaSans,
-        fontWeight = FontWeight.Bold,
-        fontSize = 15.sp,
-        lineHeight = 18.9.sp,
-    )
+            fontFamily = PlusJakartaSans,
+            fontWeight = FontWeight.Bold,
+            fontSize = 15.sp,
+            lineHeight = 18.9.sp,
+        )
+        .figmaExact()
 private val ROW_SUBTITLE_STYLE =
     TextStyle(
-        fontFamily = PlusJakartaSans,
-        fontWeight = FontWeight.Normal,
-        fontSize = 13.sp,
-        lineHeight = 16.4.sp,
-    )
+            fontFamily = PlusJakartaSans,
+            fontWeight = FontWeight.Normal,
+            fontSize = 13.sp,
+            lineHeight = 16.4.sp,
+        )
+        .figmaExact()
