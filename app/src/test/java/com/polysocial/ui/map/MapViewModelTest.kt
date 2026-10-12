@@ -101,7 +101,12 @@ class MapViewModelTest {
   @Test
   fun todayUsesZurichDateBeforeEveningAndRefreshesWithSelection() {
     val now = Instant.parse("2026-10-08T22:30:00Z")
-    val model = MapViewModel(MapEventSource { result }, Clock.fixed(now, ZoneOffset.UTC))
+    val model =
+        MapViewModel(
+            MapEventSource { result },
+            FakeLocationService(),
+            Clock.fixed(now, ZoneOffset.UTC),
+        )
     val morning = event.copy(startTime = Instant.parse("2026-10-09T08:00:00Z"))
     val tomorrow = morning.copy(id = "tomorrow", startTime = Instant.parse("2026-10-10T08:00:00Z"))
     emit(MapEventResult.Events(listOf(morning, tomorrow)))

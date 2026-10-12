@@ -10,6 +10,7 @@ import com.polysocial.model.location.LocationService
 import com.polysocial.model.map.MapEventResult
 import com.polysocial.model.map.MapEventSource
 import com.polysocial.utils.MainDispatcherRule
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.flowOf
 import org.junit.Assert.assertEquals
@@ -217,6 +218,31 @@ class MapLocationViewModelTest {
     deniedVm.onMapEntered()
     settle()
     assertEquals(MapLocationState.Denied, deniedVm.uiState.value.locationState)
+  }
+
+  @Test
+  fun cancelledDeviceOperationWhileCallerIsActiveShowsUnavailableAndAllowsRetry() {
+    service.permissionGranted = true
+    var attempts = 0
+    val cancelledOperation =
+        object : LocationService by service {
+          override suspend fun currentLocation(): LocationResult {
+            attempts++
+            if (attempts == 1) throw CancellationException("synthetic operation cancellation")
+            return LocationResult.Available(event.location)
+          }
+        }
+    val vm = model(cancelledOperation)
+    vm.onMapEntered()
+    settle()
+    assertEquals(MapLocationState.Unavailable, vm.uiState.value.locationState)
+    assertEquals(listOf(event), vm.uiState.value.events)
+
+    vm.turnOnLocation()
+    settle()
+
+    assertEquals(MapLocationState.Available(event.location), vm.uiState.value.locationState)
+    assertEquals(2, attempts)
   }
 
   @Test

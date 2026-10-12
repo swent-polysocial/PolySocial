@@ -20,6 +20,7 @@ import io.mockk.slot
 import io.mockk.unmockkAll
 import io.mockk.verify
 import java.util.concurrent.Executor
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runTest
@@ -109,10 +110,12 @@ class AndroidLocationServiceTest {
   }
 
   @Test
-  fun fineOnlyPermission_doesNotRequestDialog() {
+  fun fineOnlyPermission_doesNotReplaceTheDeclaredCoarsePermission() = runTest {
     permission(coarse = false, fine = true)
-    assertTrue(service.hasPermission())
-    assertFalse(service.shouldRequestPermission())
+    assertFalse(service.hasPermission())
+    assertTrue(service.shouldRequestPermission())
+    assertEquals(LocationResult.PermissionDenied, service.currentLocation())
+    verify(exactly = 0) { context.getSystemService(Context.LOCATION_SERVICE) }
   }
 
   @Test
@@ -138,14 +141,12 @@ class AndroidLocationServiceTest {
   }
 
   @Test
-  fun precisePermission_usesGpsWhenNetworkUnavailable() = runTest {
-    permission(coarse = false, fine = true)
+  fun aFineGrantDoesNotEnableGpsWhenNetworkUnavailable() = runTest {
+    permission(coarse = true, fine = true)
     every { manager.isProviderEnabled(LocationManager.GPS_PROVIDER) } returns true
-    val request = async { service.currentLocation() }
-    yield()
-    assertEquals(LocationManager.GPS_PROVIDER, provider.captured)
-    callback.captured.accept(fix())
-    assertEquals(LocationResult.Available(Coordinates(1.0, 2.0)), request.await())
+    assertEquals(LocationResult.Unavailable, service.currentLocation())
+    assertFalse(callback.isCaptured)
+    verify(exactly = 0) { manager.isProviderEnabled(LocationManager.GPS_PROVIDER) }
   }
 
   @Test
@@ -217,6 +218,41 @@ class AndroidLocationServiceTest {
     every { manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) } throws
         IllegalArgumentException("provider gone")
     assertEquals(LocationResult.Unavailable, service.currentLocation())
+  }
+
+  @Test
+  fun unexpectedManagerFailure_returnsUnavailable() = runTest {
+    permission(coarse = true, fine = false)
+    every { context.getSystemService(Context.LOCATION_SERVICE) } throws
+        IllegalStateException("synthetic service failure")
+    assertEquals(LocationResult.Unavailable, service.currentLocation())
+    assertFalse(callback.isCaptured)
+  }
+
+  @Test
+  fun unexpectedProviderFailure_returnsUnavailable() = runTest {
+    permission(coarse = true, fine = false)
+    every { manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) } throws
+        IllegalStateException("synthetic provider failure")
+    assertEquals(LocationResult.Unavailable, service.currentLocation())
+    assertFalse(callback.isCaptured)
+  }
+
+  @Test
+  fun platformCancellationWhileCallerIsActive_returnsUnavailable() = runTest {
+    permission(coarse = true, fine = false)
+    every { manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) } returns true
+    every {
+      LocationManagerCompat.getCurrentLocation(
+          manager,
+          any(),
+          capture(signal),
+          any(),
+          any<Consumer<Location>>(),
+      )
+    } throws CancellationException("synthetic platform cancellation")
+    assertEquals(LocationResult.Unavailable, service.currentLocation())
+    assertTrue(signal.captured.isCanceled)
   }
 
   @Test

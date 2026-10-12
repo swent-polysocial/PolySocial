@@ -1,5 +1,5 @@
 // Contributors: OpenAI Codex (map overlays and event preview for #50; reuse shared category
-// styles; optional location notices and straight-line badges for #51).
+// styles; optional location notices and straight-line badges and review fixes for #51).
 package com.polysocial.ui.map
 
 import androidx.annotation.StringRes
@@ -44,6 +44,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.polysocial.R
@@ -189,12 +190,10 @@ fun MapScreen(
           )
     }
     if (hasLocationNotice) {
-      val noticeText =
-          stringResource(
-              if (state.locationState == MapLocationState.Denied) R.string.map_location_denied
-              else R.string.map_location_unavailable
-          )
-      val titleLength = stringResource(R.string.map_location_off_title).length
+      val denied = state.locationState == MapLocationState.Denied
+      val noticeTitle = stringResource(R.string.map_location_off_title)
+      val noticeBody = stringResource(R.string.map_location_denied_body)
+      val unavailableText = stringResource(R.string.map_location_unavailable)
       Card(
           Modifier.align(Alignment.TopCenter)
               .padding(start = 12.dp, top = 64.dp, end = 12.dp)
@@ -218,10 +217,11 @@ fun MapScreen(
           )
           Text(
               buildAnnotatedString {
-                append(noticeText)
-                if (state.locationState == MapLocationState.Denied) {
-                  addStyle(SpanStyle(fontWeight = FontWeight.Bold), 0, titleLength)
-                }
+                if (denied) {
+                  withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(noticeTitle) }
+                  append(" ")
+                  append(noticeBody)
+                } else append(unavailableText)
               },
               modifier = Modifier.weight(1f),
               style = MaterialTheme.typography.bodyMedium,
@@ -254,7 +254,14 @@ fun MapScreen(
           painterResource(
               if (hasLocationNotice) R.drawable.ic_map_location_off else R.drawable.ic_map_location
           ),
-          stringResource(R.string.map_location_refresh),
+          stringResource(
+              if (
+                  state.locationState == MapLocationState.Denied ||
+                      state.locationState == MapLocationState.OpenSettings
+              )
+                  R.string.map_location_turn_on
+              else R.string.map_location_refresh
+          ),
           tint = Ink3,
       )
     }
@@ -409,8 +416,9 @@ private fun EventPreview(
           modifier = Modifier.testTag(MapTags.TIME),
       )
       distanceMeters?.let { meters ->
+        val roundedMeters = meters.roundToInt()
         Text(
-            if (meters < 1000) stringResource(R.string.map_distance_meters, meters.roundToInt())
+            if (roundedMeters < 1000) stringResource(R.string.map_distance_meters, roundedMeters)
             else stringResource(R.string.map_distance_kilometers, meters / 1000),
             style = MaterialTheme.typography.labelMedium,
             modifier = Modifier.testTag(MapTags.DISTANCE),

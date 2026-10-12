@@ -10,9 +10,7 @@ sealed interface LocationResult {
   /** A single coordinate snapshot, kept only in screen memory for straight-line distance badges. */
   data class Available(val coordinates: Coordinates) : LocationResult
 
-  /**
-   * Neither approximate nor precise location is allowed, including permission revoked mid-request.
-   */
+  /** Approximate location is not allowed, including permission revoked mid-request. */
   data object PermissionDenied : LocationResult
 
   /**
@@ -24,10 +22,10 @@ sealed interface LocationResult {
 /**
  * Foreground, one-off device location access for the Map tab. No location history is stored or sent
  * to a server. The Map asks only for approximate permission, which is sufficient for distance
- * badges. Existing precise grants remain supported by the platform service.
+ * badges. The service uses the network provider and never requests precise or background access.
  */
 interface LocationService {
-  /** Whether either approximate or precise permission is currently granted. */
+  /** Whether the declared approximate-location permission is currently granted. */
   fun hasPermission(): Boolean
 
   /** Whether the first Map entry should show the permission prompt. */
