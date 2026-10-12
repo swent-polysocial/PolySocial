@@ -1,7 +1,8 @@
 // Contributors: OpenAI Codex (Mapbox dependencies and local public-token resource, #50).
 // Contributors: Claude (Hilt, KSP and Hilt testing setup, JaCoCo on Hilt-rewritten classes, #70;
 // Navigation Compose dependency, #41; MockK and kotlinx-coroutines-play-services, #32; emulator
-// tests only with -Pemulator and no protobuf-lite in instrumented tests, #117);
+// tests only with -Pemulator and no protobuf-lite in instrumented tests, #117; -Pemulator=all for
+// CI, #159);
 // OpenAI Codex (sign-up test dependencies, review cleanup and Android UI-test MockK binding).
 import java.util.Properties
 
@@ -40,14 +41,15 @@ android {
     resValue("string", "mapbox_access_token", mapboxToken)
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-    // Tests marked @EmulatorTest need the Firebase emulators, which CI doesn't start: they run
-    // only with -Pemulator, and then alone (see the README).
+    // Tests marked @EmulatorTest need the Firebase emulators (see the README). Without -Pemulator
+    // (or with -Pemulator=false) they are skipped; -Pemulator (or -Pemulator=true) runs only them;
+    // -Pemulator=all runs every instrumented test, as CI does inside `firebase emulators:exec`.
     val emulatorTest = "com.polysocial.emulator.EmulatorTest"
-    // -Pemulator (or -Pemulator=true) turns them on; -Pemulator=false doesn't.
-    if (providers.gradleProperty("emulator").orNull.let { it != null && it != "false" }) {
-      testInstrumentationRunnerArguments["annotation"] = emulatorTest
-    } else {
-      testInstrumentationRunnerArguments["notAnnotation"] = emulatorTest
+    when (providers.gradleProperty("emulator").orNull) {
+      null,
+      "false" -> testInstrumentationRunnerArguments["notAnnotation"] = emulatorTest
+      "all" -> {}
+      else -> testInstrumentationRunnerArguments["annotation"] = emulatorTest
     }
     vectorDrawables { useSupportLibrary = true }
   }
