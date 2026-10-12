@@ -62,6 +62,7 @@ The issues for the last four points (#12, #31, #32, #34, #35, #44–#47, #52) st
 
 ## Traps
 
+- **The Firestore emulator doesn't enforce composite indexes.** A query missing from `firebase/firestore/firestore.indexes.json` still passes the emulator tests and only fails on the real backend. Add the index by hand and deploy it as the README says (#117).
 - **Auth completion effects leave with the screen.** System Back must keep sign-up and login in composition during submission and successful routing; otherwise the account can be created or signed in without reaching its destination. In-screen login Back/Create account are locked too; failures unlock navigation. Regression tests use deferred fake repositories ([#87](https://github.com/swent-polysocial/PolySocial/pull/87)).
 
 - **Local Java version:** the host default Java 27 causes JaCoCo test instrumentation errors (`Unsupported class file major version 71`). Run Gradle with the installed Java 21 via `JAVA_HOME`; do not upgrade project dependencies to match the host.
