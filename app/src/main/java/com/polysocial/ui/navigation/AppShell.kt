@@ -24,6 +24,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -135,6 +136,10 @@ fun AppShell(
 
   Scaffold(
       modifier = modifier.testTag(C.Tag.app_shell),
+      // The detail draws its own header behind the status bar and keeps its action bar above the
+      // navigation bar, so it gets no system insets from the Scaffold.
+      contentWindowInsets =
+          if (onEventDetail) WindowInsets(0) else ScaffoldDefaults.contentWindowInsets,
       topBar = {
         if (showBars && !onEventDetail && destination?.route != Tab.MAP.rootRoute)
             AppBar(
