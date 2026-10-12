@@ -194,8 +194,8 @@ fun EventsScreen(
     onClearSheetFilters: () -> Unit,
     onSelectDistance: (Int?) -> Unit,
     onTurnOnLocation: () -> Unit,
+    onEventClick: (eventId: String) -> Unit,
     modifier: Modifier = Modifier,
-    onEventClick: (eventId: String) -> Unit = {},
 ) {
   val list = state.list
   var showFilters by rememberSaveable { mutableStateOf(false) }

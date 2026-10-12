@@ -105,6 +105,7 @@ class EventsScreenTest {
             onClearSheetFilters = { sheetClears++ },
             onSelectDistance = { distances += it },
             onTurnOnLocation = { turnOns++ },
+            onEventClick = {},
         )
       }
     }
