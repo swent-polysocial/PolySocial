@@ -1,4 +1,4 @@
-// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47).
+// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge tests after review).
 const { after, before, beforeEach, test } = require("node:test");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
@@ -925,12 +925,19 @@ test("a verified student can create an event in a transaction, as the app does",
   }));
 });
 
-test("a verified association can publish an event under its name", async () => {
+test("a verified association can publish an event under its name and read it back", async () => {
   const db = associationDb("verifiedClub");
   await assertSucceeds(setDoc(
     doc(db, "events/clubNew"), eventBy("verifiedClub", { isAssociationEvent: true }),
   ));
-  await assertSucceeds(setDoc(doc(db, "events/clubPlain"), eventBy("verifiedClub")));
+  await assertSucceeds(getDoc(doc(db, "events/clubNew")));
+});
+
+// It could create it, but its own read rule (association events only) would then deny it.
+test("a verified association can't create an event without its badge", async () => {
+  await assertFails(setDoc(
+    doc(associationDb("verifiedClub"), "events/clubPlain"), eventBy("verifiedClub"),
+  ));
 });
 
 test("an event whose createdBy isn't the caller is denied", async () => {
