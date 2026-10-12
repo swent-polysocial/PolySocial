@@ -1,4 +1,4 @@
-// Contributors: OpenAI Codex (cancellable one-off Android location access for #51).
+// Contributors: OpenAI Codex (one-off coarse location access and review fixes for #51).
 package com.polysocial.model.location
 
 import android.Manifest
@@ -13,6 +13,8 @@ import com.polysocial.model.event.Coordinates
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlin.coroutines.resume
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -28,9 +30,7 @@ class AndroidLocationService @Inject constructor(@ApplicationContext private val
 
   override fun hasPermission(): Boolean =
       ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
-          PackageManager.PERMISSION_GRANTED ||
-          ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
-              PackageManager.PERMISSION_GRANTED
+          PackageManager.PERMISSION_GRANTED
 
   override fun shouldRequestPermission(): Boolean =
       !hasPermission() && !preferences.getBoolean(PERMISSION_REQUESTED, false)
@@ -40,36 +40,22 @@ class AndroidLocationService @Inject constructor(@ApplicationContext private val
   }
 
   override suspend fun currentLocation(): LocationResult {
-    if (
-        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) !=
-            PackageManager.PERMISSION_GRANTED &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) !=
-                PackageManager.PERMISSION_GRANTED
-    ) {
-      return LocationResult.PermissionDenied
-    }
-    val manager =
-        context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
-            ?: return LocationResult.Unavailable
     val signal = CancellationSignal()
     return try {
-      // Prefer the network provider: approximate permission works and it normally resolves indoors.
-      val provider =
-          when {
-            manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) ->
-                LocationManager.NETWORK_PROVIDER
-            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
-                PackageManager.PERMISSION_GRANTED &&
-                manager.isProviderEnabled(LocationManager.GPS_PROVIDER) ->
-                LocationManager.GPS_PROVIDER
-            else -> return LocationResult.Unavailable
-          }
+      if (!hasPermission()) return LocationResult.PermissionDenied
+      val manager =
+          context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+              ?: return LocationResult.Unavailable
+      // Only coarse permission is declared. GPS needs fine permission, so it is not a fallback.
+      if (!manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
+        return LocationResult.Unavailable
+      }
       withTimeoutOrNull(LOCATION_TIMEOUT_MILLIS) {
         suspendCancellableCoroutine { continuation ->
           continuation.invokeOnCancellation { signal.cancel() }
           LocationManagerCompat.getCurrentLocation(
               manager,
-              provider,
+              LocationManager.NETWORK_PROVIDER,
               signal,
               ContextCompat.getMainExecutor(context),
           ) { location ->
@@ -98,6 +84,9 @@ class AndroidLocationService @Inject constructor(@ApplicationContext private val
       LocationResult.PermissionDenied
     } catch (_: IllegalArgumentException) {
       // A provider may disappear after the enabled check.
+      LocationResult.Unavailable
+    } catch (_: Exception) {
+      currentCoroutineContext().ensureActive()
       LocationResult.Unavailable
     } finally {
       signal.cancel()

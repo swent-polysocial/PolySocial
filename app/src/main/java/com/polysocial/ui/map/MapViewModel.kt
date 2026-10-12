@@ -16,8 +16,9 @@ import java.time.Clock
 import java.time.LocalDate
 import java.time.ZoneId
 import javax.inject.Inject
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -191,9 +192,8 @@ constructor(
       val result =
           try {
             locationService.currentLocation()
-          } catch (cancelled: CancellationException) {
-            throw cancelled
           } catch (_: Exception) {
+            currentCoroutineContext().ensureActive()
             LocationResult.Unavailable
           }
       setLocation(

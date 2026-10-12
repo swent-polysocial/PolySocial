@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -382,7 +383,12 @@ class MapScreenTest {
     show()
     composeRule.onNodeWithTag(MapTags.LOCATION_NOTICE).assertIsDisplayed()
     composeRule.onNodeWithTag(MapTags.LOCATION_ICON).assertIsDisplayed()
-    composeRule.onNodeWithText(context.getString(R.string.map_location_denied)).assertIsDisplayed()
+    composeRule
+        .onNodeWithText(
+            "${context.getString(R.string.map_location_off_title)} " +
+                context.getString(R.string.map_location_denied_body)
+        )
+        .assertIsDisplayed()
     composeRule.onNodeWithTag(MapTags.marker(first.id)).performClick()
     composeRule.onNodeWithTag(MapTags.TITLE).assertTextEquals(first.title)
     composeRule.onNodeWithTag(MapTags.DISTANCE).assertDoesNotExist()
@@ -411,6 +417,61 @@ class MapScreenTest {
         .onNodeWithTag(MapTags.DISTANCE)
         .assertTextEquals(context.getString(R.string.map_distance_meters, 0))
     assertEquals(2, location.requestCount)
+  }
+
+  @Test
+  fun deniedFloatingLocationButtonAnnouncesAndRequestsTurnOn() {
+    location.markPermissionRequested()
+    vm.onMapEntered()
+    show()
+
+    composeRule
+        .onNodeWithTag(MapTags.LOCATION_REFRESH)
+        .assertContentDescriptionEquals(context.getString(R.string.map_location_turn_on))
+        .performClick()
+
+    assertEquals(MapLocationState.RequestPermission, vm.uiState.value.locationState)
+    assertEquals(0, location.requestCount)
+  }
+
+  @Test
+  fun unavailableFloatingLocationButtonAnnouncesRefresh() {
+    location.permissionGranted = true
+    vm.onMapEntered()
+    show()
+    composeRule
+        .onNodeWithTag(MapTags.LOCATION_REFRESH)
+        .assertContentDescriptionEquals(context.getString(R.string.map_location_refresh))
+  }
+
+  @Test
+  fun distanceThatRoundsToOneKilometerUsesKilometers() {
+    source.value = MapEventResult.Events(listOf(first.copy(location = Coordinates(0.0, 0.0))))
+    location.permissionGranted = true
+    location.result = LocationResult.Available(Coordinates(0.0, 0.00899))
+    vm.onMapEntered()
+    show()
+    composeRule.onNodeWithTag(MapTags.marker(first.id)).performClick()
+
+    assertTrue(vm.uiState.value.selectedDistanceMeters!! in 999.5..999.9)
+    composeRule
+        .onNodeWithTag(MapTags.DISTANCE)
+        .assertTextEquals(context.getString(R.string.map_distance_kilometers, 1.0))
+  }
+
+  @Test
+  fun distanceJustBelowKilometerRoundingUsesMeters() {
+    source.value = MapEventResult.Events(listOf(first.copy(location = Coordinates(0.0, 0.0))))
+    location.permissionGranted = true
+    location.result = LocationResult.Available(Coordinates(0.0, 0.008988))
+    vm.onMapEntered()
+    show()
+    composeRule.onNodeWithTag(MapTags.marker(first.id)).performClick()
+
+    assertTrue(vm.uiState.value.selectedDistanceMeters!! in 999.0..999.5)
+    composeRule
+        .onNodeWithTag(MapTags.DISTANCE)
+        .assertTextEquals(context.getString(R.string.map_distance_meters, 999))
   }
 
   @Test
