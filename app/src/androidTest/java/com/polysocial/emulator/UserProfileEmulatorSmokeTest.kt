@@ -1,9 +1,10 @@
-// Contributors: Claude (Firestore emulator smoke test, #117).
+// Contributors: Claude (Firestore emulator smoke test, #117; geopoints and nulls after review).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.GeoPoint
 import com.polysocial.model.user.CreateProfileResult
 import com.polysocial.model.user.FirestoreUserProfileRepository
 import com.polysocial.model.user.ProfileResult
@@ -13,6 +14,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Rule
@@ -83,6 +85,8 @@ class UserProfileEmulatorSmokeTest {
             "count" to 3,
             "createdAt" to CREATED_AT,
             "allowedUids" to listOf(uid, OTHER_UID),
+            "location" to LOCATION,
+            "endTime" to null,
         ),
     )
 
@@ -92,6 +96,10 @@ class UserProfileEmulatorSmokeTest {
     assertEquals(3L, stored.getLong("count"))
     assertEquals(CREATED_AT, stored.getTimestamp("createdAt"))
     assertEquals(listOf(uid, OTHER_UID), stored.get("allowedUids"))
+    assertEquals(LOCATION, stored.getGeoPoint("location"))
+    // Stored as a null field, not left out, as Event.toFirestoreMap() writes a missing end time.
+    assertTrue(stored.contains("endTime"))
+    assertNull(stored.get("endTime"))
   }
 
   private companion object {
@@ -99,5 +107,6 @@ class UserProfileEmulatorSmokeTest {
     const val STUDENT_EMAIL = "test.student@epfl.ch"
     const val OTHER_UID = "fictional-other-user"
     val CREATED_AT = Timestamp(1_790_000_000, 0)
+    val LOCATION = GeoPoint(46.5191, 6.5668)
   }
 }
