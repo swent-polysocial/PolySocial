@@ -179,21 +179,22 @@ guessing. It also shows how the design evolved.
 - Keep long-running work off the main thread. Use coroutines and lifecycle-aware
   observable state (such as `StateFlow`). Represent loading, empty, success,
   and error states where relevant.
-- Handle invalid input, network failures, denied permissions (location,
-  camera), and loss of connectivity, and surface the failure in UI state rather
-  than swallowing it silently.
 - Anything that can fail must be handled gracefully. Every call that can fail
-  has a handled failure path: Firebase and other network calls, reading stored
-  or external data (a missing or wrong-typed field), parsing (QR codes, JSON),
-  and device access (location, camera, permissions). Catch the specific
-  exceptions (for example `FirebaseException`), normally at the repository or
-  service boundary, and return a typed result (such as a sealed `…Result` with
+  has a handled failure path: invalid input, Firebase and other network calls,
+  loss of connectivity, reading stored or external data (a missing or
+  wrong-typed field), parsing (QR codes, JSON), and device access (location,
+  camera, denied permissions). Catch the specific exceptions first (for
+  example `FirebaseException`), normally at the repository or service
+  boundary, then map anything else to `UnexpectedError` with a final
+  `catch (Exception)`. Return a typed result (such as a sealed `…Result` with
   `NetworkError` and `UnexpectedError`) that the ViewModel turns into an error
-  state with a way out (for example a retry). A failure must never crash the
-  app or leave a screen stuck loading. Do not catch `Throwable` (which
-  `runCatching` does) or empty-catch an exception, and let coroutine
-  cancellation through: rethrow `CancellationException` before any broader
-  catch. Test each failure path.
+  state with a way out (for example a retry), never swallowing it silently. A
+  failure must never crash the app or leave a screen stuck loading. Do not
+  catch `Throwable` (which `runCatching` does) or empty-catch an exception.
+  Let the caller's cancellation through: rethrow `CancellationException`
+  before any broader catch, or call `ensureActive()` when a cancelled task
+  should count as a failure while the caller is still running. Test each
+  failure path.
 - Do not change generated files or Gradle wrapper binaries to make a build or
   test pass. Do not weaken existing tests.
 
