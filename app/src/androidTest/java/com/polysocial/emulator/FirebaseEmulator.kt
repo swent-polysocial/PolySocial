@@ -1,5 +1,5 @@
 // Contributors: Claude (Firestore emulator test setup, #117; timeouts and the port in the error
-// after an adversarial test review).
+// after an adversarial test review; geopoints and nulls in admin writes after review).
 package com.polysocial.emulator
 
 import android.net.Uri
@@ -11,6 +11,7 @@ import com.google.firebase.Timestamp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.GeoPoint
 import com.google.firebase.firestore.firestoreSettings
 import com.google.firebase.firestore.memoryCacheSettings
 import java.io.IOException
@@ -80,9 +81,10 @@ class FirebaseEmulator : ExternalResource() {
    * Creates the document [id] in [collection] with [data] as an administrator would, bypassing the
    * Security Rules (for example to set `isAssociationVerified`, which only an admin may set).
    * Values keep their type: a [String], [Boolean], [Int] or [Long], [Double], [Timestamp] or
-   * [Instant], or a [List] of these (for example an event's `organizerIds` and `startTime`).
+   * [Instant], a [GeoPoint], `null`, or a [List] of these, so an event's map from
+   * `Event.toFirestoreMap()` (with its `location` and an optional `endTime`) can be stored as is.
    */
-  suspend fun createAsAdmin(collection: String, id: String, data: Map<String, Any>) {
+  suspend fun createAsAdmin(collection: String, id: String, data: Map<String, Any?>) {
     val fields = JSONObject()
     data.forEach { (key, value) -> fields.put(key, firestoreValue(value)) }
     request(
@@ -94,8 +96,9 @@ class FirebaseEmulator : ExternalResource() {
   }
 
   /** [value] in the Firestore REST API's typed form, for example `{"booleanValue": true}`. */
-  private fun firestoreValue(value: Any): JSONObject =
+  private fun firestoreValue(value: Any?): JSONObject =
       when (value) {
+        null -> JSONObject().put("nullValue", JSONObject.NULL)
         is String -> JSONObject().put("stringValue", value)
         is Boolean -> JSONObject().put("booleanValue", value)
         // The REST API takes 64-bit integers as strings.
@@ -105,9 +108,15 @@ class FirebaseEmulator : ExternalResource() {
         is Timestamp -> firestoreValue(value.toInstant())
         // Instant.toString() is the RFC 3339 form the REST API expects.
         is Instant -> JSONObject().put("timestampValue", value.toString())
+        is GeoPoint ->
+            JSONObject()
+                .put(
+                    "geoPointValue",
+                    JSONObject().put("latitude", value.latitude).put("longitude", value.longitude),
+                )
         is List<*> -> {
           val values = JSONArray()
-          value.forEach { values.put(firestoreValue(requireNotNull(it) { "Null list item" })) }
+          value.forEach { values.put(firestoreValue(it)) }
           JSONObject().put("arrayValue", JSONObject().put("values", values))
         }
         else -> throw IllegalArgumentException("Unsupported field type: ${value::class.simpleName}")
