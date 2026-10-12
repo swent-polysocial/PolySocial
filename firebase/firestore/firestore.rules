@@ -1,7 +1,8 @@
 // Contributors: Claude (isEpflUser helper, #33; own users/{uid} rule and no catch-all, #35;
 // fixed uid and accountType after review, #35; @epfl.ch associations aren't students and
 // accountType values on create, association profiles not deletable by the client, #161);
-// OpenAI Codex (public/private event read rules, #52); Claude Opus 5.5 (event write rules, #47).
+// OpenAI Codex (public/private event read rules, #52); Claude Opus 5.5 (event write rules, #47;
+// badge check after review).
 rules_version = '2';
 
 service cloud.firestore {
@@ -119,11 +120,13 @@ service cloud.firestore {
         return resource.data.organizerIds.hasAny([request.auth.uid]);
       }
 
-      // Only a verified association may publish under its name (the verified badge).
+      // Only a verified association may publish under its name (the verified badge), and it
+      // always does: it can read only its own association events, so an event without the
+      // badge would be unreadable to its own creator.
       allow create: if canWriteEvents()
           && request.resource.data.createdBy == request.auth.uid
           && isValidEvent(request.resource.data)
-          && (request.resource.data.isAssociationEvent == false || isVerifiedAssociation());
+          && request.resource.data.isAssociationEvent == isVerifiedAssociation();
 
       // Any organizer manages the event. The creator and the badge are fixed once created.
       allow update: if canWriteEvents()
