@@ -2,7 +2,7 @@
 // fixed uid and accountType after review, #35; @epfl.ch associations aren't students and
 // accountType values on create, association profiles not deletable by the client, #161);
 // OpenAI Codex (public/private event read rules, #52); Claude Opus 5.5 (event write rules, #47;
-// badge check after review).
+// badge and locationName checks after review).
 rules_version = '2';
 
 service cloud.firestore {
@@ -99,7 +99,8 @@ service cloud.firestore {
             && (isVerifiedAssociation() || (isEpflUser() && !isAssociationAccount()));
       }
 
-      // The limits of validateNewEvent (title, description) and the EventCategory names. The
+      // The limits of validateNewEvent (title, description), MAX_LOCATION_NAME_LENGTH and the
+      // EventCategory names. Events saved before locationName existed don't have it. The
       // creator always stays an organizer and an allowed reader, so they never lose access.
       function isValidEvent(data) {
         return data.title is string
@@ -107,6 +108,8 @@ service cloud.firestore {
             && data.title.size() <= 80
             && data.description is string
             && data.description.size() <= 5000
+            && (!('locationName' in data)
+                || (data.locationName is string && data.locationName.size() <= 100))
             && data.category in ['STUDY', 'SPORTS', 'CULTURE', 'PARTY', 'OTHER']
             && data.isPrivate is bool
             && data.isAssociationEvent is bool
