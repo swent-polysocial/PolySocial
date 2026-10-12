@@ -1,4 +1,4 @@
-// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge tests after review).
+// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge and locationName tests after review).
 const { after, before, beforeEach, test } = require("node:test");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
@@ -1004,6 +1004,9 @@ for (const [name, overrides] of [
   ["a string association badge", { isAssociationEvent: "false" }],
   ["a string organizer list", { organizerIds: "u1" }],
   ["a string allowlist", { allowedUids: "u1" }],
+  ["a location name over 100 characters", { locationName: "a".repeat(101) }],
+  ["a non-string location name", { locationName: 42 }],
+  ["a null location name", { locationName: null }],
 ]) {
   test(`an event with ${name} is denied`, async () => {
     const event = eventBy("u1", overrides);
@@ -1012,10 +1015,17 @@ for (const [name, overrides] of [
   });
 }
 
-test("the title and description limits are inclusive", async () => {
+test("the title, description and location name limits are inclusive", async () => {
   await assertSucceeds(setDoc(doc(studentDb("u1"), "events/new"), eventBy("u1", {
-    title: "a".repeat(80), description: "a".repeat(5000),
+    title: "a".repeat(80), description: "a".repeat(5000), locationName: "a".repeat(100),
   })));
+});
+
+// The app writes a blank name when none was picked; older events have no locationName at all.
+test("an event with a blank location name is allowed", async () => {
+  await assertSucceeds(setDoc(
+    doc(studentDb("u1"), "events/new"), eventBy("u1", { locationName: "" }),
+  ));
 });
 
 for (const category of ["STUDY", "SPORTS", "CULTURE", "PARTY", "OTHER"]) {
@@ -1078,6 +1088,7 @@ for (const [name, change] of [
   ["remove the creator from the allowlist", { allowedUids: ["u5", "u3"] }],
   ["empty the title", { title: "" }],
   ["set an unknown category", { category: "MUSIC" }],
+  ["set a location name over 100 characters", { locationName: "a".repeat(101) }],
 ]) {
   test(`an organizer can't ${name}`, async () => {
     await seedManagedEvent();
