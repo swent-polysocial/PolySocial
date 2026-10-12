@@ -132,7 +132,7 @@ jobs:
       # Pinned, so a new CLI release can't change CI without a PR
       - name: Install Firebase CLI
         run: |
-          npm install -g firebase-tools@15.30.0
+          npm install -g firebase-tools@15.33.0
 
       - name: Security Rules tests
         run: |
