@@ -1,10 +1,12 @@
-// Contributors: Claude (state of the Events tab's list, #105).
+// Contributors: Claude (state of the Events tab's list, #105; offline only when the device is,
+// after review).
 package com.polysocial.ui.event.list
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.PublicEventsResult
+import com.polysocial.model.network.NetworkMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
 import java.time.LocalDate
@@ -41,7 +43,9 @@ sealed interface EventsUiState {
 /**
  * Observes the upcoming public events from [EventRepository] and groups them by day for the Events
  * tab. The list updates whenever the events change. `isOffline` is true when the events come from
- * the offline cache, so the screen can say they may be out of date.
+ * the offline cache and [network] says the device is offline, so the screen can say they may be out
+ * of date. The cache alone isn't enough: Firestore's first snapshot comes from it even online,
+ * until the server answers.
  *
  * After an error the repository stops emitting, so the list stays in [EventsUiState.Error] until
  * [retry].
@@ -53,6 +57,7 @@ class EventsViewModel
 @Inject
 constructor(
     private val repository: EventRepository,
+    private val network: NetworkMonitor,
     private val clock: Clock,
 ) : ViewModel() {
   private val _uiState = MutableStateFlow<EventsUiState>(EventsUiState.Loading)
@@ -82,14 +87,16 @@ constructor(
         _uiState.value =
             when (result) {
               PublicEventsResult.Error -> EventsUiState.Error
-              is PublicEventsResult.Events ->
-                  if (result.events.isEmpty()) EventsUiState.Empty(result.fromCache)
-                  else
-                      EventsUiState.Events(
-                          groupEventsByDay(result.events, clock),
-                          LocalDate.now(clock),
-                          result.fromCache,
-                      )
+              is PublicEventsResult.Events -> {
+                val isOffline = result.fromCache && !network.isOnline()
+                if (result.events.isEmpty()) EventsUiState.Empty(isOffline)
+                else
+                    EventsUiState.Events(
+                        groupEventsByDay(result.events, clock),
+                        LocalDate.now(clock),
+                        isOffline,
+                    )
+              }
             }
       }
     }
