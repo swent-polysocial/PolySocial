@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.dropUnlessResumed
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
@@ -162,7 +163,7 @@ fun AppShell(
       // One nested graph per tab, so each tab keeps its own back stack.
       Tab.entries.forEach { tab ->
         navigation(startDestination = tab.rootRoute, route = tab.route) {
-          composable(tab.rootRoute) {
+          composable(tab.rootRoute) { entry ->
             // dropUnlessResumed: a second quick tap doesn't open a second Create Event.
             val openCreateEvent = dropUnlessResumed { navController.navigate(tab.createEventRoute) }
             Box(Modifier.fillMaxSize()) {
@@ -173,7 +174,9 @@ fun AppShell(
                         openCreateEvent,
                     )
                 Tab.EVENTS -> {
-                  eventsContent { eventId -> navController.navigate(tab.eventDetailRoute(eventId)) }
+                  eventsContent { eventId ->
+                    if (entry.isResumed) navController.navigate(tab.eventDetailRoute(eventId))
+                  }
                   // Figma: 16 dp from the screen edge and 20 dp above the bottom bar.
                   CreateEventButton(
                       onClick = openCreateEvent,
@@ -239,8 +242,8 @@ fun AppShell(
                   listOf(
                       navArgument(EventDetailViewModel.EVENT_ID_ARG) { type = NavType.StringType }
                   ),
-          ) {
-            eventDetailContent { navController.popBackStack() }
+          ) { entry ->
+            eventDetailContent { if (entry.isResumed) navController.popBackStack() }
           }
         }
       }
@@ -260,6 +263,14 @@ private fun NavHostController.openCreatedEvent(tab: Tab, eventId: String) {
 
 /** The Map tab's placeholder detail for [eventId] (its route takes the id, unlike the others). */
 private fun mapDetailRoute(eventId: String) = "${Tab.MAP.detailRoute}/${Uri.encode(eventId)}"
+
+/**
+ * True while this destination is the one on screen. A second tap during the transition, when the
+ * entry is no longer resumed, must be ignored: a second Back would pop the tab's root too and leave
+ * a blank screen, and a second tap on a card would open the detail twice.
+ */
+private val NavBackStackEntry.isResumed: Boolean
+  get() = lifecycle.currentState == Lifecycle.State.RESUMED
 
 /**
  * Shows [tab] with the screen it was on. The other tabs' stacks are saved and removed, so the back

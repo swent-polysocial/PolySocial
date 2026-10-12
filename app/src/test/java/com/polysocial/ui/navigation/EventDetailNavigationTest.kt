@@ -1,4 +1,5 @@
-// Contributors: Claude (wrote these tests of opening an event's detail from a tab, #112).
+// Contributors: Claude (wrote these tests of opening an event's detail from a tab, #112; double
+// taps during the transition, after review).
 package com.polysocial.ui.navigation
 
 import androidx.activity.ComponentActivity
@@ -190,6 +191,46 @@ class EventDetailNavigationTest {
 
     assertOnRootOf(Tab.MAP)
     composeTestRule.onNodeWithTag(Tab.MAP.screenTag).assertIsDisplayed()
+  }
+
+  @Test
+  fun aDoubleTapOnTheDetailsBack_returnsOnlyOnce_andNeverEmptiesTheStack() {
+    composeTestRule.onNodeWithTag(EventsTags.card(trickyId)).performClick()
+    composeTestRule.onNodeWithTag(DETAIL).assertIsDisplayed()
+
+    // The second tap lands during the exit transition, before the detail is gone.
+    composeTestRule.mainClock.autoAdvance = false
+    try {
+      composeTestRule.onNodeWithTag(DETAIL).performClick()
+      composeTestRule.mainClock.advanceTimeBy(50)
+      composeTestRule.onNodeWithTag(DETAIL).performClick()
+    } finally {
+      composeTestRule.mainClock.autoAdvance = true
+    }
+    composeTestRule.waitForIdle()
+
+    assertOnRootOf(Tab.EVENTS)
+    composeTestRule.runOnIdle {
+      assertEquals(Tab.EVENTS.rootRoute, navController.currentDestination?.route)
+    }
+  }
+
+  @Test
+  fun aDoubleTapOnACard_opensTheDetailOnce() {
+    composeTestRule.mainClock.autoAdvance = false
+    try {
+      composeTestRule.onNodeWithTag(EventsTags.card(trickyId)).performClick()
+      composeTestRule.mainClock.advanceTimeBy(50)
+      composeTestRule.onNodeWithTag(EventsTags.card(trickyId)).performClick()
+    } finally {
+      composeTestRule.mainClock.autoAdvance = true
+    }
+    composeTestRule.waitForIdle()
+
+    pressBack()
+
+    // One Back is enough: only one detail was opened.
+    assertOnRootOf(Tab.EVENTS)
   }
 
   private companion object {
