@@ -142,11 +142,6 @@
     <string name="map_category_day">%1$s · %2$s</string>
     <string name="map_tonight">Tonight</string>
     <string name="map_time_range">%1$s – %2$s</string>
-    <string name="map_category_study">Study</string>
-    <string name="map_category_sports">Sports</string>
-    <string name="map_category_culture">Culture</string>
-    <string name="map_category_party">Party</string>
-    <string name="map_category_other">Other</string>
     <string name="event_detail_title">Event details</string>
     <string name="event_detail_placeholder">Event details are coming soon.</string>
     <string name="event_detail_back">Back to map</string>
