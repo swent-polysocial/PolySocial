@@ -7,6 +7,7 @@ import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.PublicEventsResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
+import java.time.LocalDate
 import java.time.ZoneId
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -23,8 +24,15 @@ sealed interface EventsUiState {
   /** There are no upcoming public events. */
   data class Empty(val isOffline: Boolean) : EventsUiState
 
-  /** The upcoming public events, grouped by day. */
-  data class Events(val sections: List<EventDaySection>, val isOffline: Boolean) : EventsUiState
+  /**
+   * The upcoming public events, grouped by day. [today] is the current date, so the screen can name
+   * today's and tomorrow's sections.
+   */
+  data class Events(
+      val sections: List<EventDaySection>,
+      val today: LocalDate,
+      val isOffline: Boolean,
+  ) : EventsUiState
 
   /** The events could not be loaded; the screen offers Retry. */
   data object Error : EventsUiState
@@ -38,7 +46,7 @@ sealed interface EventsUiState {
  * After an error the repository stops emitting, so the list stays in [EventsUiState.Error] until
  * [retry].
  *
- * @param clock gives the current date and time zone for the day headings, so tests can fix them.
+ * @param clock gives the current date and time zone for the day sections, so tests can fix them.
  */
 @HiltViewModel
 class EventsViewModel
@@ -79,6 +87,7 @@ constructor(
                   else
                       EventsUiState.Events(
                           groupEventsByDay(result.events, clock),
+                          LocalDate.now(clock),
                           result.fromCache,
                       )
             }

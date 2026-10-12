@@ -7,6 +7,7 @@ import com.polysocial.model.event.validEvent
 import com.polysocial.utils.MainDispatcherRule
 import java.time.Clock
 import java.time.Duration
+import java.time.LocalDate
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -18,6 +19,7 @@ class EventsViewModelTest {
 
   private val repository = FakeEventRepository()
   private val clock = Clock.fixed(TEST_NOW, ZoneId.of("Europe/Zurich"))
+  private val today = LocalDate.of(2026, 1, 1)
 
   // Starts at 13:00 in Lausanne, so these start later today and tomorrow there.
   private val laterToday = validEvent(title = "Later today", startTime = TEST_NOW.plusSeconds(3600))
@@ -49,9 +51,10 @@ class EventsViewModelTest {
     assertEquals(
         EventsUiState.Events(
             listOf(
-                EventDaySection(EventDay.Today, listOf(laterToday)),
-                EventDaySection(EventDay.Tomorrow, listOf(tomorrow)),
+                EventDaySection(today, listOf(laterToday)),
+                EventDaySection(today.plusDays(1), listOf(tomorrow)),
             ),
+            today = today,
             isOffline = false,
         ),
         viewModel.state(),
@@ -76,7 +79,8 @@ class EventsViewModelTest {
 
     assertEquals(
         EventsUiState.Events(
-            listOf(EventDaySection(EventDay.Tomorrow, listOf(tomorrow))),
+            listOf(EventDaySection(today.plusDays(1), listOf(tomorrow))),
+            today = today,
             isOffline = true,
         ),
         viewModel.state(),
@@ -103,7 +107,8 @@ class EventsViewModelTest {
 
     assertEquals(
         EventsUiState.Events(
-            listOf(EventDaySection(EventDay.Tomorrow, listOf(tomorrow))),
+            listOf(EventDaySection(today.plusDays(1), listOf(tomorrow))),
+            today = today,
             isOffline = false,
         ),
         viewModel.state(),
@@ -134,7 +139,8 @@ class EventsViewModelTest {
     runPending()
     assertEquals(
         EventsUiState.Events(
-            listOf(EventDaySection(EventDay.Tomorrow, listOf(tomorrow))),
+            listOf(EventDaySection(today.plusDays(1), listOf(tomorrow))),
+            today = today,
             isOffline = false,
         ),
         viewModel.state(),
