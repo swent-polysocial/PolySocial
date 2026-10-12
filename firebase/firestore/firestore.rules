@@ -1,5 +1,6 @@
 // Contributors: Claude (isEpflUser helper, #33; own users/{uid} rule and no catch-all, #35;
-// fixed uid and accountType after review, #35); OpenAI Codex (public/private event read rules, #52).
+// fixed uid and accountType after review, #35; @epfl.ch associations aren't students, #161);
+// OpenAI Codex (public/private event read rules, #52).
 rules_version = '2';
 
 service cloud.firestore {
@@ -16,8 +17,17 @@ service cloud.firestore {
           && request.auth.token.email.matches('[^@]+@epfl[.]ch');
     }
 
-    // Each account's private profile. The only rule open to any verified email (associations
-    // have none at EPFL), so an unverified association reaches nothing else. Only an admin sets
+    // A student: a verified @epfl.ch account whose profile isn't an association's. An association
+    // can have an @epfl.ch email too, and then gets only association access (#161). An account
+    // without a profile yet (the profile step) or without accountType is a student, as in the app.
+    function isStudent() {
+      let profile = /databases/$(database)/documents/users/$(request.auth.uid);
+      return isEpflUser()
+          && !(exists(profile) && get(profile).data.get('accountType', 'student') == 'association');
+    }
+
+    // Each account's private profile. The only rule open to any verified email (most
+    // associations have no EPFL email), so an unverified association reaches nothing else. Only an admin sets
     // isAssociationVerified, in the Firebase console. The uid field names the document's owner,
     // and uid and accountType are fixed once created, so an admin verifying an account isn't
     // misled.
@@ -49,7 +59,7 @@ service cloud.firestore {
             && resource.data.createdBy == request.auth.uid;
       }
 
-      allow read: if (isEpflUser()
+      allow read: if (isStudent()
           && (resource.data.isPrivate == false
               || (resource.data.isPrivate == true
                   && resource.data.allowedUids.hasAny([request.auth.uid]))))
