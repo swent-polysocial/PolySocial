@@ -1,3 +1,4 @@
+<!-- Contributors: OpenAI Codex (Google provider and keystore setup for #106). -->
 <!-- Contributors: Claude (drafted the README structure, Setup, Running and testing, Tech stack and Project links sections; Firestore index deployment, #49; Firestore emulator tests, #117); OpenAI Codex (documented startup routing and rebase reconciliation); OpenAI Codex (Mapbox integration and setup, #50; one-off Map location privacy note, #51). -->
 <!-- Contributors: OpenAI Codex (verification startup integration and Back sign-out, #31). -->
 <!-- Contributors: Claude (Sprint 2 status in the Features table and the startup routing note). -->
@@ -96,6 +97,16 @@ firebase deploy --only firestore:indexes --project <project-id>
 `<project-id>` is the `project_id` in your `app/google-services.json`.
 
 Keep `--only firestore:indexes`: a plain `firebase deploy` would also deploy the Security Rules. A new index takes a few minutes to build (Firebase console → Firestore → Indexes). Until it's ready, the query that needs it fails. The local emulator doesn't need indexes.
+
+### Google sign-in setup
+
+In Firebase console → Authentication → Sign-in method, enable **Google** and select a support email. Keep **one account per email address** enabled: Firebase can link compatible providers to the same UID, while a provider collision requires signing in with the original method first. Never delete or recreate an existing account to resolve a collision. A Google-only account cannot sign up again with the same email; Firebase password reset can add a password (the in-app Forgot password flow is a separate task).
+
+In Project settings → Your apps → `com.polysocial`, register the **SHA-1 fingerprints of every teammate's debug keystore, CI keystore, and release/Play signing keystore**. Use `./gradlew signingReport` to obtain local fingerprints; do not commit keystores. Download a fresh `app/google-services.json` after enabling Google and registering fingerprints, and update the existing CI secret through the repository owner. Its OAuth configuration generates `default_web_client_id` (the **Web** client ID, not the Android client ID). The config must contain the Web OAuth client before building Google sign-in. If `default_web_client_id` is missing at compilation, download the updated config; do not hardcode a client ID or commit the config.
+
+Both Google buttons use the same Credential Manager button flow. Accounts outside exactly `@epfl.ch` are rejected before Firebase sign-in; Firebase also validates the token and the resulting verified email before any profile read. Uppercase domains and subdomains are rejected to match the current Security Rules. No Google token or rejected identity is persisted or logged.
+
+Console configuration needs a Firebase project administrator; this PR documents it and does not change live project settings. See [Firebase Google sign-in setup](https://firebase.google.com/docs/auth/android/google-signin) and [Android's Credential Manager button flow](https://developer.android.com/identity/sign-in/credential-manager-siwg-implementation).
 
 ## Running and testing
 
