@@ -23,15 +23,15 @@ This checklist follows the [M1 handout updated on 10 October](https://github.com
 
 ## Current evidence and dependencies
 
-| Item | Evidence / next action | State on 13 October |
+| Item | Evidence / next action | State on 14 October |
 |---|---|---|
 | Repository | [PolySocial](https://github.com/swent-polysocial/PolySocial) | Available |
 | Scrum Board | [Project 1](https://github.com/orgs/swent-polysocial/projects/1) | Link known; board contents require authorized project access |
 | Agreed live designs | [First proposal revamped](https://www.figma.com/design/7Gt7tmy1ikpNyNBh1P6QdY/App-Mockup?node-id=123-467) | This is the live file, not the final M1 version link |
 | Architecture | [PR #170](https://github.com/swent-polysocial/PolySocial/pull/170), closing #139 | Source/PNG and wiki mirror prepared; teammate review and publication pending |
 | Main CI baseline | [Run 38443382277](https://github.com/swent-polysocial/PolySocial/actions/runs/38443382277), commit `6d79c3ea67b9d223432a8dc85f13e0400eecbbdc` | Passed; this run has **no APK artifact** |
-| APK publication | [PR #176](https://github.com/swent-polysocial/PolySocial/pull/176), closing #137 | [Team approval recorded](https://github.com/swent-polysocial/PolySocial/issues/137#issuecomment-6155218847); workflow and README implemented; CI, phone check and integration pending |
-| Privacy | [PR #173](https://github.com/swent-polysocial/PolySocial/pull/173), #103 | Offline screens/tests implemented; explicit draft contact/provider fields authorized by Mehdi until supplied |
+| APK publication | [PR #176](https://github.com/swent-polysocial/PolySocial/pull/176), closing #137 | [Team approval recorded](https://github.com/swent-polysocial/PolySocial/issues/137#issuecomment-6155218847); [PR CI passed](https://github.com/swent-polysocial/PolySocial/actions/runs/38468864043); phone check and integration pending |
+| Privacy | [PR #173](https://github.com/swent-polysocial/PolySocial/pull/173), #103 | Prototype implemented with authorized draft contact/provider fields; follow #173 for final validation and review |
 | Final build / `M1` branch | Latest green main after all intended Sprint 2 PRs are merged | Pending; no `M1` branch exists yet |
 | Group chat | Team's confirmed link for the Tooling page | Mehdi confirmed it is not defined yet; explicit draft placeholder prepared until supplied |
 
