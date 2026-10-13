@@ -1,5 +1,5 @@
 // Contributors: Claude (app shell and tab test tags, #41; loading state tag, #43; Create Event
-// tags, #46; "+" button, #110).
+// tags, #46; "+" button, #110; app bar action tags, #84).
 // Contributors: OpenAI Codex (map event-detail tags, #50).
 package com.polysocial.resources
 
@@ -16,6 +16,10 @@ object C {
     const val loading_state = "loading_state"
     const val event_detail_placeholder = "event_detail_placeholder"
     const val event_detail_back = "event_detail_back"
+
+    const val app_bar_action_notifications = "app_bar_action_notifications"
+    const val app_bar_action_search_chats = "app_bar_action_search_chats"
+    const val app_bar_action_edit_profile = "app_bar_action_edit_profile"
 
     const val nav_item_events = "nav_item_events"
     const val nav_item_map = "nav_item_map"

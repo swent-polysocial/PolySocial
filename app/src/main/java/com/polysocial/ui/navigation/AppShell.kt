@@ -1,6 +1,7 @@
 // Contributors: Claude (app shell with bottom navigation and app bar, #41; theme title style after
 // review; bottom bar matched to the Figma; loading state, #43; per-tab back stacks, #42; Events
-// list, #105; "+" button and Create Event navigation from the Events and Map tabs, #110).
+// list, #105; "+" button and Create Event navigation from the Events and Map tabs, #110; app bar
+// actions, #84).
 // Contributors: OpenAI Codex (map route and detail placeholder, #50).
 package com.polysocial.ui.navigation
 
@@ -11,11 +12,13 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -51,6 +54,7 @@ import com.polysocial.ui.event.create.CreateEventButton
 import com.polysocial.ui.event.create.CreateEventScreen
 import com.polysocial.ui.event.list.EventsRoute
 import com.polysocial.ui.map.MapRoute
+import com.polysocial.ui.theme.Ink
 import com.polysocial.ui.theme.Ink3
 
 /**
@@ -70,11 +74,11 @@ data class CreateEventNavigation(
 )
 
 /**
- * Root of the signed-in app: an app bar with the current tab's title, the current tab's screen, and
- * the bottom navigation bar. The Events tab shows the upcoming events and the Map tab the event
- * map, both with the "+" button that opens Create Event inside the tab, full screen; the other tabs
- * show the shared loading state, then a placeholder until their feature is built. The map uses
- * floating overlays instead of the app bar.
+ * Root of the signed-in app: an app bar with the current tab's title and, at the tab's root, its
+ * action (see [TabAction]), the current tab's screen, and the bottom navigation bar. The Events tab
+ * shows the upcoming events and the Map tab the event map, both with the "+" button that opens
+ * Create Event inside the tab, full screen; the other tabs show the shared loading state, then a
+ * placeholder until their feature is built. The map uses floating overlays instead of the app bar.
  *
  * @param eventsContent the Events tab's root screen. Tests replace it, because the real one needs
  *   Hilt.
@@ -110,12 +114,21 @@ fun AppShell(
       } ?: Tab.EVENTS
   // Figma shows Create Event full screen, without the app bar and the bottom bar.
   val showBars = destination?.route != currentTab.createEventRoute
+  // The action belongs to the tab's root: the screen it opens doesn't offer it again.
+  val action = currentTab.action.takeIf { destination?.route == currentTab.rootRoute }
 
   Scaffold(
       modifier = modifier.testTag(C.Tag.app_shell),
       topBar = {
         if (showBars && destination?.route != Tab.MAP.rootRoute)
-            AppBar(title = stringResource(currentTab.label))
+            AppBar(
+                title = stringResource(currentTab.label),
+                action = action,
+                // A double tap must not open the screen twice.
+                onAction = {
+                  navController.navigate(currentTab.routeOf(it)) { launchSingleTop = true }
+                },
+            )
       },
       bottomBar = {
         if (showBars) {
@@ -204,6 +217,9 @@ fun AppShell(
               )
             }
           }
+          tab.action?.let { action ->
+            composable(tab.routeOf(action)) { PlaceholderActionScreen(action) }
+          }
         }
       }
     }
@@ -238,18 +254,34 @@ private fun NavHostController.navigateToTab(tab: Tab) {
 }
 
 @Composable
-private fun AppBar(title: String) {
+private fun AppBar(title: String, action: TabAction?, onAction: (TabAction) -> Unit) {
+  // Figma: the title starts 20 dp from the left; the action's 22 dp icon ends 31 dp from the right,
+  // centred on the title, inside a 48 dp touch target. The bar keeps that height with or without an
+  // action, so the content below doesn't move.
   Box(
       modifier =
           Modifier.fillMaxWidth()
               .windowInsetsPadding(WindowInsets.statusBars)
-              .padding(horizontal = 20.dp, vertical = 16.dp)
+              .padding(start = 20.dp, end = 18.dp, top = 8.dp, bottom = 8.dp)
+              .heightIn(min = 48.dp)
   ) {
     Text(
         text = title,
         style = MaterialTheme.typography.headlineMedium,
-        modifier = Modifier.testTag(C.Tag.app_bar_title),
+        modifier = Modifier.align(Alignment.CenterStart).testTag(C.Tag.app_bar_title),
     )
+    if (action != null) {
+      IconButton(
+          onClick = { onAction(action) },
+          modifier = Modifier.align(Alignment.CenterEnd).testTag(action.tag),
+      ) {
+        Icon(
+            painter = painterResource(action.icon),
+            contentDescription = stringResource(action.label),
+            tint = Ink,
+        )
+      }
+    }
   }
 }
 

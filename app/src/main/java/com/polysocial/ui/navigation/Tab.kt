@@ -1,5 +1,5 @@
 // Contributors: Claude (tab definitions for the bottom navigation, #41; loading messages, #43;
-// per-tab routes, #42; Create Event route, #110).
+// per-tab routes, #42; Create Event route, #110; app bar actions, #84).
 package com.polysocial.ui.navigation
 
 import androidx.annotation.DrawableRes
@@ -16,6 +16,7 @@ import com.polysocial.resources.C
  * @property loadingMessage Message of the shared loading state while the tab's content loads.
  * @property navItemTag Test tag of the tab's bottom bar item.
  * @property screenTag Test tag of the tab's root screen.
+ * @property action Action on the right of the tab's app bar, or null when Figma has none.
  */
 enum class Tab(
     val route: String,
@@ -24,6 +25,7 @@ enum class Tab(
     @StringRes val loadingMessage: Int,
     val navItemTag: String,
     val screenTag: String,
+    val action: TabAction?,
 ) {
   EVENTS(
       "events",
@@ -32,6 +34,7 @@ enum class Tab(
       R.string.loading_events,
       C.Tag.nav_item_events,
       C.Tag.screen_events,
+      TabAction.NOTIFICATIONS,
   ),
   MAP(
       "map",
@@ -40,6 +43,7 @@ enum class Tab(
       R.string.loading_map,
       C.Tag.nav_item_map,
       C.Tag.screen_map,
+      null,
   ),
   CHATS(
       "chats",
@@ -48,6 +52,7 @@ enum class Tab(
       R.string.loading_chats,
       C.Tag.nav_item_chats,
       C.Tag.screen_chats,
+      TabAction.SEARCH_CHATS,
   ),
   PROFILE(
       "profile",
@@ -56,6 +61,7 @@ enum class Tab(
       R.string.loading_profile,
       C.Tag.nav_item_profile,
       C.Tag.screen_profile,
+      TabAction.EDIT_PROFILE,
   );
 
   /** Route of the tab's root screen, the start destination of its graph. */
@@ -73,6 +79,9 @@ enum class Tab(
   /** Route of Create Event inside the tab's graph, so Close and Back return to the tab. */
   val createEventRoute: String
     get() = "$route/create-event"
+
+  /** Route of the screen [action] opens, one level below the tab's root. */
+  fun routeOf(action: TabAction): String = "$route/${action.path}"
 
   /** Test tag of the tab's placeholder detail screen. */
   val detailTag: String

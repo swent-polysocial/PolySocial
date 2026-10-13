@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (converted from the team Figma, #84). Icon from Lucide (ISC license, see assets/licenses/lucide_LICENSE.txt). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="22dp"
+    android:height="22dp"
+    android:viewportWidth="22"
+    android:viewportHeight="22">
+    <path
+        android:pathData="M12.5583 19.25C12.3939 19.5153 12.1645 19.7342 11.8918 19.8861C11.6191 20.0379 11.3121 20.1176 11 20.1176C10.6879 20.1176 10.3809 20.0379 10.1082 19.8861C9.83552 19.7342 9.60609 19.5153 9.44167 19.25M16.5 7.33333C16.5 5.87464 15.9205 4.4757 14.8891 3.44425C13.8576 2.4128 12.4587 1.83333 11 1.83333C9.54131 1.83333 8.14236 2.4128 7.11091 3.44425C6.07946 4.4757 5.5 5.87464 5.5 7.33333C5.5 13.75 2.75 15.5833 2.75 15.5833H19.25C19.25 15.5833 16.5 13.75 16.5 7.33333Z"
+        android:strokeWidth="1.83333"
+        android:strokeColor="#FF000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>
