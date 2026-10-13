@@ -26,6 +26,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
@@ -104,18 +105,10 @@ fun PrivacyScreen(
     onMessageDismissed: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-  val snackbar = remember { SnackbarHostState() }
   val unavailable = stringResource(R.string.privacy_unavailable)
   val matchingLabel = stringResource(R.string.privacy_matching)
-  LaunchedEffect(state.showUnavailable) {
-    if (state.showUnavailable) {
-      try {
-        snackbar.showSnackbar(unavailable)
-      } finally {
-        onMessageDismissed()
-      }
-    }
-  }
+  val snackbar =
+      privacySnackbar(if (state.showUnavailable) unavailable else null, onMessageDismissed)
   Scaffold(
       modifier = modifier.testTag(C.Tag.privacy_screen),
       containerColor = Bg,
@@ -212,7 +205,7 @@ fun PrivacyScreen(
 
 /** Supplies the private email action without querying account data or sending a message. */
 @Composable
-fun FullPrivacyNoticeRoute(onBack: () -> Unit) {
+fun FullPrivacyNoticeRoute(onBack: () -> Unit, viewModel: PrivacyViewModel? = null) {
   val context = LocalContext.current.applicationContext
   val email = stringResource(R.string.privacy_contact_email)
   val subject = stringResource(R.string.privacy_contact_subject)
@@ -222,7 +215,7 @@ fun FullPrivacyNoticeRoute(onBack: () -> Unit) {
           initializer { PrivacyViewModel(email, AndroidPrivacyContactLauncher(context)) }
         }
       }
-  val model: PrivacyViewModel = viewModel(factory = factory)
+  val model: PrivacyViewModel = viewModel ?: viewModel(factory = factory)
   val state by model.uiState.collectAsStateWithLifecycle()
   FullPrivacyNoticeScreen(
       onBack,
@@ -241,22 +234,13 @@ fun FullPrivacyNoticeScreen(
     onMessageDismissed: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-  val snackbar = remember { SnackbarHostState() }
   val message =
       when (state.contactMessage) {
         PrivacyContactMessage.NotConfigured -> stringResource(R.string.privacy_contact_pending)
         PrivacyContactMessage.NoEmailApp -> stringResource(R.string.privacy_contact_no_app)
         null -> null
       }
-  LaunchedEffect(message) {
-    if (message != null) {
-      try {
-        snackbar.showSnackbar(message)
-      } finally {
-        onMessageDismissed()
-      }
-    }
-  }
+  val snackbar = privacySnackbar(message, onMessageDismissed)
   Scaffold(
       modifier = modifier.testTag(C.Tag.privacy_notice_screen),
       containerColor = Bg,
@@ -307,6 +291,25 @@ fun FullPrivacyNoticeScreen(
       }
     }
   }
+}
+
+/**
+ * Both notices clear feedback after dismissal or navigation, so a later action can be explained.
+ */
+@Composable
+private fun privacySnackbar(message: String?, onMessageDismissed: () -> Unit): SnackbarHostState {
+  val snackbar = remember { SnackbarHostState() }
+  val dismiss = stringResource(R.string.privacy_dismiss)
+  LaunchedEffect(message) {
+    if (message != null) {
+      try {
+        snackbar.showSnackbar(message, actionLabel = dismiss, duration = SnackbarDuration.Short)
+      } finally {
+        onMessageDismissed()
+      }
+    }
+  }
+  return snackbar
 }
 
 @Composable
