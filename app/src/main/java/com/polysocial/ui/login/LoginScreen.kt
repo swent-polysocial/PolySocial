@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (shared Google errors and Login handoff for #107).
 // Contributors: Claude (Log in screen for #32, built from the Figma "First proposal revamped"
 // frames); Claude Opus 5.5 (eye icon label, scrolling on short screens and locked fields while
 // redirecting, after review); OpenAI Codex (GPT-6.1 Sol, medium; official Google button artwork;
@@ -47,6 +48,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -60,6 +62,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.polysocial.R
+import com.polysocial.model.auth.GoogleSignInResult
+import com.polysocial.ui.auth.GoogleAuthErrorScreen
 import com.polysocial.ui.auth.GoogleSignInButton
 import com.polysocial.ui.theme.Accent
 import com.polysocial.ui.theme.AccentText
@@ -106,6 +110,19 @@ fun LoginScreen(
     onForgotPassword: () -> Unit = {},
 ) {
   val state by viewModel.uiState.collectAsState()
+  val context = LocalContext.current
+  val google = state.google
+  LaunchedEffect(google.result) { if (google.result is GoogleSignInResult.Success) onLoggedIn() }
+  BackHandler(google.busy) {}
+  if (google.error != null) {
+    BackHandler { viewModel.dismissGoogleError() }
+    GoogleAuthErrorScreen(
+        google.error!!,
+        onBack = viewModel::dismissGoogleError,
+        onRetry = { viewModel.onGoogle(context) },
+    )
+    return
+  }
   // Keep the completion effect alive, including the delayed unverified-account handoff.
   BackHandler(
       state.status in setOf(LoginStatus.Loading, LoginStatus.LoggedIn, LoginStatus.Unverified)
@@ -121,7 +138,7 @@ fun LoginScreen(
     }
   }
   LoginContent(
-      state = state,
+      state = if (google.busy) state.copy(status = LoginStatus.Loading) else state,
       onBack = onBack,
       onEmailChange = viewModel::onEmailChange,
       onPasswordChange = viewModel::onPasswordChange,
@@ -129,6 +146,7 @@ fun LoginScreen(
       onLogIn = viewModel::onLogIn,
       onCreateAccount = onCreateAccount,
       onForgotPassword = onForgotPassword,
+      onGoogle = { viewModel.onGoogle(context) },
   )
 }
 
@@ -143,6 +161,7 @@ fun LoginContent(
     onLogIn: () -> Unit,
     onCreateAccount: () -> Unit,
     onForgotPassword: () -> Unit = {},
+    onGoogle: () -> Unit = {},
 ) {
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
@@ -184,7 +203,11 @@ fun LoginContent(
           Spacer(Modifier.height(6.dp))
           Text(stringResource(R.string.login_subtitle), style = typography.bodyLarge, color = Ink2)
           Spacer(Modifier.height(20.5.dp))
-          GoogleSignInButton(tag = LoginScreenTestTags.GOOGLE, onClick = showNotAvailable)
+          GoogleSignInButton(
+              tag = LoginScreenTestTags.GOOGLE,
+              onClick = onGoogle,
+              enabled = !fieldsLocked,
+          )
           Spacer(Modifier.height(19.5.dp))
           OrWithEmailDivider()
           Spacer(Modifier.height(20.dp))

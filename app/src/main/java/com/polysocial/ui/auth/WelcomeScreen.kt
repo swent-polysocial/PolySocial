@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (enabled Google action and Welcome loading state for #107).
 // Contributors: Figma mockup (event/group illustration assets); OpenAI Codex (GPT-6.1 Sol,
 // medium; implemented the welcome layout, navigation callbacks and unavailable actions;
 // added a compact two-column layout for landscape and reused theme typography after review).
@@ -74,7 +75,12 @@ object WelcomeTags {
 }
 
 @Composable
-fun WelcomeScreen(onSignUp: () -> Unit, onLogIn: () -> Unit) {
+fun WelcomeScreen(
+    onSignUp: () -> Unit,
+    onLogIn: () -> Unit,
+    onGoogle: () -> Unit = {},
+    busy: Boolean = false,
+) {
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
   val unavailable = stringResource(R.string.not_available_yet)
@@ -106,7 +112,7 @@ fun WelcomeScreen(onSignUp: () -> Unit, onLogIn: () -> Unit) {
               Modifier.weight(1f).widthIn(max = 400.dp),
               horizontalAlignment = Alignment.CenterHorizontally,
           ) {
-            WelcomeActions(onSignUp, onLogIn, showUnavailable)
+            WelcomeActions(onSignUp, onLogIn, showUnavailable, onGoogle, busy)
           }
         }
       } else {
@@ -121,7 +127,7 @@ fun WelcomeScreen(onSignUp: () -> Unit, onLogIn: () -> Unit) {
           Spacer(Modifier.height(86.dp + extraSpace))
           WelcomeHeading()
           Spacer(Modifier.height(70.dp))
-          WelcomeActions(onSignUp, onLogIn, showUnavailable)
+          WelcomeActions(onSignUp, onLogIn, showUnavailable, onGoogle, busy)
           Spacer(Modifier.height(10.dp))
         }
       }
@@ -154,15 +160,26 @@ private fun WelcomeHeading() {
 }
 
 @Composable
-private fun WelcomeActions(onSignUp: () -> Unit, onLogIn: () -> Unit, showUnavailable: () -> Unit) {
-  GoogleSignInButton(WelcomeTags.Google, showUnavailable)
+private fun WelcomeActions(
+    onSignUp: () -> Unit,
+    onLogIn: () -> Unit,
+    showUnavailable: () -> Unit,
+    onGoogle: () -> Unit,
+    busy: Boolean,
+) {
+  GoogleSignInButton(WelcomeTags.Google, onGoogle, enabled = !busy)
+  if (busy) {
+    androidx.compose.material3.CircularProgressIndicator(
+        Modifier.padding(top = 8.dp).size(24.dp).testTag("google_loading")
+    )
+  }
   Spacer(Modifier.height(12.dp))
   Box(
       Modifier.fillMaxWidth()
           .heightIn(min = 52.dp)
           .border(1.dp, Border, MaterialTheme.shapes.large)
           .clip(MaterialTheme.shapes.large)
-          .clickable(role = Role.Button, onClick = onSignUp)
+          .clickable(enabled = !busy, role = Role.Button, onClick = onSignUp)
           .testTag(WelcomeTags.SignUp)
           .padding(horizontal = 12.dp, vertical = 15.dp),
       contentAlignment = Alignment.Center,
@@ -182,12 +199,13 @@ private fun WelcomeActions(onSignUp: () -> Unit, onLogIn: () -> Unit, showUnavai
         stringResource(R.string.signup_already_have_account),
         style = MaterialTheme.typography.bodyMedium.copy(color = Ink2),
     )
-    WelcomeLink(stringResource(R.string.login_log_in), WelcomeTags.LogIn, onLogIn)
+    WelcomeLink(stringResource(R.string.login_log_in), WelcomeTags.LogIn, onLogIn, enabled = !busy)
   }
   WelcomeLink(
       stringResource(R.string.welcome_association),
       WelcomeTags.Association,
       showUnavailable,
+      enabled = !busy,
   )
   Spacer(Modifier.height(4.dp))
   BasicText(
@@ -204,10 +222,10 @@ private fun WelcomeActions(onSignUp: () -> Unit, onLogIn: () -> Unit, showUnavai
 }
 
 @Composable
-private fun WelcomeLink(text: String, tag: String, onClick: () -> Unit) {
+private fun WelcomeLink(text: String, tag: String, onClick: () -> Unit, enabled: Boolean = true) {
   Box(
       Modifier.heightIn(min = 34.dp)
-          .clickable(role = Role.Button, onClick = onClick)
+          .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
           .testTag(tag)
           .padding(horizontal = 4.dp, vertical = 8.dp),
       contentAlignment = Alignment.Center,

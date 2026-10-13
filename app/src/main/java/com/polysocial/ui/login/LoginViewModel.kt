@@ -1,13 +1,17 @@
 // Contributors: OpenAI Codex (discard previous session form state on logout, #109).
+// Contributors: OpenAI Codex (Google login and mutual submission lock for #107).
 // Contributors: Claude (Log in screen state for #32); Claude Opus 5.5 (block Log in while
 // redirecting). Contributors: OpenAI Codex (cleared login state when verification changes account
 // for #31; ); Claude (fresh form after a sign-out, #74).
 package com.polysocial.ui.login
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.auth.LogInResult
+import com.polysocial.ui.auth.GoogleSignInState
+import com.polysocial.ui.auth.googleSignIn
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -35,6 +39,7 @@ sealed interface LoginStatus {
 }
 
 data class LoginUiState(
+    val google: GoogleSignInState = GoogleSignInState(),
     val email: String = "",
     val password: String = "",
     val passwordVisible: Boolean = false,
@@ -46,7 +51,9 @@ data class LoginUiState(
    */
   val canSubmit: Boolean
     get() =
-        email.isNotBlank() &&
+        !google.busy &&
+            google.error == null &&
+            email.isNotBlank() &&
             password.isNotBlank() &&
             status != LoginStatus.Loading &&
             status != LoginStatus.Unverified &&
@@ -79,6 +86,31 @@ class LoginViewModel @Inject constructor(private val auth: AuthRepository) : Vie
   fun onTogglePasswordVisibility() = _uiState.update {
     it.copy(passwordVisible = !it.passwordVisible)
   }
+
+  /** Google and password attempts are mutually exclusive, including their navigation handoffs. */
+  fun onGoogle(context: Context) {
+    val state = _uiState.value
+    if (
+        state.google.busy ||
+            state.status in setOf(LoginStatus.Loading, LoginStatus.LoggedIn, LoginStatus.Unverified)
+    )
+        return
+    _uiState.update {
+      it.copy(google = GoogleSignInState(loading = true), status = LoginStatus.Idle)
+    }
+    viewModelScope.launch {
+      val google = googleSignIn(auth, context)
+      _uiState.update { it.copy(google = google) }
+    }
+  }
+
+  /** Drops credentials after a session transition. */
+  fun reset() {
+    _uiState.value = LoginUiState()
+  }
+
+  /** Returns to the unchanged password form after a Google failure. */
+  fun dismissGoogleError() = _uiState.update { it.copy(google = GoogleSignInState()) }
 
   fun onLogIn() {
     val state = _uiState.value
