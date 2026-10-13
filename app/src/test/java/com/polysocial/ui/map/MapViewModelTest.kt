@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (map stream, selection and privacy regression tests for #50).
+// Contributors: OpenAI Codex (map stream, day labels, selection and privacy regression tests for
+// #50).
 package com.polysocial.ui.map
 
 import com.polysocial.model.event.Coordinates
@@ -88,6 +89,39 @@ class MapViewModelTest {
             listOf(tomorrow.copy(startTime = Instant.parse("2026-10-09T10:00:00Z")))
         )
     )
+    assertEquals(false, model.uiState.value.selectedEventIsTonight)
+  }
+
+  @Test
+  fun todayUsesZurichDateBeforeEveningAndRefreshesWithSelection() {
+    val now = Instant.parse("2026-10-08T22:30:00Z")
+    val model = MapViewModel(MapEventSource { result }, Clock.fixed(now, ZoneOffset.UTC))
+    val morning = event.copy(startTime = Instant.parse("2026-10-09T08:00:00Z"))
+    val tomorrow = morning.copy(id = "tomorrow", startTime = Instant.parse("2026-10-10T08:00:00Z"))
+    emit(MapEventResult.Events(listOf(morning, tomorrow)))
+    model.selectEvent(morning.id)
+    assertEquals(true, model.uiState.value.selectedEventIsToday)
+    assertEquals(false, model.uiState.value.selectedEventIsTonight)
+    emit(
+        MapEventResult.Events(
+            listOf(morning.copy(startTime = Instant.parse("2026-10-09T15:59:00Z")), tomorrow)
+        )
+    )
+    assertEquals(true, model.uiState.value.selectedEventIsToday)
+    assertEquals(false, model.uiState.value.selectedEventIsTonight)
+    emit(
+        MapEventResult.Events(
+            listOf(morning.copy(startTime = Instant.parse("2026-10-09T16:00:00Z")), tomorrow)
+        )
+    )
+    assertEquals(true, model.uiState.value.selectedEventIsToday)
+    assertEquals(true, model.uiState.value.selectedEventIsTonight)
+    model.selectEvent(tomorrow.id)
+    assertEquals(false, model.uiState.value.selectedEventIsToday)
+    emit(MapEventResult.Events(listOf(tomorrow.copy(startTime = morning.startTime))))
+    assertEquals(true, model.uiState.value.selectedEventIsToday)
+    emit(MapEventResult.Events(emptyList()))
+    assertEquals(false, model.uiState.value.selectedEventIsToday)
     assertEquals(false, model.uiState.value.selectedEventIsTonight)
   }
 

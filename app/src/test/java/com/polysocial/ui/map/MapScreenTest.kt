@@ -1,4 +1,4 @@
-// Contributors: OpenAI Codex (fake-renderer map UI tests for #50).
+// Contributors: OpenAI Codex (fake-renderer map UI and day-label regression tests for #50).
 package com.polysocial.ui.map
 
 import android.content.Context
@@ -77,6 +77,7 @@ class MapScreenTest {
       modifier: Modifier = Modifier,
       loadingEvents: Boolean = false,
       selectedIsTonight: Boolean = false,
+      selectedIsToday: Boolean = false,
   ) {
     vm.onRenderStatus(renderStatus)
     dispatcherRule.dispatcher.scheduler.advanceUntilIdle()
@@ -89,7 +90,11 @@ class MapScreenTest {
         PolySocialTheme {
           MapScreen(
               if (loadingEvents) state.copy(status = MapContentStatus.LOADING)
-              else state.copy(selectedEventIsTonight = selectedIsTonight),
+              else
+                  state.copy(
+                      selectedEventIsTonight = selectedIsTonight,
+                      selectedEventIsToday = selectedIsToday,
+                  ),
               vm::selectEvent,
               vm::closePreview,
               { detailId = it },
@@ -321,6 +326,13 @@ class MapScreenTest {
         EventCategory.entries.map(::categoryColor).distinct().size,
     )
     EventCategory.entries.forEach { assertTrue(context.getString(categoryLabel(it)).isNotBlank()) }
+  }
+
+  @Test
+  fun sameDayMorningShowsTodayInsteadOfTheDate() {
+    show(selectedIsToday = true)
+    composeRule.onNodeWithTag(MapTags.marker(first.id)).performClick()
+    composeRule.onNodeWithTag(MapTags.CATEGORY).assertTextEquals("Study · Today")
   }
 
   @Test

@@ -1,4 +1,4 @@
-// Contributors: OpenAI Codex (map state, selection and failure handling for #50).
+// Contributors: OpenAI Codex (map state, selection, day labels and failure handling for #50).
 package com.polysocial.ui.map
 
 import androidx.lifecycle.ViewModel
@@ -41,6 +41,7 @@ data class MapUiState(
     val renderStatus: MapRenderStatus = MapRenderStatus.LOADING,
     val renderGeneration: Int = 0,
     val selectedEventIsTonight: Boolean = false,
+    val selectedEventIsToday: Boolean = false,
 )
 
 /**
@@ -63,7 +64,11 @@ constructor(
 
   fun selectEvent(id: String) = mutableState.update {
     val selected = it.events.firstOrNull { event -> event.id == id }
-    it.copy(selectedEvent = selected, selectedEventIsTonight = isTonight(selected))
+    it.copy(
+        selectedEvent = selected,
+        selectedEventIsTonight = isTonight(selected),
+        selectedEventIsToday = isToday(selected),
+    )
   }
 
   fun closePreview() = mutableState.update { it.copy(selectedEvent = null) }
@@ -103,6 +108,7 @@ constructor(
                       events = events,
                       selectedEvent = selected,
                       selectedEventIsTonight = isTonight(selected),
+                      selectedEventIsToday = isToday(selected),
                   )
                 }
               }
@@ -111,11 +117,13 @@ constructor(
     }
   }
 
-  private fun isTonight(event: Event?): Boolean =
+  private fun isToday(event: Event?): Boolean =
       event != null &&
           event.startTime.atZone(MAP_TIME_ZONE).toLocalDate() ==
-              LocalDate.now(clock.withZone(MAP_TIME_ZONE)) &&
-          event.startTime.atZone(MAP_TIME_ZONE).hour >= 18
+              LocalDate.now(clock.withZone(MAP_TIME_ZONE))
+
+  private fun isTonight(event: Event?): Boolean =
+      event != null && isToday(event) && event.startTime.atZone(MAP_TIME_ZONE).hour >= 18
 }
 
 internal val MAP_TIME_ZONE: ZoneId = ZoneId.of("Europe/Zurich")
