@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (Profile privacy entry, dated offline notice and Figma UI, #103).
+// Contributors: OpenAI Codex (Profile privacy entry, dated offline notice, Figma UI and contact,
+// #103).
 package com.polysocial.ui.profile
 
 import androidx.annotation.DrawableRes
@@ -36,6 +37,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -50,7 +52,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import com.polysocial.R
+import com.polysocial.model.privacy.AndroidPrivacyContactLauncher
 import com.polysocial.resources.C
 import com.polysocial.ui.theme.AccentText
 import com.polysocial.ui.theme.Bg
@@ -205,34 +210,99 @@ fun PrivacyScreen(
   }
 }
 
+/** Supplies the private email action without querying account data or sending a message. */
+@Composable
+fun FullPrivacyNoticeRoute(onBack: () -> Unit) {
+  val context = LocalContext.current.applicationContext
+  val email = stringResource(R.string.privacy_contact_email)
+  val subject = stringResource(R.string.privacy_contact_subject)
+  val factory =
+      remember(context, email) {
+        viewModelFactory {
+          initializer { PrivacyViewModel(email, AndroidPrivacyContactLauncher(context)) }
+        }
+      }
+  val model: PrivacyViewModel = viewModel(factory = factory)
+  val state by model.uiState.collectAsStateWithLifecycle()
+  FullPrivacyNoticeScreen(
+      onBack,
+      state,
+      { model.onContactRequested(subject) },
+      model::onContactMessageDismissed,
+  )
+}
+
 /** Full notice is bundled with the app and readable without an account query or a network. */
 @Composable
-fun FullPrivacyNoticeScreen(onBack: () -> Unit, modifier: Modifier = Modifier) {
-  Column(
-      modifier
-          .fillMaxSize()
-          .testTag(C.Tag.privacy_notice_screen)
-          .verticalScroll(rememberScrollState())
-  ) {
-    PrivacyHeader(R.string.privacy_full_notice, C.Tag.privacy_notice_heading, onBack)
-    SelectionContainer {
+fun FullPrivacyNoticeScreen(
+    onBack: () -> Unit,
+    state: PrivacyUiState,
+    onContact: () -> Unit,
+    onMessageDismissed: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+  val snackbar = remember { SnackbarHostState() }
+  val message =
+      when (state.contactMessage) {
+        PrivacyContactMessage.NotConfigured -> stringResource(R.string.privacy_contact_pending)
+        PrivacyContactMessage.NoEmailApp -> stringResource(R.string.privacy_contact_no_app)
+        null -> null
+      }
+  LaunchedEffect(message) {
+    if (message != null) {
+      try {
+        snackbar.showSnackbar(message)
+      } finally {
+        onMessageDismissed()
+      }
+    }
+  }
+  Scaffold(
+      modifier = modifier.testTag(C.Tag.privacy_notice_screen),
+      containerColor = Bg,
+      contentWindowInsets = WindowInsets(0, 0, 0, 0),
+      snackbarHost = { SnackbarHost(snackbar, Modifier.testTag(C.Tag.privacy_snackbar)) },
+  ) { padding ->
+    Column(Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState())) {
+      PrivacyHeader(R.string.privacy_full_notice, C.Tag.privacy_notice_heading, onBack)
+      SelectionContainer {
+        Column(Modifier.padding(horizontal = 20.dp)) {
+          Text(
+              stringResource(R.string.privacy_updated),
+              color = Ink3,
+              style = privacyTextStyle(12, 16f),
+              modifier = Modifier.testTag(C.Tag.privacy_notice_date),
+          )
+          NoticeSection(R.string.privacy_notice_draft_title, R.string.privacy_notice_draft_body)
+          NoticeSection(R.string.privacy_notice_account_title, R.string.privacy_notice_account_body)
+          NoticeSection(R.string.privacy_notice_events_title, R.string.privacy_notice_events_body)
+          NoticeSection(
+              R.string.privacy_notice_location_title,
+              R.string.privacy_notice_location_body,
+          )
+          NoticeSection(
+              R.string.privacy_notice_services_title,
+              R.string.privacy_notice_services_body,
+          )
+          NoticeSection(
+              R.string.privacy_notice_attendance_title,
+              R.string.privacy_notice_attendance_body,
+          )
+          NoticeSection(R.string.privacy_notice_device_title, R.string.privacy_notice_device_body)
+          NoticeSection(
+              R.string.privacy_notice_deletion_title,
+              R.string.privacy_notice_deletion_body,
+          )
+        }
+      }
       Column(Modifier.padding(horizontal = 20.dp)) {
-        Text(
-            stringResource(R.string.privacy_updated),
-            color = Ink3,
-            style = privacyTextStyle(12, 16f),
-            modifier = Modifier.testTag(C.Tag.privacy_notice_date),
+        Spacer(Modifier.height(16.dp))
+        PrivacyActionRow(
+            R.string.privacy_contact_team,
+            R.drawable.privacy_message,
+            C.Tag.privacy_contact,
+            onContact,
         )
-        NoticeSection(R.string.privacy_notice_account_title, R.string.privacy_notice_account_body)
-        NoticeSection(R.string.privacy_notice_events_title, R.string.privacy_notice_events_body)
-        NoticeSection(R.string.privacy_notice_location_title, R.string.privacy_notice_location_body)
-        NoticeSection(R.string.privacy_notice_services_title, R.string.privacy_notice_services_body)
-        NoticeSection(
-            R.string.privacy_notice_attendance_title,
-            R.string.privacy_notice_attendance_body,
-        )
-        NoticeSection(R.string.privacy_notice_device_title, R.string.privacy_notice_device_body)
-        NoticeSection(R.string.privacy_notice_deletion_title, R.string.privacy_notice_deletion_body)
         Spacer(Modifier.height(24.dp))
       }
     }
