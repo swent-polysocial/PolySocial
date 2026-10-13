@@ -1,4 +1,5 @@
 // Contributors: OpenAI Codex (permission launcher and foreground location lifecycle for #51).
+// Contributors: Claude (passes the "+" action to the map screen, #110).
 package com.polysocial.ui.map
 
 import android.Manifest
@@ -28,6 +29,7 @@ import com.polysocial.model.event.Event
 @Composable
 fun MapRoute(
     onViewDetails: (String) -> Unit,
+    onCreateEvent: (() -> Unit)? = null,
     viewModel: MapViewModel = hiltViewModel(),
     tokenConfigured: Boolean = stringResource(R.string.mapbox_access_token).startsWith("pk."),
     permissionRationale: (() -> Boolean)? = null,
@@ -92,6 +94,7 @@ fun MapRoute(
                     ))
         )
       },
+      onCreateEvent = onCreateEvent,
       tokenConfigured = tokenConfigured,
       renderer = renderer,
   )

@@ -1,5 +1,5 @@
 // Contributors: Claude (the "+" button from the Figma "Create event" frames, sections 03 and 04,
-// #110).
+// and its size for the Map tab's overlays, #110).
 package com.polysocial.ui.event.create
 
 import androidx.compose.foundation.Image
@@ -26,13 +26,16 @@ import com.polysocial.ui.theme.Ink
 
 private val shape = RoundedCornerShape(18.dp)
 
+/** Side of the "+" button, for screens that place other controls around it (the Map tab). */
+val CreateEventButtonSize = 56.dp
+
 /** The "+" button that opens Create Event: a 56 dp dark tile with a white plus, as in Figma. */
 @Composable
 fun CreateEventButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
   Box(
       modifier =
           modifier
-              .size(56.dp)
+              .size(CreateEventButtonSize)
               .dropShadow(
                   shape,
                   Shadow(
