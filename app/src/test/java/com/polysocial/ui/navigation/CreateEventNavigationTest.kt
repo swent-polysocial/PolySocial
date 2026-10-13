@@ -1,12 +1,9 @@
-// Contributors: Claude (UI tests for opening and leaving Create Event from a tab, #110).
+// Contributors: Claude (UI tests for opening and leaving Create Event from the Events and Map
+// tabs, #110).
 package com.polysocial.ui.navigation
 
 import android.app.Application
 import androidx.activity.ComponentActivity
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
@@ -29,6 +26,10 @@ import com.polysocial.ui.event.create.CreateEventViewModel
 import com.polysocial.ui.event.create.FORM_NOW
 import com.polysocial.ui.event.create.ROLEX
 import com.polysocial.ui.event.create.ZURICH
+import com.polysocial.ui.map.MapContentStatus
+import com.polysocial.ui.map.MapRenderStatus
+import com.polysocial.ui.map.MapScreen
+import com.polysocial.ui.map.MapUiState
 import com.polysocial.ui.theme.PolySocialTheme
 import java.time.Clock
 import java.time.LocalDate
@@ -42,9 +43,11 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
 /**
- * The "+" button opens Create Event inside the Events tab, and every way out of it (Close, system
- * Back, "Back to map", "View event") lands on the right screen. Create Event gets its ViewModel per
- * navigation entry, as with Hilt, but built from a [FakeEventRepository].
+ * The "+" button opens Create Event inside the Events or Map tab, and every way out of it (Close,
+ * system Back, "Back to map", "View event") lands on the right screen. Create Event gets its
+ * ViewModel per navigation entry, as with Hilt, but built from a [FakeEventRepository]. The Map tab
+ * shows the real [MapScreen] (where its "+" lives) with a loaded state and no map renderer, since
+ * the real map needs Hilt and Mapbox.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(application = Application::class)
@@ -64,8 +67,23 @@ class CreateEventNavigationTest {
         AppShell(
             navController = navController,
             eventsContent = { TabRootScreen(Tab.EVENTS) },
-            // The real map needs Hilt and the native renderer; the tests only check it's shown.
-            mapContent = { Box(Modifier.fillMaxSize().testTag(C.Tag.screen_map)) },
+            mapContent = { onViewDetails, onCreateEvent ->
+              MapScreen(
+                  state =
+                      MapUiState(
+                          status = MapContentStatus.EMPTY,
+                          renderStatus = MapRenderStatus.READY,
+                      ),
+                  onSelectEvent = {},
+                  onClosePreview = {},
+                  onViewDetails = onViewDetails,
+                  onRetry = {},
+                  onRenderStatus = {},
+                  onCreateEvent = onCreateEvent,
+                  tokenConfigured = true,
+                  renderer = { _, _, _, _ -> },
+              )
+            },
             createEventContent = { navigation ->
               val viewModel = viewModel {
                 CreateEventViewModel(repository, Clock.fixed(FORM_NOW, ZURICH))
@@ -87,6 +105,12 @@ class CreateEventNavigationTest {
   private fun node(tag: String) = composeTestRule.onNodeWithTag(tag)
 
   private fun assertGone(tag: String) = composeTestRule.onAllNodesWithTag(tag).assertCountEquals(0)
+
+  private fun openTab(tab: Tab) {
+    node(tab.navItemTag).performClick()
+    composeTestRule.waitForIdle()
+    assertOnRootOf(tab)
+  }
 
   private fun openCreateEvent() {
     node(C.Tag.create_event_button).performClick()
@@ -132,8 +156,19 @@ class CreateEventNavigationTest {
   }
 
   @Test
-  fun theOtherTabsDoNotShowThePlusButtonYet() {
-    listOf(Tab.MAP, Tab.CHATS, Tab.PROFILE).forEach { tab ->
+  fun theMapTabShowsThePlusButtonWithAContentDescription() {
+    openTab(Tab.MAP)
+
+    composeTestRule
+        .onNodeWithContentDescription(
+            composeTestRule.activity.getString(R.string.create_event_open)
+        )
+        .assertIsDisplayed()
+  }
+
+  @Test
+  fun chatsAndProfileDoNotShowThePlusButton() {
+    listOf(Tab.CHATS, Tab.PROFILE).forEach { tab ->
       node(tab.navItemTag).performClick()
       composeTestRule.waitForIdle()
 
@@ -247,5 +282,89 @@ class CreateEventNavigationTest {
     pressBack()
 
     assertOnRootOf(Tab.EVENTS)
+  }
+
+  @Test
+  fun plusOnTheMapOpensCreateEventFullScreen() {
+    openTab(Tab.MAP)
+
+    openCreateEvent()
+
+    assertGone(C.Tag.bottom_nav)
+    assertGone(C.Tag.screen_map)
+    assertGone(C.Tag.create_event_button)
+  }
+
+  @Test
+  fun closeReturnsToTheMapTab() {
+    openTab(Tab.MAP)
+    openCreateEvent()
+
+    node(C.Tag.create_event_close).performClick()
+    composeTestRule.waitForIdle()
+
+    assertOnRootOf(Tab.MAP)
+    node(C.Tag.create_event_button).assertIsDisplayed()
+  }
+
+  @Test
+  fun systemBackReturnsToTheMapTab() {
+    openTab(Tab.MAP)
+    openCreateEvent()
+
+    pressBack()
+
+    assertOnRootOf(Tab.MAP)
+    assertFalse(composeTestRule.activity.isFinishing)
+  }
+
+  @Test
+  fun backFromTheConfirmationReturnsToTheMapNotTheForm() {
+    openTab(Tab.MAP)
+    openCreateEvent()
+    createEvent()
+
+    pressBack()
+
+    assertOnRootOf(Tab.MAP)
+    // Back from the Map root goes to the Events tab, as before Create Event was opened.
+    pressBack()
+    assertOnRootOf(Tab.EVENTS)
+  }
+
+  @Test
+  fun backToMapFromTheMapTabLandsOnTheMapRoot() {
+    openTab(Tab.MAP)
+    openCreateEvent()
+    createEvent()
+
+    node(C.Tag.event_created_back_to_map).performClick()
+    composeTestRule.waitForIdle()
+
+    assertOnRootOf(Tab.MAP)
+    // The Map tab comes back on its root, not on the confirmation, after another tab.
+    openTab(Tab.EVENTS)
+    openTab(Tab.MAP)
+    pressBack()
+    assertOnRootOf(Tab.EVENTS)
+  }
+
+  @Test
+  fun viewEventFromTheMapOpensTheEventScreenAndBackReturnsToTheMap() {
+    openTab(Tab.MAP)
+    openCreateEvent()
+    createEvent()
+
+    node(C.Tag.event_created_view_event).performClick()
+    composeTestRule.waitForIdle()
+
+    // The Map tab's placeholder detail stands in for the event detail screen until #112.
+    node(C.Tag.event_detail_placeholder).assertIsDisplayed()
+    node(Tab.MAP.navItemTag).assertIsSelected()
+    assertGone(C.Tag.event_created_screen)
+
+    pressBack()
+
+    assertOnRootOf(Tab.MAP)
   }
 }

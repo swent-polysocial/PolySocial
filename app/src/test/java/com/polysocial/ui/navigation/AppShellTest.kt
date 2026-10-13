@@ -1,5 +1,5 @@
 // Contributors: Claude (UI tests for the bottom navigation and app bar, #41; nested tab routes,
-// #42; placeholder Events root without Hilt, #105).
+// #42; placeholder Events root without Hilt, #105; map stub given the "+" action, #110).
 // Contributors: OpenAI Codex (map tab chrome, detail routes and injected tab regression tests,
 // #50).
 package com.polysocial.ui.navigation
@@ -56,7 +56,7 @@ class AppShellTest {
             eventsContent = {
               Box(Modifier.testTag("injected_events_content")) { TabRootScreen(Tab.EVENTS) }
             },
-            mapContent = { details ->
+            mapContent = { details, _ ->
               Box(Modifier.testTag(C.Tag.screen_map)) {
                 TextButton({ details("event/one") }, Modifier.testTag("fake_map_details")) {
                   Text("Open test event")
