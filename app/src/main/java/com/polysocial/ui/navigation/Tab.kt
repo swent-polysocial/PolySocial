@@ -1,5 +1,5 @@
 // Contributors: Claude (tab definitions for the bottom navigation, #41; loading messages, #43;
-// per-tab routes, #42).
+// per-tab routes, #42; Create Event route, #110).
 package com.polysocial.ui.navigation
 
 import androidx.annotation.DrawableRes
@@ -63,11 +63,16 @@ enum class Tab(
     get() = "$route/root"
 
   /**
-   * Route of the tab's placeholder detail screen, one level below its root. Only tests open it for
-   * now. Real screens (e.g. an event's detail from the Map preview card, #50) replace it.
+   * Route of the tab's placeholder detail screen, one level below its root (the Map's takes the
+   * event id: `$detailRoute/{eventId}`). Create Event's "View event" opens it until the event
+   * detail screen exists (#112), which replaces it.
    */
   val detailRoute: String
     get() = "$route/detail"
+
+  /** Route of Create Event inside the tab's graph, so Close and Back return to the tab. */
+  val createEventRoute: String
+    get() = "$route/create-event"
 
   /** Test tag of the tab's placeholder detail screen. */
   val detailTag: String
