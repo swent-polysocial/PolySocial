@@ -1,5 +1,6 @@
 // Contributors: OpenAI Codex (map overlays and event preview for #50; reuse shared category
 // styles; optional location notices and straight-line badges and review fixes for #51).
+// Contributors: Claude (the "+" that opens Create Event among the map overlays, #110).
 package com.polysocial.ui.map
 
 import androidx.annotation.StringRes
@@ -51,6 +52,8 @@ import com.polysocial.R
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
 import com.polysocial.resources.C
+import com.polysocial.ui.event.create.CreateEventButton
+import com.polysocial.ui.event.create.CreateEventButtonSize
 import com.polysocial.ui.event.style
 import com.polysocial.ui.theme.Accent
 import com.polysocial.ui.theme.Info
@@ -87,6 +90,9 @@ object MapTags {
   fun marker(id: String) = "map_marker_$id"
 }
 
+/** Space between the "+" and the bottom bar, as in the Figma "Map" frames. */
+private val createEventBottom = 20.dp
+
 internal val defaultMapRenderer:
     @Composable
     (List<Event>, (String) -> Unit, (MapRenderStatus) -> Unit, Dp) -> Unit =
@@ -104,6 +110,8 @@ fun MapScreen(
     onRenderStatus: (MapRenderStatus) -> Unit,
     modifier: Modifier = Modifier,
     onTurnOnLocation: () -> Unit = {},
+    // Opens Create Event from the "+"; null leaves the "+" out.
+    onCreateEvent: (() -> Unit)? = null,
     tokenConfigured: Boolean = stringResource(R.string.mapbox_access_token).startsWith("pk."),
     renderer: @Composable (List<Event>, (String) -> Unit, (MapRenderStatus) -> Unit, Dp) -> Unit =
         defaultMapRenderer,
@@ -122,6 +130,11 @@ fun MapScreen(
       with(LocalDensity.current) {
         if (state.selectedEvent == null) 12.dp else previewHeight.toDp() + 24.dp
       }
+  // Figma "Map" frames: no "+" while the event card is open (it would cover "Find a group").
+  val showCreateEvent = onCreateEvent != null && state.selectedEvent == null
+  // Figma: the location button sits 12 dp above the "+".
+  val locationButtonBottom =
+      if (showCreateEvent) createEventBottom + CreateEventButtonSize + 12.dp else bottomInset
   Box(
       modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface).testTag(C.Tag.screen_map)
   ) {
@@ -241,7 +254,7 @@ fun MapScreen(
     IconButton(
         onTurnOnLocation,
         Modifier.align(Alignment.BottomEnd)
-            .padding(end = 20.dp, bottom = bottomInset)
+            .padding(end = 20.dp, bottom = locationButtonBottom)
             .size(48.dp)
             .shadow(6.dp, RoundedCornerShape(50))
             .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(50))
@@ -263,6 +276,14 @@ fun MapScreen(
               else R.string.map_location_refresh
           ),
           tint = Ink3,
+      )
+    }
+    if (showCreateEvent) {
+      // Figma: 16 dp from the screen edge and 20 dp above the bottom bar, as on the Events tab.
+      CreateEventButton(
+          onClick = { onCreateEvent?.invoke() },
+          modifier =
+              Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = createEventBottom),
       )
     }
     state.selectedEvent?.let { event ->
