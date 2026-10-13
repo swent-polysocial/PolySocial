@@ -1,5 +1,6 @@
 // Contributors: Claude (profile repository tests against the Firestore emulator, #119; offline,
-// wrong-typed field and createdAt tests after an adversarial test review).
+// wrong-typed field and createdAt tests after an adversarial test review; Firestore from a
+// provider, #156).
 package com.polysocial.emulator
 
 import android.content.Context
@@ -10,6 +11,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Source
+import com.polysocial.model.firebase.ResettableFirestoreProvider
 import com.polysocial.model.user.AccountType
 import com.polysocial.model.user.CreateProfileResult
 import com.polysocial.model.user.FirestoreUserProfileRepository
@@ -43,7 +45,9 @@ class FirestoreUserProfileRepositoryEmulatorTest {
 
   @get:Rule val emulator = FirebaseEmulator()
 
-  private val repository by lazy { FirestoreUserProfileRepository(emulator.firestore) }
+  private val repository by lazy {
+    FirestoreUserProfileRepository(ResettableFirestoreProvider { emulator.firestore })
+  }
 
   private fun document(uid: String): DocumentReference =
       emulator.firestore.collection(USERS_COLLECTION).document(uid)

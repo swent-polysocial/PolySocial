@@ -1,4 +1,5 @@
-// Contributors: Claude (event repository read tests against the Firestore emulator, #118).
+// Contributors: Claude (event repository read tests against the Firestore emulator, #118;
+// Firestore from a provider, #156).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -13,6 +14,7 @@ import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.FirestoreEventRepository
 import com.polysocial.model.event.PublicEventsResult
 import com.polysocial.model.event.toFirestoreMap
+import com.polysocial.model.firebase.ResettableFirestoreProvider
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.user.FirestoreUserProfileRepository
 import java.time.Clock
@@ -45,11 +47,13 @@ class FirestoreEventRepositoryEmulatorTest {
 
   @get:Rule val emulator = FirebaseEmulator()
 
+  private val firestore = ResettableFirestoreProvider { emulator.firestore }
+
   private val repository by lazy {
     FirestoreEventRepository(
-        db = emulator.firestore,
+        firestore = firestore,
         auth = SignedInUser(),
-        profiles = FirestoreUserProfileRepository(emulator.firestore),
+        profiles = FirestoreUserProfileRepository(firestore),
         network = AlwaysOnline,
         clock = Clock.fixed(NOW, ZoneOffset.UTC),
     )

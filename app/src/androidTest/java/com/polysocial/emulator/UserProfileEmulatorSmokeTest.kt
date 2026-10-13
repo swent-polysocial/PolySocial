@@ -1,10 +1,12 @@
-// Contributors: Claude (Firestore emulator smoke test, #117; geopoints and nulls after review).
+// Contributors: Claude (Firestore emulator smoke test, #117; geopoints and nulls after review;
+// Firestore from a provider, #156).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.GeoPoint
+import com.polysocial.model.firebase.ResettableFirestoreProvider
 import com.polysocial.model.user.CreateProfileResult
 import com.polysocial.model.user.FirestoreUserProfileRepository
 import com.polysocial.model.user.ProfileResult
@@ -31,7 +33,9 @@ class UserProfileEmulatorSmokeTest {
 
   @get:Rule val emulator = FirebaseEmulator()
 
-  private val repository by lazy { FirestoreUserProfileRepository(emulator.firestore) }
+  private val repository by lazy {
+    FirestoreUserProfileRepository(ResettableFirestoreProvider { emulator.firestore })
+  }
 
   @Test
   fun verifiedStudentWritesAndReadsBackTheirOwnProfile() = runBlocking {

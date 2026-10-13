@@ -1,5 +1,6 @@
 // Contributors: Claude (Firestore profile repository, #34; cancelled tasks and wrong-typed fields
-// reported as errors after review; reading isAssociationVerified, #45).
+// reported as errors after review; reading isAssociationVerified, #45; the current instance from
+// the Firestore provider, #156).
 package com.polysocial.model.user
 
 import com.google.firebase.FirebaseException
@@ -8,6 +9,7 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
+import com.polysocial.model.firebase.FirestoreProvider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -23,15 +25,18 @@ const val USERS_COLLECTION = "users"
  * Writes run in a transaction: it reads the document before writing, which is how "create once" and
  * "update only if it exists" are checked, and it needs the server, so offline it fails instead of
  * being queued like a plain write.
+ *
+ * Each operation asks [firestore] for the current instance, which logout replaces (#156).
  */
-class FirestoreUserProfileRepository(private val db: FirebaseFirestore) : UserProfileRepository {
+class FirestoreUserProfileRepository(private val firestore: FirestoreProvider) :
+    UserProfileRepository {
 
-  private fun document(uid: String): DocumentReference =
-      db.collection(USERS_COLLECTION).document(uid)
+  private fun FirebaseFirestore.profileDocument(uid: String): DocumentReference =
+      collection(USERS_COLLECTION).document(uid)
 
   override suspend fun getProfile(uid: String): ProfileResult =
       reportFailures(ProfileResult.NetworkError, ProfileResult.UnexpectedError) {
-        val snapshot = document(uid).get().await()
+        val snapshot = firestore.get().profileDocument(uid).get().await()
         if (!snapshot.exists()) ProfileResult.NotFound
         else
             snapshot.toUserProfile()?.let { ProfileResult.Found(it) }
@@ -40,7 +45,8 @@ class FirestoreUserProfileRepository(private val db: FirebaseFirestore) : UserPr
 
   override suspend fun createProfile(profile: UserProfile): CreateProfileResult =
       reportFailures(CreateProfileResult.NetworkError, CreateProfileResult.UnexpectedError) {
-        val ref = document(profile.uid)
+        val db = firestore.get()
+        val ref = db.profileDocument(profile.uid)
         val created =
             db.runTransaction { transaction ->
                   if (transaction.get(ref).exists()) false
@@ -55,7 +61,8 @@ class FirestoreUserProfileRepository(private val db: FirebaseFirestore) : UserPr
 
   override suspend fun updateProfile(profile: UserProfile): UpdateProfileResult =
       reportFailures(UpdateProfileResult.NetworkError, UpdateProfileResult.UnexpectedError) {
-        val ref = document(profile.uid)
+        val db = firestore.get()
+        val ref = db.profileDocument(profile.uid)
         val updated =
             db.runTransaction { transaction ->
                   if (!transaction.get(ref).exists()) false

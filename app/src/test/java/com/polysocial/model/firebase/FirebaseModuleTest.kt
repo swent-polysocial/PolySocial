@@ -1,4 +1,4 @@
-// Contributors: Claude (wrote this test, #45).
+// Contributors: Claude (wrote this test, #45; the Firestore provider, #156).
 package com.polysocial.model.firebase
 
 import android.app.Application
@@ -8,6 +8,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertSame
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -18,7 +19,7 @@ import org.robolectric.annotation.Config
 class FirebaseModuleTest {
 
   @Test
-  fun theApp_usesTheDefaultFirestoreInstance() {
+  fun theApp_usesTheDefaultFirestoreInstance() = runTest {
     val context = ApplicationProvider.getApplicationContext<Context>()
     if (FirebaseApp.getApps(context).isEmpty()) {
       FirebaseApp.initializeApp(
@@ -31,6 +32,6 @@ class FirebaseModuleTest {
       )
     }
 
-    assertSame(FirebaseFirestore.getInstance(), FirebaseModule.firestore())
+    assertSame(FirebaseFirestore.getInstance(), FirebaseModule.firestoreProvider().get())
   }
 }

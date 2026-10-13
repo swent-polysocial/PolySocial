@@ -1,8 +1,8 @@
 // Contributors: Claude (Hilt binding for the profile repository; Firestore version, #34; shared
-// Firestore instance, #45).
+// Firestore instance, #45; Firestore provider, #156).
 package com.polysocial.model.user
 
-import com.google.firebase.firestore.FirebaseFirestore
+import com.polysocial.model.firebase.FirestoreProvider
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -18,6 +18,6 @@ import javax.inject.Singleton
 object UserProfileModule {
   @Provides
   @Singleton
-  fun userProfileRepository(db: FirebaseFirestore): UserProfileRepository =
-      FirestoreUserProfileRepository(db)
+  fun userProfileRepository(firestore: FirestoreProvider): UserProfileRepository =
+      FirestoreUserProfileRepository(firestore)
 }

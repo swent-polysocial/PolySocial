@@ -1,17 +1,21 @@
 // Contributors: Claude (drafted the Firestore event repository; verified association badge, #45;
-// the public upcoming-events listener, #49).
+// the public upcoming-events listener, #49; the current instance from the Firestore provider,
+// #156).
 package com.polysocial.model.event
 
 import com.google.firebase.FirebaseException
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.MetadataChanges
+import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.TransactionOptions
 import com.polysocial.model.auth.AuthRepository
+import com.polysocial.model.firebase.FirestoreProvider
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.UserProfileRepository
 import java.time.Clock
+import java.time.Instant
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -33,11 +37,12 @@ const val EVENTS_COLLECTION = "events"
  * document, so it can't conflict with another write, and retries would just delay the offline
  * error.
  *
+ * @param firestore gives the current instance for each operation, since logout replaces it (#156).
  * @param clock the current time, used to reject events that start in the past and to place the
  *   upcoming-events window.
  */
 class FirestoreEventRepository(
-    private val db: FirebaseFirestore,
+    private val firestore: FirestoreProvider,
     private val auth: AuthRepository,
     private val profiles: UserProfileRepository,
     private val network: NetworkMonitor,
@@ -57,9 +62,10 @@ class FirestoreEventRepository(
           ProfileResult.UnexpectedError -> return CreateEventResult.UnexpectedError
         }
 
-    val document = db.collection(EVENTS_COLLECTION).document()
     val fields = event.withCreator(user.uid, isVerifiedAssociation).toFirestoreMap()
     return try {
+      val db = firestore.get()
+      val document = db.collection(EVENTS_COLLECTION).document()
       db.runTransaction(SINGLE_ATTEMPT) { it.set(document, fields) }.await()
       CreateEventResult.Created(document.id)
     } catch (e: FirebaseException) {
@@ -85,27 +91,29 @@ class FirestoreEventRepository(
     return callbackFlow {
           val now = clock.instant()
           val registration =
-              db.collection(EVENTS_COLLECTION)
-                  .whereEqualTo("isPrivate", false)
-                  .whereGreaterThanOrEqualTo("startTime", now.toTimestamp())
-                  .whereLessThan("startTime", upcomingWindowEnd(now, windowDays).toTimestamp())
-                  .orderBy("startTime")
-                  .addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
-                    if (error != null || snapshot == null) {
-                      trySend(PublicEventsResult.Error)
-                      close()
-                    } else {
-                      val events =
-                          snapshot.documents.mapNotNull {
-                            eventFromFirestore(it.id, it.data.orEmpty())
-                          }
-                      trySend(PublicEventsResult.Events(events, snapshot.metadata.isFromCache))
-                    }
-                  }
+              firestore.get().upcomingPublicEvents(now, windowDays).addSnapshotListener(
+                  MetadataChanges.INCLUDE
+              ) { snapshot, error ->
+                if (error != null || snapshot == null) {
+                  trySend(PublicEventsResult.Error)
+                  close()
+                } else {
+                  val events =
+                      snapshot.documents.mapNotNull { eventFromFirestore(it.id, it.data.orEmpty()) }
+                  trySend(PublicEventsResult.Events(events, snapshot.metadata.isFromCache))
+                }
+              }
           awaitClose { registration.remove() }
         }
         .buffer(Channel.CONFLATED)
   }
+
+  private fun FirebaseFirestore.upcomingPublicEvents(now: Instant, windowDays: Int): Query =
+      collection(EVENTS_COLLECTION)
+          .whereEqualTo("isPrivate", false)
+          .whereGreaterThanOrEqualTo("startTime", now.toTimestamp())
+          .whereLessThan("startTime", upcomingWindowEnd(now, windowDays).toTimestamp())
+          .orderBy("startTime")
 
   private fun FirebaseException.isOffline() =
       this is FirebaseFirestoreException && code == FirebaseFirestoreException.Code.UNAVAILABLE

@@ -1,5 +1,5 @@
 // Contributors: Claude Opus 5.5 (wrote these tests; cancelled tasks and wrong-typed fields);
-// Claude (isAssociationVerified tests, #45).
+// Claude (isAssociationVerified tests, #45; the Firestore provider, #156).
 package com.polysocial.model.user
 
 import com.google.android.gms.tasks.TaskCompletionSource
@@ -12,6 +12,7 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.Transaction
+import com.polysocial.model.firebase.ResettableFirestoreProvider
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -30,7 +31,7 @@ class FirestoreUserProfileRepositoryTest {
   private val users = mockk<CollectionReference>()
   private val ref = mockk<DocumentReference>()
   private val transaction = mockk<Transaction>()
-  private val repository = FirestoreUserProfileRepository(db)
+  private val repository = FirestoreUserProfileRepository(ResettableFirestoreProvider { db })
 
   private val profile =
       UserProfile(

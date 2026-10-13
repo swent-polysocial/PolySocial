@@ -1,5 +1,5 @@
 // Contributors: Claude (wrote these tests; verified association badge, #45; the upcoming-events
-// listener, #49).
+// listener, #49; the Firestore provider, #156).
 package com.polysocial.model.event
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -20,6 +20,7 @@ import com.google.firebase.firestore.Transaction
 import com.google.firebase.firestore.TransactionOptions
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
+import com.polysocial.model.firebase.ResettableFirestoreProvider
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.user.AccountType
 import com.polysocial.model.user.FakeUserProfileRepository
@@ -74,7 +75,13 @@ class FirestoreEventRepositoryTest {
   private val profiles = FakeUserProfileRepository(ProfileResult.Found(creatorProfile))
 
   private val repository =
-      FirestoreEventRepository(db, auth, profiles, network, Clock.fixed(TEST_NOW, ZoneOffset.UTC))
+      FirestoreEventRepository(
+          ResettableFirestoreProvider { db },
+          auth,
+          profiles,
+          network,
+          Clock.fixed(TEST_NOW, ZoneOffset.UTC),
+      )
 
   @Before
   fun stubFirestore() {

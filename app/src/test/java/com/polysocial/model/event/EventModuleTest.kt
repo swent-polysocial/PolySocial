@@ -1,8 +1,10 @@
-// Contributors: Claude (wrote this test; shared Firestore instance and profiles, #45).
+// Contributors: Claude (wrote this test; shared Firestore instance and profiles, #45; the
+// Firestore provider, #156).
 package com.polysocial.model.event
 
 import com.google.firebase.firestore.FirebaseFirestore
 import com.polysocial.model.auth.FakeAuthRepository
+import com.polysocial.model.firebase.ResettableFirestoreProvider
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.user.FakeUserProfileRepository
 import io.mockk.mockk
@@ -21,7 +23,7 @@ class EventModuleTest {
 
     val repository =
         EventModule.eventRepository(
-            mockk<FirebaseFirestore>(),
+            ResettableFirestoreProvider { mockk<FirebaseFirestore>() },
             FakeAuthRepository(),
             FakeUserProfileRepository(),
             offline,

@@ -1,9 +1,9 @@
 // Contributors: Claude (drafted the Hilt binding for the event repository; shared Firestore
-// instance, injected clock and profiles, #45).
+// instance, injected clock and profiles, #45; Firestore provider, #156).
 package com.polysocial.model.event
 
-import com.google.firebase.firestore.FirebaseFirestore
 import com.polysocial.model.auth.AuthRepository
+import com.polysocial.model.firebase.FirestoreProvider
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.user.UserProfileRepository
 import dagger.Module
@@ -20,10 +20,10 @@ object EventModule {
   @Provides
   @Singleton
   fun eventRepository(
-      db: FirebaseFirestore,
+      firestore: FirestoreProvider,
       auth: AuthRepository,
       profiles: UserProfileRepository,
       network: NetworkMonitor,
       clock: Clock,
-  ): EventRepository = FirestoreEventRepository(db, auth, profiles, network, clock)
+  ): EventRepository = FirestoreEventRepository(firestore, auth, profiles, network, clock)
 }
