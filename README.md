@@ -1,3 +1,4 @@
+<!-- Contributors: OpenAI Codex (Google entry behavior for #107). -->
 <!-- Contributors: OpenAI Codex (Google sign-in setup for #106). -->
 <!-- Contributors: Claude (drafted the README structure, Setup, Running and testing, Tech stack and Project links sections; Firestore index deployment, #49; Firestore emulator tests, #117); OpenAI Codex (documented startup routing and rebase reconciliation); OpenAI Codex (Mapbox integration and setup, #50; one-off Map location privacy note, #51). -->
 <!-- Contributors: OpenAI Codex (verification startup integration and Back sign-out, #31). -->
@@ -31,7 +32,7 @@ The barrier to campus life is social rather than informational: PolySocial answe
 | Event detail screen | Sprint 2 |
 | Interactive map of upcoming public events, with straight-line distance when location is allowed | Sprint 2 |
 | Create events: private (off the map, people ask to join) or public, with a map location picker and place search; verified associations get a badge | Sprint 2 |
-| Sign in with Google (EPFL accounts only) | Planned |
+| Sign in with Google (EPFL accounts only) | Implemented; Firebase console setup required |
 | "My events" available offline | Planned |
 | **Find a group:** matching on interests, section, year and common friends; group proposals | Planned |
 | Group chat, with report and block | Planned |

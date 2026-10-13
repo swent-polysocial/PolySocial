@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (preserve Google profile-save handoff on Back for #107).
 // Contributors: Claude (profile step screen for #34, built from the Figma "First proposal
 // revamped" Profile frames; layout that grows with large text, one save report and picker
 // accessibility after review; plain Column layout after review; exact text from the theme, and
@@ -137,6 +138,9 @@ fun ProfileSetupScreen(
     viewModel: ProfileSetupViewModel = hiltViewModel(),
 ) {
   val state by viewModel.uiState.collectAsState()
+  BackHandler(
+      state.status == ProfileSetupStatus.Saving || state.status == ProfileSetupStatus.Saved
+  ) {}
   // Reported once: after a rotation the ViewModel is still Saved, and the effect runs again.
   var savedReported by rememberSaveable { mutableStateOf(false) }
   LaunchedEffect(state.status) {

@@ -1,5 +1,6 @@
 <!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42; Create Event texts, #46; "+" button, #110; app bar actions, #84); OpenAI Codex (Google and welcome copy). OpenAI Codex (sign-up form, startup integration, name hint and unused-title cleanup; Mapbox integration and setup, #50; location permission and distance text, #51). Claude (Retry, app-start loading and error texts, #74). -->
 <!-- Contributors: OpenAI Codex (verification screen and failure messages for #31). -->
+<!-- Contributors: OpenAI Codex (Google authentication errors for #107). -->
 <resources>
     <string name="app_start_loading">Loading your profile…</string>
     <string name="app_start_error_title">Couldn\'t load your profile</string>
@@ -175,4 +176,14 @@
     <string name="verification_error">Something went wrong. Please try again.</string>
     <string name="verification_not_signed_in">Please log in to verify your email.</string>
     <string name="verification_send_description">Send a confirmation link to</string>
+    <string name="google_not_epfl_title">That\'s not an EPFL account</string>
+    <string name="google_not_epfl_message">PolySocial is only for EPFL students and associations. Pick the Google account that uses your @epfl.ch address, or sign up with your EPFL email instead.</string>
+    <string name="google_not_epfl_footnote">We didn\'t create an account and didn\'t keep anything from this Google account.</string>
+    <string name="google_other_method_title">Use your original sign-in method</string>
+    <string name="google_other_method_message">This email already uses another sign-in method. Log in with the method you originally used.</string>
+    <string name="google_other_method_footnote">Your existing account has not changed.</string>
+    <string name="google_sign_in_error_title">Couldn\'t sign in</string>
+    <string name="google_network_error">Check your connection and try again.</string>
+    <string name="google_unexpected_error">Google sign-in couldn\'t finish. Try again, or go back and log in with your EPFL email.</string>
+    <string name="google_try_again">Try again</string>
 </resources>
