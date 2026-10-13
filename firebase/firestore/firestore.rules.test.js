@@ -1,4 +1,4 @@
-// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests and accountType values on create, #161); OpenAI Codex (event visibility and query tests, #52).
+// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161); OpenAI Codex (event visibility and query tests, #52).
 const { after, before, beforeEach, test } = require("node:test");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
@@ -187,6 +187,13 @@ function associationDb(uid) {
   return firestoreAs("contact@club.org", true, uid);
 }
 
+/** Deletes users/[uid] with the rules off, as an admin deletes an association's account. */
+async function deleteUserAsAdmin(uid) {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await deleteDoc(doc(context.firestore(), `users/${uid}`));
+  });
+}
+
 test("a student can read, update and delete their own users/{uid}", async () => {
   const db = studentDb("u1");
 
@@ -220,6 +227,17 @@ test("an association account with a non-EPFL verified email can read and write i
       accountType: "association",
     }),
   );
+});
+
+test("an association can't delete its own users/{uid}", async () => {
+  for (const uid of ["club", "verifiedClub"]) {
+    await assertFails(deleteDoc(doc(associationDb(uid), `users/${uid}`)));
+    if ((await storedUser(uid)) === undefined) throw new Error(`users/${uid} was deleted`);
+  }
+});
+
+test("a student can delete their own users/{uid} even before it exists", async () => {
+  await assertSucceeds(deleteDoc(doc(studentDb("u3"), "users/u3")));
 });
 
 test("a student can't read or write another student's users/{uid}", async () => {
@@ -407,7 +425,7 @@ for (const [name, accountType] of [
 test("recreating your own users/{uid} needs a valid accountType too", async () => {
   const db = associationDb("club");
 
-  await assertSucceeds(deleteDoc(doc(db, "users/club")));
+  await deleteUserAsAdmin("club");
   await assertFails(setDoc(doc(db, "users/club"), { uid: "club", accountType: "Association" }));
   await assertFails(
     setDoc(doc(db, "users/club"), { uid: "club", accountType: "admin" }, { merge: true }),
@@ -469,7 +487,7 @@ test("a users query is allowed by your own document ID only, not by a field", as
 test("recreating your own users/{uid} can't set isAssociationVerified", async () => {
   const db = associationDb("club");
 
-  await assertSucceeds(deleteDoc(doc(db, "users/club")));
+  await deleteUserAsAdmin("club");
   await assertFails(
     setDoc(doc(db, "users/club"), {
       uid: "club",
@@ -800,6 +818,14 @@ for (const verified of [false, true]) {
 
     await assertSucceeds(getDoc(doc(db, "users/epflClub")));
     await assertSucceeds(updateDoc(doc(db, "users/epflClub"), { displayName: "Club" }));
+  });
+
+  test(`${kind} @epfl.ch association can't delete its profile to become a student`, async () => {
+    await seedEpflAssociation("epflClub", verified);
+    const db = epflAssociationDb("epflClub");
+
+    await assertFails(deleteDoc(doc(db, "users/epflClub")));
+    await assertFails(getDoc(doc(db, "events/e1")));
   });
 }
 

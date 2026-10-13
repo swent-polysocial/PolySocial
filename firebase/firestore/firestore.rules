@@ -1,6 +1,6 @@
 // Contributors: Claude (isEpflUser helper, #33; own users/{uid} rule and no catch-all, #35;
 // fixed uid and accountType after review, #35; @epfl.ch associations aren't students and
-// accountType values on create, #161);
+// accountType values on create, association profiles not deletable by the client, #161);
 // OpenAI Codex (public/private event read rules, #52).
 rules_version = '2';
 
@@ -33,13 +33,17 @@ service cloud.firestore {
     // associations have no EPFL email), so an unverified association reaches nothing else.
     // Only an admin sets isAssociationVerified, in the Firebase console. The uid field names
     // the document's owner, and uid and accountType are fixed once created, so an admin
-    // verifying an account isn't misled.
+    // verifying an account isn't misled. An association can't delete its own profile: without
+    // it, an @epfl.ch association would count as a student again (#161). An admin deletes
+    // association accounts instead.
     match /users/{uid} {
       function isOwner() {
         return hasVerifiedEmail() && request.auth.uid == uid;
       }
 
-      allow read, delete: if isOwner();
+      allow read: if isOwner();
+      allow delete: if isOwner()
+          && (resource == null || resource.data.get('accountType', 'student') != 'association');
       allow create: if isOwner()
           && request.resource.data.uid == uid
           && (!('accountType' in request.resource.data)
