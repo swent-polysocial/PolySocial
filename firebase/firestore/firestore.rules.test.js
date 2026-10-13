@@ -1,4 +1,4 @@
-// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, #161); OpenAI Codex (event visibility and query tests, #52).
+// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests and accountType values on create, #161); OpenAI Codex (event visibility and query tests, #52).
 const { after, before, beforeEach, test } = require("node:test");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
@@ -372,6 +372,47 @@ test("updating your own users/{uid} may keep its uid and accountType", async () 
   await assertSucceeds(
     updateDoc(doc(db, "users/club"), { uid: "club", accountType: "association", section: "IN" }),
   );
+});
+
+test("creating your own users/{uid} as a student or an association is allowed", async () => {
+  await assertSucceeds(
+    setDoc(doc(studentDb("u3"), "users/u3"), { uid: "u3", accountType: "student" }),
+  );
+  await assertSucceeds(
+    setDoc(doc(associationDb("newClub"), "users/newClub"), {
+      uid: "newClub",
+      accountType: "association",
+    }),
+  );
+});
+
+// Any other value would count as a student in isStudent(), which only checks for "association"
+// (#161).
+for (const [name, accountType] of [
+  ['"Association"', "Association"],
+  ['"admin"', "admin"],
+  ['""', ""],
+  ["true", true],
+  ['["association"]', ["association"]],
+]) {
+  test(`creating your own users/{uid} with accountType ${name} is denied`, async () => {
+    const db = studentDb("u3");
+
+    await assertFails(setDoc(doc(db, "users/u3"), { uid: "u3", accountType }));
+    await assertFails(setDoc(doc(db, "users/u3"), { uid: "u3", accountType }, { merge: true }));
+    if ((await storedUser("u3")) !== undefined) throw new Error("users/u3 was created");
+  });
+}
+
+test("recreating your own users/{uid} needs a valid accountType too", async () => {
+  const db = associationDb("club");
+
+  await assertSucceeds(deleteDoc(doc(db, "users/club")));
+  await assertFails(setDoc(doc(db, "users/club"), { uid: "club", accountType: "Association" }));
+  await assertFails(
+    setDoc(doc(db, "users/club"), { uid: "club", accountType: "admin" }, { merge: true }),
+  );
+  await assertSucceeds(setDoc(doc(db, "users/club"), { uid: "club", accountType: "association" }));
 });
 
 // ---- users/{uid}: attacks beyond a single get or write (#35) ----
