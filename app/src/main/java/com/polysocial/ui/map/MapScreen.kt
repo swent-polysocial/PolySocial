@@ -194,6 +194,7 @@ fun MapScreen(
           event,
           onClosePreview,
           { onViewDetails(event.id) },
+          state.selectedEventIsToday,
           state.selectedEventIsTonight,
           Modifier.align(Alignment.BottomCenter).padding(12.dp).onSizeChanged {
             previewHeight = it.height
@@ -266,6 +267,7 @@ private fun EventPreview(
     onClose: () -> Unit,
     onDetails: () -> Unit,
     isToday: Boolean,
+    isTonight: Boolean,
     modifier: Modifier,
 ) {
   Card(
@@ -295,8 +297,11 @@ private fun EventPreview(
               stringResource(
                   R.string.map_category_day,
                   stringResource(categoryLabel(event.category)),
-                  if (isToday) stringResource(R.string.map_tonight)
-                  else previewDateFormatter.format(event.startTime),
+                  when {
+                    isTonight -> stringResource(R.string.map_tonight)
+                    isToday -> stringResource(R.string.events_today)
+                    else -> previewDateFormatter.format(event.startTime)
+                  },
               ),
               color = categoryColor(event.category),
               style = MaterialTheme.typography.labelMedium,
