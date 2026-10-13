@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (profile reset and account isolation regression for #107).
 // Contributors: Claude Opus 5.5 (wrote these tests; unverified account refused); Claude Opus 5.5
 // (testing agent: the lock after saving, no signed-in user); Claude (reset, #74; offline vs generic
 // save errors, #142); Claude Opus 5.5 (testing agent: generic save error tests, #142).
@@ -329,6 +330,25 @@ class ProfileSetupViewModelTest {
 
     assertEquals("", state.displayName)
     assertEquals("", state.email)
+  }
+
+  @Test
+  fun resetDiscardsPreviousAccountEditsAndClearsSignedOutIdentity() {
+    val vm = viewModel()
+    vm.fill()
+    vm.onDisplayNameChange("Edited name")
+    profiles.createProfileResult = CreateProfileResult.NetworkError
+    vm.continueAndSettle()
+    auth.user = user.copy(uid = "u2", email = "other@epfl.ch", displayName = null)
+
+    vm.reset()
+
+    assertEquals(ProfileSetupUiState(email = "other@epfl.ch"), vm.uiState.value)
+    vm.onDisplayNameChange("Another edit")
+    auth.user = null
+    vm.reset()
+    assertEquals(ProfileSetupUiState(), vm.uiState.value)
+    assertEquals(1, profiles.createdProfiles.size)
   }
 
   @Test

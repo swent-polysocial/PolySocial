@@ -224,6 +224,63 @@ class GoogleAuthFlowTest {
   }
 
   @Test
+  fun welcomeErrorSurvivesRecreationAndRepeatedFailureCanBeDismissed() {
+    auth.googleResult = GoogleSignInResult.NetworkError
+    launch()
+    google(false)
+    restore.emulateSavedInstanceStateRestore()
+    compose.onNodeWithTag(GoogleAuthTags.Retry).assertIsEnabled()
+    assertEquals(1, auth.googleCalls)
+    compose.runOnIdle { auth.googleResult = GoogleSignInResult.UnexpectedError }
+    compose.onNodeWithTag(GoogleAuthTags.Retry).performClick()
+    compose
+        .onNodeWithTag(GoogleAuthTags.Message)
+        .assertTextEquals(
+            compose.activity.getString(com.polysocial.R.string.google_unexpected_error)
+        )
+    compose.onNodeWithTag(GoogleAuthTags.Account).assertDoesNotExist()
+    compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    assertNull(welcome.uiState.value.result)
+    assertNull(auth.currentUser())
+    assertEquals(0, profiles.getProfileCalls)
+    assertEquals(2, auth.googleCalls)
+  }
+
+  @Test
+  fun loginErrorSurvivesRecreationAndRetryCancellationPreservesTheForm() {
+    auth.googleResult = GoogleSignInResult.NetworkError
+    launch()
+    compose.onNodeWithTag(WelcomeTags.LogIn).performScrollTo().performClick()
+    compose.onNodeWithTag(LoginScreenTestTags.EMAIL).performTextInput(user.email)
+    compose.onNodeWithTag(LoginScreenTestTags.PASSWORD).performTextInput("test-password")
+    compose.onNodeWithTag(LoginScreenTestTags.GOOGLE).performClick()
+    restore.emulateSavedInstanceStateRestore()
+    compose.onNodeWithTag(GoogleAuthTags.Retry).assertIsEnabled()
+    assertEquals(1, auth.googleCalls)
+    compose.runOnIdle { auth.googleResult = GoogleSignInResult.UnexpectedError }
+    compose.onNodeWithTag(GoogleAuthTags.Retry).performClick()
+    compose
+        .onNodeWithTag(GoogleAuthTags.Message)
+        .assertTextEquals(
+            compose.activity.getString(com.polysocial.R.string.google_unexpected_error)
+        )
+    assertFalse(login.uiState.value.canSubmit)
+    compose.onNodeWithTag(GoogleAuthTags.Back).performClick()
+    compose.onNodeWithTag(LoginScreenTestTags.EMAIL).assertTextContains(user.email)
+    assertTrue(login.uiState.value.canSubmit)
+    assertEquals("test-password", login.uiState.value.password)
+    compose.onNodeWithTag(LoginScreenTestTags.GOOGLE).performClick()
+    compose.runOnIdle { auth.googleResult = GoogleSignInResult.Cancelled }
+    compose.onNodeWithTag(GoogleAuthTags.Retry).performClick()
+    compose.onNodeWithTag(LoginScreenTestTags.SCREEN).assertIsDisplayed()
+    assertEquals("test-password", login.uiState.value.password)
+    assertNull(login.uiState.value.google.result)
+    assertEquals(0, profiles.getProfileCalls)
+    assertEquals(4, auth.googleCalls)
+  }
+
+  @Test
   fun profileStateSurvivesRecreationAndBackSignsOut() {
     auth.googleResult = GoogleSignInResult.Success(user)
     launch()
@@ -235,6 +292,13 @@ class GoogleAuthFlowTest {
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
     assertNull(auth.currentUser())
     assertEquals(1, auth.logOutCalls)
+    auth.googleResult = GoogleSignInResult.Success(user.copy(displayName = null))
+    google(false)
+    compose.onNodeWithTag(ProfileSetupTestTags.FULL_NAME).assertTextEquals("")
+    compose.onNodeWithTag(ProfileSetupTestTags.BACK).performClick()
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    assertNull(auth.currentUser())
+    assertEquals(2, auth.logOutCalls)
   }
 
   @Test
