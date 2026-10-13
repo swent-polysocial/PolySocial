@@ -294,13 +294,14 @@ fun FullPrivacyNoticeScreen(
 }
 
 /**
- * Both notices clear feedback after dismissal or navigation, so a later action can be explained.
+ * Both notices clear feedback after dismissal or navigation. The owner callback is a key because
+ * two successive ViewModels can show the same text, but must dismiss their own state.
  */
 @Composable
 private fun privacySnackbar(message: String?, onMessageDismissed: () -> Unit): SnackbarHostState {
   val snackbar = remember { SnackbarHostState() }
   val dismiss = stringResource(R.string.privacy_dismiss)
-  LaunchedEffect(message) {
+  LaunchedEffect(message, onMessageDismissed) {
     if (message != null) {
       try {
         snackbar.showSnackbar(message, actionLabel = dismiss, duration = SnackbarDuration.Short)
