@@ -1,6 +1,7 @@
 // Contributors: OpenAI Codex (fresh signed-out forms, shared reset action and Welcome after
 // logout, #109).
 // Contributors: OpenAI Codex (Google startup and profile-step integration for #107).
+// Contributors: OpenAI Codex (Google startup, shared profile callbacks and integration for #107).
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; translated the Figma sign-up form to Compose
 // Foundation, reusing the shared app theme; connected login and added the official Google
 // placeholder button; connected the welcome entry screen and app-start/profile routing;
@@ -133,6 +134,22 @@ private val BackStackSaver =
         save = { stack -> stack.map { it.name } },
         restore = { names -> names.map(AuthDestination::valueOf) },
     )
+/** Keeps profile completion and both Back paths bound to the same session controllers. */
+private class ProfileSetupCallbacks(
+    private val welcome: WelcomeViewModel,
+    private val login: LoginViewModel,
+    private val signup: SignUpViewModel,
+    private val start: AppStartViewModel,
+) {
+  fun leave() {
+    welcome.reset()
+    login.reset()
+    signup.reset()
+    start.logOut()
+  }
+
+  fun saved() = start.onProfileCreated()
+}
 
 /**
  * The app's entry point (#74): follows [AppStartViewModel] to the app-start loading or error state,
@@ -166,6 +183,8 @@ fun AuthFlow(
     recoveryViewModel: PasswordRecoveryViewModel? = null,
     signedInContent: @Composable (() -> Unit) -> Unit = { done -> AppShell(onLoggedOut = done) },
 ) {
+  val profileCallbacks =
+      ProfileSetupCallbacks(welcomeViewModel, loginViewModel, viewModel, startViewModel)
   val welcomeState by welcomeViewModel.uiState.collectAsStateWithLifecycle()
   val context = LocalContext.current
   LaunchedEffect(welcomeState.result) {
@@ -294,7 +313,7 @@ fun AuthFlow(
     when (destination) {
       AuthDestination.SignUp,
       AuthDestination.LogIn -> back()
-      AuthDestination.ProfileSetup -> startViewModel.logOut()
+      AuthDestination.ProfileSetup -> profileCallbacks.leave()
       AuthDestination.VerifyEmail -> backFromVerification()
       AuthDestination.PasswordRecovery -> back()
       else -> onExit()
@@ -312,8 +331,11 @@ fun AuthFlow(
         )
     AuthDestination.ProfileSetup ->
         profileContent(
-            startViewModel::logOut,
-            startViewModel::onProfileCreated,
+            {
+              profileCallbacks.leave()
+              destination = AuthDestination.Welcome
+            },
+            profileCallbacks::saved,
         )
     AuthDestination.Welcome -> {
       BackHandler(welcomeState.busy) {}
