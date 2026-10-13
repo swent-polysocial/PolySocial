@@ -83,7 +83,7 @@ flowchart TB
   chats["Chats list · chat"]:::pb
 ```
 
-**Integration:** #112 replaces the Map detail placeholder with one shared event-ID destination. The Events, Map and Create Event entry points reuse it and return to their own tab stack. Unbuilt actions (Find a group, download data, attendance-based matching and account deletion) show a not-available Snackbar; they do not open unfinished screens. Privacy's full notice works offline. Logout must also cancel the previous account's reminders and avoid exposing its cached data to the next account (#109).
+**Integration:** #112 replaces the Map detail placeholder with one shared screen and ViewModel class. Each entry tab registers its own event-ID route (the helper proposed in #157 is `Tab.eventDetailRoute`), so Events, Map and Create Event entry points return to their own tab stack without changing the selected tab. Unbuilt actions (Find a group, download data, attendance-based matching and account deletion) show a not-available Snackbar; they do not open unfinished screens. Privacy's full notice works offline. Logout must also cancel the previous account's reminders and avoid exposing its cached data to the next account (#109).
 
 
 Notes:
@@ -404,7 +404,7 @@ Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after re
 | 13 | Dependency injection | **Hilt** (changed after review). It is Android's recommended DI library, scales as repositories grow, and Hilt test modules swap in the fakes cleanly. The cost is some setup and slower builds |
 | 14 | Back button | At a non-home tab root, go to the Events tab. At the Events root, exit. This is Android's standard pattern (changed after review) |
 
-**Sprint 2 decisions:** Google is the proposed provider in #106 (EPFL provider support still needs confirmation); Nominatim remains the approved explicit-search geocoder; one shared detail route replaces the Map placeholder; co-organizers wait for Public profiles; associations move to Sprint 3; unbuilt actions show a Snackbar. Sources: #103, #106, #111, #112 and the Sprint Planning record #141.
+**Sprint 2 decisions:** Google is the proposed provider in #106 (EPFL provider support still needs confirmation); Nominatim remains the approved explicit-search geocoder; one shared detail screen replaces the Map placeholder, using each entry tab's event-ID route; co-organizers wait for Public profiles; associations move to Sprint 3; unbuilt actions show a Snackbar. Sources: #103, #106, #111, #112 and the Sprint Planning record #141.
 
 **Open questions** (add new ones here and in `CONTEXT.md`):
 - **Mapbox production account:** who adds billing, which usage alert applies, and when does a dedicated token replace the signup token? Mapbox bills separately from Google Cloud. Needed before release.
@@ -457,7 +457,7 @@ Every Scrum Board item mapped to the components it touches.
 | #106, #107 Google sign-in | Authentication | `AuthRepository.signInWithGoogle`, Credential Manager, entry ViewModels | 🟩 S2 |
 | #108, #109 Logout | Authentication | Profile confirmation, `AuthRepository.logOut`, empty auth stack, cache isolation | 🟩 S2 |
 | #110, #111 Location picker | Event Creation | picker ViewModel, Mapbox renderer, geocoding service, place name | 🟩 S2 |
-| #112 Event detail | Event Discovery | shared route / ViewModel, `EventRepository.getEvent` | 🟩 S2 |
+| #112 Event detail | Event Discovery | shared screen / ViewModel, per-tab event-ID routes, `EventRepository.getEvent` | 🟩 S2 |
 | #113–#115 Filtering | Event Discovery | filter sheet, `EventFilter`, `filterEvents`, loaded public events | 🟩 S2 |
 | #120–#123 Registration / reminders | Attendance | attendees, `RegistrationRepository`, `ReminderScheduler`, notification permission | 🟩 S2 |
 | #137–#139 M1 delivery | Tooling / architecture | APK artifact, wiki, M1 snapshot, current architecture | 🟩 S2 |
