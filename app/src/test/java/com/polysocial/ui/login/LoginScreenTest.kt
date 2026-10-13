@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (enabled recovery action regression for #164).
 // Contributors: Claude Opus 5.5 (wrote these tests; eye icon label, exact redirect delay,
 // compact-height scrolling and locked fields while redirecting after review); OpenAI Codex
 // (GPT-6.1 Sol, medium; checked the official Google button label and placeholder behavior).
@@ -47,6 +48,7 @@ class LoginScreenTest {
   private val viewModel = LoginViewModel(auth)
   private val verifiedUser = AuthUser(uid = "u1", email = "a@epfl.ch", isEmailVerified = true)
 
+  private var recoveryCalls = 0
   private var backCalls = 0
   private var loggedInCalls = 0
   private var needsVerificationCalls = 0
@@ -73,6 +75,7 @@ class LoginScreenTest {
             onNeedsVerification = { needsVerificationCalls++ },
             onCreateAccount = { createAccountCalls++ },
             viewModel = viewModel,
+            onForgotPassword = { recoveryCalls++ },
         )
       }
     }
@@ -243,13 +246,13 @@ class LoginScreenTest {
   }
 
   @Test
-  fun forgotPassword_showsNotAvailableAndDoesNotLogIn() {
+  fun forgotPassword_opensRecoveryAndDoesNotLogIn() {
     setScreen()
     typeCredentials()
 
     node(LoginScreenTestTags.FORGOT_PASSWORD).performClick()
 
-    composeTestRule.onNodeWithText(string(R.string.not_available_yet)).assertIsDisplayed()
+    assertEquals(1, recoveryCalls)
     assertEquals(0, auth.logInCalls)
   }
 

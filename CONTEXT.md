@@ -6,6 +6,8 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 
 ## Current state
 
+- **Password recovery (#164):** the owner keeps email enumeration protection enabled. Request resets directly through `AuthRepository`; never fetch providers by email. All accepted requests show conditional inbox guidance, including unknown and Google-only addresses. The request preserves the auth session and login form. Firebase handles password choice on its hosted action page.
+
 - **Verification foundation (#31):** `AuthRepository` sends verification links with typed delivery/throttling failures and reloads the account plus a forced ID-token refresh before reporting verification. `VerifyEmailViewModel` restores per-UID resend deadlines (45 seconds after delivery, three minutes after throttling), handles browser-return/entry races and cancellation, and keeps deadlines across sign-out. Only timestamps are persisted; successful verification clears them. The screen and navigation remain in [#99](https://github.com/swent-polysocial/PolySocial/pull/99), which must merge after [foundation #186](https://github.com/swent-polysocial/PolySocial/pull/186).
 
 - **Auth entry and Verify Email (#30/#31/#87):** `AppStartViewModel` routes signed-out users to Welcome, retained unverified sessions to Verify Email (overriding restored auth navigation on cold start), and verified sessions through the profile check to AppShell or the #34 placeholder, with loading/error/Retry. Browser return refreshes verification and the ID token; Continue retries manually. Verification success uses the shared startup check. Both Back actions and Change address cancel verification, sign out and reset auth forms. Per-UID resend deadlines (45 seconds after delivery, three minutes after throttling) survive sign-out and clear on verification; re-entry never automatically repeats a successful delivery. Wide, short windows use two columns. Signed-out forms survive recreation; sign-up saves the Auth display name without creating a profile. Welcome's Google/association actions remain unavailable. The profile screen exists; #144 will wire it and the remaining #74 navigation.
@@ -21,6 +23,8 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 - **Scrum Board:** Product Backlog user stories are **draft items**, with no issue number. A Sprint task becomes a real **issue** when it is planned (course rule), so issue-numbered branches and `Closes #N` exist only for Sprint tasks. The fields are Task Type (Frontend / Backend / Figma, multi-select), Epic (dropdown), Priority (P0 high, P1 medium, P2 low) and Estimated / Actual Time (h) as numbers. Labels are GitHub's defaults only. The old user-story issues (#3–#28, #36) are closed, and their stories live on as drafts.
 
 ## Decided design (follow this, even where an issue still says otherwise)
+
+- **Recovery privacy (#164):** the re-enabled-protection decision supersedes the earlier provider-aware prototype. Figma's explicit missing-account/provider recovery states are archived, not implemented. Signup may still show duplicate-email feedback; Google sign-in follows the current owner-confirmed Firebase linking decision. A consumed reset link proves email ownership (the Auth emulator marks it verified); sending the request never signs in or bypasses normal app checks.
 
 - **Map provider: Mapbox** (#50, agreed 2026-10-07). General provider/token policy lands with the map implementation: use the prototype signup public token through ignored `local.properties`, never a secret token, and a dedicated limited-scope token before production. The renderer is the UI-side SDK exception; geocoding remains Nominatim. Optional telemetry/geofencing starts disabled. Mapbox bills separately, so Firebase/Google Cloud budget alerts do not cover its usage.
 
@@ -130,6 +134,8 @@ The issues for the last four points (#12, #31, #32, #34, #35, #44–#47, #52) st
 Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 ## Decision log
+
+- 2026-10-13 · [#164](https://github.com/swent-polysocial/PolySocial/issues/164): owner re-enabled enumeration protection and authorized completing account-neutral recovery; conditional Figma confirmation replaces provider lookup, superseding the cancelled prototype.
 
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 
