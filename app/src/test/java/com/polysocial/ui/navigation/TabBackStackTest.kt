@@ -1,5 +1,5 @@
 // Contributors: Claude (UI tests for the per-tab back stacks, #42; placeholder Events root
-// without Hilt, #105).
+// without Hilt, #105; map stub given the "+" action, #110).
 // Contributors: OpenAI Codex (inject an offline Map placeholder while testing shared navigation).
 package com.polysocial.ui.navigation
 
@@ -39,7 +39,7 @@ class TabBackStackTest {
         AppShell(
             navController = navController,
             eventsContent = { TabRootScreen(Tab.EVENTS) },
-            mapContent = { TabRootScreen(Tab.MAP) },
+            mapContent = { _, _ -> TabRootScreen(Tab.MAP) },
         )
       }
     }
