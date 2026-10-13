@@ -1,8 +1,11 @@
+// Contributors: OpenAI Codex (Google sign-in contract for #106).
 // Contributors: Claude (auth contract for #32; Sign up and Verify Email methods left to #30 and
 // #31 after review); OpenAI Codex (GPT-6.1 Sol, medium; integrated sign-up results and display
 // name; implemented verification result contracts for #31);
 // OpenAI Codex (password recovery contract for #164).
 package com.polysocial.model.auth
+
+import android.content.Context
 
 /** The signed-in Firebase user, reduced to what the app needs. */
 data class AuthUser(
@@ -51,6 +54,9 @@ sealed interface SignUpResult {
  * ViewModels depend on this interface so tests can replace the backend.
  */
 interface AuthRepository {
+  /** Opens the Google picker using the current activity; never retains the context. */
+  suspend fun signInWithGoogle(context: Context): GoogleSignInResult
+
   /**
    * Creates an account and saves its display name without verification or a Firestore write (#30).
    */

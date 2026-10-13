@@ -36,6 +36,7 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 - **Map provider: Mapbox** (#50, agreed 2026-10-07). General provider/token policy lands with the map implementation: use the prototype signup public token through ignored `local.properties`, never a secret token, and a dedicated limited-scope token before production. The renderer is the UI-side SDK exception; geocoding remains Nominatim. Optional telemetry/geofencing starts disabled. Mapbox bills separately, so Firebase/Google Cloud budget alerts do not cover its usage.
 
 - **Map renderer (#50):** `MapboxRenderer` is the UI-side SDK component; `MapViewModel` gets events only through injected `RepositoryMapEventSource`, adapting #49's live flow. Cached results stay usable and terminal errors permit Retry. Event-query Retry restarts the 14-day window without recreating the renderer; renderer Retry leaves the event listener and preview intact. After first map load, individual resource failures preserve cached areas; initial/style failures permit renderer Retry. Markers share one annotation group. Optional telemetry/geofencing starts disabled; attribution and its preference dialog stay accessible. The preview uses Zurich-local Today / Tonight / date labels and opens an event-ID placeholder until #112's real detail screen lands.
+- **Google authentication (#106):** Credential Manager explicit button flow, with Firebase token validation and verified exact `@epfl.ch` checks before profile access. Reject other domains before Firebase account creation. Provider collisions return a typed error and preserve the existing account; never link by matching emails alone. Firebase's supported automatic provider linking preserves the UID. OAuth setup and all signing SHA-1 fingerprints are documented in README; admin console configuration remains required. Tokens and rejected identities are transient only.
 
 - **Sign-in providers: email/password and Google only, no Microsoft** (#106, #107; Lucas, [#197 review](https://github.com/swent-polysocial/PolySocial/pull/197#pullrequestreview-5539093813)). Microsoft sign-in would need EPFL's admin to whitelist the app, which is unlikely (they haven't for Canva). Google is open to every app and goes through EPFL's SSO, so it proves ongoing ownership of the `@epfl.ch` address just as well. Students still need a verified `@epfl.ch` email (the rules check it); only email/password needs our Verify Email screen.
 
@@ -171,6 +172,8 @@ Closed issues keep their original text, so where one disagrees with this section
 Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 ## Decision log
+
+- 2026-10-13 · [#106](https://github.com/swent-polysocial/PolySocial/issues/106): Google credentials stay in the repository; reject invalid domains before Firebase and return provider conflicts without changing the existing account.
 
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 
