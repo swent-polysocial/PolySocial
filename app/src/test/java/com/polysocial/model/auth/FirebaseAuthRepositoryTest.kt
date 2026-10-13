@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (enumeration-protected reset failures and session preservation, #164).
 // Contributors: Claude Opus 5.5 (wrote these tests); OpenAI Codex
 // (GPT-6.1 Sol, medium; adapted display-name fixtures and consolidated sign-up adapter tests).
 package com.polysocial.model.auth
@@ -24,6 +25,7 @@ import io.mockk.mockk
 import io.mockk.runs
 import io.mockk.slot
 import io.mockk.verify
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.runCurrent
@@ -125,6 +127,67 @@ class FirebaseAuthRepositoryTest {
     logIn(email = " A@epfl.ch ", password = " pw ")
 
     verify(exactly = 1) { auth.signInWithEmailAndPassword(" A@epfl.ch ", " pw ") }
+  }
+
+  @Test
+  fun resetAcceptedIsAccountNeutralAndPreservesTheSession() = runTest {
+    val signedIn = firebaseUser(verified = false)
+    every { auth.currentUser } returns signedIn
+    every { auth.sendPasswordResetEmail(any()) } returns Tasks.forResult(null)
+
+    assertEquals(
+        PasswordResetResult.Sent,
+        repository.sendPasswordResetEmail(" association@example.org "),
+    )
+    assertEquals(AuthUser("u1", "a@epfl.ch", false), repository.currentUser())
+    verify(exactly = 1) { auth.sendPasswordResetEmail("association@example.org") }
+    verify(exactly = 0) { auth.signOut() }
+    verify(exactly = 0) { auth.signInWithEmailAndPassword(any(), any()) }
+    // Unstubbed provider lookup would fail this test: it must not occur with protection enabled.
+  }
+
+  @Test
+  fun invalidResetEmailDoesNotReachFirebase() = runTest {
+    for (email in listOf("", "a@", "a@@example.org", "x".repeat(255))) {
+      assertEquals(PasswordResetResult.InvalidEmail, repository.sendPasswordResetEmail(email))
+    }
+    verify { auth wasNot Called }
+  }
+
+  @Test
+  fun resetErrorsKeepMissingAccountsPrivateAndExposeRecoverableFailures() = runTest {
+    val errors =
+        listOf(
+            FirebaseNetworkException("offline") to PasswordResetResult.NetworkError,
+            FirebaseTooManyRequestsException("limited") to PasswordResetResult.TooManyRequests,
+            FirebaseAuthInvalidUserException("ERROR_USER_NOT_FOUND", "missing") to
+                PasswordResetResult.Sent,
+            FirebaseAuthInvalidUserException("ERROR_USER_DISABLED", "disabled") to
+                PasswordResetResult.UnexpectedError,
+            FirebaseAuthInvalidCredentialsException("ERROR_INVALID_EMAIL", "invalid") to
+                PasswordResetResult.InvalidEmail,
+            FirebaseAuthInvalidCredentialsException("ERROR_INVALID_CREDENTIAL", "invalid") to
+                PasswordResetResult.UnexpectedError,
+            com.google.firebase.FirebaseException("failure") to PasswordResetResult.UnexpectedError,
+            IllegalStateException("failure") to PasswordResetResult.UnexpectedError,
+            CancellationException("SDK task cancelled") to PasswordResetResult.UnexpectedError,
+        )
+    for ((error, result) in errors) {
+      every { auth.sendPasswordResetEmail(any()) } returns Tasks.forException(error)
+      assertEquals(result, repository.sendPasswordResetEmail("student@epfl.ch"))
+    }
+  }
+
+  @Test
+  fun cancellingResetCallerPropagatesCancellation() = runTest {
+    val pending = TaskCompletionSource<Void>()
+    every { auth.sendPasswordResetEmail(any()) } returns pending.task
+    val request = async { repository.sendPasswordResetEmail("student@epfl.ch") }
+    runCurrent()
+    request.cancel()
+    pending.setException(IllegalStateException("late failure"))
+    runCurrent()
+    assertTrue(request.isCancelled)
   }
 
   @Test
