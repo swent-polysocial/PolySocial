@@ -1,4 +1,5 @@
 // Contributors: Claude (screen tests for the tab root screen, #43).
+// Contributors: OpenAI Codex (Profile placeholder without a privacy navigation target, #103).
 package com.polysocial.ui.navigation
 
 import android.content.Context
@@ -27,6 +28,17 @@ class TabRootScreenTest {
   @get:Rule(order = 1) val composeTestRule = createComposeRule()
 
   private val context = ApplicationProvider.getApplicationContext<Context>()
+
+  @Test
+  fun profileWithoutAPrivacyDestinationDoesNotExposeADeadAction() {
+    val viewModel = PlaceholderTabViewModel()
+    composeTestRule.setContent {
+      PolySocialTheme { TabRootScreen(tab = Tab.PROFILE, viewModel = viewModel) }
+    }
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+    composeTestRule.onNodeWithTag(Tab.PROFILE.screenTag).assertIsDisplayed()
+    composeTestRule.onAllNodesWithTag(C.Tag.profile_privacy_entry).assertCountEquals(0)
+  }
 
   @Test
   fun rendersTheLoadingStateThenThePlaceholderOfItsTab() {

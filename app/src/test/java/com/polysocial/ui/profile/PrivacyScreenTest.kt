@@ -219,6 +219,29 @@ class PrivacyScreenTest {
     org.junit.Assert.assertEquals(1, opened)
   }
 
+  @Test
+  fun replacingTheViewModelClearsOldFeedbackAndUsesTheNewActions() {
+    val first = PrivacyViewModel()
+    val second = PrivacyViewModel()
+    first.onUnavailableAction()
+    second.onUnavailableAction()
+    val current = mutableStateOf(first)
+    rule.setContent { PolySocialTheme { PrivacyRoute({}, {}, viewModel = current.value) } }
+    rule.onNodeWithText(text(R.string.privacy_unavailable)).assertIsDisplayed()
+    rule.runOnIdle { current.value = second }
+    rule.onNodeWithText(text(R.string.privacy_unavailable)).assertIsDisplayed()
+    org.junit.Assert.assertFalse(first.uiState.value.showUnavailable)
+    org.junit.Assert.assertTrue(second.uiState.value.showUnavailable)
+    rule.onNodeWithText(text(R.string.privacy_dismiss)).performClick()
+    org.junit.Assert.assertFalse(second.uiState.value.showUnavailable)
+    rule.onNodeWithTag(C.Tag.privacy_download).performScrollTo().performClick()
+    rule.onNodeWithText(text(R.string.privacy_unavailable)).assertIsDisplayed()
+    org.junit.Assert.assertFalse(first.uiState.value.showUnavailable)
+    org.junit.Assert.assertTrue(second.uiState.value.showUnavailable)
+    rule.onNodeWithText(text(R.string.privacy_dismiss)).performClick()
+    org.junit.Assert.assertFalse(second.uiState.value.showUnavailable)
+  }
+
   @Test fun downloadExplainsThatExportIsUnavailable() = checkUnavailable(C.Tag.privacy_download)
 
   @Test
