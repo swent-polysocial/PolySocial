@@ -1,5 +1,6 @@
 <!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42; Create Event texts, #46; "+" button, #110; app bar actions, #84); OpenAI Codex (Google and welcome copy). OpenAI Codex (sign-up form, startup integration, name hint and unused-title cleanup; Mapbox integration and setup, #50; location permission and distance text, #51). Claude (Retry, app-start loading and error texts, #74). -->
 <!-- Contributors: OpenAI Codex (verification screen and failure messages for #31). -->
+<!-- Contributors: OpenAI Codex (current-build privacy summary and full notice, #103). -->
 <resources>
     <string name="app_start_loading">Loading your profile…</string>
     <string name="app_start_error_title">Couldn\'t load your profile</string>
@@ -175,4 +176,36 @@
     <string name="verification_error">Something went wrong. Please try again.</string>
     <string name="verification_not_signed_in">Please log in to verify your email.</string>
     <string name="verification_send_description">Send a confirmation link to</string>
+    <string name="privacy_title">Privacy &amp; data</string>
+    <string name="privacy_summary">What we keep and who sees it</string>
+    <string name="privacy_back">Back</string>
+    <string name="privacy_profile_title">Name, section and year</string>
+    <string name="privacy_profile_body">Your profile is private in the app. Your email is not shown to other students.</string>
+    <string name="privacy_location_title">Location</string>
+    <string name="privacy_location_body">Read once for straight-line distances. Kept on screen only; map requests go to Mapbox.</string>
+    <string name="privacy_reminders_title">Reminders</string>
+    <string name="privacy_reminders_body">Not available yet. This build does not store reminders.</string>
+    <string name="privacy_attendance_title">Attendance</string>
+    <string name="privacy_attendance_body">Not available yet. This build does not store attendance. Registration will need an updated notice.</string>
+    <string name="privacy_matching">Use my attendance in matching</string>
+    <string name="privacy_matching_unavailable">Not available yet</string>
+    <string name="privacy_download">Download my data</string>
+    <string name="privacy_full_notice">Full privacy notice</string>
+    <string name="privacy_updated">Updated 13 October 2026</string>
+    <string name="privacy_delete">Delete account</string>
+    <string name="privacy_unavailable">Not available yet.</string>
+    <string name="privacy_notice_account_title">Your account and profile</string>
+    <string name="privacy_notice_account_body">Firebase Authentication processes your sign-in details and EPFL email. Your name, section and year are stored in your private Firebase profile. Other students cannot read that profile or your email in the app. The PolySocial student project team administers the Firebase project. Public profiles, interests and friends are not collected by this build.</string>
+    <string name="privacy_notice_events_title">Events and who can see them</string>
+    <string name="privacy_notice_events_body">Event data includes the title, description, category, venue coordinates, date and time, optional capacity and organizer identifiers. Public events are readable by verified EPFL students. Private events are readable only by accounts on their access list. An event venue is a place chosen for the event, not a history of your movements.</string>
+    <string name="privacy_notice_location_title">Approximate location for distances</string>
+    <string name="privacy_notice_location_body">The Map optionally requests approximate location and reads one foreground fix to calculate straight-line distances on your device. The fix stays in screen memory and is discarded when you leave the Map or background the app. PolySocial does not save it or upload it to Firebase. Browsing still works if permission is denied. Refresh distance requests another fix; there is no continuous tracking.</string>
+    <string name="privacy_notice_services_title">Map requests and service providers</string>
+    <string name="privacy_notice_services_body">Google Firebase processes account, profile and event data. Mapbox serves map requests for the area you view and processes the network and SDK metadata needed for its service. Optional Mapbox telemetry and geofencing start disabled. Provider information and telemetry choices remain accessible through the information control on the Map. The distance fix is separate from the map renderer.</string>
+    <string name="privacy_notice_attendance_title">Attendance, reminders and future features</string>
+    <string name="privacy_notice_attendance_body">This build does not store attendance or schedule reminders. Registration and reminders need an updated notice when enabled: organizers will see event registrations, and optional reminder data will stay on the device for local notifications. Attendance-based matching, chats, photo albums, data export and in-app account deletion are not available yet. The matching switch stays Off and does not change any consent setting.</string>
+    <string name="privacy_notice_device_title">Data kept on your device</string>
+    <string name="privacy_notice_device_body">Firebase keeps previously loaded data in its device cache for offline use. Mapbox may cache map resources. The app also remembers whether it has already requested location permission, so it does not repeatedly prompt you. That preference contains no coordinates. Account and event data in Firebase are not automatically deleted by leaving a screen.</string>
+    <string name="privacy_notice_deletion_title">Requesting deletion</string>
+    <string name="privacy_notice_deletion_body">In-app deletion and data export are not available yet. To ask for account and data deletion, contact the PolySocial project team privately. Do not publish your account details in a public GitHub issue.</string>
 </resources>

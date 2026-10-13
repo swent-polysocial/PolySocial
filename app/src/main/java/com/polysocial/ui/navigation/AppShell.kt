@@ -4,6 +4,7 @@
 // list, #105; "+" button and Create Event navigation from the Events and Map tabs, #110; app bar
 // actions, #84; event detail route, #112).
 // Contributors: OpenAI Codex (map route and detail placeholder, #50).
+// Contributors: OpenAI Codex (Profile privacy navigation and full-screen notices, #103).
 package com.polysocial.ui.navigation
 
 import android.net.Uri
@@ -59,6 +60,8 @@ import com.polysocial.ui.event.detail.EventDetailRoute
 import com.polysocial.ui.event.detail.EventDetailViewModel
 import com.polysocial.ui.event.list.EventsRoute
 import com.polysocial.ui.map.MapRoute
+import com.polysocial.ui.profile.FullPrivacyNoticeScreen
+import com.polysocial.ui.profile.PrivacyRoute
 import com.polysocial.ui.profile.ProfileRoute
 import com.polysocial.ui.theme.Ink
 import com.polysocial.ui.theme.Ink3
@@ -130,7 +133,10 @@ fun AppShell(
         destination?.hierarchy?.any { it.route == tab.route } == true
       } ?: Tab.EVENTS
   // Figma shows Create Event full screen, without the app bar and the bottom bar.
-  val showBars = destination?.route != currentTab.createEventRoute
+  val privacyScreen =
+      destination?.route == Tab.PROFILE.privacyRoute ||
+          destination?.route == Tab.PROFILE.privacyNoticeRoute
+  val showBars = destination?.route != currentTab.createEventRoute && !privacyScreen
   // The app bar action (TabAction, set per tab in Tab.action) shows only on the current tab's root
   // screen: it is hidden on the screens opened from there, including the one the action opens.
   val action = currentTab.action.takeIf { destination?.route == currentTab.rootRoute }
@@ -249,6 +255,17 @@ fun AppShell(
               )
             }
           }
+          if (tab == Tab.PROFILE) {
+            composable(tab.privacyRoute) {
+              PrivacyRoute(
+                  onBack = { navController.popBackStack() },
+                  onFullNotice = { navController.navigate(tab.privacyNoticeRoute) },
+              )
+            }
+            composable(tab.privacyNoticeRoute) {
+              FullPrivacyNoticeScreen(onBack = { navController.popBackStack() })
+            }
+          }
           tab.action?.let { action ->
             composable(tab.routeOf(action)) { PlaceholderActionScreen(action) }
           }
@@ -336,7 +353,7 @@ private fun AppBar(title: String, action: TabAction?, onAction: (TabAction) -> U
 
 @Composable
 private fun BottomNavBar(currentTab: Tab, onTabSelected: (Tab) -> Unit) {
-  // Figma "09 · App shell": a thin border above the bar, dark labels (bold when selected) and Ink3
+  // Figma "09 Â· App shell": a thin border above the bar, dark labels (bold when selected) and Ink3
   // for unselected tabs. The light-red pill and the red selected icon come from the theme.
   Column {
     HorizontalDivider(color = MaterialTheme.colorScheme.outline)

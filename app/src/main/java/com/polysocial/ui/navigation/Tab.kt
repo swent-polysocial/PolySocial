@@ -1,5 +1,6 @@
 // Contributors: Claude (tab definitions for the bottom navigation, #41; loading messages, #43;
 // per-tab routes, #42; Create Event route, #110; app bar actions, #84; event detail route, #112).
+// Contributors: OpenAI Codex (Profile privacy and full-notice routes, #103).
 package com.polysocial.ui.navigation
 
 import android.net.Uri
@@ -84,6 +85,14 @@ enum class Tab(
 
   /** Route of the screen [action] opens, one level below the tab's root. */
   fun routeOf(action: TabAction): String = "$route/${action.path}"
+
+  /** The read-only privacy summary in the Profile graph (#103). */
+  val privacyRoute: String
+    get() = "$route/privacy"
+
+  /** The bundled full notice, reached from the Profile privacy summary (#103). */
+  val privacyNoticeRoute: String
+    get() = "$route/privacy/notice"
 
   /** Test tag of the tab's placeholder detail screen. */
   val detailTag: String
