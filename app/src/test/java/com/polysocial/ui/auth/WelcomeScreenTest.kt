@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (Google action regression for #107).
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; tested welcome actions, placeholders and
 // scrolling in a short window, landscape action visibility and privacy-copy regression).
 package com.polysocial.ui.auth
@@ -29,12 +30,17 @@ class WelcomeScreenTest {
   @get:Rule val compose = createComposeRule()
   private var signUps = 0
   private var logins = 0
+  private var googleAttempts = 0
 
   private fun launch(shortWindow: Boolean = false) {
     compose.setContent {
       PolySocialTheme {
         Box(if (shortWindow) Modifier.size(360.dp, 420.dp) else Modifier) {
-          WelcomeScreen(onSignUp = { signUps++ }, onLogIn = { logins++ })
+          WelcomeScreen(
+              onSignUp = { signUps++ },
+              onLogIn = { logins++ },
+              onGoogle = { googleAttempts++ },
+          )
         }
       }
     }
@@ -81,14 +87,15 @@ class WelcomeScreenTest {
   }
 
   @Test
-  fun officialGoogleButtonShowsUnavailableWithoutNavigating() {
+  fun officialGoogleButtonStartsSharedActionWithoutEmailNavigation() {
     launch()
     compose
         .onNodeWithTag(WelcomeTags.Google)
         .performScrollTo()
         .assertContentDescriptionEquals(message(R.string.google_sign_in))
         .performClick()
-    compose.onNodeWithText(message(R.string.not_available_yet)).assertIsDisplayed()
+    assertEquals(1, googleAttempts)
+    compose.onNodeWithText(message(R.string.not_available_yet)).assertDoesNotExist()
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
     assertEquals(0, signUps)
     assertEquals(0, logins)
