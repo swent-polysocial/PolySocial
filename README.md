@@ -1,6 +1,7 @@
 <!-- Contributors: Claude (drafted the README structure, Setup, Running and testing, Tech stack and Project links sections; Firestore index deployment, #49); OpenAI Codex (documented startup routing and rebase reconciliation); OpenAI Codex (Mapbox integration and setup, #50; one-off Map location privacy note, #51). -->
 
 # PolySocial
+<!-- Contributors: OpenAI Codex (linked the M1 delivery checklist, #138). -->
 
 [![CI](https://github.com/swent-polysocial/PolySocial/actions/workflows/ci.yml/badge.svg)](https://github.com/swent-polysocial/PolySocial/actions/workflows/ci.yml)
 [![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=swent-polysocial_PolySocial&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=swent-polysocial_PolySocial)
@@ -120,6 +121,7 @@ The `demo-` project ID keeps everything on the local emulator, never a real Fire
 
 - **Figma mockups:** [First proposal revamped](https://www.figma.com/design/7Gt7tmy1ikpNyNBh1P6QdY/App-Mockup?node-id=123-467) (the team-agreed design)
 - **Scrum Board:** [GitHub Project](https://github.com/orgs/swent-polysocial/projects/1). The Product Backlog is draft items, and Sprint tasks are issues.
+- **M1 delivery:** [Checklist and finalization procedure](docs/M1-deliverables.md), including the named Figma version, APK artifact and release-commit checks.
 - **Wiki:** [Home](https://github.com/swent-polysocial/PolySocial/wiki), with the [Team Agreement](https://github.com/swent-polysocial/PolySocial/wiki/Team-Agreement) and [Architecture Diagram](https://github.com/swent-polysocial/PolySocial/wiki/Architecture-Diagram)
 - **Course:** [SwEnt project guidelines](https://github.com/swent-epfl/public/tree/main/project)
 
