@@ -3,6 +3,8 @@
 <!-- Contributors: Claude (Sprint 2 status in the Features table and the startup routing note). -->
 <!-- Contributors: OpenAI Codex (bundled Profile privacy notice and unavailable actions, #103). -->
 
+<!-- Contributors: OpenAI Codex (CI APK download instructions, #137). -->
+
 # PolySocial
 
 [![CI](https://github.com/swent-polysocial/PolySocial/actions/workflows/ci.yml/badge.svg)](https://github.com/swent-polysocial/PolySocial/actions/workflows/ci.yml)
@@ -99,6 +101,14 @@ firebase deploy --only firestore:indexes --project <project-id>
 `<project-id>` is the `project_id` in your `app/google-services.json`.
 
 Keep `--only firestore:indexes`: a plain `firebase deploy` would also deploy the Security Rules. A new index takes a few minutes to build (Firebase console → Firestore → Indexes). Until it's ready, the query that needs it fails. The local emulator doesn't need indexes.
+
+## Downloading the CI APK
+
+After a successful push to `main`, open [CI - Test Runner](https://github.com/swent-polysocial/PolySocial/actions/workflows/ci.yml), choose the successful run for the desired commit on `main`, and download **polysocial-apk** from its **Artifacts** section. Sign in to GitHub if the download requires it. Extract the ZIP to obtain `app-debug.apk`; install it on an Android phone running Android 9 (API 28) or newer, allowing installation from that source when Android asks.
+
+The APK uses Android's debug signing configuration. Artifacts expire after **7 days**, so use a recent successful `main` run for the Sprint review or M1. PR runs do not publish an APK. The final CI job publishes it only after the checks, unit tests, device-test shards, Sonar analysis and release build all succeed; a missing APK fails the run. The one-day `ci-main-debug-apk` artifact is an internal handoff between jobs; coaches should download **polysocial-apk**.
+
+The existing release variant is built with R8 but has no signing configuration, so its unsigned APK cannot replace the installable debug APK. Publishing a signed release APK requires the team to configure release signing separately, with credentials in GitHub Actions secrets.
 
 ## Running and testing
 
