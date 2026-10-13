@@ -194,10 +194,11 @@
     <string name="privacy_updated">Updated 13 October 2026</string>
     <string name="privacy_delete">Delete account</string>
     <string name="privacy_unavailable">Not available yet.</string>
+    <string name="privacy_dismiss">Dismiss</string>
     <string name="privacy_notice_account_title">Your account and profile</string>
-    <string name="privacy_notice_account_body">Firebase Authentication processes your sign-in details and EPFL email. Your name, section and year are stored in your private Firebase profile. Other students cannot read that profile or your email in the app. The PolySocial student project team administers the Firebase project. Public profiles, interests and friends are not collected by this build.</string>
+    <string name="privacy_notice_account_body">Firebase Authentication processes your sign-in details and EPFL email. Your private Firebase profile stores your account identifier, email, name, section, year, account type and creation date. Other students cannot read that profile or your email in the app. The PolySocial student project team administers the Firebase project. Public profiles, interests and friends are not collected by this build.</string>
     <string name="privacy_notice_events_title">Events and who can see them</string>
-    <string name="privacy_notice_events_body">Event data includes the title, description, category, venue coordinates, date and time, optional capacity and organizer identifiers. Public events are readable by verified EPFL students. Private events are readable only by accounts on their access list. An event venue is a place chosen for the event, not a history of your movements.</string>
+    <string name="privacy_notice_events_body">Event data includes the title, description, category, venue coordinates, date and time, optional capacity and organizer identifiers. Verified EPFL students can read public events and private events that list them on the access list. A manually verified association can also read its own association events. An event venue is a place chosen for the event, not a history of your movements.</string>
     <string name="privacy_notice_location_title">Approximate location for distances</string>
     <string name="privacy_notice_location_body">The Map optionally requests approximate location and reads one foreground fix to calculate straight-line distances on your device. The fix stays in screen memory and is discarded when you leave the Map or background the app. PolySocial does not save it or upload it to Firebase. Browsing still works if permission is denied. Refresh distance requests another fix; there is no continuous tracking.</string>
     <string name="privacy_notice_services_title">Map requests and service providers</string>

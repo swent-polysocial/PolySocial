@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalDensity
@@ -28,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
+import com.polysocial.model.privacy.PrivacyContactLauncher
 import com.polysocial.resources.C
 import com.polysocial.ui.navigation.AppShell
 import com.polysocial.ui.navigation.Tab
@@ -122,6 +124,101 @@ class PrivacyScreenTest {
     rule.onNodeWithTag(C.Tag.privacy_contact).performScrollTo().assertIsDisplayed()
   }
 
+  @Test
+  fun unavailableFeedbackCanBeDismissedAndAnotherActionExplained() {
+    openFromProfile()
+    rule.onNodeWithTag(C.Tag.privacy_download).performScrollTo().performClick()
+    rule.onNodeWithText(text(R.string.privacy_unavailable)).assertIsDisplayed()
+    rule.onNodeWithText(text(R.string.privacy_dismiss)).performClick()
+    rule.onNodeWithText(text(R.string.privacy_unavailable)).assertDoesNotExist()
+    rule.onNodeWithTag(C.Tag.privacy_matching).performScrollTo().performClick()
+    rule.onNodeWithText(text(R.string.privacy_unavailable)).assertIsDisplayed()
+    rule.onNodeWithTag(C.Tag.privacy_matching).assertIsOff()
+  }
+
+  @Test
+  fun openingTheFullNoticeClearsFeedbackOnTheSummaryBackStack() {
+    openFromProfile()
+    rule.onNodeWithTag(C.Tag.privacy_download).performScrollTo().performClick()
+    rule.onNodeWithTag(C.Tag.privacy_full_notice).performScrollTo().performClick()
+    rule.onNodeWithTag(C.Tag.privacy_notice_heading).assertIsDisplayed()
+    rule.onNodeWithTag(C.Tag.privacy_back).performClick()
+    rule.onNodeWithTag(C.Tag.privacy_heading).assertIsDisplayed()
+    rule.onNodeWithText(text(R.string.privacy_unavailable)).assertDoesNotExist()
+  }
+
+  @Test
+  fun configuredContactOpensADraftAndKeepsTheNoticeAvailable() {
+    var draft: Pair<String, String>? = null
+    val model =
+        PrivacyViewModel(
+            "team@example.invalid",
+            PrivacyContactLauncher { to, subject ->
+              draft = to to subject
+              true
+            },
+        )
+    rule.setContent { PolySocialTheme { FullPrivacyNoticeRoute({}, model) } }
+    rule.onNodeWithTag(C.Tag.privacy_contact).performScrollTo().performClick()
+    org.junit.Assert.assertEquals(
+        "team@example.invalid" to text(R.string.privacy_contact_subject),
+        draft,
+    )
+    rule.onNodeWithTag(C.Tag.privacy_notice_screen).assertIsDisplayed()
+    rule.onNodeWithText(text(R.string.privacy_contact_pending)).assertDoesNotExist()
+    rule.onNodeWithText(text(R.string.privacy_contact_no_app)).assertDoesNotExist()
+  }
+
+  @Test
+  fun emailFailureCanBeDismissedAndRetriedAfterAClientIsAvailable() {
+    var canOpen = false
+    var attempts = 0
+    val model =
+        PrivacyViewModel(
+            "team@example.invalid",
+            PrivacyContactLauncher { _, _ ->
+              attempts++
+              canOpen
+            },
+        )
+    rule.setContent { PolySocialTheme { FullPrivacyNoticeRoute({}, model) } }
+    rule.onNodeWithTag(C.Tag.privacy_contact).performScrollTo().performClick()
+    rule.onNodeWithText(text(R.string.privacy_contact_no_app)).assertIsDisplayed()
+    rule.onNodeWithText(text(R.string.privacy_dismiss)).performClick()
+    rule.onNodeWithText(text(R.string.privacy_contact_no_app)).assertDoesNotExist()
+    canOpen = true
+    rule.onNodeWithTag(C.Tag.privacy_contact).performClick()
+    org.junit.Assert.assertEquals(2, attempts)
+    rule.onNodeWithTag(C.Tag.privacy_notice_screen).assertIsDisplayed()
+    rule.onNodeWithText(text(R.string.privacy_contact_no_app)).assertDoesNotExist()
+  }
+
+  @Test
+  fun backFromContactFailureClearsFeedbackWithoutSendingAnything() {
+    val showNotice = mutableStateOf(true)
+    var opened = 0
+    val model =
+        PrivacyViewModel(
+            "team@example.invalid",
+            PrivacyContactLauncher { _, _ ->
+              opened++
+              false
+            },
+        )
+    rule.setContent {
+      PolySocialTheme {
+        if (showNotice.value) FullPrivacyNoticeRoute({ showNotice.value = false }, model)
+        else Text("Returned")
+      }
+    }
+    rule.onNodeWithTag(C.Tag.privacy_contact).performScrollTo().performClick()
+    rule.onNodeWithText(text(R.string.privacy_contact_no_app)).assertIsDisplayed()
+    rule.onNodeWithTag(C.Tag.privacy_back).performScrollTo().performClick()
+    rule.onNodeWithText("Returned").assertIsDisplayed()
+    org.junit.Assert.assertNull(model.uiState.value.contactMessage)
+    org.junit.Assert.assertEquals(1, opened)
+  }
+
   @Test fun downloadExplainsThatExportIsUnavailable() = checkUnavailable(C.Tag.privacy_download)
 
   @Test
@@ -138,9 +235,14 @@ class PrivacyScreenTest {
     rule.setContent {
       CompositionLocalProvider(LocalDensity provides Density(1f, 1.8f)) {
         PolySocialTheme {
-          Box(Modifier.requiredSize(360.dp, 800.dp)) {
-            PrivacyScreen(PrivacyUiState(), { backCalls++ }, { noticeCalls++ }, {}, {})
-          }
+          PrivacyScreen(
+              PrivacyUiState(),
+              { backCalls++ },
+              { noticeCalls++ },
+              {},
+              {},
+              modifier = Modifier.requiredSize(360.dp, 800.dp),
+          )
         }
       }
     }
