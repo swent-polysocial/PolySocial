@@ -1,6 +1,7 @@
 <!-- Contributors: Claude (drafted the README structure, Setup, Running and testing, Tech stack and Project links sections; Firestore index deployment, #49; Firestore emulator tests, #117); OpenAI Codex (documented startup routing and rebase reconciliation); OpenAI Codex (Mapbox integration and setup, #50; one-off Map location privacy note, #51). -->
 <!-- Contributors: OpenAI Codex (verification startup integration and Back sign-out, #31). -->
 <!-- Contributors: Claude (Sprint 2 status in the Features table and the startup routing note). -->
+<!-- Contributors: OpenAI Codex (bundled Profile privacy notice and unavailable actions, #103). -->
 
 # PolySocial
 
@@ -40,7 +41,9 @@ The barrier to campus life is social rather than informational: PolySocial answe
 | Association accounts with members, verified manually | Planned |
 | Event reminders (also offline) and in-app notifications | Planned |
 
-**Privacy:** location is never tracked continuously. It is read once for a feature, or shared only with your group, only during the event, and only when you choose to. Profiles, photos, chats and locations are personal data under the Swiss nLPD, and you can delete your account and data.
+**Privacy:** location is never tracked continuously. It is read once for a feature, or shared only with your group, only during the event, and only when you choose to. Profiles, photos, chats and locations are personal data under the Swiss nLPD, and account/data deletion can be requested privately from the project team; in-app deletion and export are not available yet.
+
+Profile → **Privacy & data** opens the current collection/access summary and a dated full notice, both bundled for offline reading. Attendance-based matching, export and deletion actions show **Not available yet**; the matching switch stays Off. The private contact for manual deletion must be confirmed before this privacy PR is released.
 
 For Map distance badges, the app requests only approximate location. On first entry, the Map requests permission once if it is not already granted. The location service reads one foreground snapshot and keeps coordinates only in screen memory; it never stores or uploads them. Leaving the Map or backgrounding the app cancels any pending request and discards the snapshot without showing a location error. On return, use the floating **Refresh distance** button for another one-off fix; permission prompts and location reads do not repeat automatically. Only whether the permission prompt was requested is saved. Denying permission keeps map browsing available. **Turn on** asks again when Android allows another request, or opens this app's settings after a permanent denial. Granting permission there starts one fix on return.
 

@@ -1,6 +1,7 @@
 // Contributors: Claude (app shell and tab test tags, #41; loading state tag, #43; Create Event
 // tags, #46; "+" button, #110; app bar action tags, #84; error state tags, #74).
 // Contributors: OpenAI Codex (map event-detail tags, #50).
+// Contributors: OpenAI Codex (Profile privacy navigation and action tags, #103).
 package com.polysocial.resources
 
 // Like R, but C
@@ -18,6 +19,18 @@ object C {
     const val event_detail_back = "event_detail_back"
     const val error_state = "error_state"
     const val error_retry = "error_retry"
+    const val profile_privacy_entry = "profile_privacy_entry"
+    const val privacy_screen = "privacy_screen"
+    const val privacy_heading = "privacy_heading"
+    const val privacy_back = "privacy_back"
+    const val privacy_matching = "privacy_matching"
+    const val privacy_download = "privacy_download"
+    const val privacy_full_notice = "privacy_full_notice"
+    const val privacy_delete = "privacy_delete"
+    const val privacy_snackbar = "privacy_snackbar"
+    const val privacy_notice_screen = "privacy_notice_screen"
+    const val privacy_notice_heading = "privacy_notice_heading"
+    const val privacy_notice_date = "privacy_notice_date"
 
     const val app_bar_action_notifications = "app_bar_action_notifications"
     const val app_bar_action_search_chats = "app_bar_action_search_chats"

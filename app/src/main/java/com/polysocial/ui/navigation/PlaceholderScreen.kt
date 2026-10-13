@@ -1,5 +1,6 @@
 // Contributors: Claude (tab placeholder screen from the Figma "App shell" section, #41; placeholder
 // detail screen, #42; app bar action placeholder, #84).
+// Contributors: OpenAI Codex (optional Profile privacy entry, #103).
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.background
@@ -23,7 +24,11 @@ import com.polysocial.R
 
 /** Stand-in for a tab's root screen until its feature is built, e.g. "Events — coming soon". */
 @Composable
-fun PlaceholderScreen(tab: Tab, modifier: Modifier = Modifier) {
+fun PlaceholderScreen(
+    tab: Tab,
+    modifier: Modifier = Modifier,
+    additionalContent: @Composable () -> Unit = {},
+) {
   Column(
       modifier = modifier.fillMaxSize().testTag(tab.screenTag),
       verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically),
@@ -45,6 +50,7 @@ fun PlaceholderScreen(tab: Tab, modifier: Modifier = Modifier) {
         text = stringResource(R.string.placeholder_coming_soon, stringResource(tab.label)),
         style = MaterialTheme.typography.titleMedium,
     )
+    additionalContent()
   }
 }
 
