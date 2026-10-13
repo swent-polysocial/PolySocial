@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (late profile completion cannot reopen a signed-out session, #107).
 // Contributors: Claude Opus 5.5 (wrote these tests; refresh after Log in; full profile fixture,
 // #34); Claude (log out and the created profile; Verify Email opened in-session, #74).
 package com.polysocial.ui.start
@@ -179,6 +180,24 @@ class AppStartViewModelTest {
 
     assertEquals(StartDestination.VerifyEmail, viewModel.destination.value)
     assertEquals(0, profiles.getProfileCalls)
+  }
+
+  @Test
+  fun lateProfileCompletionAfterLeavingSetupCannotReopenTheApp() = runTest {
+    auth.user = verified
+    profiles.getProfileResult = ProfileResult.NotFound
+    val vm = AppStartViewModel(auth, profiles)
+    advanceUntilIdle()
+    assertEquals(StartDestination.ProfileSetup, vm.destination.value)
+
+    vm.logOut()
+    vm.onProfileCreated()
+    advanceUntilIdle()
+
+    assertEquals(StartDestination.Login, vm.destination.value)
+    assertEquals(null, auth.currentUser())
+    assertEquals(1, profiles.getProfileCalls)
+    assertEquals(1, auth.logOutCalls)
   }
 
   @Test
