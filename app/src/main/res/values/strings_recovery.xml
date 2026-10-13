@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: OpenAI Codex (enumeration-protected password recovery copy for #164). -->
+<resources>
+    <string name="recovery_title">Forgot password?</string>
+    <string name="recovery_description">Enter your email to reset your password.</string>
+    <string name="recovery_email">Email</string>
+    <string name="recovery_send">Send reset link</string>
+    <string name="recovery_sending">Sending reset link…</string>
+    <string name="recovery_retry">Try again</string>
+    <string name="recovery_back">Back to log in</string>
+    <string name="recovery_invalid_email">Enter a valid email address.</string>
+    <string name="recovery_network">Check your connection and try again.</string>
+    <string name="recovery_too_many">Too many requests. Wait a few minutes and try again.</string>
+    <string name="recovery_unexpected">Couldn’t send the reset link. Try again.</string>
+    <string name="recovery_submitted_title">Check your inbox</string>
+    <string name="recovery_submitted_message">If an account exists for %1$s, you’ll receive a password reset link. Check your inbox and spam folder.</string>
+</resources>

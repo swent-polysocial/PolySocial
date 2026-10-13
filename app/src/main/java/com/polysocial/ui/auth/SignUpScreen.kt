@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (password recovery destination and Back routing for #164).
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; translated the Figma sign-up form to Compose
 // Foundation, reusing the shared app theme; connected login and added the official Google
 // placeholder button; connected the welcome entry screen and app-start/profile routing;
@@ -113,6 +114,7 @@ private enum class AuthDestination {
   SignUp,
   VerifyEmail,
   LogIn,
+  PasswordRecovery,
   SignedIn,
 }
 
@@ -129,6 +131,7 @@ fun AuthFlow(
     loginViewModel: LoginViewModel = hiltViewModel(),
     startViewModel: AppStartViewModel = hiltViewModel(),
     verificationViewModel: VerifyEmailViewModel = hiltViewModel(),
+    recoveryViewModel: PasswordRecoveryViewModel? = null,
     signedInContent: @Composable () -> Unit = { AppShell() },
 ) {
   var destination by rememberSaveable { mutableStateOf(AuthDestination.Loading) }
@@ -176,6 +179,7 @@ fun AuthFlow(
   LaunchedEffect(verificationState.verified) {
     if (verificationState.verified) startViewModel.refresh()
   }
+  var recoveryInitialized by rememberSaveable { mutableStateOf(false) }
   var loginOrigin by rememberSaveable { mutableStateOf(AuthDestination.Welcome) }
   val backFromVerification = {
     latestVerificationViewModel.changeAddress()
@@ -192,6 +196,7 @@ fun AuthFlow(
       AuthDestination.Error -> onExit()
       AuthDestination.VerifyEmail -> backFromVerification()
       AuthDestination.LogIn -> destination = loginOrigin
+      AuthDestination.PasswordRecovery -> destination = AuthDestination.LogIn
       else -> destination = AuthDestination.Welcome
     }
   }
@@ -258,7 +263,21 @@ fun AuthFlow(
             onNeedsVerification = { destination = AuthDestination.VerifyEmail },
             onCreateAccount = { destination = AuthDestination.SignUp },
             viewModel = loginViewModel,
+            onForgotPassword = {
+              recoveryInitialized = false
+              destination = AuthDestination.PasswordRecovery
+            },
         )
+    AuthDestination.PasswordRecovery -> {
+      val recovery = recoveryViewModel ?: hiltViewModel<PasswordRecoveryViewModel>()
+      LaunchedEffect(recovery) {
+        if (!recoveryInitialized) {
+          recovery.open(loginViewModel.uiState.value.email)
+          recoveryInitialized = true
+        }
+      }
+      PasswordRecoveryRoute(recovery, onBack = { destination = AuthDestination.LogIn })
+    }
     AuthDestination.SignedIn -> signedInContent()
   }
 }

@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (recovery navigation and shared email field for #164).
 // Contributors: Claude (Log in screen for #32, built from the Figma "First proposal revamped"
 // frames); Claude Opus 5.5 (eye icon label, scrolling on short screens and locked fields while
 // redirecting, after review); OpenAI Codex (GPT-6.1 Sol, medium; official Google button artwork;
@@ -102,6 +103,7 @@ fun LoginScreen(
     onNeedsVerification: () -> Unit,
     onCreateAccount: () -> Unit,
     viewModel: LoginViewModel = hiltViewModel(),
+    onForgotPassword: () -> Unit = {},
 ) {
   val state by viewModel.uiState.collectAsState()
   // Keep the completion effect alive, including the delayed unverified-account handoff.
@@ -126,6 +128,7 @@ fun LoginScreen(
       onTogglePasswordVisibility = viewModel::onTogglePasswordVisibility,
       onLogIn = viewModel::onLogIn,
       onCreateAccount = onCreateAccount,
+      onForgotPassword = onForgotPassword,
   )
 }
 
@@ -139,6 +142,7 @@ fun LoginContent(
     onTogglePasswordVisibility: () -> Unit,
     onLogIn: () -> Unit,
     onCreateAccount: () -> Unit,
+    onForgotPassword: () -> Unit = {},
 ) {
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
@@ -248,7 +252,7 @@ fun LoginContent(
               textDecoration = TextDecoration.Underline,
               modifier =
                   Modifier.align(Alignment.End)
-                      .clickable(onClick = showNotAvailable)
+                      .clickable(enabled = !fieldsLocked, onClick = onForgotPassword)
                       .testTag(LoginScreenTestTags.FORGOT_PASSWORD),
           )
           if (state.status == LoginStatus.Unverified) {
@@ -320,7 +324,7 @@ private fun FieldLabel(@StringRes text: Int) {
 }
 
 @Composable
-private fun LoginField(
+internal fun LoginField(
     value: String,
     onValueChange: (String) -> Unit,
     height: Dp,
@@ -332,6 +336,7 @@ private fun LoginField(
     placeholder: String = "",
     visualTransformation: VisualTransformation = VisualTransformation.None,
     trailing: (@Composable () -> Unit)? = null,
+    errorBorderWidth: Dp = 2.dp,
 ) {
   // While loading, Figma fades the field (border and text) to 45%; the eye icon stays opaque.
   val fade = if (faded) 0.45f else 1f
@@ -354,7 +359,7 @@ private fun LoginField(
                 .height(height)
                 .background(Bg, shape)
                 .border(
-                    if (isError) 2.dp else 1.dp,
+                    if (isError) errorBorderWidth else 1.dp,
                     (if (isError) Accent else Border).copy(alpha = fade),
                     shape,
                 )
