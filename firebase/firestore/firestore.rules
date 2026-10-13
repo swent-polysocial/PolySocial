@@ -30,10 +30,10 @@ service cloud.firestore {
     }
 
     // Each account's private profile. The only rule open to any verified email (most
-    // associations have no EPFL email), so an unverified association reaches nothing else. Only an admin sets
-    // isAssociationVerified, in the Firebase console. The uid field names the document's owner,
-    // and uid and accountType are fixed once created, so an admin verifying an account isn't
-    // misled.
+    // associations have no EPFL email), so an unverified association reaches nothing else.
+    // Only an admin sets isAssociationVerified, in the Firebase console. The uid field names
+    // the document's owner, and uid and accountType are fixed once created, so an admin
+    // verifying an account isn't misled.
     match /users/{uid} {
       function isOwner() {
         return hasVerifiedEmail() && request.auth.uid == uid;
