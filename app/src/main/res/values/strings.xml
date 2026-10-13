@@ -1,4 +1,4 @@
-<!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42; Create Event texts, #46); OpenAI Codex (Google and welcome copy). OpenAI Codex (sign-up form, startup integration, name hint and unused-title cleanup; Mapbox integration and setup, #50; location permission and distance text, #51). -->
+<!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42; Create Event texts, #46; "+" button, #110); OpenAI Codex (Google and welcome copy). OpenAI Codex (sign-up form, startup integration, name hint and unused-title cleanup; Mapbox integration and setup, #50; location permission and distance text, #51). -->
 <resources>
     <string name="auth_start_error">Could not load your profile. Check your connection and try again.</string>
     <string name="auth_start_retry">Retry</string>
@@ -61,6 +61,7 @@
     <string name="welcome_group_size">Group of 4</string>
 
     <!-- Create Event (#46), copy from Figma section 04 -->
+    <string name="create_event_open">Create event</string>
     <string name="create_event_title">New event</string>
     <string name="create_event_close">Close</string>
     <string name="create_event_organized_by_you">Organized by you</string>
