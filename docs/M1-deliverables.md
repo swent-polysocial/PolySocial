@@ -30,10 +30,12 @@ This checklist follows the [M1 handout updated on 10 October](https://github.com
 | Agreed live designs | [First proposal revamped](https://www.figma.com/design/7Gt7tmy1ikpNyNBh1P6QdY/App-Mockup?node-id=123-467) | This is the live file, not the final M1 version link |
 | Architecture | [PR #170](https://github.com/swent-polysocial/PolySocial/pull/170), closing #139 | Source/PNG and wiki mirror prepared; teammate review and publication pending |
 | Main CI baseline | [Run 38443382277](https://github.com/swent-polysocial/PolySocial/actions/runs/38443382277), commit `6d79c3ea67b9d223432a8dc85f13e0400eecbbdc` | Passed; this run has **no APK artifact** |
-| APK publication | [#137](https://github.com/swent-polysocial/PolySocial/issues/137) | Workflow proposal prepared; team approval and integration pending |
-| Privacy | [#103](https://github.com/swent-polysocial/PolySocial/issues/103) | Implementation/tests in progress; private deletion contact needs confirmation |
+| APK publication | [PR #176](https://github.com/swent-polysocial/PolySocial/pull/176), closing #137 | [Team approval recorded](https://github.com/swent-polysocial/PolySocial/issues/137#issuecomment-6155218847); workflow and README implemented; CI, phone check and integration pending |
+| Privacy | [PR #173](https://github.com/swent-polysocial/PolySocial/pull/173), #103 | Offline screens/tests implemented; explicit draft contact/provider fields authorized by Mehdi until supplied |
 | Final build / `M1` branch | Latest green main after all intended Sprint 2 PRs are merged | Pending; no `M1` branch exists yet |
-| Group chat | Team's confirmed link for the Tooling page | Needed from the team; no link invented |
+| Group chat | Team's confirmed link for the Tooling page | Mehdi confirmed it is not defined yet; explicit draft placeholder prepared until supplied |
+
+The proposed [Wiki Home](m1-wiki/Home.md) and [Tooling](m1-wiki/Tooling.md) content is included in this PR for review. The local wiki mirror also contains the architecture proposed by #170. Publish the reviewed sources with final verified links during finalization; the draft group-chat field remains explicit until Mehdi supplies the link.
 
 The main baseline is useful evidence, but it must not be used as the final M1 build while the intended Sprint 2 work remains unmerged. Board/Steve checks belong to their human owners; this task does not edit the board or invent meeting records.
 
