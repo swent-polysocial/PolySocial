@@ -1,6 +1,7 @@
 // Contributors: Claude (wrote these tests, #114).
 package com.polysocial.model.event
 
+import com.polysocial.model.location.straightLineDistanceMeters
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
@@ -24,12 +25,13 @@ class EventFilterTest {
   private val study = event("study", "Study together · Analysis III", EventCategory.STUDY)
   private val events = listOf(cafe, party, climbing, study)
 
-  private fun ids(filter: EventFilter) = filterEvents(events, filter, lausanne).map { it.id }
+  private fun ids(filter: EventFilter) =
+      filterEvents(events, filter, lausanne, userLocation = null).map { it.id }
 
   @Test
   fun theEmptyFilter_keepsEveryEventInTheSameOrder() {
     assertTrue(EventFilter().isEmpty)
-    assertEquals(events, filterEvents(events, EventFilter(), lausanne))
+    assertEquals(events, filterEvents(events, EventFilter(), lausanne, userLocation = null))
   }
 
   @Test
@@ -40,6 +42,7 @@ class EventFilterTest {
             emptyList(),
             EventFilter(search = "party", categories = setOf(EventCategory.PARTY)),
             lausanne,
+            userLocation = null,
         ),
     )
   }
@@ -61,7 +64,10 @@ class EventFilterTest {
   fun aSearch_ignoresSurroundingSpaces_andABlankSearchKeepsEverything() {
     assertEquals(listOf("party"), ids(EventFilter(search = "  warm-up ")))
     assertTrue(EventFilter(search = "   ").isEmpty)
-    assertEquals(events, filterEvents(events, EventFilter(search = "   "), lausanne))
+    assertEquals(
+        events,
+        filterEvents(events, EventFilter(search = "   "), lausanne, userLocation = null),
+    )
   }
 
   @Test
@@ -114,7 +120,7 @@ class EventFilterTest {
   private fun day(date: LocalDate) = DateRange(date, date.plusDays(1))
 
   private fun idsOn(events: List<Event>, dates: DateRange, zone: ZoneId = lausanne) =
-      filterEvents(events, EventFilter(dates = dates), zone).map { it.id }
+      filterEvents(events, EventFilter(dates = dates), zone, userLocation = null).map { it.id }
 
   @Test
   fun aDay_keepsTheEventsStartingThatDay_fromMidnightToJustBeforeTheNextMidnight() {
@@ -166,9 +172,13 @@ class EventFilterTest {
 
     assertEquals(
         listOf("sportsToday"),
-        filterEvents(listOf(sportsToday, partyToday, sportsTomorrow), filter, lausanne).map {
-          it.id
-        },
+        filterEvents(
+                listOf(sportsToday, partyToday, sportsTomorrow),
+                filter,
+                lausanne,
+                userLocation = null,
+            )
+            .map { it.id },
     )
   }
 
@@ -176,5 +186,92 @@ class EventFilterTest {
   fun aDateRange_mustHoldAtLeastOneDay() {
     assertThrows(IllegalArgumentException::class.java) { DateRange(today, today) }
     assertThrows(IllegalArgumentException::class.java) { DateRange(today, today.minusDays(1)) }
+  }
+
+  // ---- Distance ----
+
+  /** The student, at the Rolex Learning Center. */
+  private val epfl = Coordinates(latitude = 46.5191, longitude = 6.5668)
+  private val flon = Coordinates(latitude = 46.5210, longitude = 6.6290)
+  private val geneva = Coordinates(latitude = 46.2044, longitude = 6.1432)
+
+  private fun at(id: String, location: Coordinates) =
+      validEvent(title = id).copy(id = id, location = location)
+
+  private val onCampus = at("onCampus", epfl)
+  private val inTown = at("inTown", flon)
+  private val inGeneva = at("inGeneva", geneva)
+  private val everywhere = listOf(onCampus, inTown, inGeneva)
+
+  private fun idsWithin(meters: Double, userLocation: Coordinates?) =
+      filterEvents(everywhere, EventFilter(maxDistanceMeters = meters), lausanne, userLocation)
+          .map { it.id }
+
+  @Test
+  fun aMaximumDistance_keepsTheEventsThatClose() {
+    // The Flon is about 4.8 km from the Rolex, Geneva about 48 km.
+    assertFalse(EventFilter(maxDistanceMeters = 5_000.0).isEmpty)
+    assertEquals(listOf("onCampus", "inTown"), idsWithin(5_000.0, epfl))
+    assertEquals(listOf("onCampus"), idsWithin(1_000.0, epfl))
+  }
+
+  @Test
+  fun anEventExactlyAtTheMaximumDistance_isKept() {
+    val toTown = straightLineDistanceMeters(epfl, flon)
+
+    assertEquals(listOf("onCampus", "inTown"), idsWithin(toTown, epfl))
+    assertEquals(listOf("onCampus"), idsWithin(toTown - 1.0, epfl))
+  }
+
+  @Test
+  fun aMaximumDistance_withoutAUserLocation_isIgnored() {
+    assertEquals(listOf("onCampus", "inTown", "inGeneva"), idsWithin(1_000.0, userLocation = null))
+  }
+
+  @Test
+  fun withoutAUserLocation_theOtherCriteriaStillApply() {
+    val filter = EventFilter(search = "town", maxDistanceMeters = 1_000.0)
+
+    assertEquals(listOf(inTown), filterEvents(everywhere, filter, lausanne, userLocation = null))
+  }
+
+  @Test
+  fun aUserLocation_withoutAMaximumDistance_keepsEveryEvent() {
+    assertEquals(everywhere, filterEvents(everywhere, EventFilter(), lausanne, epfl))
+  }
+
+  @Test
+  fun aMaximumDistance_cannotBeNegative() {
+    assertThrows(IllegalArgumentException::class.java) { EventFilter(maxDistanceMeters = -1.0) }
+  }
+
+  @Test
+  fun everyCriterion_combinesWithAnd() {
+    val today = LocalDate.of(2026, 10, 14)
+    fun event(id: String, category: EventCategory, location: Coordinates, day: LocalDate) =
+        validEvent(
+                title = "Climbing $id",
+                startTime = day.atTime(18, 0).atZone(lausanne).toInstant(),
+            )
+            .copy(id = id, category = category, location = location)
+
+    val match = event("match", EventCategory.SPORTS, epfl, today)
+    val events =
+        listOf(
+            match,
+            event("otherTitle", EventCategory.SPORTS, epfl, today).copy(title = "Yoga"),
+            event("otherCategory", EventCategory.PARTY, epfl, today),
+            event("otherDay", EventCategory.SPORTS, epfl, today.plusDays(1)),
+            event("tooFar", EventCategory.SPORTS, geneva, today),
+        )
+    val filter =
+        EventFilter(
+            search = "climbing",
+            categories = setOf(EventCategory.SPORTS),
+            dates = DateRange(today, today.plusDays(1)),
+            maxDistanceMeters = 5_000.0,
+        )
+
+    assertEquals(listOf(match), filterEvents(events, filter, lausanne, epfl))
   }
 }
