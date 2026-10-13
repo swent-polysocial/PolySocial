@@ -1,5 +1,6 @@
-// Contributors: Claude Opus 5.5 (wrote these tests); OpenAI Codex
-// (GPT-6.1 Sol, medium; adapted display-name fixtures and consolidated sign-up adapter tests).
+// Contributors: Claude Opus 5.5 (wrote these tests; logout clears the offline cache, #156);
+// OpenAI Codex (GPT-6.1 Sol, medium; adapted display-name fixtures and consolidated sign-up
+// adapter tests).
 package com.polysocial.model.auth
 
 import android.app.Application
@@ -17,15 +18,22 @@ import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.UserProfileChangeRequest
+import com.polysocial.model.firebase.ClearCacheResult
+import com.polysocial.model.firebase.FirestoreProvider
 import io.mockk.Called
+import io.mockk.coEvery
+import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
 import io.mockk.runs
 import io.mockk.slot
 import io.mockk.verify
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -43,7 +51,9 @@ import org.robolectric.annotation.Config
 @Config(manifest = Config.NONE, application = Application::class, sdk = [34])
 class FirebaseAuthRepositoryTest {
   private val auth = mockk<FirebaseAuth>()
-  private val repository = FirebaseAuthRepository(auth)
+  private val firestore =
+      mockk<FirestoreProvider> { coEvery { clearCache() } returns ClearCacheResult.Cleared }
+  private val repository = FirebaseAuthRepository(auth, firestore)
 
   private fun firebaseUser(uid: String = "u1", email: String? = "a@epfl.ch", verified: Boolean) =
       mockk<FirebaseUser> {
@@ -128,11 +138,38 @@ class FirebaseAuthRepositoryTest {
   }
 
   @Test
-  fun logOut_signsOutOnce() {
+  fun logOut_signsOutOnceThenClearsTheOfflineCache() = runTest {
     every { auth.signOut() } just runs
 
-    repository.logOut()
+    assertEquals(LogOutResult.Success, repository.logOut())
 
+    verify(exactly = 1) { auth.signOut() }
+    coVerifyOrder {
+      auth.signOut()
+      firestore.clearCache()
+    }
+  }
+
+  @Test
+  fun logOut_whenTheCacheCannotBeCleared_stillSignsOutAndSaysSo() = runTest {
+    every { auth.signOut() } just runs
+    coEvery { firestore.clearCache() } returns ClearCacheResult.Failed
+
+    assertEquals(LogOutResult.CacheNotCleared, repository.logOut())
+
+    verify(exactly = 1) { auth.signOut() }
+  }
+
+  @Test
+  fun logOut_cancelledWhileClearingTheCache_isCancelledButSignedOut() = runTest {
+    every { auth.signOut() } just runs
+    coEvery { firestore.clearCache() } coAnswers { awaitCancellation() }
+    val loggingOut = launch(start = CoroutineStart.UNDISPATCHED) { repository.logOut() }
+
+    loggingOut.cancel()
+    loggingOut.join()
+
+    assertTrue(loggingOut.isCancelled)
     verify(exactly = 1) { auth.signOut() }
   }
 

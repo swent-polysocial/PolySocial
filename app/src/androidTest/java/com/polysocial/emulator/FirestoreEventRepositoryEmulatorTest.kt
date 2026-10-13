@@ -1,11 +1,12 @@
 // Contributors: Claude (event repository read tests against the Firestore emulator, #118;
-// Firestore from a provider, #156).
+// Firestore from a provider and the suspending logOut, #156).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.LogInResult
+import com.polysocial.model.auth.LogOutResult
 import com.polysocial.model.auth.SignUpResult
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.EVENTS_COLLECTION
@@ -225,7 +226,10 @@ class FirestoreEventRepositoryEmulatorTest {
     override suspend fun logIn(email: String, password: String): LogInResult =
         throw UnsupportedOperationException("Sign in with FirebaseEmulator.signInVerifiedUser")
 
-    override fun logOut() = emulator.auth.signOut()
+    override suspend fun logOut(): LogOutResult {
+      emulator.auth.signOut()
+      return LogOutResult.Success
+    }
 
     override fun currentUser(): AuthUser? =
         emulator.auth.currentUser?.let { AuthUser(it.uid, it.email.orEmpty(), it.isEmailVerified) }

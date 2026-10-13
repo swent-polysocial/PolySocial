@@ -1,5 +1,6 @@
 // Contributors: Claude (auth contract for #32; Sign up and Verify Email methods left to #30 and
-// #31 after review); OpenAI Codex (GPT-6.1 Sol, medium; integrated sign-up results and display
+// #31 after review; logout clears the offline cache, #156); OpenAI Codex (GPT-6.1 Sol, medium;
+// integrated sign-up results and display
 // name).
 package com.polysocial.model.auth
 
@@ -21,6 +22,17 @@ sealed interface LogInResult {
   data object NetworkError : LogInResult
 
   data object UnexpectedError : LogInResult
+}
+
+/** Outcome of [AuthRepository.logOut]. The user is signed out either way. */
+sealed interface LogOutResult {
+  data object Success : LogOutResult
+
+  /**
+   * Signed out, but the offline cache couldn't be cleared, so the next account on this phone might
+   * read the previous one's cached data while offline.
+   */
+  data object CacheNotCleared : LogOutResult
 }
 
 /** Outcome of account creation; backend details never become UI messages. */
@@ -59,8 +71,11 @@ interface AuthRepository {
   /** Signs in with email and password (#32). */
   suspend fun logIn(email: String, password: String): LogInResult
 
-  /** Signs out; the next app start routes to Log in (#32). */
-  fun logOut()
+  /**
+   * Signs out, then clears the app's offline cache so the next account on this phone can't read
+   * this one's data (#156). The next app start routes to Log in (#32).
+   */
+  suspend fun logOut(): LogOutResult
 
   /** The current user, or `null` when nobody is signed in. */
   fun currentUser(): AuthUser?

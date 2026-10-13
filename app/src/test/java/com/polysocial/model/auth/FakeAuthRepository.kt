@@ -1,4 +1,5 @@
-// Contributors: Claude (test fake for #32); Claude Opus 5.5 (recorded the logIn arguments,
+// Contributors: Claude (test fake for #32; logout result, #156); Claude Opus 5.5 (recorded the
+// logIn arguments,
 // added the logIn gate); OpenAI Codex (GPT-6.1 Sol, medium; extended the existing fake to
 // the sign-up contract and added sign-up call, gate and failure controls).
 package com.polysocial.model.auth
@@ -67,9 +68,12 @@ class FakeAuthRepository(var user: AuthUser? = null) : AuthRepository {
     return logInResult.also { if (it is LogInResult.Success) user = it.user }
   }
 
-  override fun logOut() {
+  var logOutResult: LogOutResult = LogOutResult.Success
+
+  override suspend fun logOut(): LogOutResult {
     logOutCalls++
     user = null
+    return logOutResult
   }
 
   override fun currentUser(): AuthUser? = user

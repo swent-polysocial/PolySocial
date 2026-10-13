@@ -1,5 +1,5 @@
-// Contributors: Claude (logIn, logOut and currentUser for #32); OpenAI Codex
-// (GPT-6.1 Sol, medium; sign-up and display-name integration).
+// Contributors: Claude (logIn, logOut and currentUser for #32; clearing the offline cache on
+// logout, #156); OpenAI Codex (GPT-6.1 Sol, medium; sign-up and display-name integration).
 package com.polysocial.model.auth
 
 import com.google.firebase.FirebaseException
@@ -12,6 +12,8 @@ import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.UserProfileChangeRequest
+import com.polysocial.model.firebase.ClearCacheResult
+import com.polysocial.model.firebase.FirestoreProvider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.tasks.await
 
@@ -19,15 +21,20 @@ import kotlinx.coroutines.tasks.await
  * [AuthRepository] backed by Firebase Authentication. FirebaseAuth is resolved on the first
  * operation so idle Compose rendering and Robolectric screen tests need no initialized Firebase
  * app.
+ *
+ * @param firestore holds the Firestore instance whose offline cache [logOut] clears.
  */
-class FirebaseAuthRepository private constructor(authProvider: () -> FirebaseAuth) :
-    AuthRepository {
+class FirebaseAuthRepository
+private constructor(
+    authProvider: () -> FirebaseAuth,
+    private val firestore: FirestoreProvider,
+) : AuthRepository {
   // Idle screen rendering needs no SDK access; resolve Firebase only for an operation.
   private val auth by lazy(authProvider)
 
-  constructor(auth: FirebaseAuth) : this({ auth })
+  constructor(auth: FirebaseAuth, firestore: FirestoreProvider) : this({ auth }, firestore)
 
-  constructor() : this({ FirebaseAuth.getInstance() })
+  constructor(firestore: FirestoreProvider) : this({ FirebaseAuth.getInstance() }, firestore)
 
   override suspend fun signUp(
       fullName: String,
@@ -81,7 +88,17 @@ class FirebaseAuthRepository private constructor(authProvider: () -> FirebaseAut
         LogInResult.UnexpectedError
       }
 
-  override fun logOut() = auth.signOut()
+  /**
+   * Signs out before clearing the cache, so a failed clear never keeps the user signed in, and a
+   * read still running for this user can't refill the cache once it's cleared.
+   */
+  override suspend fun logOut(): LogOutResult {
+    auth.signOut()
+    return when (firestore.clearCache()) {
+      ClearCacheResult.Cleared -> LogOutResult.Success
+      ClearCacheResult.Failed -> LogOutResult.CacheNotCleared
+    }
+  }
 
   override fun currentUser(): AuthUser? = auth.currentUser?.snapshot()
 
