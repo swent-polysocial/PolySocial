@@ -96,6 +96,32 @@ class PrivacyScreenTest {
         .assertContentDescriptionEquals(text(R.string.privacy_matching))
   }
 
+  @Test
+  fun draftContactExplainsTheMissingAddressWithoutLeavingTheNotice() {
+    openFromProfile()
+    rule.onNodeWithTag(C.Tag.privacy_full_notice).performScrollTo().performClick()
+    rule.onNodeWithText(text(R.string.privacy_notice_draft_body)).assertExists()
+    rule.onNodeWithTag(C.Tag.privacy_contact).performScrollTo().performClick()
+    rule.onNodeWithText(text(R.string.privacy_contact_pending)).assertIsDisplayed()
+    rule.onNodeWithTag(C.Tag.privacy_notice_screen).assertIsDisplayed()
+  }
+
+  @Test
+  fun emailAppFailureIsExplainedInTheFullNotice() {
+    rule.setContent {
+      PolySocialTheme {
+        FullPrivacyNoticeScreen(
+            {},
+            PrivacyUiState(contactMessage = PrivacyContactMessage.NoEmailApp),
+            {},
+            {},
+        )
+      }
+    }
+    rule.onNodeWithText(text(R.string.privacy_contact_no_app)).assertIsDisplayed()
+    rule.onNodeWithTag(C.Tag.privacy_contact).performScrollTo().assertIsDisplayed()
+  }
+
   @Test fun downloadExplainsThatExportIsUnavailable() = checkUnavailable(C.Tag.privacy_download)
 
   @Test

@@ -31,6 +31,7 @@ object C {
     const val privacy_notice_screen = "privacy_notice_screen"
     const val privacy_notice_heading = "privacy_notice_heading"
     const val privacy_notice_date = "privacy_notice_date"
+    const val privacy_contact = "privacy_contact"
 
     const val app_bar_action_notifications = "app_bar_action_notifications"
     const val app_bar_action_search_chats = "app_bar_action_search_chats"

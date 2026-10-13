@@ -14,4 +14,4 @@ OpenAI Codex exported the original Figma SVG assets to transparent PNGs at six t
 | `chevron` | 124:501 / 124:508 | 18 dp |
 | `shield` | 136:554 | 20 dp |
 
-Issue #103 updates the prototype wording to the current collection/access behavior. The attendance toggle stays Off and shows the unavailable message; it does not imply consent for matching. The full notice needs the team's confirmed private deletion contact before this PR can be marked ready.
+Issue #103 updates the prototype wording to the current collection/access behavior. The attendance toggle stays Off and shows the unavailable message; it does not imply consent for matching. Mehdi authorized explicit draft contact/provider fields for the school prototype. The full notice's contact action uses the existing message icon; it opens an email draft when the team's private address is supplied, and otherwise explains that configuration is pending.

@@ -60,7 +60,7 @@ import com.polysocial.ui.event.detail.EventDetailRoute
 import com.polysocial.ui.event.detail.EventDetailViewModel
 import com.polysocial.ui.event.list.EventsRoute
 import com.polysocial.ui.map.MapRoute
-import com.polysocial.ui.profile.FullPrivacyNoticeScreen
+import com.polysocial.ui.profile.FullPrivacyNoticeRoute
 import com.polysocial.ui.profile.PrivacyRoute
 import com.polysocial.ui.profile.ProfileRoute
 import com.polysocial.ui.theme.Ink
@@ -263,7 +263,7 @@ fun AppShell(
               )
             }
             composable(tab.privacyNoticeRoute) {
-              FullPrivacyNoticeScreen(onBack = { navController.popBackStack() })
+              FullPrivacyNoticeRoute(onBack = { navController.popBackStack() })
             }
           }
           tab.action?.let { action ->
