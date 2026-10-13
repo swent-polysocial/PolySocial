@@ -74,9 +74,11 @@ class FirestoreEventRepositoryTest {
       )
   private val profiles = FakeUserProfileRepository(ProfileResult.Found(creatorProfile))
 
+  private val firestore = ResettableFirestoreProvider { db }
+
   private val repository =
       FirestoreEventRepository(
-          ResettableFirestoreProvider { db },
+          firestore,
           auth,
           profiles,
           network,
@@ -434,5 +436,58 @@ class FirestoreEventRepositoryTest {
     assertThrows(IllegalArgumentException::class.java) {
       repository.getUpcomingPublicEvents(windowDays = -1)
     }
+  }
+
+  // A logout terminates the instance (#156)
+
+  private fun terminated() = IllegalStateException("The client has already been terminated")
+
+  @Test
+  fun aWriteOnAnInstanceALogoutTerminated_isAnUnexpectedError() = runTest {
+    every {
+      db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Transaction>>())
+    } throws terminated()
+
+    assertEquals(CreateEventResult.UnexpectedError, repository.createEvent(validEvent()))
+  }
+
+  @Test
+  fun upcomingEvents_endsWithAnErrorWhenALogoutClearsTheCache() = runTest {
+    stubPublicEventsQuery()
+    every { db.terminate() } returns Tasks.forResult(null)
+    every { db.clearPersistence() } returns Tasks.forResult(null)
+    val results = mutableListOf<PublicEventsResult>()
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) {
+          repository.getUpcomingPublicEvents().toList(results)
+        }
+    listener.captured.onEvent(snapshot(document("event-1", stored.toFirestoreMap())), null)
+
+    firestore.clearCache()
+    collecting.join()
+
+    assertEquals(
+        listOf(
+            PublicEventsResult.Events(listOf(stored.copy(id = "event-1")), fromCache = false),
+            PublicEventsResult.Error,
+        ),
+        results,
+    )
+    verify { registration.remove() }
+  }
+
+  @Test
+  fun upcomingEvents_onAnInstanceALogoutTerminated_emitsAnErrorAndEnds() = runTest {
+    stubPublicEventsQuery()
+    every { sorted.addSnapshotListener(MetadataChanges.INCLUDE, any()) } throws terminated()
+    val results = mutableListOf<PublicEventsResult>()
+
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) {
+          repository.getUpcomingPublicEvents().toList(results)
+        }
+    collecting.join()
+
+    assertEquals(listOf(PublicEventsResult.Error), results)
   }
 }

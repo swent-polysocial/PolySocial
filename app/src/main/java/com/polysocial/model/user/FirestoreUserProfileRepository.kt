@@ -79,7 +79,8 @@ class FirestoreUserProfileRepository(private val firestore: FirestoreProvider) :
 /**
  * Runs [call] and turns its failures into results, so the caller never hangs on "saving": offline
  * becomes [offline]; any other Firebase failure, or a Firebase task cancelled while the caller is
- * still running, becomes [failed]. Cancelling the caller's coroutine still cancels it.
+ * still running, or an instance terminated by a logout, becomes [failed]. Cancelling the caller's
+ * coroutine still cancels it.
  */
 private suspend fun <T> reportFailures(offline: T, failed: T, call: suspend () -> T): T =
     try {
@@ -88,6 +89,9 @@ private suspend fun <T> reportFailures(offline: T, failed: T, call: suspend () -
       if (e.isOffline()) offline else failed
     } catch (e: CancellationException) {
       currentCoroutineContext().ensureActive()
+      failed
+    } catch (e: IllegalStateException) {
+      // A logout terminated the instance this operation was using (#156).
       failed
     }
 

@@ -359,4 +359,50 @@ class FirestoreUserProfileRepositoryTest {
     assertTrue(call.isCancelled)
     assertEquals(null, result)
   }
+
+  // ---- Logout replaces the instance (#156) ----
+
+  private fun terminated() = IllegalStateException("The client has already been terminated")
+
+  @Test
+  fun getProfile_onAnInstanceALogoutTerminated_returnsUnexpectedError() = runTest {
+    every { ref.get() } throws terminated()
+
+    assertEquals(ProfileResult.UnexpectedError, repository.getProfile("u1"))
+  }
+
+  @Test
+  fun createProfile_onAnInstanceALogoutTerminated_returnsUnexpectedError() = runTest {
+    every { db.runTransaction(any<Transaction.Function<Boolean>>()) } throws terminated()
+
+    assertEquals(CreateProfileResult.UnexpectedError, repository.createProfile(profile))
+  }
+
+  @Test
+  fun updateProfile_onAnInstanceALogoutTerminated_returnsUnexpectedError() = runTest {
+    every { db.runTransaction(any<Transaction.Function<Boolean>>()) } throws terminated()
+
+    assertEquals(UpdateProfileResult.UnexpectedError, repository.updateProfile(profile))
+  }
+
+  @Test
+  fun afterALogout_readsGoToTheFreshInstance() = runTest {
+    val fresh = mockk<FirebaseFirestore>()
+    val freshRef = mockk<DocumentReference>()
+    every { fresh.collection(USERS_COLLECTION) } returns
+        mockk { every { document("u1") } returns freshRef }
+    every { freshRef.get() } returns Tasks.forResult(snapshot(null))
+    every { ref.get() } returns Tasks.forResult(snapshot(storedFields))
+    every { db.terminate() } returns Tasks.forResult(null)
+    every { db.clearPersistence() } returns Tasks.forResult(null)
+    val instances = ArrayDeque(listOf(db, fresh))
+    val provider = ResettableFirestoreProvider { instances.removeFirst() }
+    val repository = FirestoreUserProfileRepository(provider)
+
+    assertTrue(repository.getProfile("u1") is ProfileResult.Found)
+    provider.clearCache()
+
+    assertEquals(ProfileResult.NotFound, repository.getProfile("u1"))
+    verify(exactly = 1) { ref.get() }
+  }
 }

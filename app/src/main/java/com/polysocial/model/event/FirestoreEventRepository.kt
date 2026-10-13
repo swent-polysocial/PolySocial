@@ -16,11 +16,13 @@ import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.UserProfileRepository
 import java.time.Clock
 import java.time.Instant
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 
 /** Firestore collection holding the events, one document per event. */
@@ -70,6 +72,11 @@ class FirestoreEventRepository(
       CreateEventResult.Created(document.id)
     } catch (e: FirebaseException) {
       if (e.isOffline()) CreateEventResult.NetworkError else CreateEventResult.UnexpectedError
+    } catch (e: CancellationException) {
+      throw e
+    } catch (e: IllegalStateException) {
+      // A logout terminated the instance this write was using (#156).
+      CreateEventResult.UnexpectedError
     }
   }
 
@@ -85,25 +92,48 @@ class FirestoreEventRepository(
    * outdated snapshots. Sending never fails or blocks the listener's callback, so the terminal
    * [PublicEventsResult.Error] replaces any result still waiting and always reaches the collector
    * before the flow ends.
+   *
+   * A logout terminates the instance the listener uses, which silences it (#156), so the flow then
+   * also ends with [PublicEventsResult.Error]; collecting again reads from the fresh instance.
    */
   override fun getUpcomingPublicEvents(windowDays: Int): Flow<PublicEventsResult> {
     require(windowDays > 0) { "windowDays must be positive, was $windowDays" }
     return callbackFlow {
           val now = clock.instant()
+          val db = firestore.get()
           val registration =
-              firestore.get().upcomingPublicEvents(now, windowDays).addSnapshotListener(
-                  MetadataChanges.INCLUDE
-              ) { snapshot, error ->
-                if (error != null || snapshot == null) {
-                  trySend(PublicEventsResult.Error)
-                  close()
-                } else {
-                  val events =
-                      snapshot.documents.mapNotNull { eventFromFirestore(it.id, it.data.orEmpty()) }
-                  trySend(PublicEventsResult.Events(events, snapshot.metadata.isFromCache))
+              try {
+                db.upcomingPublicEvents(now, windowDays).addSnapshotListener(
+                    MetadataChanges.INCLUDE
+                ) { snapshot, error ->
+                  if (error != null || snapshot == null) {
+                    trySend(PublicEventsResult.Error)
+                    close()
+                  } else {
+                    val events =
+                        snapshot.documents.mapNotNull {
+                          eventFromFirestore(it.id, it.data.orEmpty())
+                        }
+                    trySend(PublicEventsResult.Events(events, snapshot.metadata.isFromCache))
+                  }
                 }
+              } catch (e: IllegalStateException) {
+                // A logout terminated the instance just after get() (#156).
+                null
               }
-          awaitClose { registration.remove() }
+          if (registration == null) {
+            trySend(PublicEventsResult.Error)
+            close()
+          }
+          val endOnLogout = launch {
+            firestore.awaitRetired(db)
+            trySend(PublicEventsResult.Error)
+            close()
+          }
+          awaitClose {
+            endOnLogout.cancel()
+            registration?.remove()
+          }
         }
         .buffer(Channel.CONFLATED)
   }
