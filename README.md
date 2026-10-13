@@ -46,7 +46,7 @@ On launch, signed-out users see Welcome. A retained unverified session opens the
 
 - **Kotlin** and **Jetpack Compose** (Material 3), **MVVM** with `StateFlow` UI state; dependency injection with **Hilt**
 - **Firebase:** Authentication, Cloud Firestore (with offline persistence), Cloud Storage for photos, Local Emulator Suite for tests
-- **Maps:** Google Maps SDK for now, Mapbox under consideration; **Nominatim / OpenStreetMap** for geocoding
+- **Maps:** Mapbox Maps SDK and its Compose extension; **Nominatim / OpenStreetMap** for geocoding
 - **Device:** GPS (one-off location), CameraX + ML Kit for QR codes, WorkManager for reminders
 - **Quality:** JUnit, Robolectric, Kaspresso, JaCoCo coverage, SonarCloud, ktfmt, GitHub Actions CI
 
