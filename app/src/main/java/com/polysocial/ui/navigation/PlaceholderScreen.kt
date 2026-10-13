@@ -1,5 +1,5 @@
 // Contributors: Claude (tab placeholder screen from the Figma "App shell" section, #41; placeholder
-// detail screen, #42).
+// detail screen, #42; app bar action placeholder, #84).
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.background
@@ -59,6 +59,20 @@ fun PlaceholderDetailScreen(tab: Tab, modifier: Modifier = Modifier) {
   ) {
     Text(
         text = stringResource(R.string.placeholder_detail_coming_soon),
+        style = MaterialTheme.typography.titleMedium,
+    )
+  }
+}
+
+/** Stand-in for the screen an app bar [action] opens until its feature is built. */
+@Composable
+fun PlaceholderActionScreen(action: TabAction, modifier: Modifier = Modifier) {
+  Box(
+      modifier = modifier.fillMaxSize().testTag(action.screenTag),
+      contentAlignment = Alignment.Center,
+  ) {
+    Text(
+        text = stringResource(R.string.placeholder_coming_soon, stringResource(action.label)),
         style = MaterialTheme.typography.titleMedium,
     )
   }
