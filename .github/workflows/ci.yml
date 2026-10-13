@@ -3,6 +3,8 @@
 # instrumented test and SonarCloud jobs, system image download retries, and the APK install and
 # broadcast wait before the device tests, #192).
 
+# Contributors: OpenAI Codex (publish the tested main APK after the parallel CI jobs, #137).
+
 name: CI - Test Runner
 
 # Run the workflow when commits are pushed on main or when a PR is modified
@@ -185,6 +187,16 @@ jobs:
             app/build/outputs/unit_test_code_coverage/debugUnitTest/
             app/build/test-results/testDebugUnitTest/
             app/build/intermediates/classes/debug/transformDebugClassesWithAsm/dirs/
+          retention-days: 1
+          if-no-files-found: error
+
+      # Hand the exact debug APK to the final CI job. Coaches use polysocial-apk after all checks.
+      - name: Preserve main debug APK for publication
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-main-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
           retention-days: 1
           if-no-files-found: error
 
@@ -489,3 +501,20 @@ jobs:
               exit 1
             fi
           done
+
+      # The result check above must succeed before the coaches' artifact is published.
+      - name: Download tested main debug APK
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/download-artifact@v8
+        with:
+          name: ci-main-debug-apk
+          path: app/build/outputs/apk/debug/
+
+      - name: Upload installable APK
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v7
+        with:
+          name: polysocial-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
+          if-no-files-found: error
