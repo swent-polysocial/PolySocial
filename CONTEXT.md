@@ -18,6 +18,8 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 
 ## Decided design (follow this, even where an issue still says otherwise)
 
+- **Map provider: Mapbox** (#50, agreed 2026-10-07). General provider/token policy lands with the map implementation: use the prototype signup public token through ignored `local.properties`, never a secret token, and a dedicated limited-scope token before production. The renderer is the UI-side SDK exception; geocoding remains Nominatim. Optional telemetry/geofencing starts disabled. Mapbox bills separately, so Firebase/Google Cloud budget alerts do not cover its usage.
+
 - **Map renderer (#50):** `MapboxRenderer` is the UI-side SDK component; `MapViewModel` gets events only through injected `RepositoryMapEventSource`, adapting #49's live flow. Cached results stay usable and terminal errors permit Retry. Event-query Retry restarts the 14-day window without recreating the renderer; renderer Retry leaves the event listener and preview intact. After first map load, individual resource failures preserve cached areas; initial/style failures permit renderer Retry. Markers share one annotation group. Optional telemetry/geofencing starts disabled; attribution and its preference dialog stay accessible. The preview uses Zurich-local Today / Tonight / date labels and opens an event-ID placeholder until #112's real detail screen lands.
 
 - **Google sign-in buttons:** Welcome and Log in share the unchanged pre-approved Google PNG through `GoogleSignInButton`, preserving the logo, font and aspect ratio. [Google requires compliant branding](https://developers.google.com/identity/branding-guidelines) for app verification; a plain-text or monochrome G is not allowed. The light pill is our selected supported variant, not a Google requirement to use only light buttons. Actions remain unavailable until Google sign-in is implemented.
@@ -90,7 +92,12 @@ The issues for the last four points (#12, #31, #32, #34, #35, #44–#47, #52) st
 
 - **Mapbox annotation groups:** one manager owns a normal source/layer plus an SDK-created drag source/layer, even with non-draggable markers. Native tests verify the matched pair stays shared as event count changes; counting every circle layer as a separate manager is incorrect. ([SDK source](https://github.com/mapbox/mapbox-maps-android/blob/v11.32.0/plugin-annotation/src/main/java/com/mapbox/maps/plugin/annotation/AnnotationManagerImpl.kt))
 
+- **Mapbox trial tokens:** card-free signup provides one token and currently allows 100 monthly active mobile users. Creating or rotating tokens requires adding a payment method. The default public token has broader public scopes than the dedicated production token; its value remains extractable from the app even though local config is ignored. See [signup limits](https://docs.mapbox.com/accounts/guides/signup/).
+
 ## Open questions (don't guess, ask)
+
+- **Shared privacy notice:** the supplied app mockup places it under Profile → Privacy & data, which is not implemented. Following Ayoub's #94 review and Mehdi's explicit instruction, remove the temporary Map privacy button; Mapbox attribution and telemetry choices stay accessible. The complete app notice is tracked in [#103](https://github.com/swent-polysocial/PolySocial/issues/103); its owner, wording and estimate are to be decided by the team before implementation and production.
+- **Mapbox production account:** the team must decide billing, usage thresholds and token rotation before release; the prototype keeps the current account/token.
 
 - **Association access to other public events:** [Ayoub confirmed](https://github.com/swent-polysocial/PolySocial/pull/93#issuecomment-6069094805) that #47's writes will build on #52's own-association-events read policy. Whether associations may also read students' public events remains a separate team question; keep the current policy until a team decision.
 - **Sign-in providers:** add Google or Microsoft sign-in next to email/password? Every student account still needs a verified `@epfl.ch` email (checked by the rules). Only email/password needs our Verify Email screen, because Google and Microsoft deliver already-verified emails.
@@ -106,7 +113,9 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 
-- 2026-10-13 · Map previews use Zurich-local Today before 18:00 and Tonight from 18:00; renderer and event-query retries remain independent, with one shared annotation manager. General provider/token policy belongs to the separate documentation change. ([#94](https://github.com/swent-polysocial/PolySocial/pull/94), [#148](https://github.com/swent-polysocial/PolySocial/pull/148))
+- 2026-10-13 · Record Mapbox provider/token policy with #50's code; the UI renderer may import the SDK, optional telemetry/geofencing starts disabled, and Mapbox usage alerts are separate from the Firebase budget. ([#94](https://github.com/swent-polysocial/PolySocial/pull/94))
+
+- 2026-10-13 · Map previews use Zurich-local Today before 18:00 and Tonight from 18:00; renderer and event-query retries remain independent, with one shared annotation manager. The approved provider/token policy is documented with its implementation. ([#94](https://github.com/swent-polysocial/PolySocial/pull/94))
 
 - 2026-10-12 · Events tab after review: sections hold a plain `LocalDate` and the screen names Today / Tomorrow; the offline banner needs `fromCache` and no network. ([#145](https://github.com/swent-polysocial/PolySocial/pull/145))
 - 2026-10-11 · Events tab: day headings Today / Tomorrow / date instead of Figma's relative labels, shared `EventCategoryStyle`, and injectable tab content so tests run without Hilt. ([#145](https://github.com/swent-polysocial/PolySocial/pull/145))
