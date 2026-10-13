@@ -6,6 +6,7 @@ import android.content.Context
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.polysocial.R
@@ -46,7 +47,14 @@ class AndroidGoogleCredentialSource(
     check(clientId.isNotBlank()) { "Google OAuth configuration missing" }
     val option = GetSignInWithGoogleOption.Builder(clientId).build()
     val request = GetCredentialRequest.Builder().addCredentialOption(option).build()
-    val credential = manager(context.applicationContext).getCredential(context, request).credential
+    val credential =
+        try {
+          manager(context.applicationContext).getCredential(context, request).credential
+        } catch (missing: NoCredentialException) {
+          // The explicit button flow already includes new accounts; there is no authorized-only
+          // filter to retry. Report a recoverable failure (e.g. the device has no usable account).
+          throw IllegalStateException("Google credential unavailable", missing)
+        }
     check(
         credential is CustomCredential &&
             credential.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
