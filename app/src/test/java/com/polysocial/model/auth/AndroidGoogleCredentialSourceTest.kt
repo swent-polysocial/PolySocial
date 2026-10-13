@@ -9,6 +9,7 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.GetCredentialResponse
 import androidx.credentials.PasswordCredential
+import androidx.credentials.exceptions.NoCredentialException
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.polysocial.R
@@ -90,6 +91,15 @@ class AndroidGoogleCredentialSourceTest {
     coEvery { manager.getCredential(context, any<GetCredentialRequest>()) } returns
         GetCredentialResponse(CustomCredential("other", Bundle()))
     assertTrue(runCatching { source.get(context) }.exceptionOrNull() is IllegalStateException)
+  }
+
+  @Test
+  fun noUsableGoogleCredentialIsRecoverable() = runTest {
+    coEvery { manager.getCredential(context, any<GetCredentialRequest>()) } throws
+        NoCredentialException()
+    val failure = runCatching { source.get(context) }.exceptionOrNull()
+    assertTrue(failure is IllegalStateException)
+    assertTrue(failure?.cause is NoCredentialException)
   }
 
   @Test
