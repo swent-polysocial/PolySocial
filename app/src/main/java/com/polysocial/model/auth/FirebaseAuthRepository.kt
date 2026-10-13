@@ -1,9 +1,12 @@
+// Contributors: OpenAI Codex (verified EPFL Google sign-in and provider-collision handling).
 // Contributors: Claude (logIn, logOut and currentUser for #32); OpenAI Codex
 // (GPT-6.1 Sol, medium; sign-up and display-name integration; verification delivery and
 // token refresh for #31);
 // OpenAI Codex (enumeration-protected password recovery and failure handling for #164).
 package com.polysocial.model.auth
 
+import android.content.Context
+import androidx.credentials.exceptions.GetCredentialCancellationException
 import com.google.firebase.FirebaseException
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.FirebaseTooManyRequestsException
@@ -13,6 +16,7 @@ import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.FirebaseAuthUserCollisionException
 import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.UserProfileChangeRequest
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
@@ -24,14 +28,68 @@ import kotlinx.coroutines.tasks.await
  * operation so idle Compose rendering and Robolectric screen tests need no initialized Firebase
  * app.
  */
-class FirebaseAuthRepository private constructor(authProvider: () -> FirebaseAuth) :
-    AuthRepository {
+class FirebaseAuthRepository
+private constructor(
+    authProvider: () -> FirebaseAuth,
+    private val googleCredentials: GoogleCredentialSource,
+) : AuthRepository {
   // Idle screen rendering needs no SDK access; resolve Firebase only for an operation.
   private val auth by lazy(authProvider)
 
-  constructor(auth: FirebaseAuth) : this({ auth })
+  constructor(
+      auth: FirebaseAuth,
+      googleCredentials: GoogleCredentialSource = AndroidGoogleCredentialSource(),
+  ) : this({ auth }, googleCredentials)
 
-  constructor() : this({ FirebaseAuth.getInstance() })
+  constructor() : this({ FirebaseAuth.getInstance() }, AndroidGoogleCredentialSource())
+
+  override suspend fun signInWithGoogle(context: Context): GoogleSignInResult {
+    var selected: GoogleAccount? = null
+    return try {
+      val google = googleCredentials.get(context)
+      selected = google.account
+      // Reject before Firebase can create an account. This is only a preliminary check;
+      // Firebase validates the token and the resulting identity is checked again below.
+      if (!isEpflEmail(google.account.email) || !google.account.email.endsWith("@epfl.ch")) {
+        auth.signOut()
+        return GoogleSignInResult.NotEpfl(google.account)
+      }
+      val user =
+          auth
+              .signInWithCredential(GoogleAuthProvider.getCredential(google.idToken, null))
+              .await()
+              .user
+      if (user == null) {
+        auth.signOut()
+        return GoogleSignInResult.UnexpectedError
+      }
+      if (!isEpflEmail(user.email.orEmpty()) || !user.email.orEmpty().endsWith("@epfl.ch")) {
+        auth.signOut()
+        return GoogleSignInResult.NotEpfl(google.account)
+      }
+      if (!user.isEmailVerified) {
+        auth.signOut()
+        return GoogleSignInResult.UnexpectedError
+      }
+      GoogleSignInResult.Success(user.snapshot())
+    } catch (_: GetCredentialCancellationException) {
+      GoogleSignInResult.Cancelled
+    } catch (_: FirebaseAuthUserCollisionException) {
+      // Never merge accounts based on an email alone. The original provider must authenticate
+      // the existing account before explicit linking is possible; keep that account unchanged.
+      auth.signOut()
+      selected?.let { GoogleSignInResult.OtherSignInMethod(it) }
+          ?: GoogleSignInResult.UnexpectedError
+    } catch (_: FirebaseNetworkException) {
+      auth.signOut()
+      GoogleSignInResult.NetworkError
+    } catch (_: Exception) {
+      // A cancelled SDK task is a failure; cancellation of our coroutine must still propagate.
+      currentCoroutineContext().ensureActive()
+      auth.signOut()
+      GoogleSignInResult.UnexpectedError
+    }
+  }
 
   override suspend fun signUp(
       fullName: String,

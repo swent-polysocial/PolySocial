@@ -1,4 +1,5 @@
 // Contributors: OpenAI Codex (Mapbox dependencies and local public-token resource, #50).
+// Contributors: OpenAI Codex (Credential Manager integration for #106).
 // Contributors: Claude (Hilt, KSP and Hilt testing setup, JaCoCo on Hilt-rewritten classes, #70;
 // Navigation Compose dependency, #41; MockK and kotlinx-coroutines-play-services, #32; emulator
 // tests only with -Pemulator and no protobuf-lite in instrumented tests, #117; -Pemulator=all for
@@ -195,6 +196,9 @@ dependencies {
 
   // ------------- Firebase ------------------
   implementation(platform(libs.firebase.bom))
+  implementation(libs.androidx.credentials)
+  implementation(libs.androidx.credentials.play.services)
+  implementation(libs.googleid)
   implementation(libs.firebase.auth)
   implementation(libs.firebase.firestore)
   // Task.await() for Firebase calls in coroutines
