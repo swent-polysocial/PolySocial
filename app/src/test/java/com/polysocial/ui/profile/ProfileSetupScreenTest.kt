@@ -2,7 +2,8 @@
 // size, one save report after rotation, picker accessibility); Claude Opus 5.5 (testing agent:
 // double tap, blocked
 // Continue, existing profile, error retry and picker menu behaviour); Claude (Back locked while
-// saving, #74); Claude Opus 5.5 (testing agent: generic save error tests, #142).
+// saving, #74); Claude Opus 5.5 (testing agent: generic save error tests, #142); Claude (Log out
+// touch area, #142).
 package com.polysocial.ui.profile
 
 import android.app.Application
@@ -13,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
@@ -655,6 +657,13 @@ class ProfileSetupScreenTest {
 
   private fun SemanticsNode.bottom() = positionInRoot.y + size.height
 
+  /** Log out's node is its touch area: the text is drawn [LOG_OUT_TOUCH_EXTRA_DP] inside it. */
+  private fun SemanticsNode.textTop() =
+      top() + LOG_OUT_TOUCH_EXTRA_DP * composeTestRule.density.density
+
+  private fun SemanticsNode.textBottom() =
+      bottom() - LOG_OUT_TOUCH_EXTRA_DP * composeTestRule.density.density
+
   /** The text node showing [text], inside the node tagged [parentTag] when given. */
   private fun textNode(text: String, parentTag: String? = null): SemanticsNode {
     val matcher =
@@ -769,6 +778,7 @@ class ProfileSetupScreenTest {
   @GraphicsMode(GraphicsMode.Mode.NATIVE)
   fun genericError_matchesTheFigmaFrameAndKeepsContinueWhereTheOfflineErrorHasIt() {
     var status by mutableStateOf(ProfileSetupStatus.CouldNotSave)
+    var touchAreaTaps = 0
     composeTestRule.setContent {
       PolySocialTheme {
         ProfileSetupContent(
@@ -778,7 +788,7 @@ class ProfileSetupScreenTest {
             onSectionChange = {},
             onYearChange = {},
             onContinue = {},
-            onLogOut = {},
+            onLogOut = { touchAreaTaps++ },
         )
       }
     }
@@ -799,8 +809,9 @@ class ProfileSetupScreenTest {
     // y 674 (4 dp under it), aligned with the message's text, and Continue at y 720.
     assertEquals(640f, error.top() / density - screenTop, 1f)
     assertEquals(30f, (error.bottom() - error.top()) / density, 1f)
-    assertEquals(4f, (logOut.top() - error.bottom()) / density, 0.5f)
-    assertEquals(674f, logOut.top() / density - screenTop, 1f)
+    assertEquals(4f, (logOut.textTop() - error.bottom()) / density, 0.5f)
+    assertEquals(674f, logOut.textTop() / density - screenTop, 1f)
+    assertEquals(15f, (logOut.textBottom() - logOut.textTop()) / density, 1f)
     assertEquals(message.dp().first, logOut.dp().first, 0.5f)
     assertEquals(40f, logOut.dp().first, 0.5f)
     assertEquals(720f, continueButton.top() / density - screenTop, 1f)
@@ -809,6 +820,12 @@ class ProfileSetupScreenTest {
     // Continue doesn't move between the two error frames.
     assertEquals(offlineContinue.positionInRoot, continueButton.positionInRoot)
     assertEquals(offlineContinue.size, continueButton.size)
+    // The touch area reaches Android's 48 dp minimum without covering Continue, and a tap above
+    // the drawn text still logs out.
+    assertTrue((logOut.bottom() - logOut.top()) / density >= 48f)
+    assertTrue("Log out's touch area covers Continue", logOut.bottom() <= continueButton.top())
+    node(ProfileSetupTestTags.LOG_OUT).performTouchInput { click(Offset(centerX, 4f)) }
+    assertEquals(1, touchAreaTaps)
   }
 
   @Test
@@ -840,8 +857,8 @@ class ProfileSetupScreenTest {
     val continueButton = node(ProfileSetupTestTags.CONTINUE).node()
     assertFalse("the message is clipped", message.textOverflows())
     assertFalse("Log out is clipped", logOut.textOverflows())
-    assertTrue("Log out overlaps the message", logOut.top() >= error.bottom() - 1)
-    assertTrue("Continue overlaps Log out", continueButton.top() >= logOut.bottom() - 1)
+    assertTrue("Log out overlaps the message", logOut.textTop() >= error.bottom() - 1)
+    assertTrue("Continue overlaps Log out", continueButton.top() >= logOut.textBottom() - 1)
 
     node(ProfileSetupTestTags.LOG_OUT).performScrollTo().assertIsDisplayed().performClick()
     assertEquals(1, logOuts)
@@ -907,3 +924,6 @@ class ProfileSetupScreenTest {
     node(ProfileSetupTestTags.sectionOption("IN")).assertIsNotSelected()
   }
 }
+
+/** ProfileSetupScreen's touch area added above and below Log out's text. */
+private const val LOG_OUT_TOUCH_EXTRA_DP = 17f
