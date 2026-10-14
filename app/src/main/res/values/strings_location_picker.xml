@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (texts of the Figma "Pick location" frames, section 04, #111). -->
+<resources>
+    <string name="location_picker_back">Back</string>
+    <string name="location_picker_search_placeholder">Search for a place</string>
+    <string name="location_picker_search">Search</string>
+    <string name="location_picker_hint">Or drag the map to move the pin</string>
+    <string name="location_picker_searching">Searching…</string>
+    <string name="location_picker_osm_credit">© OpenStreetMap contributors</string>
+    <string name="location_picker_no_results_title">No places found</string>
+    <string name="location_picker_no_results_body">Nothing matches “%1$s”. Check the spelling, or drag the map to move the pin.</string>
+    <string name="location_picker_search_failed_title">Couldn\'t search</string>
+    <string name="location_picker_search_failed_body">Something went wrong. Try again, or drag the map to move the pin.</string>
+    <string name="location_picker_offline_title">You\'re offline</string>
+    <string name="location_picker_offline_body">Search needs a connection. You can still drag the map to move the pin.</string>
+    <string name="location_picker_try_again">Try again</string>
+    <string name="location_picker_access_off_title">Location access is off</string>
+    <string name="location_picker_access_off_body">Search for a place or drag the map to move the pin.</string>
+    <string name="location_picker_allow_in_settings">Allow in Settings</string>
+    <string name="location_picker_my_location">Center on my location</string>
+    <string name="location_picker_finding_address">Finding the address…</string>
+    <string name="location_picker_your_location">Your location</string>
+    <string name="location_picker_your_location_body">Move the map to choose a spot</string>
+    <string name="location_picker_dropped_pin">Dropped pin</string>
+    <string name="location_picker_no_address_offline">No address while offline</string>
+    <string name="location_picker_no_address">No address at this spot</string>
+    <string name="location_picker_address_failed">Couldn\'t find the address</string>
+    <string name="location_picker_use">Use this location</string>
+    <string name="location_picker_address_credit">Address © OpenStreetMap contributors</string>
+</resources>

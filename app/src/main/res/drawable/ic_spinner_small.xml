@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (vector from the Figma "Pick location" frames, section 04, #111). -->
+<!-- A quarter arc on a 20 % ring; the screen rotates it. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="18dp" android:height="18dp" android:viewportWidth="18" android:viewportHeight="18">
+    <path android:pathData="M9,16.2C12.9764,16.2 16.2,12.9764 16.2,9C16.2,5.02355 12.9764,1.8 9,1.8C5.02355,1.8 1.8,5.02355 1.8,9C1.8,12.9764 5.02355,16.2 9,16.2Z"
+        android:strokeColor="#17171C" android:strokeAlpha="0.2" android:strokeWidth="2.16" />
+    <path android:pathData="M9,1.8C10.9096,1.8 12.7409,2.55857 14.0912,3.90883C15.4414,5.25909 16.2,7.09044 16.2,9"
+        android:strokeColor="#17171C" android:strokeWidth="2.16" android:strokeLineCap="round" />
+</vector>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (vector from the Figma "Pick location" frames, section 04, #111). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="20dp" android:height="20dp" android:viewportWidth="20" android:viewportHeight="20">
+    <path android:pathData="M1.66667,10H4.16667M15.8333,10H18.3333M10,1.66667V4.16667M10,15.8333V18.3333M5.925,5.925C4.85833,6.99167 4.16667,8.41667 4.16667,10C4.16667,13.225 6.775,15.8333 10,15.8333C11.5833,15.8333 13.0083,15.1417 14.075,14.075M15.5917,11.6333C15.75,11.1083 15.8333,10.5583 15.8333,10C15.8333,6.775 13.225,4.16667 10,4.16667C9.44167,4.16667 8.89167,4.25 8.36667,4.40833M1.66667,1.66667L18.3333,18.3333"
+        android:strokeColor="#4A4A55" android:strokeWidth="2" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>
