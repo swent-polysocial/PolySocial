@@ -61,6 +61,27 @@ class EventFilterTest {
   }
 
   @Test
+  fun aSearch_spellsOutLettersWithoutAnAccentToRemove() {
+    val events =
+        listOf(
+            event("coeur", "Chœur de l'EPFL"),
+            event("aesch", "Ski à Æschi"),
+            event("strasse", "Apéro Straße"),
+            event("oresund", "Øresund exchange night"),
+        )
+    fun idsFor(search: String) =
+        filterEvents(events, EventFilter(search = search), lausanne, userLocation = null).map {
+          it.id
+        }
+
+    assertEquals(listOf("coeur"), idsFor("choeur"))
+    assertEquals(listOf("coeur"), idsFor("CHŒUR"))
+    assertEquals(listOf("aesch"), idsFor("aeschi"))
+    assertEquals(listOf("strasse"), idsFor("strasse"))
+    assertEquals(listOf("oresund"), idsFor("oresund"))
+  }
+
+  @Test
   fun aSearch_ignoresSurroundingSpaces_andABlankSearchKeepsEverything() {
     assertEquals(listOf("party"), ids(EventFilter(search = "  warm-up ")))
     assertTrue(EventFilter(search = "   ").isEmpty)
