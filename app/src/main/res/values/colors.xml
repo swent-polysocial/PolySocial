@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Contributors: Claude (removed the template colours the v2 theme replaces, #66). -->
+<!-- Contributors: Claude (removed the template colours the v2 theme replaces, #66); Claude Opus 5.5 (accent for the reminder notification, #123). -->
 <resources>
     <color name="white">#FFFFFFFF</color>
+    <!-- The theme's Accent (ui/theme/Color.kt), for views outside Compose such as notifications. -->
+    <color name="accent">#FFD6303A</color>
 </resources>
