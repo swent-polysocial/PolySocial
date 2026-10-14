@@ -130,7 +130,7 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 
-- 2026-10-14 · Events tab search and filters apply right away on the loaded events and survive rotation; the distance filter reads the location once, only after a distance is picked, and is disabled without it. ([#115](https://github.com/swent-polysocial/PolySocial/issues/115))
+- 2026-10-14 · Events tab search and filters apply right away on the loaded events and survive rotation; the distance filter reads the location once, only after a distance is picked, and is disabled without it. ([#178](https://github.com/swent-polysocial/PolySocial/pull/178), [#179](https://github.com/swent-polysocial/PolySocial/pull/179))
 - 2026-10-14 · `AGENTS.md` and `CONTEXT.md` keep a fixed AI header that nobody edits, so it stops causing rebase conflicts; each PR says what AI contributed. ([#187](https://github.com/swent-polysocial/PolySocial/pull/187))
 - 2026-10-14 · Split #31 into verification foundation (repository, cooldown and ViewModel) and screen/navigation in #99; merge the foundation first. ([#99](https://github.com/swent-polysocial/PolySocial/pull/99))
 
