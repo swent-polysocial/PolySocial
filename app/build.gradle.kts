@@ -3,7 +3,8 @@
 // Navigation Compose dependency, #41; MockK and kotlinx-coroutines-play-services, #32; emulator
 // tests only with -Pemulator and no protobuf-lite in instrumented tests, #117; -Pemulator=all for
 // CI, #159; unit tests in parallel forks and coverage of sharded device tests, #192);
-// OpenAI Codex (sign-up test dependencies, review cleanup and Android UI-test MockK binding).
+// OpenAI Codex (sign-up test dependencies, review cleanup and Android UI-test MockK binding);
+// Claude Opus 5.5 (WorkManager for event reminders, #123).
 import java.util.Properties
 
 plugins {
@@ -211,6 +212,10 @@ dependencies {
 
   // ----------         MockK         ------------
   testImplementation(libs.mockk)
+
+  // ------- WorkManager (event reminders) -------
+  implementation(libs.work.runtime)
+  testImplementation(libs.work.testing)
 }
 
 tasks.withType<Test> {
