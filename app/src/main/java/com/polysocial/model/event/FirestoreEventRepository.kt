@@ -1,5 +1,5 @@
 // Contributors: Claude (drafted the Firestore event repository; verified association badge, #45;
-// the public upcoming-events listener, #49).
+// the public upcoming-events listener, #49; unexpected failures reported as errors, #182).
 package com.polysocial.model.event
 
 import com.google.firebase.FirebaseException
@@ -12,8 +12,11 @@ import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.UserProfileRepository
 import java.time.Clock
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
@@ -57,13 +60,19 @@ class FirestoreEventRepository(
           ProfileResult.UnexpectedError -> return CreateEventResult.UnexpectedError
         }
 
-    val document = db.collection(EVENTS_COLLECTION).document()
-    val fields = event.withCreator(user.uid, isVerifiedAssociation).toFirestoreMap()
     return try {
+      val document = db.collection(EVENTS_COLLECTION).document()
+      val fields = event.withCreator(user.uid, isVerifiedAssociation).toFirestoreMap()
       db.runTransaction(SINGLE_ATTEMPT) { it.set(document, fields) }.await()
       CreateEventResult.Created(document.id)
     } catch (e: FirebaseException) {
       if (e.isOffline()) CreateEventResult.NetworkError else CreateEventResult.UnexpectedError
+    } catch (e: CancellationException) {
+      // A task cancelled while the caller still runs is a failure; a cancelled caller rethrows.
+      currentCoroutineContext().ensureActive()
+      CreateEventResult.UnexpectedError
+    } catch (e: Exception) {
+      CreateEventResult.UnexpectedError
     }
   }
 
