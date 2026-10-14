@@ -114,7 +114,8 @@ object EventsTags {
 /**
  * The Events tab's root: the upcoming public events from [EventsViewModel]. It is also the Android
  * boundary for the distance filter's location permission: it shows the permission dialog or opens
- * the app's settings when *Turn on* asks for it, and tells the ViewModel when the tab resumes.
+ * the app's settings when *Turn on* asks for it, and tells the ViewModel when the tab resumes and
+ * pauses.
  *
  * @param showRationale Android's `shouldShowRequestPermissionRationale` for approximate location;
  *   tests replace it.
@@ -134,7 +135,7 @@ fun EventsRoute(
       }
   LifecycleResumeEffect(viewModel) {
     viewModel.onResume()
-    onPauseOrDispose {}
+    onPauseOrDispose { viewModel.onPause() }
   }
   EventsScreen(
       state,

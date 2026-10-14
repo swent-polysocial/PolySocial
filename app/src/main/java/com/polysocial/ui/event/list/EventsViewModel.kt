@@ -44,7 +44,10 @@ data class EventsUiState(
  * picks a distance, and kept in memory only (nLPD): never saved, sent or logged.
  */
 sealed interface EventsLocationState {
-  /** Not read yet: no distance has been picked. */
+  /**
+   * Not read yet: no distance has been picked, or the tab left the foreground while reading it
+   * ([EventsViewModel.onPause]).
+   */
   data object NotRead : EventsLocationState
 
   /** Reading it; until it arrives, the picked distance is not applied yet. */
@@ -111,7 +114,8 @@ sealed interface EventsListState {
  * a distance is picked, and only if the permission is already granted. Without it, the location is
  * [EventsLocationState.Off] and the distance is dropped, so the selection never holds a distance
  * that can't apply. Only *Turn on* asks for the permission ([turnOnLocation]); [onResume] notices a
- * permission granted or revoked in the settings.
+ * permission granted or revoked in the settings. The location is only read in the foreground:
+ * [onPause] cancels a read still running, and [onResume] starts it again.
  *
  * After an error the repository stops emitting, so the list stays in [EventsListState.Error] until
  * [retry].
@@ -211,18 +215,32 @@ constructor(
 
   /**
    * When the tab comes back to the foreground, maybe from the settings: a newly granted permission
-   * turns the distance filters back on, and a revoked one turns them off.
+   * turns the distance filters back on, and a revoked one turns them off. A read cancelled by
+   * [onPause] starts again.
    */
   fun onResume() {
     val granted = locationService.hasPermission()
     when {
       granted && location() == EventsLocationState.Off ->
           show(selection(), EventsLocationState.NotRead)
+      granted &&
+          location() == EventsLocationState.NotRead &&
+          selection().maxDistanceMeters != null -> readLocation()
       !granted && location() != EventsLocationState.Off -> {
         locationRequest?.cancel()
         locationOff()
       }
     }
+  }
+
+  /**
+   * When the tab leaves the foreground: a location read still running is cancelled, since the
+   * location is only read in the foreground. The picked distance stays, and [onResume] reads again.
+   */
+  fun onPause() {
+    if (location() != EventsLocationState.Locating) return
+    locationRequest?.cancel()
+    show(selection(), EventsLocationState.NotRead)
   }
 
   /** Clears every filter but keeps the search: the Filters sheet's *Clear*. */

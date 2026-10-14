@@ -643,4 +643,42 @@ class EventsViewModelTest {
     assertEquals(EventsLocationState.Available(rolex), viewModel.location())
     assertEquals(1, location.requestCount)
   }
+
+  // ---- Foreground only ----
+
+  @Test
+  fun pausingWhileLocating_cancelsTheRead_andResumingReadsAgain() {
+    location.result = LocationResult.Available(rolex)
+    val viewModel = nearAndFarViewModel()
+    viewModel.selectDistance(2_000)
+
+    viewModel.onPause()
+    runPending()
+
+    assertEquals(EventsLocationState.NotRead, viewModel.location())
+    assertEquals(2_000, viewModel.uiState.value.selection.maxDistanceMeters)
+    assertEquals(0, location.requestCount)
+
+    viewModel.onResume()
+    runPending()
+
+    assertEquals(EventsLocationState.Available(rolex), viewModel.location())
+    assertEquals(listOf("Later today"), viewModel.shownTitles())
+    assertEquals(1, location.requestCount)
+  }
+
+  @Test
+  fun pausingOnceTheLocationIsRead_keepsIt() {
+    location.result = LocationResult.Available(rolex)
+    val viewModel = nearAndFarViewModel()
+    viewModel.selectDistance(2_000)
+    runPending()
+
+    viewModel.onPause()
+    viewModel.onResume()
+    runPending()
+
+    assertEquals(EventsLocationState.Available(rolex), viewModel.location())
+    assertEquals(1, location.requestCount)
+  }
 }
