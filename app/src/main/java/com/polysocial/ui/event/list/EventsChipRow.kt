@@ -1,8 +1,7 @@
 // Contributors: Claude (the Events tab's filter chips from the Figma "Events · date chips" and
-// "Events · active filters" frames, #115).
+// "Events · active filters" frames, and a picked day, #115).
 package com.polysocial.ui.event.list
 
-import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -34,11 +33,12 @@ import com.polysocial.ui.event.style
 import com.polysocial.ui.theme.Bg
 import com.polysocial.ui.theme.Border
 import com.polysocial.ui.theme.Ink
+import java.time.format.DateTimeFormatter
 
 /** One chip of the row: what it filters by, its label and whether that filter is on. */
 private data class FilterChip(
     val key: String,
-    @StringRes val label: Int,
+    val label: String,
     val isActive: Boolean,
     val onClick: () -> Unit,
 )
@@ -56,20 +56,43 @@ fun EventsChipRow(
     onClearFilters: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-  val dates =
-      listOf(DateChoice.TODAY to R.string.events_filter_today) +
-          (DateChoice.THIS_WEEK to R.string.events_filter_this_week)
-  val dateChips = dates.map { (date, label) ->
+  val quickDates =
+      listOf(
+          Triple("TODAY", DateChoice.Today, stringResource(R.string.events_filter_today)),
+          Triple(
+              "THIS_WEEK",
+              DateChoice.ThisWeek,
+              stringResource(R.string.events_filter_this_week),
+          ),
+      )
+  val dateChips = quickDates.map { (key, date, label) ->
     val isActive = selection.date == date
-    FilterChip(date.name, label, isActive) { onSelectDate(if (isActive) DateChoice.ANY else date) }
+    FilterChip(key, label, isActive) { onSelectDate(if (isActive) DateChoice.Any else date) }
   }
+  // A day picked in the Filters sheet has no quick chip; it shows only while it is on.
+  val pickedDay =
+      (selection.date as? DateChoice.Day)?.let { day ->
+        FilterChip(PICKED_DAY, day.date.format(dayFormat), isActive = true) {
+          onSelectDate(DateChoice.Any)
+        }
+      }
   val categoryChips = CHIP_CATEGORIES.map { category ->
-    FilterChip(category.name, category.style.label, category in selection.categories) {
+    FilterChip(
+        category.name,
+        stringResource(category.style.label),
+        category in selection.categories,
+    ) {
       onToggleCategory(category)
     }
   }
-  val chips = dateChips + categoryChips
-  val all = FilterChip(ALL, R.string.events_filter_all, chips.none { it.isActive }, onClearFilters)
+  val chips = listOfNotNull(pickedDay) + dateChips + categoryChips
+  val all =
+      FilterChip(
+          ALL,
+          stringResource(R.string.events_filter_all),
+          chips.none { it.isActive },
+          onClearFilters,
+      )
   LazyRow(
       modifier = modifier.testTag(EventsTags.CHIPS),
       contentPadding = PaddingValues(horizontal = 20.dp),
@@ -110,7 +133,7 @@ private fun Chip(chip: FilterChip, removable: Boolean) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
       Text(
-          text = stringResource(chip.label),
+          text = chip.label,
           style = MaterialTheme.typography.labelLarge,
           color = if (chip.isActive) Bg else Ink,
       )
@@ -128,6 +151,10 @@ private fun Chip(chip: FilterChip, removable: Boolean) {
 }
 
 private const val ALL = "ALL"
+private const val PICKED_DAY = "DAY"
+
+/** Figma's "Sat 4 Oct", as in the list's day headings. */
+private val dayFormat = DateTimeFormatter.ofPattern("EEE d MMM")
 
 /** The categories in Figma's chip order, which isn't the enum's. */
 private val CHIP_CATEGORIES =

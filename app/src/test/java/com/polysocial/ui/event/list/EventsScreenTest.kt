@@ -494,7 +494,7 @@ class EventsScreenTest {
   fun activeFilters_comeRightAfterAll_withTheDateFirst() {
     show(
         someEvents(),
-        EventSelection(categories = setOf(EventCategory.SPORTS), date = DateChoice.THIS_WEEK),
+        EventSelection(categories = setOf(EventCategory.SPORTS), date = DateChoice.ThisWeek),
     )
 
     chip("ALL").assertIsNotSelected()
@@ -512,7 +512,7 @@ class EventsScreenTest {
     chip("TODAY").performClick()
     chip("PARTY").performClick()
 
-    assertEquals(listOf(DateChoice.TODAY), dates)
+    assertEquals(listOf(DateChoice.Today), dates)
     assertEquals(listOf(EventCategory.PARTY), toggled)
   }
 
@@ -520,13 +520,13 @@ class EventsScreenTest {
   fun tappingAnActiveFilter_removesIt() {
     show(
         someEvents(),
-        EventSelection(categories = setOf(EventCategory.STUDY), date = DateChoice.TODAY),
+        EventSelection(categories = setOf(EventCategory.STUDY), date = DateChoice.Today),
     )
 
     chip("TODAY").performClick()
     chip("STUDY").performClick()
 
-    assertEquals(listOf(DateChoice.ANY), dates)
+    assertEquals(listOf(DateChoice.Any), dates)
     assertEquals(listOf(EventCategory.STUDY), toggled)
   }
 
@@ -541,7 +541,7 @@ class EventsScreenTest {
 
   @Test
   fun theChips_stayWhenNothingMatches_soAFilterCanBeRemoved() {
-    show(EventsListState.NoMatch(isOffline = false), EventSelection(date = DateChoice.TODAY))
+    show(EventsListState.NoMatch(isOffline = false), EventSelection(date = DateChoice.Today))
 
     chip("TODAY").assertIsSelected()
   }
@@ -623,5 +623,27 @@ class EventsScreenTest {
     composeTestRule
         .onNodeWithTag(EventsTags.SEARCH)
         .assertTextEquals(string(R.string.events_search_placeholder), "")
+  }
+
+  @Test
+  fun aPickedDay_showsAsAnActiveChipAfterAll_andTappingItRemovesIt() {
+    show(someEvents(), EventSelection(date = DateChoice.Day(LocalDate.of(2026, 10, 17))))
+
+    chip("DAY").assertIsSelected().assertTextEquals("Sat 17 Oct")
+    chip("ALL").assertIsNotSelected()
+    chip("TODAY").assertIsNotSelected()
+    val order = listOf("ALL", "DAY", "TODAY").map { left(it) }
+    assertEquals(order.sorted(), order)
+
+    chip("DAY").performClick()
+
+    assertEquals(listOf<DateChoice>(DateChoice.Any), dates)
+  }
+
+  @Test
+  fun withoutAPickedDay_thereIsNoDayChip() {
+    show(someEvents(), EventSelection(date = DateChoice.Today))
+
+    composeTestRule.onAllNodesWithTag(EventsTags.chip("DAY")).assertCountEquals(0)
   }
 }

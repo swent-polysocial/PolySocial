@@ -35,21 +35,26 @@ class EventSelectionTest {
 
   @Test
   fun today_isTheCurrentDayOnly() {
-    assertEquals(DateRange(wednesday, wednesday.plusDays(1)), datesOn(wednesday, DateChoice.TODAY))
+    assertEquals(DateRange(wednesday, wednesday.plusDays(1)), datesOn(wednesday, DateChoice.Today))
   }
 
   @Test
   fun thisWeek_runsFromTodayUntilSunday() {
-    assertEquals(DateRange(wednesday, monday), datesOn(wednesday, DateChoice.THIS_WEEK))
+    assertEquals(DateRange(wednesday, monday), datesOn(wednesday, DateChoice.ThisWeek))
   }
 
   @Test
   fun thisWeek_onASunday_isJustThatSunday() {
-    assertEquals(DateRange(sunday, monday), datesOn(sunday, DateChoice.THIS_WEEK))
+    assertEquals(DateRange(sunday, monday), datesOn(sunday, DateChoice.ThisWeek))
   }
 
   @Test
   fun thisWeek_onAMonday_isTheWholeWeek() {
-    assertEquals(DateRange(monday, monday.plusDays(7)), datesOn(monday, DateChoice.THIS_WEEK))
+    assertEquals(DateRange(monday, monday.plusDays(7)), datesOn(monday, DateChoice.ThisWeek))
+  }
+
+  @Test
+  fun aPickedDay_isThatDayOnly() {
+    assertEquals(DateRange(sunday, monday), datesOn(wednesday, DateChoice.Day(sunday)))
   }
 }

@@ -74,7 +74,9 @@ object EventsTags {
 
   fun card(eventId: String) = "events_card_$eventId"
 
-  /** A filter chip: `ALL`, a [DateChoice] or an `EventCategory` name. */
+  /**
+   * A filter chip: `ALL`, `TODAY`, `THIS_WEEK`, `DAY` (a picked day) or an `EventCategory` name.
+   */
   fun chip(key: String) = "events_chip_$key"
 }
 
