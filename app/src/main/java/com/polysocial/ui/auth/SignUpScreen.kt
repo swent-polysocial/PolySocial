@@ -172,18 +172,14 @@ fun AuthFlow(
   var backStack by
       rememberSaveable(stateSaver = BackStackSaver) { mutableStateOf(emptyList<AuthDestination>()) }
   var startupApplied by rememberSaveable { mutableStateOf(false) }
-  // The start destination last applied, to tell a sign-out (a move to Login) from a recreation,
-  // which applies the current one again.
-  var appliedStart by rememberSaveable { mutableStateOf<String?>(null) }
+  // Whether the start destination last applied was Login (null before the first), to tell a
+  // sign-out (a move to Login) from a recreation, which applies the current one again.
+  var lastStartWasLogin by rememberSaveable { mutableStateOf<Boolean?>(null) }
   val startDestination by startViewModel.destination.collectAsStateWithLifecycle()
   LaunchedEffect(startDestination) {
-    val previousStart = appliedStart
-    appliedStart = startDestination.toString()
-    if (
-        startDestination == StartDestination.Login &&
-            previousStart != null &&
-            previousStart != StartDestination.Login.toString()
-    ) {
+    val wasLogin = lastStartWasLogin
+    lastStartWasLogin = startDestination == StartDestination.Login
+    if (startDestination == StartDestination.Login && wasLogin == false) {
       // Signed out: nothing of the previous account may stay in the forms or the profile step.
       viewModel.reset()
       loginViewModel.reset()
