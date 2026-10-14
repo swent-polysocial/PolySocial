@@ -1,5 +1,5 @@
 // Contributors: Claude (profile step state for #34; unverified accounts refused after review;
-// reset on sign-out, #74; generic save error, #142).
+// reset on sign-out, #74; generic save error, #142; the full name's limit, test-first, #143).
 package com.polysocial.ui.profile
 
 import androidx.lifecycle.ViewModel
@@ -8,6 +8,7 @@ import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.user.CreateProfileResult
 import com.polysocial.model.user.UserProfile
 import com.polysocial.model.user.UserProfileRepository
+import com.polysocial.model.user.isDisplayNameTooLong
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -46,13 +47,18 @@ data class ProfileSetupUiState(
     val year: String? = null,
     val status: ProfileSetupStatus = ProfileSetupStatus.Editing,
 ) {
+  /** The name is over the full name's limit (#143): the step shows an error and can't continue. */
+  val nameTooLong: Boolean
+    get() = isDisplayNameTooLong(displayName)
+
   /**
-   * Continue is enabled once a name, a section and a year are set, and while no save is running or
-   * done (a second tap must not write the profile twice).
+   * Continue is enabled once a name within the limit, a section and a year are set, and while no
+   * save is running or done (a second tap must not write the profile twice).
    */
   val canContinue: Boolean
     get() =
         displayName.isNotBlank() &&
+            !nameTooLong &&
             section != null &&
             year != null &&
             status != ProfileSetupStatus.Saving &&
