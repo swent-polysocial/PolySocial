@@ -1,4 +1,4 @@
-<!-- Contributors: OpenAI Codex (initial draft; documented the approved Mapbox provider/token policy, renderer exception and separate usage alerts for #50); Claude (revised: definition of done, conventions, course rules, project context, Security Rules process, team-agreement reconciliation, session context, secrets check, test and PR-size rules; association accounts without an EPFL email; handling every failure). -->
+<!-- Contributors: written with AI assistance (Claude, OpenAI Codex) and by the team; each PR says what AI contributed. Fixed header: never edit it (see AGENTS.md, "Acknowledging AI and other sources"). -->
 
 # Instructions for coding agents
 
@@ -458,7 +458,8 @@ as the source of truth and flag any mismatch with this list in the PR:
    user data, the Security Rules cover it and the process in "Firestore
    Security Rules" is followed, including local rules test results in the PR.
 7. Contributor comments are added or updated at the top of every file that AI
-   or an external source contributed to.
+   or an external source contributed to, except the fixed headers of
+   `AGENTS.md` and `CONTEXT.md` (see "Acknowledging AI and other sources").
 8. The README is updated if setup, configuration, or run steps changed.
 9. `CONTEXT.md` is updated if the change makes or changes an important
    decision (see "Session context").
@@ -520,6 +521,11 @@ are also the human author's job.
   top-of-file comment. If the format does not allow comments, document the
   contribution in the PR and in another tracked file. Never invent human
   reviews or claim that AI output was written independently.
+- Exception: `AGENTS.md` and `CONTEXT.md` change in almost every PR, so a
+  growing contributor list at their top caused a merge conflict in nearly
+  every rebase. They carry a fixed header saying they were written with AI
+  assistance. Never edit that header; say what AI contributed to these two
+  files in the PR description instead.
 - Human contributors must read and understand every submitted change and be
   able to explain its design, behavior, tests, and review comments to their
   coaches.
