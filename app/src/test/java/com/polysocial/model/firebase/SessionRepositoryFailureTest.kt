@@ -9,17 +9,23 @@ import com.polysocial.model.user.*
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class SessionRepositoryFailureTest {
+  private var accessFailure: Exception = IllegalStateException("cache cleanup incomplete")
   private val profile = UserProfile("fictional", "fictional@epfl.ch", "Test Student", "IN", "BA1")
-  private val profiles = FirestoreUserProfileRepository { error("cache cleanup incomplete") }
+  private val profiles = FirestoreUserProfileRepository { throw accessFailure }
   private val events =
       FirestoreEventRepository(
-          { error("cache cleanup incomplete") },
+          { throw accessFailure },
           FakeAuthRepository(AuthUser("fictional", "fictional@epfl.ch", true)),
           FakeUserProfileRepository(),
           object : NetworkMonitor {
@@ -60,5 +66,32 @@ class SessionRepositoryFailureTest {
   @Test
   fun eventListenerReportsBlockedCacheAndCompletes() = runTest {
     assertEquals(listOf(PublicEventsResult.Error), events.getUpcomingPublicEvents(14).toList())
+  }
+
+  @Test
+  fun cancelledSdkAccessReportsEventFailureWhileCallerRemainsActive() = runTest {
+    accessFailure = CancellationException("SDK operation cancelled")
+    val event =
+        Event(
+            title = "Study",
+            description = "",
+            category = EventCategory.STUDY,
+            location = Coordinates(46.5, 6.6),
+            startTime = Instant.parse("2026-10-15T10:00:00Z"),
+            isPrivate = false,
+        )
+    assertEquals(CreateEventResult.UnexpectedError, events.createEvent(event))
+    assertTrue(currentCoroutineContext().isActive)
+  }
+
+  @Test
+  fun eventListenerCancellationPropagatesInsteadOfBecomingAnErrorResult() = runTest {
+    accessFailure = CancellationException("listener cancelled")
+    try {
+      events.getUpcomingPublicEvents(14).toList()
+      fail("listener cancellation must propagate")
+    } catch (_: CancellationException) {
+      assertTrue(currentCoroutineContext().isActive)
+    }
   }
 }
