@@ -262,6 +262,9 @@ fun AuthFlow(
   fun verifyEmail() {
     backStack = emptyList()
     destination = AuthDestination.VerifyEmail
+    // Also routes the start there, so a sign-out from Verify Email is a move to Login like any
+    // other.
+    startViewModel.onVerificationNeeded()
   }
   BackHandler(destination != AuthDestination.Welcome && destination != AuthDestination.SignedIn) {
     when (destination) {

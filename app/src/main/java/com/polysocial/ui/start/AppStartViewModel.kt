@@ -1,5 +1,5 @@
 // Contributors: Claude (app-start routing for #32; refresh after Log in, not while loading; log
-// out and the created profile, #74).
+// out and the created profile; Verify Email opened in-session, #74).
 package com.polysocial.ui.start
 
 import androidx.lifecycle.ViewModel
@@ -69,6 +69,16 @@ constructor(
   fun onProfileCreated() {
     if (_destination.value == StartDestination.ProfileSetup)
         _destination.value = StartDestination.Main
+  }
+
+  /**
+   * Sign-up or an unverified log in opened Verify Email in this session: routes there too, so a
+   * later [logOut] moves the destination back to [StartDestination.Login] and the signed-out start
+   * resets the forms. Ignored unless the user was signed out at the start.
+   */
+  fun onVerificationNeeded() {
+    if (_destination.value == StartDestination.Login)
+        _destination.value = StartDestination.VerifyEmail
   }
 
   /**
