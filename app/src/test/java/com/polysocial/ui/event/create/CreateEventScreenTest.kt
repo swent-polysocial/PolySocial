@@ -1,10 +1,12 @@
-// Contributors: Claude (wrote these tests).
+// Contributors: Claude (wrote these tests; opening the location picker and its result, #111).
 package com.polysocial.ui.event.create
 
 import android.app.Application
+import android.os.Looper
 import androidx.activity.OnBackPressedDispatcher
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
+import androidx.compose.runtime.remember
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -13,6 +15,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -23,13 +26,19 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.CreateEventResult
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.MAX_DESCRIPTION_LENGTH
 import com.polysocial.model.event.MAX_TITLE_LENGTH
+import com.polysocial.model.geocoding.FakeGeocodingService
+import com.polysocial.model.geocoding.Place
+import com.polysocial.model.geocoding.ReverseGeocodeResult
+import com.polysocial.model.location.FakeLocationService
 import com.polysocial.resources.C
 import java.time.Clock
+import java.time.Duration
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -42,12 +51,13 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
- * UI tests for the Create Event screen (#46). The date and time pickers and the location picker
- * open dialogs or another screen, so the tests set those values through the ViewModel and drive
- * everything else through the UI.
+ * UI tests for the Create Event screen (#46). The date and time pickers open dialogs, so the tests
+ * set those values through the ViewModel and drive everything else through the UI. The location
+ * picker (#111) is the real one, with fake geocoding, location and map.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(application = Application::class)
@@ -59,7 +69,6 @@ class CreateEventScreenTest {
   private val viewModel = CreateEventViewModel(repository, Clock.fixed(FORM_NOW, ZURICH))
 
   private var closed = false
-  private var locationRequested = false
   private var viewedEventId: String? = null
   private var backToMap = false
   private var leftWithBack = false
@@ -74,14 +83,37 @@ class CreateEventScreenTest {
       CreateEventScreen(
           viewModel = viewModel,
           onClose = { closed = true },
-          onPickLocation = { locationRequested = true },
           onViewEvent = { viewedEventId = it },
           onBackToMap = { backToMap = true },
+          locationPicker = { session, initial, onBack, onPicked ->
+            pickerSessions += session
+            LocationPickerRoute(
+                initial = initial,
+                onBack = onBack,
+                onPicked = onPicked,
+                viewModel =
+                    remember(session) { LocationPickerViewModel(geocoding, FakeLocationService()) },
+                renderer = { _, onCenterSettled, _, _ -> settleMap = onCenterSettled },
+            )
+          },
       )
     }
   }
 
   private fun node(tag: String) = composeTestRule.onNodeWithTag(tag)
+
+  private val geocoding =
+      FakeGeocodingService(reverseResult = ReverseGeocodeResult.Found(LEARNING_CENTER))
+  private val pickerSessions = mutableListOf<Int>()
+
+  /** What the fake map reports when it stops moving, as a drag or a tap would. */
+  private var settleMap: ((Coordinates) -> Unit)? = null
+
+  /** Lets the picker's address lookup run: it waits for the map to settle first. */
+  private fun settle() {
+    shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(SETTLE_MILLIS))
+    composeTestRule.waitForIdle()
+  }
 
   private fun error(error: CreateEventFormError) = C.Tag.createEventError(error.name)
 
@@ -445,11 +477,60 @@ class CreateEventScreenTest {
   }
 
   @Test
-  fun closeAndLocation_callTheirCallbacks() {
-    node(C.Tag.create_event_location).performScrollTo().performClick()
+  fun close_callsItsCallback() {
     node(C.Tag.create_event_close).performClick()
 
-    assertTrue(locationRequested)
     assertTrue(closed)
   }
+
+  @Test
+  fun locationField_opensThePicker_andUseThisLocationFillsTheFieldWithThePin() {
+    node(C.Tag.create_event_location).performScrollTo().performClick()
+    node(LocationPickerTags.SCREEN).assertIsDisplayed()
+
+    // The student drags the map: the map reports its new center, where the pin is.
+    val moved = Coordinates(46.5191, 6.5668)
+    composeTestRule.runOnIdle { settleMap!!(moved) }
+    settle()
+    node(LocationPickerTags.CARD).assert(hasAnyDescendant(hasText(LEARNING_CENTER.name)))
+    node(LocationPickerTags.USE).performClick()
+
+    node(LocationPickerTags.SCREEN).assertDoesNotExist()
+    assertEquals(
+        PickedLocation(moved, LEARNING_CENTER.name, LEARNING_CENTER.address, isNamed = true),
+        form().location,
+    )
+    node(C.Tag.create_event_location).performScrollTo().assert(hasText(LEARNING_CENTER.name))
+  }
+
+  @Test
+  fun pickerBack_returnsToTheFormUnchanged() {
+    node(C.Tag.create_event_location).performScrollTo().performClick()
+    node(LocationPickerTags.BACK).performClick()
+
+    node(LocationPickerTags.SCREEN).assertDoesNotExist()
+    node(C.Tag.create_event_location).assertExists()
+    assertNull(form().location)
+    assertFalse(closed)
+  }
+
+  @Test
+  fun reopeningThePicker_startsANewOneOnTheFormsPlace() {
+    val picked = PickedLocation(LEARNING_CENTER.coordinates, "Satellite", "EPFL", isNamed = true)
+    composeTestRule.runOnIdle { viewModel.onLocationPick(picked) }
+    node(C.Tag.create_event_location).performScrollTo().performClick()
+    node(LocationPickerTags.BACK).performClick()
+    node(C.Tag.create_event_location).performScrollTo().performClick()
+
+    // A named place is shown as it is, without asking the geocoding service again.
+    node(LocationPickerTags.CARD).assert(hasAnyDescendant(hasText("Satellite")))
+    assertTrue(geocoding.reverses.isEmpty())
+    assertEquals(listOf(1, 2), pickerSessions.distinct())
+  }
 }
+
+private val LEARNING_CENTER =
+    Place("Rolex Learning Center", "Route Cantonale, 1015 Ecublens", Coordinates(46.5184, 6.5683))
+
+/** A little more than the picker's settle delay. */
+private val SETTLE_MILLIS = LocationPickerViewModel.SETTLE_DELAY.inWholeMilliseconds + 100
