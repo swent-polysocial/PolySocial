@@ -1,3 +1,4 @@
+<!-- Contributors: OpenAI Codex (cache isolation test instructions, #156). -->
 <!-- Contributors: Claude (drafted the README structure, Setup, Running and testing, Tech stack and Project links sections; Firestore index deployment, #49; Firestore emulator tests, #117); OpenAI Codex (documented startup routing and rebase reconciliation); OpenAI Codex (Mapbox integration and setup, #50; one-off Map location privacy note, #51). -->
 <!-- Contributors: OpenAI Codex (verification startup integration and Back sign-out, #31). -->
 
@@ -130,6 +131,12 @@ firebase emulators:exec --project demo-polysocial --only firestore,auth "gradlew
 ```
 
 `-Pemulator` runs **only** the emulator tests, in place of the regular instrumented tests, so run `./gradlew connectedCheck` separately for those. Without the flag, `connectedCheck` skips the emulator tests. `-Pemulator=all` runs both, which is what CI does inside `firebase emulators:exec`. The tests reach the host machine at `10.0.2.2`, which only works from an Android emulator, not from a physical device.
+
+Logout cache isolation has a Robolectric integration test using real Firestore persistence, the demo emulator endpoint and disabled networking. It seeds a fictional cached document and verifies that the replacement instance cannot read it after cleanup. Run it locally with the emulator suite:
+
+```bash
+firebase emulators:exec --project demo-polysocial --only firestore "./gradlew testDebugUnitTest --tests com.polysocial.model.firebase.FirestoreCacheResetTest"
+```
 
 ## Project links
 

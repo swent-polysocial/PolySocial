@@ -6,9 +6,13 @@ import android.app.Application
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.android.gms.tasks.Tasks
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 import com.google.firebase.firestore.FirebaseFirestore
+import io.mockk.*
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -17,6 +21,24 @@ import org.robolectric.annotation.Config
 @RunWith(AndroidJUnit4::class)
 @Config(application = Application::class)
 class FirebaseModuleTest {
+
+  @Test
+  fun injectedCacheClearsTheSameDatabaseRepositoriesReceive() = runTest {
+    val old = mockk<FirebaseFirestore>()
+    val fresh = mockk<FirebaseFirestore>()
+    var instances = 0
+    val session = FirestoreSession { if (instances++ == 0) old else fresh }
+    every { old.terminate() } returns Tasks.forResult(null)
+    every { old.clearPersistence() } returns Tasks.forResult(null)
+    val cache = FirebaseModule.sessionCache(session)
+    assertSame(old, FirebaseModule.firestore(session))
+    assertEquals(CacheClearResult.Cleared, cache.clear())
+    assertSame(fresh, FirebaseModule.firestore(session))
+    verifyOrder {
+      old.terminate()
+      old.clearPersistence()
+    }
+  }
 
   @Test
   fun theApp_usesTheDefaultFirestoreInstance() {

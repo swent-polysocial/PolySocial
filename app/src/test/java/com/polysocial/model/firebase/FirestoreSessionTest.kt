@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (cache reset ordering, retry and replacement proof, #109).
+// Contributors: OpenAI Codex (cache reset ordering, retry, replacement and cancellation/thread
+// safety proof, #156).
 package com.polysocial.model.firebase
 
 import com.google.android.gms.tasks.TaskCompletionSource
@@ -35,11 +36,11 @@ class FirestoreSessionTest {
   }
 
   @Test
-  fun failedCleanupKeepsOldInstanceAndRetriesOnlyCleanup() = runTest {
+  fun failedCleanupBlocksAccessAndRetriesOnlyCleanup() = runTest {
     every { old.terminate() } returns Tasks.forResult(null)
     every { old.clearPersistence() } returns Tasks.forException(FirebaseException("test failure"))
     assertEquals(CacheClearResult.UnexpectedError, session.clear())
-    assertSame(old, session.database)
+    assertAccessBlocked()
     every { old.clearPersistence() } returns Tasks.forResult(null)
     assertEquals(CacheClearResult.Cleared, session.clear())
     assertSame(fresh, session.database)
@@ -50,7 +51,7 @@ class FirestoreSessionTest {
   fun terminationFailureDoesNotClearOrReplace() = runTest {
     every { old.terminate() } returns Tasks.forException(IllegalStateException("test failure"))
     assertEquals(CacheClearResult.UnexpectedError, session.clear())
-    assertSame(old, session.database)
+    assertAccessBlocked()
     verify(exactly = 0) { old.clearPersistence() }
   }
 
@@ -64,18 +65,86 @@ class FirestoreSessionTest {
   }
 
   @Test
-  fun callerCancellationPropagates() = runTest {
-    every { old.terminate() } returns TaskCompletionSource<Void>().task
+  fun callerCancellationFinishesStartedCleanupBeforePropagating() = runTest {
+    val persistence = TaskCompletionSource<Void>()
+    every { old.terminate() } returns Tasks.forResult(null)
+    every { old.clearPersistence() } returns persistence.task
     val clear = async { session.clear() }
     runCurrent()
     clear.cancel()
+    runCurrent()
+    assertFalse(clear.isCompleted)
+    assertAccessBlocked()
+    persistence.setResult(null)
+    runCurrent()
+    assertTrue(clear.isCancelled)
+    assertSame(fresh, session.database)
+    verify(exactly = 1) { old.clearPersistence() }
+  }
+
+  @Test
+  fun cancelledCallerWithCleanupTimeoutBlocksAccessUntilRetry() = runTest {
+    every { old.terminate() } returns Tasks.forResult(null)
+    every { old.clearPersistence() } returns TaskCompletionSource<Void>().task
+    val clear = async { session.clear() }
+    runCurrent()
+    clear.cancel()
+    advanceUntilIdle()
+    assertTrue(clear.isCancelled)
+    assertAccessBlocked()
+    every { old.clearPersistence() } returns Tasks.forResult(null)
+    assertEquals(CacheClearResult.Cleared, session.clear())
+    assertSame(fresh, session.database)
+    verify(exactly = 1) { old.terminate() }
+  }
+
+  @Test
+  fun readsFromAnotherThreadCannotOpenAnInstanceDuringCleanup() = runTest {
+    val persistence = TaskCompletionSource<Void>()
+    every { old.terminate() } returns Tasks.forResult(null)
+    every { old.clearPersistence() } returns persistence.task
+    val clear = async { session.clear() }
+    runCurrent()
+    val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
     try {
-      clear.await()
-      fail("cancellation must propagate")
-    } catch (_: CancellationException) {
-      assertTrue(clear.isCancelled)
+      executor.submit { assertAccessBlocked() }.get(5, java.util.concurrent.TimeUnit.SECONDS)
+    } finally {
+      executor.shutdownNow()
     }
-    verify(exactly = 0) { old.clearPersistence() }
+    assertEquals(1, reads)
+    persistence.setResult(null)
+    assertEquals(CacheClearResult.Cleared, clear.await())
+    assertSame(fresh, session.database)
+  }
+
+  @Test
+  fun concurrentCleanupCallsAreSerialized() = runTest {
+    val persistence = TaskCompletionSource<Void>()
+    every { old.terminate() } returns Tasks.forResult(null)
+    every { old.clearPersistence() } returns persistence.task
+    every { fresh.terminate() } returns Tasks.forResult(null)
+    every { fresh.clearPersistence() } returns Tasks.forResult(null)
+    val first = async { session.clear() }
+    runCurrent()
+    val second = async { session.clear() }
+    runCurrent()
+    verify(exactly = 0) { fresh.terminate() }
+    persistence.setResult(null)
+    assertEquals(CacheClearResult.Cleared, first.await())
+    assertEquals(CacheClearResult.Cleared, second.await())
+    verify(exactly = 1) {
+      old.terminate()
+      fresh.terminate()
+    }
+  }
+
+  private fun assertAccessBlocked() {
+    try {
+      session.database
+      fail("access must wait for successful cleanup")
+    } catch (_: IllegalStateException) {
+      // The repository maps this to its typed error; no stopped instance escapes.
+    }
   }
 
   @Test
