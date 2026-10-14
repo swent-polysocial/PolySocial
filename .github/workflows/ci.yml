@@ -198,14 +198,21 @@ jobs:
           if-no-files-found: ignore
 
   # The instrumented tests, including the @EmulatorTest tests, run on an Android emulator next to
-  # the Firebase emulators. They take the longest, so they don't wait for the other checks.
+  # the Firebase emulators. They take the longest, so they don't wait for the other checks, and
+  # they are split into two shards on two runners: each runs half of the tests (AndroidJUnitRunner's
+  # numShards and shardIndex), so every test still runs exactly once.
   instrumented-tests:
-    name: Instrumented tests
+    name: Instrumented tests (shard ${{ matrix.shard }})
     needs: changes
     if: needs.changes.outputs.docs-only != 'true'
     runs-on: ubuntu-latest
-    # A run takes about 7 minutes. The limit stops a stuck emulator from running for 6 hours.
+    # A run takes about 5 minutes. The limit stops a stuck emulator from running for 6 hours.
     timeout-minutes: 30
+    strategy:
+      # A failing shard doesn't cancel the other, so a run shows every failing test
+      fail-fast: false
+      matrix:
+        shard: [0, 1]
 
     steps:
       - name: Checkout
@@ -277,13 +284,13 @@ jobs:
           # emulators stop when the run ends.
           script: |
             exit "$(cat "$RUNNER_TEMP/apk-build-status")"
-            firebase emulators:exec --project demo-polysocial --only firestore,auth "./gradlew connectedCheck -Pemulator=all"
+            firebase emulators:exec --project demo-polysocial --only firestore,auth "./gradlew connectedCheck -Pemulator=all -Pandroid.testInstrumentationRunnerArguments.numShards=2 -Pandroid.testInstrumentationRunnerArguments.shardIndex=${{ matrix.shard }}"
 
       # For the "Coverage and SonarCloud" job
       - name: Upload instrumented test coverage
         uses: actions/upload-artifact@v7
         with:
-          name: instrumented-test-coverage
+          name: instrumented-test-coverage-${{ matrix.shard }}
           path: app/build/outputs/code_coverage/debugAndroidTest/connected/
           retention-days: 1
           if-no-files-found: error
@@ -294,7 +301,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: instrumented-test-reports
+          name: instrumented-test-reports-${{ matrix.shard }}
           path: |
             app/build/reports/
             app/build/outputs/androidTest-results/
@@ -334,7 +341,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
 
       # Each artifact goes back to the path it was uploaded from, where jacocoTestReport and Sonar
-      # read it (see app/build.gradle.kts)
+      # read it (see app/build.gradle.kts). Each shard's coverage goes in its own folder.
       - name: Download unit test coverage
         uses: actions/download-artifact@v8
         with:
@@ -344,7 +351,7 @@ jobs:
       - name: Download instrumented test coverage
         uses: actions/download-artifact@v8
         with:
-          name: instrumented-test-coverage
+          pattern: instrumented-test-coverage-*
           path: app/build/outputs/code_coverage/debugAndroidTest/connected/
 
       - name: Download lint results
