@@ -1,4 +1,4 @@
-// Contributors: OpenAI Codex (inject Profile placeholder in unrelated shell tests, #109).
+// Contributors: OpenAI Codex (session loss routing and Profile placeholder in shell tests, #109).
 // Contributors: OpenAI Codex (tested startup/session routing, profile failure recovery and system
 // Back handoffs and verification/profile integration); Claude (signed-in shell without Hilt, #105;
 // signed-out back stack, profile step, sign-out and Figma start states, #74; sign-out from
@@ -7,9 +7,16 @@
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.text.AnnotatedString
 import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
@@ -74,6 +81,97 @@ class AuthFlowTest {
         }
       }
     }
+  }
+
+  @Test
+  fun logoutResetsCurrentFormViewModelsAfterTheyAreReplaced() {
+    auth.user = user
+    profiles.getProfileResult =
+        ProfileResult.Found(UserProfile(user.uid, user.email, "Test Student", "IN", "BA1"))
+    val start = AppStartViewModel(auth, profiles)
+    val currentSignUp = mutableStateOf(signUp)
+    val currentLogin = mutableStateOf(login)
+    compose.setContent {
+      PolySocialTheme {
+        AuthFlow(currentSignUp.value, { exits++ }, currentLogin.value, start) { done ->
+          TextButton(
+              {
+                auth.logOut()
+                done()
+              },
+              Modifier.testTag("logout_current_forms"),
+          ) {
+            Text("Log out")
+          }
+        }
+      }
+    }
+    compose.onNodeWithTag("logout_current_forms").assertIsDisplayed()
+    val replacementSignUp = SignUpViewModel(auth)
+    val replacementLogin = LoginViewModel(auth)
+    replacementSignUp.update(SignUpField.FullName, "Previous Student")
+    replacementLogin.onEmailChange(user.email)
+    replacementLogin.onPasswordChange("password1")
+    compose.runOnIdle {
+      currentSignUp.value = replacementSignUp
+      currentLogin.value = replacementLogin
+    }
+    compose.onNodeWithTag("logout_current_forms").performClick()
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    compose.onNodeWithTag(WelcomeTags.SignUp).performScrollTo().performClick()
+    compose
+        .onNodeWithTag(SignUpTags.input(SignUpField.FullName))
+        .assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
+    compose.onNodeWithTag(SignUpTags.Back).performClick()
+    compose.onNodeWithTag(WelcomeTags.LogIn).performScrollTo().performClick()
+    compose
+        .onNodeWithTag(LoginScreenTestTags.EMAIL)
+        .assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
+    compose
+        .onNodeWithTag(LoginScreenTestTags.PASSWORD)
+        .assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
+    assertEquals(1, auth.logOutCalls)
+  }
+
+  @Test
+  fun losingSessionWhileShellIsOpenReturnsToWelcomeAndBackExits() {
+    auth.user = user
+    profiles.getProfileResult =
+        ProfileResult.Found(UserProfile(user.uid, user.email, "Test Student", "IN", "BA1"))
+    val start = AppStartViewModel(auth, profiles)
+    compose.setContent {
+      PolySocialTheme {
+        AuthFlow(signUp, { exits++ }, login, start) {
+          AppShell(
+              eventsContent = { TabRootScreen(Tab.EVENTS) },
+              profileContent = { TabRootScreen(Tab.PROFILE) },
+          )
+        }
+      }
+    }
+    compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
+    compose.runOnIdle {
+      auth.user = null
+      start.refresh()
+    }
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.app_shell).assertDoesNotExist()
+    pressSystemBack()
+    assertEquals(1, exits)
+    assertEquals(1, profiles.getProfileCalls)
+  }
+
+  @Test
+  fun refreshDuringSignedOutSignUpPreservesTheActiveForm() {
+    val start = AppStartViewModel(auth, profiles)
+    compose.setContent { PolySocialTheme { AuthFlow(signUp, { exits++ }, login, start) {} } }
+    compose.onNodeWithTag(WelcomeTags.SignUp).performScrollTo().performClick()
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.FullName)).performTextInput("Test Student")
+    compose.runOnIdle { start.refresh() }
+    compose.onNodeWithTag(SignUpTags.Screen).assertIsDisplayed()
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.FullName)).assertTextContains("Test Student")
+    assertEquals(0, profiles.getProfileCalls)
+    assertEquals(0, auth.signUpCalls)
   }
 
   @Test

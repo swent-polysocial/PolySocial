@@ -1,6 +1,8 @@
-// Contributors: OpenAI Codex (confirmation, duplicate actions and logout failure proof, #109).
+// Contributors: OpenAI Codex (confirmation, duplicate actions, cancellation and logout failure
+// proof, #109).
 package com.polysocial.ui.profile
 
+import androidx.lifecycle.viewModelScope
 import com.polysocial.model.auth.*
 import com.polysocial.model.firebase.*
 import com.polysocial.utils.MainDispatcherRule
@@ -19,10 +21,12 @@ class ProfileViewModelTest {
   private var error: Exception? = null
   private var gate: CompletableDeferred<Unit>? = null
   private var clears = 0
+  private var clearJob: Job? = null
   private val cache =
       object : SessionCache {
         override suspend fun clear(): CacheClearResult {
           clears++
+          clearJob = currentCoroutineContext().job
           gate?.await()
           error?.let { throw it }
           return result
@@ -97,6 +101,46 @@ class ProfileViewModelTest {
         vm.confirmLogout()
         runCurrent()
         assertEquals(LogoutState.LoggedOut, vm.uiState.value)
+      }
+
+  @Test
+  fun cancelledCleanupKeepsAccountAndCanBeRetried() =
+      runTest(main.dispatcher) {
+        error = CancellationException("cleanup cancelled")
+        vm.requestLogout()
+        vm.confirmLogout()
+        runCurrent()
+        assertEquals(LogoutState.Error, vm.uiState.value)
+        assertTrue("cleanup cancellation must propagate to its coroutine", clearJob!!.isCancelled)
+        assertEquals(AuthUser("student-one", "student.one@epfl.ch", true), auth.user)
+        assertEquals(0, auth.logOutCalls)
+        vm.cancelLogout()
+        assertEquals(LogoutState.Error, vm.uiState.value)
+        error = null
+        vm.confirmLogout()
+        runCurrent()
+        assertEquals(LogoutState.LoggedOut, vm.uiState.value)
+        assertNull(auth.user)
+        assertEquals(1, auth.logOutCalls)
+        assertEquals(2, clears)
+      }
+
+  @Test
+  fun cancellingViewModelScopeStopsCleanupWithoutSigningOut() =
+      runTest(main.dispatcher) {
+        gate = CompletableDeferred()
+        vm.requestLogout()
+        vm.confirmLogout()
+        runCurrent()
+        vm.viewModelScope.cancel()
+        runCurrent()
+        assertEquals(LogoutState.Error, vm.uiState.value)
+        assertNotNull(auth.user)
+        assertEquals(0, auth.logOutCalls)
+        gate!!.complete(Unit)
+        runCurrent()
+        assertNotNull(auth.user)
+        assertEquals(0, auth.logOutCalls)
       }
 
   @Test
