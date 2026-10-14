@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (refresh Firestore after cache reset, #109).
 // Contributors: Claude (Firestore profile repository, #34; cancelled tasks and wrong-typed fields
 // reported as errors after review; reading isAssociationVerified, #45; other unexpected failures
 // reported as errors, #182).
@@ -25,7 +26,12 @@ const val USERS_COLLECTION = "users"
  * "update only if it exists" are checked, and it needs the server, so offline it fails instead of
  * being queued like a plain write.
  */
-class FirestoreUserProfileRepository(private val db: FirebaseFirestore) : UserProfileRepository {
+class FirestoreUserProfileRepository(private val database: () -> FirebaseFirestore) :
+    UserProfileRepository {
+  constructor(db: FirebaseFirestore) : this({ db })
+
+  private val db: FirebaseFirestore
+    get() = database()
 
   private fun document(uid: String): DocumentReference =
       db.collection(USERS_COLLECTION).document(uid)

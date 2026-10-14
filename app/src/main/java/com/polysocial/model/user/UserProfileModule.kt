@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (resolve the current Firestore instance per operation, #109).
 // Contributors: Claude (Hilt binding for the profile repository; Firestore version, #34; shared
 // Firestore instance, #45).
 package com.polysocial.model.user
@@ -7,6 +8,7 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import javax.inject.Provider
 import javax.inject.Singleton
 
 /**
@@ -18,6 +20,8 @@ import javax.inject.Singleton
 object UserProfileModule {
   @Provides
   @Singleton
-  fun userProfileRepository(db: FirebaseFirestore): UserProfileRepository =
-      FirestoreUserProfileRepository(db)
+  fun userProfileRepository(db: Provider<FirebaseFirestore>): UserProfileRepository =
+      FirestoreUserProfileRepository {
+        db.get()
+      }
 }

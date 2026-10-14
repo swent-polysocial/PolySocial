@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (refresh Firestore after cache reset, #109).
 // Contributors: Claude (drafted the Firestore event repository; verified association badge, #45;
 // the public upcoming-events listener, #49; unexpected failures reported as errors, #182; the
 // single-event listener and its failures, #112).
@@ -42,12 +43,22 @@ const val EVENTS_COLLECTION = "events"
  *   upcoming-events window.
  */
 class FirestoreEventRepository(
-    private val db: FirebaseFirestore,
+    private val database: () -> FirebaseFirestore,
     private val auth: AuthRepository,
     private val profiles: UserProfileRepository,
     private val network: NetworkMonitor,
     private val clock: Clock,
 ) : EventRepository {
+  constructor(
+      db: FirebaseFirestore,
+      auth: AuthRepository,
+      profiles: UserProfileRepository,
+      network: NetworkMonitor,
+      clock: Clock,
+  ) : this({ db }, auth, profiles, network, clock)
+
+  private val db: FirebaseFirestore
+    get() = database()
 
   override suspend fun createEvent(event: Event): CreateEventResult {
     val errors = validateNewEvent(event, clock.instant())
