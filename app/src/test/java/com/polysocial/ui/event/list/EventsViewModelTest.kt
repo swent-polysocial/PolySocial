@@ -1,11 +1,15 @@
-// Contributors: Claude (wrote these tests, #105; search and filters, #115).
+// Contributors: Claude (wrote these tests, #105; search, filters and distance, #115).
 package com.polysocial.ui.event.list
 
 import androidx.lifecycle.SavedStateHandle
+import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.TEST_NOW
 import com.polysocial.model.event.validEvent
+import com.polysocial.model.location.FakeLocationService
+import com.polysocial.model.location.LocationResult
+import com.polysocial.model.location.LocationService
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.utils.MainDispatcherRule
 import java.time.Clock
@@ -29,6 +33,8 @@ class EventsViewModelTest {
   private val tomorrow =
       validEvent(title = "Tomorrow", startTime = TEST_NOW.plus(Duration.ofDays(1)))
 
+  private val location = FakeLocationService(permissionGranted = true)
+
   private var online = true
   private val network =
       object : NetworkMonitor {
@@ -36,7 +42,7 @@ class EventsViewModelTest {
       }
 
   private fun createViewModel(savedState: SavedStateHandle = SavedStateHandle()) =
-      EventsViewModel(repository, network, clock, savedState)
+      EventsViewModel(repository, network, location, clock, savedState)
 
   private fun runPending() = mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
 
@@ -360,6 +366,7 @@ class EventsViewModelTest {
             mapOf(
                 "events_categories" to arrayListOf("PARTY", "CONCERT"),
                 "events_date" to "NEXT_YEAR",
+                "events_distance" to 750,
             )
         )
 
@@ -409,5 +416,135 @@ class EventsViewModelTest {
     viewModel.retry()
     runPending()
     assertEquals(listOf("Sunday climbing"), viewModel.shownTitles())
+  }
+
+  // ---- Distance ----
+
+  /** The student and every event above are at the Rolex Learning Center. */
+  private val rolex = Coordinates(latitude = 46.5191, longitude = 6.5668)
+  /** About 4.8 km from the Rolex. */
+  private val inTown =
+      validEvent(title = "Flon apéro", startTime = TEST_NOW.plus(Duration.ofDays(1)))
+          .copy(id = "inTown", location = Coordinates(latitude = 46.5210, longitude = 6.6290))
+
+  private fun EventsViewModel.location() = uiState.value.location
+
+  private fun nearAndFarViewModel(
+      savedState: SavedStateHandle = SavedStateHandle()
+  ): EventsViewModel {
+    repository.seed(laterToday, inTown)
+    return createViewModel(savedState).also { runPending() }
+  }
+
+  @Test
+  fun theLocation_isNotRead_untilADistanceIsPicked() {
+    location.result = LocationResult.Available(rolex)
+
+    val viewModel = nearAndFarViewModel()
+
+    assertEquals(EventsLocationState.NotRead, viewModel.location())
+    assertEquals(0, location.requestCount)
+  }
+
+  @Test
+  fun aDistance_readsTheLocationOnce_andKeepsTheEventsThatClose() {
+    location.result = LocationResult.Available(rolex)
+    val viewModel = nearAndFarViewModel()
+
+    viewModel.selectDistance(2_000)
+
+    // Until the location arrives, the distance isn't applied.
+    assertEquals(EventsLocationState.Locating, viewModel.location())
+    assertEquals(listOf("Later today", "Flon apéro"), viewModel.shownTitles())
+    runPending()
+    assertEquals(EventsLocationState.Available(rolex), viewModel.location())
+    assertEquals(listOf("Later today"), viewModel.shownTitles())
+
+    viewModel.selectDistance(500)
+    viewModel.selectDistance(null)
+    runPending()
+    assertEquals(1, location.requestCount)
+    assertEquals(listOf("Later today", "Flon apéro"), viewModel.shownTitles())
+  }
+
+  @Test
+  fun withoutThePermission_theLocationIsOff_andNoDistanceCanBePicked() {
+    location.permissionGranted = false
+    val viewModel = nearAndFarViewModel()
+
+    viewModel.selectDistance(1_000)
+    runPending()
+
+    assertEquals(EventsLocationState.Off, viewModel.location())
+    assertEquals(null, viewModel.uiState.value.selection.maxDistanceMeters)
+    assertEquals(0, location.requestCount)
+  }
+
+  @Test
+  fun noFix_turnsTheLocationOff_andDropsTheDistance() {
+    location.result = LocationResult.Unavailable
+    val savedState = SavedStateHandle()
+    val viewModel = nearAndFarViewModel(savedState)
+
+    viewModel.selectDistance(1_000)
+    runPending()
+
+    assertEquals(EventsLocationState.Off, viewModel.location())
+    assertEquals(EventSelection(), viewModel.uiState.value.selection)
+    assertEquals(null, savedState.get<Int>("events_distance"))
+    assertEquals(listOf("Later today", "Flon apéro"), viewModel.shownTitles())
+  }
+
+  @Test
+  fun aFailingLocationRead_turnsTheLocationOff() {
+    val failing =
+        object : LocationService {
+          override fun hasPermission() = true
+
+          override fun shouldRequestPermission() = false
+
+          override fun markPermissionRequested() = Unit
+
+          override suspend fun currentLocation(): LocationResult =
+              throw IllegalStateException("No provider")
+        }
+    repository.seed(laterToday, inTown)
+    val viewModel = EventsViewModel(repository, network, failing, clock, SavedStateHandle())
+    runPending()
+
+    viewModel.selectDistance(1_000)
+    runPending()
+
+    assertEquals(EventsLocationState.Off, viewModel.location())
+    assertEquals(null, viewModel.uiState.value.selection.maxDistanceMeters)
+  }
+
+  @Test
+  fun pickingAnyDistanceWhileLocating_cancelsTheRead() {
+    location.result = LocationResult.Available(rolex)
+    val viewModel = nearAndFarViewModel()
+
+    viewModel.selectDistance(1_000)
+    viewModel.selectDistance(null)
+    runPending()
+
+    assertEquals(EventsLocationState.NotRead, viewModel.location())
+    assertEquals(0, location.requestCount)
+  }
+
+  @Test
+  fun aDistance_survivesTheViewModelBeingRecreated_andReadsTheLocationAgain() {
+    location.result = LocationResult.Available(rolex)
+    val savedState = SavedStateHandle()
+    nearAndFarViewModel(savedState).selectDistance(1_000)
+    runPending()
+
+    val second = createViewModel(savedState)
+    runPending()
+
+    assertEquals(1_000, second.uiState.value.selection.maxDistanceMeters)
+    assertEquals(EventsLocationState.Available(rolex), second.location())
+    assertEquals(listOf("Later today"), second.shownTitles())
+    assertEquals(2, location.requestCount)
   }
 }

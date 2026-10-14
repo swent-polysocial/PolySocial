@@ -1,4 +1,5 @@
-// Contributors: Claude (the Events tab's search and filter selection, and a picked day, #115).
+// Contributors: Claude (the Events tab's search and filter selection, a picked day and a distance,
+// #115).
 package com.polysocial.ui.event.list
 
 import com.polysocial.model.event.DateRange
@@ -29,11 +30,20 @@ data class EventSelection(
     val search: String = "",
     val categories: Set<EventCategory> = emptySet(),
     val date: DateChoice = DateChoice.Any,
+    val maxDistanceMeters: Int? = null,
 ) {
   /** The filter for this selection, with the days counted from [today]. */
   fun toFilter(today: LocalDate): EventFilter =
-      EventFilter(search = search, categories = categories, dates = date.toRange(today))
+      EventFilter(
+          search = search,
+          categories = categories,
+          dates = date.toRange(today),
+          maxDistanceMeters = maxDistanceMeters?.toDouble(),
+      )
 }
+
+/** The distances the Filters sheet offers, in meters (Figma, #113); "Any" is null. */
+val DISTANCE_CHOICES_METERS = listOf(500, 1_000, 2_000)
 
 private fun DateChoice.toRange(today: LocalDate): DateRange? =
     when (this) {

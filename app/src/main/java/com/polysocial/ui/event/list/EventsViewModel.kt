@@ -1,15 +1,18 @@
 // Contributors: Claude (state of the Events tab's list, #105; offline only when the device is,
-// after review; search and filters, #115).
+// after review; search and filters, and the one-off location for the distance filter, #115).
 package com.polysocial.ui.event.list
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.PublicEventsResult
 import com.polysocial.model.event.filterEvents
+import com.polysocial.model.location.LocationResult
+import com.polysocial.model.location.LocationService
 import com.polysocial.model.network.NetworkMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
@@ -18,16 +21,42 @@ import java.time.ZoneId
 import java.time.format.DateTimeParseException
 import javax.inject.Inject
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-/** What the Events tab shows: its list, and the search and filters it is narrowed by. */
+/**
+ * What the Events tab shows: its list, the search and filters it is narrowed by, and where the
+ * student is for the distance filter.
+ */
 data class EventsUiState(
     val list: EventsListState = EventsListState.Loading,
     val selection: EventSelection = EventSelection(),
+    val location: EventsLocationState = EventsLocationState.NotRead,
 )
+
+/**
+ * The student's location, which only the distance filter needs. It is read once, when the student
+ * picks a distance, and kept in memory only (nLPD): never saved, sent or logged.
+ */
+sealed interface EventsLocationState {
+  /** Not read yet: no distance has been picked. */
+  data object NotRead : EventsLocationState
+
+  /** Reading it; until it arrives, the picked distance is not applied yet. */
+  data object Locating : EventsLocationState
+
+  data class Available(val coordinates: Coordinates) : EventsLocationState
+
+  /**
+   * The permission is not granted, or there was no fix (location turned off, or a timeout). The
+   * distance filters are unavailable, and no distance is selected.
+   */
+  data object Off : EventsLocationState
+}
 
 /** The Events tab's list. */
 sealed interface EventsListState {
@@ -65,6 +94,11 @@ sealed interface EventsListState {
  *
  * The selection is kept in [savedState], so it survives rotation and the process being recreated.
  *
+ * The distance filter needs the student's location: [locationService] reads it once, the first time
+ * a distance is picked, and only if the permission is already granted (this ViewModel never asks
+ * for it). Without it, the location is [EventsLocationState.Off] and the distance is dropped, so
+ * the selection never holds a distance that can't apply.
+ *
  * After an error the repository stops emitting, so the list stays in [EventsListState.Error] until
  * [retry].
  *
@@ -77,6 +111,7 @@ class EventsViewModel
 constructor(
     private val repository: EventRepository,
     private val network: NetworkMonitor,
+    private val locationService: LocationService,
     private val clock: Clock,
     private val savedState: SavedStateHandle,
 ) : ViewModel() {
@@ -90,8 +125,13 @@ constructor(
   /** The events last loaded; null while loading or after an error. */
   private var loaded: Loaded? = null
   private var observation: Job? = null
+  private var locationRequest: Job? = null
 
   init {
+    when {
+      !locationService.hasPermission() -> locationOff()
+      selection().maxDistanceMeters != null -> readLocation()
+    }
     observeEvents()
   }
 
@@ -120,17 +160,67 @@ constructor(
   /** Keeps only the events starting on [date]. */
   fun selectDate(date: DateChoice) = select(selection().copy(date = date))
 
+  /**
+   * Keeps only the events within [meters] of the student, or any distance if null. The first
+   * distance picked reads the location; while the location is off, a distance can't be picked.
+   */
+  fun selectDistance(meters: Int?) {
+    if (meters != null && location() == EventsLocationState.Off) return
+    select(selection().copy(maxDistanceMeters = meters))
+  }
+
   /** Clears the search and every filter, showing all the events again. */
   fun clearSearchAndFilters() = select(EventSelection())
 
   private fun selection() = _uiState.value.selection
 
+  private fun location() = _uiState.value.location
+
   private fun select(selection: EventSelection) {
     savedState[KEY_SEARCH] = selection.search
     savedState[KEY_CATEGORIES] = ArrayList(selection.categories.map { it.name })
     savedState[KEY_DATE] = selection.date.saved()
-    val list = loaded?.let { listFor(it, selection) } ?: _uiState.value.list
-    _uiState.value = EventsUiState(list, selection)
+    savedState[KEY_DISTANCE] = selection.maxDistanceMeters
+    show(selection, location())
+    when {
+      selection.maxDistanceMeters != null && location() == EventsLocationState.NotRead ->
+          readLocation()
+      selection.maxDistanceMeters == null && location() == EventsLocationState.Locating -> {
+        locationRequest?.cancel()
+        show(selection, EventsLocationState.NotRead)
+      }
+    }
+  }
+
+  /** Shows [selection] and [location], and the list they give. */
+  private fun show(selection: EventSelection, location: EventsLocationState) {
+    val list = loaded?.let { listFor(it, selection, location) } ?: _uiState.value.list
+    _uiState.value = EventsUiState(list, selection, location)
+  }
+
+  /** Reads the location once; on any failure, the location is off. */
+  private fun readLocation() {
+    if (!locationService.hasPermission()) return locationOff()
+    show(selection(), EventsLocationState.Locating)
+    locationRequest = viewModelScope.launch {
+      val result =
+          try {
+            locationService.currentLocation()
+          } catch (_: Exception) {
+            currentCoroutineContext().ensureActive()
+            LocationResult.Unavailable
+          }
+      if (result is LocationResult.Available) {
+        show(selection(), EventsLocationState.Available(result.coordinates))
+      } else {
+        locationOff()
+      }
+    }
+  }
+
+  private fun locationOff() {
+    savedState[KEY_DISTANCE] = null
+    show(selection().copy(maxDistanceMeters = null), EventsLocationState.Off)
   }
 
   private fun restoreSelection() =
@@ -143,6 +233,8 @@ constructor(
                   .mapNotNull { name -> EventCategory.entries.firstOrNull { it.name == name } }
                   .toSet(),
           date = restoreDate(savedState.get<String>(KEY_DATE)),
+          maxDistanceMeters =
+              savedState.get<Int>(KEY_DISTANCE)?.takeIf { it in DISTANCE_CHOICES_METERS },
       )
 
   private fun observeEvents() {
@@ -159,7 +251,7 @@ constructor(
               is PublicEventsResult.Events -> {
                 val events = Loaded(result.events, result.fromCache && !network.isOnline())
                 loaded = events
-                listFor(events, selection())
+                listFor(events, selection(), location())
               }
             }
         _uiState.value = _uiState.value.copy(list = list)
@@ -167,12 +259,16 @@ constructor(
     }
   }
 
-  private fun listFor(loaded: Loaded, selection: EventSelection): EventsListState {
+  private fun listFor(
+      loaded: Loaded,
+      selection: EventSelection,
+      location: EventsLocationState,
+  ): EventsListState {
     val isOffline = loaded.isOffline
     if (loaded.events.isEmpty()) return EventsListState.Empty(isOffline)
     val today = LocalDate.now(clock)
-    val matching =
-        filterEvents(loaded.events, selection.toFilter(today), clock.zone, userLocation = null)
+    val userLocation = (location as? EventsLocationState.Available)?.coordinates
+    val matching = filterEvents(loaded.events, selection.toFilter(today), clock.zone, userLocation)
     return if (matching.isEmpty()) EventsListState.NoMatch(isOffline)
     else EventsListState.Events(groupEventsByDay(matching, clock), today, isOffline)
   }
@@ -208,5 +304,6 @@ constructor(
     const val KEY_SEARCH = "events_search"
     const val KEY_CATEGORIES = "events_categories"
     const val KEY_DATE = "events_date"
+    const val KEY_DISTANCE = "events_distance"
   }
 }
