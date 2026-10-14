@@ -1,4 +1,5 @@
-// Contributors: Claude (screen tests for the Events tab list, #105; no matching event, #115).
+// Contributors: Claude (screen tests for the Events tab list, #105; no matching event and search,
+// #115).
 package com.polysocial.ui.event.list
 
 import android.content.Context
@@ -11,6 +12,8 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextClearance
+import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -62,15 +65,17 @@ class EventsScreenTest {
 
   private var retries = 0
   private var clears = 0
+  private val searches = mutableListOf<String>()
 
-  private fun show(list: EventsListState) {
+  private fun show(list: EventsListState, selection: EventSelection = EventSelection()) {
     composeTestRule.setContent {
       PolySocialTheme {
         EventsScreen(
-            EventsUiState(list),
+            EventsUiState(list, selection),
             zone = lausanne,
             onRetry = { retries++ },
             onClearFilters = { clears++ },
+            onSearchChange = { searches += it },
         )
       }
     }
@@ -301,5 +306,90 @@ class EventsScreenTest {
 
     composeTestRule.onNodeWithTag(EventsTags.card("tomorrow")).assertIsDisplayed()
     composeTestRule.onNodeWithText("Tomorrow's event").assertIsDisplayed()
+  }
+
+  // ---- Search ----
+
+  private fun someEvents() =
+      EventsListState.Events(
+          listOf(
+              EventDaySection(
+                  today,
+                  listOf(event("party", "Balélec warm-up", today.atTime(20, 0))),
+              )
+          ),
+          today = today,
+          isOffline = false,
+      )
+
+  @Test
+  fun theSearchField_showsThePlaceholder_andTypingCallsBack() {
+    show(someEvents())
+
+    composeTestRule.onNodeWithTag(EventsTags.SEARCH).assertIsDisplayed()
+    composeTestRule.onNodeWithText(string(R.string.events_search_placeholder)).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(EventsTags.SEARCH).performTextInput("climb")
+
+    assertEquals(listOf("climb"), searches)
+  }
+
+  @Test
+  fun theSearchField_showsTheCurrentSearch() {
+    show(someEvents(), EventSelection(search = "warm"))
+
+    composeTestRule.onNodeWithTag(EventsTags.SEARCH).assertTextEquals("warm")
+  }
+
+  @Test
+  fun theSearchField_staysWhenNothingMatches_soTheSearchCanBeChanged() {
+    show(EventsListState.NoMatch(isOffline = false), EventSelection(search = "hackathon"))
+
+    composeTestRule.onNodeWithTag(EventsTags.SEARCH).assertTextEquals("hackathon")
+  }
+
+  @Test
+  fun theSearchField_isHidden_whenThereIsNothingToSearch() {
+    show(EventsListState.Empty(isOffline = false))
+    composeTestRule.onAllNodesWithTag(EventsTags.SEARCH).assertCountEquals(0)
+  }
+
+  @Test
+  fun theSearchField_isHidden_afterAnError() {
+    show(EventsListState.Error)
+    composeTestRule.onAllNodesWithTag(EventsTags.SEARCH).assertCountEquals(0)
+  }
+
+  @Test
+  fun aSearch_narrowsTheList_andClearingItRestoresTheFullList() {
+    val repository = FakeEventRepository()
+    val tomorrow = repository.now.plusSeconds(24 * 3600)
+    repository.seed(
+        validEvent(title = "Climbing session", startTime = tomorrow).copy(id = "climbing"),
+        validEvent(title = "Balélec warm-up", startTime = tomorrow.plusSeconds(3600))
+            .copy(id = "party"),
+    )
+    val network =
+        object : NetworkMonitor {
+          override fun isOnline() = true
+        }
+    val viewModel =
+        EventsViewModel(
+            repository,
+            network,
+            Clock.fixed(repository.now, lausanne),
+            SavedStateHandle(),
+        )
+    composeTestRule.setContent { PolySocialTheme { EventsRoute(viewModel = viewModel) } }
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+
+    composeTestRule.onNodeWithTag(EventsTags.SEARCH).performTextInput("climb")
+
+    composeTestRule.onNodeWithTag(EventsTags.card("climbing")).assertIsDisplayed()
+    composeTestRule.onAllNodesWithTag(EventsTags.card("party")).assertCountEquals(0)
+
+    composeTestRule.onNodeWithTag(EventsTags.SEARCH).performTextClearance()
+
+    composeTestRule.onNodeWithTag(EventsTags.card("climbing")).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(EventsTags.card("party")).assertIsDisplayed()
   }
 }
