@@ -87,31 +87,47 @@ class FirestoreEventRepository(
    * The flow is conflated: a slow collector gets only the latest result, never a backlog of
    * outdated snapshots. Sending never fails or blocks the listener's callback, so the terminal
    * [PublicEventsResult.Error] replaces any result still waiting and always reaches the collector
-   * before the flow ends.
+   * before the flow ends. Any failure, including an unexpected exception while building the query
+   * or reading a snapshot, ends the flow with that error instead of throwing.
    */
   override fun getUpcomingPublicEvents(windowDays: Int): Flow<PublicEventsResult> {
     require(windowDays > 0) { "windowDays must be positive, was $windowDays" }
     return callbackFlow {
-          val now = clock.instant()
+          fun fail() {
+            trySend(PublicEventsResult.Error)
+            close()
+          }
+          // Nothing in this try suspends, so it can't catch the collector's cancellation, and
+          // awaitClose still ends a cancelled collection.
           val registration =
-              db.collection(EVENTS_COLLECTION)
-                  .whereEqualTo("isPrivate", false)
-                  .whereGreaterThanOrEqualTo("startTime", now.toTimestamp())
-                  .whereLessThan("startTime", upcomingWindowEnd(now, windowDays).toTimestamp())
-                  .orderBy("startTime")
-                  .addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
-                    if (error != null || snapshot == null) {
-                      trySend(PublicEventsResult.Error)
-                      close()
-                    } else {
-                      val events =
-                          snapshot.documents.mapNotNull {
-                            eventFromFirestore(it.id, it.data.orEmpty())
+              try {
+                val now = clock.instant()
+                db.collection(EVENTS_COLLECTION)
+                    .whereEqualTo("isPrivate", false)
+                    .whereGreaterThanOrEqualTo("startTime", now.toTimestamp())
+                    .whereLessThan("startTime", upcomingWindowEnd(now, windowDays).toTimestamp())
+                    .orderBy("startTime")
+                    .addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
+                      if (error != null || snapshot == null) fail()
+                      else
+                          try {
+                            val events =
+                                snapshot.documents.mapNotNull {
+                                  eventFromFirestore(it.id, it.data.orEmpty())
+                                }
+                            trySend(
+                                PublicEventsResult.Events(events, snapshot.metadata.isFromCache)
+                            )
+                          } catch (e: Exception) {
+                            // Thrown here, it would crash the app on Firestore's callback thread.
+                            fail()
                           }
-                      trySend(PublicEventsResult.Events(events, snapshot.metadata.isFromCache))
                     }
-                  }
-          awaitClose { registration.remove() }
+              } catch (e: Exception) {
+                fail()
+                null
+              }
+          awaitClose { registration?.remove() }
         }
         .buffer(Channel.CONFLATED)
   }
