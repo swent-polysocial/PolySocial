@@ -26,6 +26,9 @@ concurrency:
 permissions:
   contents: read
 
+# The jobs run in parallel where they can: "Checks", "Build and unit tests", "Instrumented tests"
+# and "Release build" start together, and "Coverage and SonarCloud" starts once the first three
+# are done. "Instrumented tests" is the longest, so it sets the duration of a run.
 jobs:
   # A PR that only changes documentation (docs/ and Markdown outside app/) cannot break the build,
   # so the build and test jobs skip it. Pushes on main always run everything.
@@ -58,8 +61,8 @@ jobs:
             echo "docs-only=true" >> "$GITHUB_OUTPUT"
           fi
 
-  # Formatting and the Security Rules tests don't depend on the build, so they run in their own
-  # job instead of adding about a minute to "Build and test".
+  # Formatting, lint and the Security Rules tests don't depend on the tests, so they run in their
+  # own job instead of adding about 2 minutes to the others.
   checks:
     name: Checks
     needs: changes
@@ -83,13 +86,28 @@ jobs:
           distribution: "temurin"
           java-version: "21"
 
-      # See "Gradle cache" in the "Build and test" job
+      # Caching is a very useful part of a CI, as a workflow is executed in a clean environment every time,
+      # this means that one would need to re-download and re-process gradle files for every run. Which is very time consuming.
+      #
+      # To avoid that, we cache the the gradle folder to reuse it later.
+      # v3 no longer works with GitHub's cache service. v6+ moves caching into a proprietary
+      # component with separate terms of use, so stay on v5 unless the team accepts them.
       - name: Gradle cache
         uses: gradle/actions/setup-gradle@v5
 
-      - name: Check formatting (ktfmt)
+      # One Gradle run for both. --continue runs lint even when ktfmt fails, so a PR sees both.
+      - name: Formatting (ktfmt) and lint
         run: |
-          ./gradlew ktfmtCheck
+          ./gradlew ktfmtCheck lint --continue
+
+      # For the "Coverage and SonarCloud" job, which imports the lint issues
+      - name: Upload lint results
+        uses: actions/upload-artifact@v7
+        with:
+          name: lint-results
+          path: app/build/reports/lint-results-debug.xml
+          retention-days: 1
+          if-no-files-found: error
 
       # The rules tests need the Firestore emulator, started with the Firebase CLI
       - name: Setup Node
@@ -109,20 +127,89 @@ jobs:
           npm ci --prefix firebase
           firebase emulators:exec --project demo-polysocial --only firestore "node firebase/firestore/firestore.rules.test.js"
 
+      # Lint reports, to debug a failed run. Download them from the run's summary page.
+      - name: Upload reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: checks-reports
+          path: app/build/reports/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # This job only builds the debug variant, which the tests and Sonar use. The release variant is
+  # built by the "Release build" job.
   build-and-test:
-    name: Build and test
+    name: Build and unit tests
     needs: changes
     if: needs.changes.outputs.docs-only != 'true'
     runs-on: ubuntu-latest
-    # A cold run takes about 9 minutes. The limit stops a stuck emulator from running for 6 hours.
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Decode secrets
+        env:
+          GOOGLE_SERVICES: ${{ secrets.GOOGLE_SERVICES }}
+          LOCAL_PROPERTIES: ${{ secrets.LOCAL_PROPERTIES }}
+        run: bash .github/scripts/decode-secrets.sh
+
+      - name: Setup JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      # See "Gradle cache" in the "Checks" job
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v5
+
+      # One Gradle run, so the unit tests reuse the build's configuration and daemon.
+      # Not check: the rest of check (ktfmt and lint) runs in the "Checks" job.
+      - name: Build debug app and unit tests
+        run: |
+          # To run the CI with debug information, add --info
+          ./gradlew assembleDebug testDebugUnitTest
+
+      # For the "Coverage and SonarCloud" job: the unit test coverage and results, and the classes
+      # that jacocoTestReport reads (after Hilt's bytecode rewrite). They come from the same build
+      # as the coverage data, so JaCoCo matches them.
+      - name: Upload unit test coverage
+        uses: actions/upload-artifact@v7
+        with:
+          name: unit-test-coverage
+          path: |
+            app/build/outputs/unit_test_code_coverage/debugUnitTest/
+            app/build/test-results/testDebugUnitTest/
+            app/build/intermediates/classes/debug/transformDebugClassesWithAsm/dirs/
+          retention-days: 1
+          if-no-files-found: error
+
+      # Unit test reports, to debug a failed run. Download them from the run's summary page.
+      - name: Upload reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: unit-test-reports
+          path: app/build/reports/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # The instrumented tests, including the @EmulatorTest tests, run on an Android emulator next to
+  # the Firebase emulators. They take the longest, so they don't wait for the other checks.
+  instrumented-tests:
+    name: Instrumented tests
+    needs: changes
+    if: needs.changes.outputs.docs-only != 'true'
+    runs-on: ubuntu-latest
+    # A cold run takes about 7 minutes. The limit stops a stuck emulator from running for 6 hours.
     timeout-minutes: 30
 
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-        with:
-          submodules: recursive
-          fetch-depth: 0 # Shallow clones should be disabled for a better relevancy of Sonar analysis
 
       - name: Decode secrets
         env:
@@ -143,30 +230,9 @@ jobs:
           distribution: "temurin"
           java-version: "21"
 
-      # Caching is a very useful part of a CI, as a workflow is executed in a clean environment every time,
-      # this means that one would need to re-download and re-process gradle files for every run. Which is very time consuming.
-      #
-      # To avoid that, we cache the the gradle folder to reuse it later.
-      # v3 no longer works with GitHub's cache service. v6+ moves caching into a proprietary
-      # component with separate terms of use, so stay on v5 unless the team accepts them.
+      # See "Gradle cache" in the "Checks" job
       - name: Gradle cache
         uses: gradle/actions/setup-gradle@v5
-
-      # This job only builds the debug variant, which the tests and Sonar use. The release variant
-      # is built by the "Release build" job.
-      - name: Build debug app
-        run: |
-          # To run the CI with debug information, add --info
-          ./gradlew assembleDebug
-
-      - name: Lint
-        run: |
-          ./gradlew lint
-
-      # Not check: lint has its own step and ktfmt runs in the "Checks" job
-      - name: Unit tests
-        run: |
-          ./gradlew testDebugUnitTest
 
       # The @EmulatorTest instrumented tests need the Firebase emulators (Auth and Firestore),
       # started with the Firebase CLI. The Android emulator reaches them at 10.0.2.2.
@@ -196,27 +262,101 @@ jobs:
           # coverage report gets them all. The Firebase emulators stop when the run ends.
           script: firebase emulators:exec --project demo-polysocial --only firestore,auth "./gradlew connectedCheck -Pemulator=all"
 
-      # Merges the unit and instrumented test coverage for Sonar
+      # For the "Coverage and SonarCloud" job
+      - name: Upload instrumented test coverage
+        uses: actions/upload-artifact@v7
+        with:
+          name: instrumented-test-coverage
+          path: app/build/outputs/code_coverage/debugAndroidTest/connected/
+          retention-days: 1
+          if-no-files-found: error
+
+      # Instrumented test reports (with the emulator's logcat), to debug a failed run. Download them
+      # from the run's summary page.
+      - name: Upload reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: instrumented-test-reports
+          path: |
+            app/build/reports/
+            app/build/outputs/androidTest-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # Merges the unit and instrumented test coverage and sends it to SonarCloud, with the unit test
+  # results and the lint issues. It uses the files the other jobs uploaded, so no test runs twice.
+  sonar:
+    name: Coverage and SonarCloud
+    needs: [changes, checks, build-and-test, instrumented-tests]
+    if: needs.changes.outputs.docs-only != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # Shallow clones should be disabled for a better relevancy of Sonar analysis
+
+      - name: Decode secrets
+        env:
+          GOOGLE_SERVICES: ${{ secrets.GOOGLE_SERVICES }}
+          LOCAL_PROPERTIES: ${{ secrets.LOCAL_PROPERTIES }}
+        run: bash .github/scripts/decode-secrets.sh
+
+      - name: Setup JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      # See "Gradle cache" in the "Checks" job
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v5
+
+      # Each artifact goes back to the path it was uploaded from, where jacocoTestReport and Sonar
+      # read it (see app/build.gradle.kts)
+      - name: Download unit test coverage
+        uses: actions/download-artifact@v8
+        with:
+          name: unit-test-coverage
+          path: app/build/
+
+      - name: Download instrumented test coverage
+        uses: actions/download-artifact@v8
+        with:
+          name: instrumented-test-coverage
+          path: app/build/outputs/code_coverage/debugAndroidTest/connected/
+
+      - name: Download lint results
+        uses: actions/download-artifact@v8
+        with:
+          name: lint-results
+          path: app/build/reports/
+
+      # Merges the unit and instrumented test coverage for Sonar. jacocoTestReport doesn't depend on
+      # the test tasks (it only runs after them when both are requested), so it reads the downloaded
+      # files without running any test.
       - name: Coverage report
         run: |
           ./gradlew jacocoTestReport
 
+      # Sonar compiles the debug classes again (from the Gradle cache when the code didn't change):
+      # it reads their classpath, not the downloaded classes.
       - name: SonarCloud analysis
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         run: ./gradlew sonar
 
-      # Lint, unit test and instrumented test reports (with the emulator's logcat), to debug a failed
-      # run. Download them from the run's summary page.
+      # The coverage report, to debug a failed run. Download it from the run's summary page.
       - name: Upload reports
         if: failure()
         uses: actions/upload-artifact@v7
         with:
-          name: reports
-          path: |
-            app/build/reports/
-            app/build/outputs/androidTest-results/
+          name: sonar-reports
+          path: app/build/reports/
           retention-days: 7
           if-no-files-found: ignore
 
@@ -245,7 +385,7 @@ jobs:
           distribution: "temurin"
           java-version: "21"
 
-      # See "Gradle cache" in the "Build and test" job
+      # See "Gradle cache" in the "Checks" job
       - name: Gradle cache
         uses: gradle/actions/setup-gradle@v5
 
@@ -257,7 +397,7 @@ jobs:
   # jobs above, so jobs can be added or split without changing the ruleset.
   ci:
     name: CI
-    needs: [changes, checks, build-and-test, release-build]
+    needs: [changes, checks, build-and-test, instrumented-tests, sonar, release-build]
     # Run even when a job failed or was cancelled. If this job were skipped instead, GitHub would
     # count the required check as passed.
     if: always()
@@ -271,11 +411,15 @@ jobs:
           DOCS_ONLY: ${{ needs.changes.outputs.docs-only }}
           CHECKS: ${{ needs.checks.result }}
           BUILD_AND_TEST: ${{ needs.build-and-test.result }}
+          INSTRUMENTED_TESTS: ${{ needs.instrumented-tests.result }}
+          SONAR: ${{ needs.sonar.result }}
           RELEASE_BUILD: ${{ needs.release-build.result }}
         run: |
           echo "Detect changes: $DETECT_CHANGES"
           echo "Checks: $CHECKS"
-          echo "Build and test: $BUILD_AND_TEST"
+          echo "Build and unit tests: $BUILD_AND_TEST"
+          echo "Instrumented tests: $INSTRUMENTED_TESTS"
+          echo "Coverage and SonarCloud: $SONAR"
           echo "Release build: $RELEASE_BUILD"
           # If detection failed, the build jobs were skipped without checking anything
           if [ "$DETECT_CHANGES" != success ]; then
@@ -286,7 +430,7 @@ jobs:
             echo "Documentation-only change: nothing to build or test."
             exit 0
           fi
-          for result in "$CHECKS" "$BUILD_AND_TEST" "$RELEASE_BUILD"; do
+          for result in "$CHECKS" "$BUILD_AND_TEST" "$INSTRUMENTED_TESTS" "$SONAR" "$RELEASE_BUILD"; do
             if [ "$result" != success ]; then
               echo "::error::A build, test or analysis job did not succeed (see the results above)."
               exit 1
