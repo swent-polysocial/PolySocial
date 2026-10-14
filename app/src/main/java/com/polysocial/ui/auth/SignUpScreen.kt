@@ -5,7 +5,8 @@
 // placeholder button; connected the welcome entry screen and app-start/profile routing;
 // preserved submission handoffs on Back and aligned form hints, loading and recovery layout);
 // Claude (injectable signed-in content, so tests run without Hilt, #105; signed-out back stack,
-// profile step, sign-out and Figma start states, #74).
+// profile step, sign-out and Figma start states, #74; the full name limit message, test-first,
+// #143).
 // OpenAI Codex (verification routing, Back sign-out and replacement-session
 // entry and stable current-model callbacks for #31);
 // OpenAI Codex (password recovery destination and Back routing for #164).
@@ -775,6 +776,7 @@ private fun FieldError.message(): Int =
       FieldError.InvalidDomain -> R.string.signup_invalid_domain
       FieldError.PasswordRules -> R.string.signup_password_rules
       FieldError.PasswordMismatch -> R.string.signup_password_mismatch
+      FieldError.TooLong -> R.string.full_name_too_long
     }
 
 private fun SignUpResult.Failure.message(): Int =

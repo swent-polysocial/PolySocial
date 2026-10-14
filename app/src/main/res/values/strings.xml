@@ -1,5 +1,5 @@
 <!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42; Create Event texts, #46; "+" button, #110; app bar actions, #84); OpenAI Codex (Google and welcome copy). OpenAI Codex (sign-up form, startup integration, name hint and unused-title cleanup; Mapbox integration and setup, #50; location permission and distance text, #51). Claude (Retry, app-start loading and error texts, #74). -->
-<!-- Contributors: OpenAI Codex (verification screen and failure messages for #31). -->
+<!-- Contributors: OpenAI Codex (verification screen and failure messages for #31). Claude (full name limit message, #143). -->
 <!-- Contributors: OpenAI Codex (current-build privacy summary and full notice, #103). -->
 <resources>
     <string name="app_start_loading">Loading your profile…</string>
@@ -39,6 +39,8 @@
     <string name="signup_invalid_domain">Use your @epfl.ch address.</string>
     <string name="signup_password_rules">Use at least 8 characters and include a number.</string>
     <string name="signup_password_mismatch">Passwords don\'t match.</string>
+    <!-- The full name's limit (#143): the argument is MAX_DISPLAY_NAME_LENGTH. -->
+    <string name="full_name_too_long">Use at most %1$d characters</string>
     <string name="signup_duplicate_email">This email already has an account.</string>
     <string name="signup_network_error">Check your connection and try again.</string>
     <string name="signup_too_many_requests">Too many requests. Wait a few minutes and try again.</string>
