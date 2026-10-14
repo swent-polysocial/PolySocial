@@ -400,6 +400,30 @@ class LocationPickerScreenTest {
   }
 
   @Test
+  fun route_withoutAMapboxTokenShowsAPlainMapAndStillConfirms() {
+    geocoding.reverseResult = ReverseGeocodeResult.Found(LEARNING_CENTER)
+    composeTestRule.setContent {
+      PolySocialTheme {
+        LocationPickerRoute(
+            initial = null,
+            onBack = {},
+            onPicked = { picked = it },
+            viewModel = viewModel,
+            renderer = defaultPickerRenderer(hasToken = false),
+        )
+      }
+    }
+    settle()
+
+    node(LocationPickerTags.MAP).assertIsDisplayed()
+    node(LocationPickerTags.USE).performClick()
+    composeTestRule.waitForIdle()
+
+    assertEquals(LEARNING_CENTER.name, picked?.name)
+    assertEquals(LocationPickerViewModel.LAUSANNE, picked?.coordinates)
+  }
+
+  @Test
   fun route_allowInSettingsOpensThisAppsSettings() {
     showRoute()
 
