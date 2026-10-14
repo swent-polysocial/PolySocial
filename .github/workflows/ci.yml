@@ -204,7 +204,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.docs-only != 'true'
     runs-on: ubuntu-latest
-    # A cold run takes about 7 minutes. The limit stops a stuck emulator from running for 6 hours.
+    # A run takes about 7 minutes. The limit stops a stuck emulator from running for 6 hours.
     timeout-minutes: 30
 
     steps:
@@ -234,6 +234,14 @@ jobs:
       - name: Gradle cache
         uses: gradle/actions/setup-gradle@v5
 
+      # Installing and booting the emulator takes about 100 s, so the app and test APKs build
+      # meanwhile, in the background. "Instrumented tests (emulator)" waits for this build and
+      # prints its log. The output goes to a file, so this step doesn't wait for the build.
+      - name: Build APKs (in the background)
+        run: |
+          (./gradlew assembleDebug assembleDebugAndroidTest -Pemulator=all; echo $? > "$RUNNER_TEMP/apk-build-status") \
+            > "$RUNNER_TEMP/apk-build.log" 2>&1 < /dev/null &
+
       # The @EmulatorTest instrumented tests need the Firebase emulators (Auth and Firestore),
       # started with the Firebase CLI. The Android emulator reaches them at 10.0.2.2.
       - name: Setup Node
@@ -258,9 +266,13 @@ jobs:
           arch: x86_64
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          # -Pemulator=all runs the @EmulatorTest tests together with the others, in one run, so the
-          # coverage report gets them all. The Firebase emulators stop when the run ends.
-          script: firebase emulators:exec --project demo-polysocial --only firestore,auth "./gradlew connectedCheck -Pemulator=all"
+          # Each line runs in its own shell. The first waits for the background APK build and stops
+          # here if it failed. -Pemulator=all runs the @EmulatorTest tests together with the others,
+          # in one run, so the coverage report gets them all. The Firebase emulators stop when the
+          # run ends.
+          script: |
+            while [ ! -f "$RUNNER_TEMP/apk-build-status" ]; do sleep 1; done; cat "$RUNNER_TEMP/apk-build.log"; exit "$(cat "$RUNNER_TEMP/apk-build-status")"
+            firebase emulators:exec --project demo-polysocial --only firestore,auth "./gradlew connectedCheck -Pemulator=all"
 
       # For the "Coverage and SonarCloud" job
       - name: Upload instrumented test coverage
@@ -271,8 +283,8 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-      # Instrumented test reports (with the emulator's logcat), to debug a failed run. Download them
-      # from the run's summary page.
+      # Instrumented test reports (with the emulator's logcat) and the APK build's log, to debug a
+      # failed run. Download them from the run's summary page.
       - name: Upload reports
         if: failure()
         uses: actions/upload-artifact@v7
@@ -281,6 +293,7 @@ jobs:
           path: |
             app/build/reports/
             app/build/outputs/androidTest-results/
+            ${{ runner.temp }}/apk-build.log
           retention-days: 7
           if-no-files-found: ignore
 
