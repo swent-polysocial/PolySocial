@@ -58,6 +58,57 @@ jobs:
             echo "docs-only=true" >> "$GITHUB_OUTPUT"
           fi
 
+  # Formatting and the Security Rules tests don't depend on the build, so they run in their own
+  # job instead of adding about a minute to "Build and test".
+  checks:
+    name: Checks
+    needs: changes
+    if: needs.changes.outputs.docs-only != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Decode secrets
+        env:
+          GOOGLE_SERVICES: ${{ secrets.GOOGLE_SERVICES }}
+          LOCAL_PROPERTIES: ${{ secrets.LOCAL_PROPERTIES }}
+        run: bash .github/scripts/decode-secrets.sh
+
+      - name: Setup JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      # See "Gradle cache" in the "Build and test" job
+      - name: Gradle cache
+        uses: gradle/actions/setup-gradle@v5
+
+      - name: Check formatting (ktfmt)
+        run: |
+          ./gradlew ktfmtCheck
+
+      # The rules tests need the Firestore emulator, started with the Firebase CLI
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: firebase/package-lock.json
+
+      # Pinned, so a new CLI release can't change CI without a PR
+      - name: Install Firebase CLI
+        run: |
+          npm install -g firebase-tools@15.33.0
+
+      - name: Security Rules tests
+        run: |
+          npm ci --prefix firebase
+          firebase emulators:exec --project demo-polysocial --only firestore "node firebase/firestore/firestore.rules.test.js"
+
   build-and-test:
     name: Build and test
     needs: changes
@@ -101,10 +152,6 @@ jobs:
       - name: Gradle cache
         uses: gradle/actions/setup-gradle@v5
 
-      - name: Check formatting (ktfmt)
-        run: |
-          ./gradlew ktfmtCheck
-
       # This job only builds the debug variant, which the tests and Sonar use. The release variant
       # is built by the "Release build" job.
       - name: Build debug app
@@ -116,13 +163,13 @@ jobs:
         run: |
           ./gradlew lint
 
-      # Not check: the rest of check (ktfmt and lint) already has its own step
+      # Not check: lint has its own step and ktfmt runs in the "Checks" job
       - name: Unit tests
         run: |
           ./gradlew testDebugUnitTest
 
-      # The rules tests and the @EmulatorTest instrumented tests need the Firebase emulators (Auth
-      # and Firestore), started with the Firebase CLI. The Android emulator reaches them at 10.0.2.2.
+      # The @EmulatorTest instrumented tests need the Firebase emulators (Auth and Firestore),
+      # started with the Firebase CLI. The Android emulator reaches them at 10.0.2.2.
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
@@ -134,11 +181,6 @@ jobs:
       - name: Install Firebase CLI
         run: |
           npm install -g firebase-tools@15.33.0
-
-      - name: Security Rules tests
-        run: |
-          npm ci --prefix firebase
-          firebase emulators:exec --project demo-polysocial --only firestore "node firebase/firestore/firestore.rules.test.js"
 
       # The emulator boots from scratch (~30 s). A cached snapshot is rejected as soon as the
       # runner installs a newer emulator, and restoring the 1.9 GB cache took as long as a cold boot.
@@ -179,7 +221,7 @@ jobs:
           if-no-files-found: ignore
 
   # The release build (R8 shrinking) feeds neither the tests nor Sonar, so it runs in parallel with
-  # "Build and test" instead of adding roughly 50 seconds to it.
+  # the other jobs instead of adding roughly 50 seconds to one of them.
   release-build:
     name: Release build
     needs: changes
@@ -215,7 +257,7 @@ jobs:
   # jobs above, so jobs can be added or split without changing the ruleset.
   ci:
     name: CI
-    needs: [changes, build-and-test, release-build]
+    needs: [changes, checks, build-and-test, release-build]
     # Run even when a job failed or was cancelled. If this job were skipped instead, GitHub would
     # count the required check as passed.
     if: always()
@@ -227,10 +269,12 @@ jobs:
         env:
           DETECT_CHANGES: ${{ needs.changes.result }}
           DOCS_ONLY: ${{ needs.changes.outputs.docs-only }}
+          CHECKS: ${{ needs.checks.result }}
           BUILD_AND_TEST: ${{ needs.build-and-test.result }}
           RELEASE_BUILD: ${{ needs.release-build.result }}
         run: |
           echo "Detect changes: $DETECT_CHANGES"
+          echo "Checks: $CHECKS"
           echo "Build and test: $BUILD_AND_TEST"
           echo "Release build: $RELEASE_BUILD"
           # If detection failed, the build jobs were skipped without checking anything
@@ -242,7 +286,9 @@ jobs:
             echo "Documentation-only change: nothing to build or test."
             exit 0
           fi
-          if [ "$BUILD_AND_TEST" != success ] || [ "$RELEASE_BUILD" != success ]; then
-            echo "::error::Build and test or Release build did not succeed."
-            exit 1
-          fi
+          for result in "$CHECKS" "$BUILD_AND_TEST" "$RELEASE_BUILD"; do
+            if [ "$result" != success ]; then
+              echo "::error::A build, test or analysis job did not succeed (see the results above)."
+              exit 1
+            fi
+          done
