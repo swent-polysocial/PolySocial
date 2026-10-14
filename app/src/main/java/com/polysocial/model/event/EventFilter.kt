@@ -80,10 +80,18 @@ fun filterEvents(
   }
 }
 
-/** Lower case without accents, so a search ignores both. */
+/**
+ * Lower case without accents, so a search ignores both. NFD splits "é" into "e" and its accent, but
+ * leaves letters such as "œ" whole, so those are spelled out ("cœur" becomes "coeur").
+ */
 private fun String.normalizedForSearch(): String =
     Normalizer.normalize(this, Normalizer.Form.NFD)
         .replace(COMBINING_MARKS, "")
         .lowercase(Locale.ROOT)
+        .replace(UNDECOMPOSED_LETTERS) { LETTER_SPELLINGS.getValue(it.value) }
 
 private val COMBINING_MARKS = Regex("\\p{Mn}+")
+
+private val LETTER_SPELLINGS = mapOf("œ" to "oe", "æ" to "ae", "ß" to "ss", "ø" to "o")
+
+private val UNDECOMPOSED_LETTERS = Regex("[œæßø]")
