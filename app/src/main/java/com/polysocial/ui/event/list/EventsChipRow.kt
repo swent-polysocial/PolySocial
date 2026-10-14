@@ -46,7 +46,7 @@ private data class FilterChip(
 /**
  * Figma's chip row under the search: *All*, then the filters that are on (dark, with an ×, tapping
  * one removes it), then the quick filters that are off. *All* is on when no chip filter is, and
- * tapping it clears them all; it keeps the search, which has its own field.
+ * tapping it clears them all, the search included, as decided in #113.
  */
 @Composable
 fun EventsChipRow(

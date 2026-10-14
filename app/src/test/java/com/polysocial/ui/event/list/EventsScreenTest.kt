@@ -71,7 +71,6 @@ class EventsScreenTest {
   private val searches = mutableListOf<String>()
   private val dates = mutableListOf<DateChoice>()
   private val toggled = mutableListOf<EventCategory>()
-  private var chipClears = 0
 
   private fun show(list: EventsListState, selection: EventSelection = EventSelection()) {
     composeTestRule.setContent {
@@ -84,7 +83,6 @@ class EventsScreenTest {
             onSearchChange = { searches += it },
             onSelectDate = { dates += it },
             onToggleCategory = { toggled += it },
-            onClearChipFilters = { chipClears++ },
         )
       }
     }
@@ -533,12 +531,12 @@ class EventsScreenTest {
   }
 
   @Test
-  fun tappingAll_clearsTheChipFilters() {
-    show(someEvents(), EventSelection(categories = setOf(EventCategory.PARTY)))
+  fun tappingAll_clearsTheSearchAndFilters() {
+    show(someEvents(), EventSelection(search = "party", categories = setOf(EventCategory.PARTY)))
 
     chip("ALL").performClick()
 
-    assertEquals(1, chipClears)
+    assertEquals(1, clears)
   }
 
   @Test
@@ -590,5 +588,40 @@ class EventsScreenTest {
     composeTestRule.onNodeWithTag(EventsTags.card("climbing")).assertIsDisplayed()
     composeTestRule.onNodeWithTag(EventsTags.card("party")).assertIsDisplayed()
     chip("ALL").assertIsSelected()
+  }
+
+  @Test
+  fun all_clearsTheSearchToo() {
+    val repository = FakeEventRepository()
+    val tomorrow = repository.now.plusSeconds(24 * 3600)
+    repository.seed(
+        validEvent(title = "Climbing session", startTime = tomorrow)
+            .copy(id = "climbing", category = EventCategory.SPORTS),
+        validEvent(title = "Balélec warm-up", startTime = tomorrow.plusSeconds(3600))
+            .copy(id = "party", category = EventCategory.PARTY),
+    )
+    val network =
+        object : NetworkMonitor {
+          override fun isOnline() = true
+        }
+    val viewModel =
+        EventsViewModel(
+            repository,
+            network,
+            Clock.fixed(repository.now, lausanne),
+            SavedStateHandle(),
+        )
+    composeTestRule.setContent { PolySocialTheme { EventsRoute(viewModel = viewModel) } }
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+    composeTestRule.onNodeWithTag(EventsTags.SEARCH).performTextInput("climb")
+    chip("SPORTS").performClick()
+
+    chip("ALL").performClick()
+
+    composeTestRule.onNodeWithTag(EventsTags.card("climbing")).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(EventsTags.card("party")).assertIsDisplayed()
+    composeTestRule
+        .onNodeWithTag(EventsTags.SEARCH)
+        .assertTextEquals(string(R.string.events_search_placeholder), "")
   }
 }
