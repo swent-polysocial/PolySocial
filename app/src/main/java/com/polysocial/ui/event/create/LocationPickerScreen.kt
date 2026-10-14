@@ -192,18 +192,20 @@ fun LocationPickerRoute(
   )
 }
 
-/** The Mapbox map, or a plain background when this build has no Mapbox token. */
+/** The Mapbox map, or a plain background when this build has no Mapbox token ([hasToken]). */
 @Composable
-private fun defaultPickerRenderer(): PickerMapRenderer {
-  val hasToken = stringResource(R.string.mapbox_access_token).startsWith("pk.")
-  return if (hasToken) {
-    { camera, onCenterSettled, onMapTap, bottomInset ->
-      PickerMapboxRenderer(camera, onCenterSettled, onMapTap, bottomInset)
+internal fun defaultPickerRenderer(
+    hasToken: Boolean = stringResource(R.string.mapbox_access_token).startsWith("pk.")
+): PickerMapRenderer =
+    if (hasToken) {
+      { camera, onCenterSettled, onMapTap, bottomInset ->
+        PickerMapboxRenderer(camera, onCenterSettled, onMapTap, bottomInset)
+      }
+    } else {
+      { _, _, _, _ ->
+        Box(Modifier.fillMaxSize().background(MapLand).testTag(LocationPickerTags.MAP))
+      }
     }
-  } else {
-    { _, _, _, _ -> Box(Modifier.fillMaxSize().background(MapLand)) }
-  }
-}
 
 /**
  * The picker drawn from [state] alone, so every Figma state can be shown and tested without a
