@@ -7,6 +7,7 @@ import com.polysocial.model.geocoding.FakeGeocodingService
 import com.polysocial.model.geocoding.Place
 import com.polysocial.model.geocoding.PlaceSearchResult
 import com.polysocial.model.geocoding.ReverseGeocodeResult
+import com.polysocial.model.location.FakeLocationService
 import com.polysocial.ui.event.create.LocationPickerViewModel.Companion.SETTLE_DELAY
 import com.polysocial.utils.MainDispatcherRule
 import kotlin.time.Duration.Companion.milliseconds
@@ -28,7 +29,8 @@ class LocationPickerViewModelTest {
   @get:Rule val mainDispatcherRule = MainDispatcherRule()
 
   private val geocoding = FakeGeocodingService()
-  private val viewModel = LocationPickerViewModel(geocoding)
+  private val location = FakeLocationService()
+  private val viewModel = LocationPickerViewModel(geocoding, location)
 
   private fun state() = viewModel.uiState.value
 

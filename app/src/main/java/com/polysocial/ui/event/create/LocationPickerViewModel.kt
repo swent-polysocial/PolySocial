@@ -1,4 +1,5 @@
-// Contributors: Claude (drafted the location picker ViewModel, #111).
+// Contributors: Claude (drafted the location picker ViewModel, #111; your location, the location
+// button, confirming and duplicate results for the map screen, #111).
 package com.polysocial.ui.event.create
 
 import androidx.lifecycle.ViewModel
@@ -8,6 +9,9 @@ import com.polysocial.model.geocoding.GeocodingService
 import com.polysocial.model.geocoding.Place
 import com.polysocial.model.geocoding.PlaceSearchResult
 import com.polysocial.model.geocoding.ReverseGeocodeResult
+import com.polysocial.model.location.LocationResult
+import com.polysocial.model.location.LocationService
+import com.polysocial.model.location.straightLineDistanceMeters
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlin.math.abs
@@ -54,7 +58,20 @@ sealed interface PinPlaceState {
    * pin can still be confirmed.
    */
   data class Unnamed(val failure: LookupFailure?) : PinPlaceState
+
+  /**
+   * The pin is on the student's own position. It is not looked up, so the position is never sent to
+   * a third party unless the student moves the map or confirms it.
+   */
+  data object YourLocation : PinPlaceState
 }
+
+/**
+ * Asks the map to show [target]: the pin was placed by the app (where the picker opens, a search
+ * result, the student's position), not by moving the map. Each request has a new [id], so the same
+ * target can be asked for twice.
+ */
+data class CameraRequest(val target: Coordinates, val id: Int)
 
 /**
  * Everything the location picker shows.
@@ -63,12 +80,22 @@ sealed interface PinPlaceState {
  *   [LocationPickerViewModel.onSearch] does.
  * @property pin where the pin is. The pin stays at the center of the map, so this is also where the
  *   map is centered.
+ * @property hasLocationAccess whether the app may read the student's position. Without it, the
+ *   picker says so and hides the location button.
+ * @property camera where the map must move: the pin when the app placed it.
+ * @property confirming "Use this location" was tapped while the pin's address was still unknown:
+ *   the picker confirms once the lookup ends.
+ * @property confirmed the student confirmed the pin: [LocationPickerViewModel.selection] is ready.
  */
 data class LocationPickerUiState(
     val query: String = "",
     val search: PlaceSearchState = PlaceSearchState.Idle,
     val pin: Coordinates = LocationPickerViewModel.LAUSANNE,
     val pinPlace: PinPlaceState = PinPlaceState.Resolving,
+    val hasLocationAccess: Boolean = false,
+    val camera: CameraRequest = CameraRequest(LocationPickerViewModel.LAUSANNE, 0),
+    val confirming: Boolean = false,
+    val confirmed: Boolean = false,
 )
 
 /**
@@ -79,10 +106,18 @@ data class LocationPickerUiState(
  * on a new position, the pin's name and address are looked up once, after [SETTLE_DELAY] so that a
  * quick series of moves sends a single lookup. Offline or failed lookups leave the pin usable, so
  * Confirm always works.
+ *
+ * With location access, the picker opens on the student's position, which is never looked up on its
+ * own: only moving the map or confirming sends it to the geocoding service. The picker never asks
+ * for the permission itself.
  */
 @HiltViewModel
-class LocationPickerViewModel @Inject constructor(private val geocoding: GeocodingService) :
-    ViewModel() {
+class LocationPickerViewModel
+@Inject
+constructor(
+    private val geocoding: GeocodingService,
+    private val location: LocationService,
+) : ViewModel() {
 
   private val _uiState = MutableStateFlow(LocationPickerUiState())
   val uiState: StateFlow<LocationPickerUiState> = _uiState.asStateFlow()
@@ -90,6 +125,7 @@ class LocationPickerViewModel @Inject constructor(private val geocoding: Geocodi
   private var opened = false
   private var searchJob: Job? = null
   private var lookupJob: Job? = null
+  private var locateJob: Job? = null
 
   /**
    * Places the pin where the picker opens: on [initial], the place already on the form, or else on
@@ -100,11 +136,54 @@ class LocationPickerViewModel @Inject constructor(private val geocoding: Geocodi
   fun open(initial: PickedLocation?) {
     if (opened) return
     opened = true
-    if (initial == null || !initial.isNamed) {
-      lookUp(initial?.coordinates ?: LAUSANNE)
-    } else {
-      val place = Place(initial.name, initial.address, initial.coordinates)
-      _uiState.update { it.copy(pin = place.coordinates, pinPlace = PinPlaceState.Found(place)) }
+    val hasAccess = location.hasPermission()
+    _uiState.update { it.copy(hasLocationAccess = hasAccess) }
+    when {
+      initial != null && initial.isNamed -> {
+        val place = Place(initial.name, initial.address, initial.coordinates)
+        _uiState.update { it.copy(pinPlace = PinPlaceState.Found(place)) }
+        moveCamera(place.coordinates)
+      }
+      initial != null -> {
+        moveCamera(initial.coordinates)
+        lookUp(initial.coordinates)
+      }
+      hasAccess -> locate(fallback = { lookUp(LAUSANNE) })
+      else -> lookUp(LAUSANNE)
+    }
+  }
+
+  /**
+   * The location button: moves the pin to the student's position, without looking it up. Without
+   * the permission, the picker shows that location access is off instead. If no position can be
+   * read (location turned off, timeout), the pin stays where it is.
+   */
+  fun onMyLocation() {
+    if (!location.hasPermission()) {
+      _uiState.update { it.copy(hasLocationAccess = false) }
+      return
+    }
+    locate(fallback = {})
+  }
+
+  /** Reads the permission again, for example when the student comes back from Settings. */
+  fun onLocationAccessCheck() = _uiState.update {
+    it.copy(hasLocationAccess = location.hasPermission())
+  }
+
+  /**
+   * "Use this location": confirms the pin. While its address is unknown (still looking up, or the
+   * student's own position, which was never sent), it is looked up first and the picker confirms
+   * when the answer comes, so the form gets the place's name whenever there is one.
+   */
+  fun onUseLocation() {
+    when (_uiState.value.pinPlace) {
+      PinPlaceState.Resolving -> _uiState.update { it.copy(confirming = true) }
+      PinPlaceState.YourLocation -> {
+        _uiState.update { it.copy(confirming = true) }
+        lookUp(_uiState.value.pin, wait = false)
+      }
+      else -> _uiState.update { it.copy(confirmed = true) }
     }
   }
 
@@ -120,7 +199,7 @@ class LocationPickerViewModel @Inject constructor(private val geocoding: Geocodi
           when (val result = geocoding.search(query)) {
             is PlaceSearchResult.Found ->
                 if (result.places.isEmpty()) PlaceSearchState.NoResults
-                else PlaceSearchState.Results(result.places)
+                else PlaceSearchState.Results(withoutNearbyDuplicates(result.places))
             PlaceSearchResult.NetworkError -> PlaceSearchState.Failed(LookupFailure.OFFLINE)
             PlaceSearchResult.UnexpectedError -> PlaceSearchState.Failed(LookupFailure.UNEXPECTED)
           }
@@ -138,13 +217,16 @@ class LocationPickerViewModel @Inject constructor(private val geocoding: Geocodi
   fun onResultSelect(place: Place) {
     searchJob?.cancel()
     lookupJob?.cancel()
+    locateJob?.cancel()
     _uiState.update {
       it.copy(
           search = PlaceSearchState.Idle,
           pin = place.coordinates,
           pinPlace = PinPlaceState.Found(place),
+          confirming = false,
       )
     }
+    moveCamera(place.coordinates)
   }
 
   /**
@@ -159,6 +241,9 @@ class LocationPickerViewModel @Inject constructor(private val geocoding: Geocodi
     ) {
       return
     }
+    // The student chose another spot: a pending confirmation or position read no longer applies.
+    locateJob?.cancel()
+    _uiState.update { it.copy(confirming = false) }
     lookUp(coordinates)
   }
 
@@ -177,11 +262,12 @@ class LocationPickerViewModel @Inject constructor(private val geocoding: Geocodi
     )
   }
 
-  private fun lookUp(coordinates: Coordinates) {
+  /** Looks up the pin at [coordinates], after [SETTLE_DELAY] unless [wait] is false. */
+  private fun lookUp(coordinates: Coordinates, wait: Boolean = true) {
     lookupJob?.cancel()
     _uiState.update { it.copy(pin = coordinates, pinPlace = PinPlaceState.Resolving) }
     lookupJob = viewModelScope.launch {
-      delay(SETTLE_DELAY)
+      if (wait) delay(SETTLE_DELAY)
       val pinPlace =
           when (val result = geocoding.reverse(coordinates)) {
             is ReverseGeocodeResult.Found -> PinPlaceState.Found(result.place)
@@ -189,8 +275,41 @@ class LocationPickerViewModel @Inject constructor(private val geocoding: Geocodi
             ReverseGeocodeResult.NetworkError -> PinPlaceState.Unnamed(LookupFailure.OFFLINE)
             ReverseGeocodeResult.UnexpectedError -> PinPlaceState.Unnamed(LookupFailure.UNEXPECTED)
           }
-      _uiState.update { it.copy(pinPlace = pinPlace) }
+      _uiState.update {
+        it.copy(pinPlace = pinPlace, confirmed = it.confirmed || it.confirming, confirming = false)
+      }
     }
+  }
+
+  /**
+   * Reads the student's position once and moves the pin there, as [PinPlaceState.YourLocation].
+   * Without a position, calls [fallback]; a denied permission also hides the location button.
+   */
+  private fun locate(fallback: () -> Unit) {
+    locateJob?.cancel()
+    locateJob = viewModelScope.launch {
+      when (val result = location.currentLocation()) {
+        is LocationResult.Available -> {
+          moveCamera(result.coordinates)
+          if (_uiState.value.confirming) {
+            // Confirmed while the position was being read: look it up now, then confirm.
+            lookUp(result.coordinates, wait = false)
+          } else {
+            lookupJob?.cancel()
+            _uiState.update { it.copy(pinPlace = PinPlaceState.YourLocation) }
+          }
+        }
+        LocationResult.PermissionDenied -> {
+          _uiState.update { it.copy(hasLocationAccess = false) }
+          fallback()
+        }
+        LocationResult.Unavailable -> fallback()
+      }
+    }
+  }
+
+  private fun moveCamera(target: Coordinates) = _uiState.update {
+    it.copy(pin = target, camera = CameraRequest(target, it.camera.id + 1))
   }
 
   companion object {
@@ -202,5 +321,22 @@ class LocationPickerViewModel @Inject constructor(private val geocoding: Geocodi
 
     /** About a metre in latitude, and less in longitude at Lausanne's latitude. */
     private const val SAME_PLACE_DEGREES = 0.00001
+
+    /** Two results with the same name closer than this are the same place. */
+    internal const val DUPLICATE_METERS = 100.0
   }
 }
+
+/**
+ * Drops a place with the same name as an earlier one within [DUPLICATE_METERS], which Nominatim
+ * returns for a building and its entrance, for example. The first one, the better match, stays.
+ */
+internal fun withoutNearbyDuplicates(places: List<Place>): List<Place> =
+    places.fold(emptyList()) { kept, place ->
+      val duplicate = kept.any {
+        it.name == place.name &&
+            straightLineDistanceMeters(it.coordinates, place.coordinates) <
+                LocationPickerViewModel.DUPLICATE_METERS
+      }
+      if (duplicate) kept else kept + place
+    }
