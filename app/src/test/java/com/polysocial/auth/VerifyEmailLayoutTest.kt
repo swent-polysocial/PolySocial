@@ -1,5 +1,5 @@
 // Contributors: OpenAI Codex (adaptive verification layout and tagged UI-state tests for #31;
-// startup timing-loading feedback and disabled-action assertions).
+// startup timing-loading feedback, disabled-action assertions and tall-tablet layout).
 package com.polysocial.auth
 
 import androidx.compose.runtime.CompositionLocalProvider
@@ -73,6 +73,18 @@ class VerifyEmailLayoutTest {
     assertEquals(1, changes)
     assertEquals(1, checks)
     assertEquals(0, resends)
+  }
+
+  @Test
+  @Config(qualifiers = "w840dp-h1024dp")
+  fun tallTabletKeepsTheHeroAboveReachableActions() {
+    launch()
+    compose.onNodeWithTag(VerifyEmailTags.TwoColumns).assertDoesNotExist()
+    val hero = compose.onNodeWithTag(VerifyEmailTags.Hero).fetchSemanticsNode().boundsInRoot
+    val actions = compose.onNodeWithTag(VerifyEmailTags.Actions).fetchSemanticsNode().boundsInRoot
+    assertTrue("portrait actions stay below the hero", hero.bottom < actions.top)
+    compose.onNodeWithTag(VerifyEmailTags.Continue).performScrollTo().assertIsDisplayed()
+    compose.onNodeWithTag(VerifyEmailTags.Resend).performScrollTo().assertIsDisplayed()
   }
 
   @Test
