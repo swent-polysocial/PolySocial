@@ -1,5 +1,5 @@
 // Contributors: Claude (wrote these tests; verified association badge, #45; the upcoming-events
-// listener, #49; the Firestore provider, #156).
+// listener, #49; the Firestore provider and a failure to create its instance, #156).
 package com.polysocial.model.event
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -474,6 +474,30 @@ class FirestoreEventRepositoryTest {
         results,
     )
     verify { registration.remove() }
+  }
+
+  @Test
+  fun upcomingEvents_whenTheInstanceCannotBeCreated_emitsAnErrorAndEnds() = runTest {
+    val noInstance = ResettableFirestoreProvider {
+      throw IllegalStateException("Default FirebaseApp is not initialized")
+    }
+    val repository =
+        FirestoreEventRepository(
+            noInstance,
+            auth,
+            profiles,
+            network,
+            Clock.fixed(TEST_NOW, ZoneOffset.UTC),
+        )
+    val results = mutableListOf<PublicEventsResult>()
+
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) {
+          repository.getUpcomingPublicEvents().toList(results)
+        }
+    collecting.join()
+
+    assertEquals(listOf(PublicEventsResult.Error), results)
   }
 
   @Test

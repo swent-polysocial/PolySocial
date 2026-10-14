@@ -1,6 +1,6 @@
 // Contributors: Claude (drafted the Firestore event repository; verified association badge, #45;
 // the public upcoming-events listener, #49; the current instance from the Firestore provider,
-// #156).
+// and an error result when it can't be created, #156).
 package com.polysocial.model.event
 
 import com.google.firebase.FirebaseException
@@ -94,13 +94,27 @@ class FirestoreEventRepository(
    * before the flow ends.
    *
    * A logout terminates the instance the listener uses, which silences it (#156), so the flow then
-   * also ends with [PublicEventsResult.Error]; collecting again reads from the fresh instance.
+   * also ends with [PublicEventsResult.Error]; collecting again reads from the fresh instance. The
+   * flow also ends with [PublicEventsResult.Error] if the instance can't be created.
    */
   override fun getUpcomingPublicEvents(windowDays: Int): Flow<PublicEventsResult> {
     require(windowDays > 0) { "windowDays must be positive, was $windowDays" }
     return callbackFlow {
           val now = clock.instant()
-          val db = firestore.get()
+          val db =
+              try {
+                firestore.get()
+              } catch (e: CancellationException) {
+                throw e
+              } catch (e: Exception) {
+                // For example, no Firebase app to create the instance from.
+                null
+              }
+          if (db == null) {
+            trySend(PublicEventsResult.Error)
+            close()
+            return@callbackFlow
+          }
           val registration =
               try {
                 db.upcomingPublicEvents(now, windowDays).addSnapshotListener(
