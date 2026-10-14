@@ -8,7 +8,8 @@ import org.junit.Test
 
 /**
  * The full name's limit (#143), shared by sign-up and the profile step and matched by the
- * `users/{uid}` rule: at most 50 characters of the trimmed name, counted as Unicode characters.
+ * `users/{uid}` rule: at most 50 characters of the trimmed name, counted in UTF-16 units like the
+ * rule's `size()` (checked on the Firestore emulator): an emoji counts as 2.
  */
 class DisplayNameTest {
 
@@ -52,10 +53,10 @@ class DisplayNameTest {
   }
 
   @Test
-  fun anEmojiCountsAsOneCharacter_notAsItsTwoUtf16Units() {
-    val emoji = "😀" // 😀, two UTF-16 units, one character
-    assertFalse(isDisplayNameTooLong(emoji.repeat(50)))
-    assertTrue(isDisplayNameTooLong(emoji.repeat(51)))
+  fun anEmojiCountsAsTwo_likeTheRule() {
+    val emoji = "\uD83D\uDE00" // 😀, two UTF-16 units
+    assertFalse(isDisplayNameTooLong(emoji.repeat(25)))
+    assertTrue(isDisplayNameTooLong(emoji.repeat(26)))
   }
 
   @Test
