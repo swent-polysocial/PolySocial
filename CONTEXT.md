@@ -140,9 +140,11 @@ Newest first, one line each, with a link. Remove a line once its content lives i
 - 2026-10-12 · CI starts the Firebase emulators and runs the rules tests and `@EmulatorTest` tests, in one `connectedCheck -Pemulator=all` so coverage keeps them all. ([#159](https://github.com/swent-polysocial/PolySocial/issues/159))
 - 2026-10-12 · A student is an `@epfl.ch` account whose profile isn't an association: an `@epfl.ch` association gets only association access. Clients can't delete an association's profile, so it can't become a student again. ([#161](https://github.com/swent-polysocial/PolySocial/issues/161))
 - 2026-10-12 · Events tab after review: sections hold a plain `LocalDate` and the screen names Today / Tomorrow; the offline banner needs `fromCache` and no network. ([#145](https://github.com/swent-polysocial/PolySocial/pull/145))
+- 2026-10-11 · [#99](https://github.com/swent-polysocial/PolySocial/pull/99): keep resend deadlines across sign-out so re-login cannot bypass cooldowns; account correction/deletion and retention await the team decision in [#149](https://github.com/swent-polysocial/PolySocial/issues/149).
 - 2026-10-11 · Events tab: day headings Today / Tomorrow / date instead of Figma's relative labels, shared `EventCategoryStyle`, and injectable tab content so tests run without Hilt. ([#145](https://github.com/swent-polysocial/PolySocial/pull/145))
 - 2026-10-11 · Anything that can fail is handled gracefully: typed results, an error state with a way out, a test per failure path; added to `AGENTS.md`. ([#153](https://github.com/swent-polysocial/PolySocial/pull/153))
 - 2026-10-11 · Repository tests against the Firebase emulators are `@EmulatorTest` instrumented tests, run only with `-Pemulator` inside `firebase emulators:exec`; CI skips them until it starts the emulators. ([#117](https://github.com/swent-polysocial/PolySocial/issues/117))
+- 2026-10-09 · [#99](https://github.com/swent-polysocial/PolySocial/pull/99): Verify Email Back signs out and resets forms; success uses the shared startup profile check.
 - 2026-10-09 · Record #47 owner's confirmation that association writes build on the existing own-events read policy; broader association public-event access still needs a team decision. ([#93](https://github.com/swent-polysocial/PolySocial/pull/93#issuecomment-6069094805))
 - 2026-10-09 · [#87](https://github.com/swent-polysocial/PolySocial/pull/87): preserve sign-up/login completion effects by blocking Back during submission and handoff; failures restore navigation.
 - 2026-10-08 · The association badge comes from the creator's profile. If the profile can't be read, creating the event fails instead of dropping the badge. One shared `FirebaseFirestore` from `FirebaseModule`. (#45)
@@ -185,7 +187,3 @@ Newest first, one line each, with a link. Remove a line once its content lives i
 - 2026-10-03 · PR size cap of about 1000 changed lines. The backend-SDK import ban in ViewModels and Composables is kept. (#57)
 - 2026-10-03 · Rebase merge, not squash. Docs-only changes don't need an issue (`chore/<slug>` branch). (#58)
 - 2026-10-03 · Architecture Diagram added to the wiki, with its source in `docs/`. (#60)
-
-- 2026-10-11 · [#99](https://github.com/swent-polysocial/PolySocial/pull/99): keep resend deadlines across sign-out so re-login cannot bypass cooldowns; account correction/deletion and retention await the team decision in [#149](https://github.com/swent-polysocial/PolySocial/issues/149).
-
-- 2026-10-09 · [#99](https://github.com/swent-polysocial/PolySocial/pull/99): Verify Email Back signs out and resets forms; success uses the shared startup profile check.
