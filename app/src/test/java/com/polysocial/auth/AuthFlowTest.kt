@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (inject Profile placeholder in unrelated shell tests, #109).
 // Contributors: OpenAI Codex (tested startup/session routing, profile failure recovery and system
 // Back handoffs and verification/profile integration); Claude (signed-in shell without Hilt, #105;
 // signed-out back stack, profile step, sign-out and Figma start states, #74; sign-out from
@@ -69,7 +70,7 @@ class AuthFlowTest {
     restoration.setContent {
       PolySocialTheme {
         AuthFlow(signUp, { exits++ }, login, start, verification, profileStep) {
-          AppShell(eventsContent = { TabRootScreen(Tab.EVENTS) })
+          AppShell(eventsContent = { TabRootScreen(Tab.EVENTS) }, profileContent = { TabRootScreen(Tab.PROFILE) })
         }
       }
     }

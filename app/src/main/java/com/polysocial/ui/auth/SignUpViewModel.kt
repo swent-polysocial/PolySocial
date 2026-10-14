@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (discard previous session form state on logout, #109).
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; implemented sign-up form state and submission;
 // reset the form when changing address for #31; ); Claude (fresh form after a sign-out, #74).
 package com.polysocial.ui.auth

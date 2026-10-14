@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (inject Profile placeholder in unrelated shell tests, #109).
 // Contributors: Claude (UI tests for the bottom navigation and app bar, #41; nested tab routes,
 // #42; placeholder Events root without Hilt, #105; map stub given the "+" action, #110).
 // Contributors: OpenAI Codex (map tab chrome, detail routes and injected tab regression tests,
@@ -53,6 +54,7 @@ class AppShellTest {
       PolySocialTheme {
         AppShell(
             navController = navController,
+            profileContent = { TabRootScreen(Tab.PROFILE) },
             eventsContent = {
               Box(Modifier.testTag("injected_events_content")) { TabRootScreen(Tab.EVENTS) }
             },

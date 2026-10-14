@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (Profile logout route and clear tab stacks, #109).
 // Contributors: Claude (app shell with bottom navigation and app bar, #41; theme title style after
 // review; bottom bar matched to the Figma; loading state, #43; per-tab back stacks, #42; Events
 // list, #105; "+" button and Create Event navigation from the Events and Map tabs, #110; app bar
@@ -58,6 +59,7 @@ import com.polysocial.ui.event.detail.EventDetailRoute
 import com.polysocial.ui.event.detail.EventDetailViewModel
 import com.polysocial.ui.event.list.EventsRoute
 import com.polysocial.ui.map.MapRoute
+import com.polysocial.ui.profile.ProfileRoute
 import com.polysocial.ui.theme.Ink
 import com.polysocial.ui.theme.Ink3
 
@@ -81,8 +83,9 @@ data class CreateEventNavigation(
  * Root of the signed-in app: an app bar with the current tab's title and, at the tab's root, its
  * action (see [TabAction]), the current tab's screen, and the bottom navigation bar. The Events tab
  * shows the upcoming events and the Map tab the event map, both with the "+" button that opens
- * Create Event inside the tab, full screen; the other tabs show the shared loading state, then a
- * placeholder until their feature is built. The map uses floating overlays instead of the app bar.
+ * Create Event inside the tab, full screen; the Profile provides logout and Chats shows a loading
+ * state, then a placeholder until their feature is built. The map uses floating overlays instead of
+ * the app bar.
  *
  * Each tab's graph also holds the event detail ([Tab.eventDetailRoute]), so an event opened from a
  * tab keeps that tab selected and Back returns to it. The detail has its own header and action bar
@@ -117,6 +120,8 @@ fun AppShell(
     eventDetailContent: @Composable (onBack: () -> Unit) -> Unit = { onBack ->
       EventDetailRoute(onBack = onBack)
     },
+    onLoggedOut: () -> Unit = {},
+    profileContent: @Composable (() -> Unit) -> Unit = { done -> ProfileRoute(done) },
 ) {
   val backStackEntry by navController.currentBackStackEntryAsState()
   val destination = backStackEntry?.destination
@@ -188,6 +193,12 @@ fun AppShell(
                       modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp, 20.dp),
                   )
                 }
+                Tab.PROFILE ->
+                    profileContent {
+                      Tab.entries.forEach { navController.clearBackStack(it.route) }
+                      navController.popBackStack(Tab.EVENTS.route, inclusive = true)
+                      onLoggedOut()
+                    }
                 else -> TabRootScreen(tab)
               }
             }

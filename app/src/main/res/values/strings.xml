@@ -1,3 +1,4 @@
+<!-- Contributors: OpenAI Codex (logout dialog copy, #109). -->
 <!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42; Create Event texts, #46; "+" button, #110; app bar actions, #84); OpenAI Codex (Google and welcome copy). OpenAI Codex (sign-up form, startup integration, name hint and unused-title cleanup; Mapbox integration and setup, #50; location permission and distance text, #51). Claude (Retry, app-start loading and error texts, #74). -->
 <!-- Contributors: OpenAI Codex (verification screen and failure messages for #31). -->
 <resources>
@@ -5,6 +6,11 @@
     <string name="app_start_error_title">Couldn\'t load your profile</string>
     <string name="app_start_error_message">Check your connection and try again.</string>
     <string name="retry">Retry</string>
+    <string name="profile_log_out">Log out</string>
+    <string name="profile_log_out_title">Log out?</string>
+    <string name="profile_log_out_question">Are you sure you want to log out?</string>
+    <string name="profile_log_out_cancel">Cancel</string>
+    <string name="profile_log_out_error">Could not finish logging out. Try again before continuing.</string>
     <string name="app_name">PolySocial</string>
 
     <string name="tab_events">Events</string>

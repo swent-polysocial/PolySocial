@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (inject Profile placeholder in unrelated shell tests, #109).
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; tested tagged validation, backend errors and
 // sign-up handoff with MockK; backend failure messages, recovery actions, login navigation and
 // official Google placeholder behavior, welcome navigation and startup routing injection); Claude
@@ -519,7 +520,12 @@ class SignUpScreenTest {
             loginViewModel = loginViewModel,
             startViewModel = startViewModel,
             profileSetupViewModel = profileSetupViewModel,
-            signedInContent = { AppShell(eventsContent = { TabRootScreen(Tab.EVENTS) }) },
+            signedInContent = {
+              AppShell(
+                  eventsContent = { TabRootScreen(Tab.EVENTS) },
+                  profileContent = { TabRootScreen(Tab.PROFILE) },
+              )
+            },
             verificationViewModel = verificationViewModel,
         )
       }
