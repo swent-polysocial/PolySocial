@@ -10,6 +10,7 @@ import com.polysocial.model.event.MAX_DESCRIPTION_LENGTH
 import com.polysocial.model.geocoding.FakeGeocodingService
 import com.polysocial.model.geocoding.Place
 import com.polysocial.model.geocoding.ReverseGeocodeResult
+import com.polysocial.model.location.FakeLocationService
 import com.polysocial.utils.MainDispatcherRule
 import java.time.Clock
 import java.time.Instant
@@ -248,7 +249,7 @@ class CreateEventViewModelTest {
         FakeGeocodingService(
             reverseResult = ReverseGeocodeResult.Found(Place("Some street", "1003 Lausanne", pin))
         )
-    val picker = LocationPickerViewModel(geocoding)
+    val picker = LocationPickerViewModel(geocoding, FakeLocationService())
     picker.open(null)
     picker.onPinMove(pin)
     advanceUntilIdle()
