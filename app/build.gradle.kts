@@ -2,7 +2,7 @@
 // Contributors: Claude (Hilt, KSP and Hilt testing setup, JaCoCo on Hilt-rewritten classes, #70;
 // Navigation Compose dependency, #41; MockK and kotlinx-coroutines-play-services, #32; emulator
 // tests only with -Pemulator and no protobuf-lite in instrumented tests, #117; -Pemulator=all for
-// CI, #159);
+// CI, #159; unit tests in parallel forks, #192);
 // OpenAI Codex (sign-up test dependencies, review cleanup and Android UI-test MockK binding).
 import java.util.Properties
 
@@ -88,6 +88,9 @@ android {
     unitTests {
       isIncludeAndroidResources = true
       isReturnDefaultValues = true
+      // Runs test classes in parallel JVMs (2 on CI's 4 cores), which share no state. At most 4,
+      // since each Robolectric JVM needs about 1 GB and laptops also run an IDE and an emulator.
+      all { it.maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4) }
     }
   }
 
