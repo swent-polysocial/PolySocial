@@ -2,7 +2,7 @@
 // fixed uid and accountType after review, #35; @epfl.ch associations aren't students and
 // accountType values on create, association profiles not deletable by the client, #161);
 // OpenAI Codex (public/private event read rules, #52); Claude Opus 5.5 (event write rules, #47;
-// badge and locationName checks after review).
+// badge and locationName checks after review; isStudent for writes after #161).
 rules_version = '2';
 
 service cloud.firestore {
@@ -91,12 +91,11 @@ service cloud.firestore {
             && get(callerProfile()).data.get('isAssociationVerified', false) == true;
       }
 
-      // Who may create and manage events: a verified EPFL student, or an association a
-      // PolySocial admin has verified. An association account with an @epfl.ch email still
-      // needs that verification.
+      // Who may create and manage events: a student (isStudent, the same check as reads), or an
+      // association a PolySocial admin has verified. An association account with an @epfl.ch
+      // email still needs that verification.
       function canWriteEvents() {
-        return hasVerifiedEmail()
-            && (isVerifiedAssociation() || (isEpflUser() && !isAssociationAccount()));
+        return hasVerifiedEmail() && (isVerifiedAssociation() || isStudent());
       }
 
       // The limits of validateNewEvent (title, description), MAX_LOCATION_NAME_LENGTH and the
