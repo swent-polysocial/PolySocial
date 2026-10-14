@@ -1,5 +1,5 @@
 // Contributors: Claude (UI tests for opening and leaving Create Event from the Events and Map
-// tabs, #110).
+// tabs, and the created event's id reaching the Map's detail route, #110).
 package com.polysocial.ui.navigation
 
 import android.app.Application
@@ -22,6 +22,7 @@ import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.resources.C
 import com.polysocial.ui.event.create.CreateEventScreen
+import com.polysocial.ui.event.create.CreateEventStatus
 import com.polysocial.ui.event.create.CreateEventViewModel
 import com.polysocial.ui.event.create.FORM_NOW
 import com.polysocial.ui.event.create.ROLEX
@@ -46,7 +47,7 @@ import org.robolectric.annotation.Config
  * The "+" button opens Create Event inside the Events or Map tab, and every way out of it (Close,
  * system Back, "Back to map", "View event") lands on the right screen. Create Event gets its
  * ViewModel per navigation entry, as with Hilt, but built from a [FakeEventRepository]. The Map tab
- * shows the real [MapScreen] (where its "+" lives) with a loaded state and no map renderer, since
+ * shows the real [MapScreen] (where its "+" lives) with an empty state and no map renderer, since
  * the real map needs Hilt and Mapbox.
  */
 @RunWith(AndroidJUnit4::class)
@@ -131,9 +132,10 @@ class CreateEventNavigationTest {
   }
 
   /**
-   * Fills the form (the pickers open dialogs, so they're set through the ViewModel) and submits.
+   * Fills the form (the pickers open dialogs, so they're set through the ViewModel), submits, and
+   * returns the created event's id.
    */
-  private fun createEvent() {
+  private fun createEvent(): String {
     node(C.Tag.create_event_title).performTextInput("Study together")
     composeTestRule.runOnIdle {
       createEventViewModel.onCategorySelect(EventCategory.STUDY)
@@ -144,6 +146,9 @@ class CreateEventNavigationTest {
     node(C.Tag.create_event_submit).performClick()
     composeTestRule.waitForIdle()
     node(C.Tag.event_created_screen).assertIsDisplayed()
+    return composeTestRule.runOnIdle {
+      (createEventViewModel.uiState.value.status as CreateEventStatus.Created).eventId
+    }
   }
 
   @Test
@@ -353,13 +358,16 @@ class CreateEventNavigationTest {
   fun viewEventFromTheMapOpensTheEventScreenAndBackReturnsToTheMap() {
     openTab(Tab.MAP)
     openCreateEvent()
-    createEvent()
+    val eventId = createEvent()
 
     node(C.Tag.event_created_view_event).performClick()
     composeTestRule.waitForIdle()
 
     // The Map tab's placeholder detail stands in for the event detail screen until #112.
     node(C.Tag.event_detail_placeholder).assertIsDisplayed()
+    composeTestRule.runOnIdle {
+      assertEquals(eventId, navController.currentBackStackEntry?.arguments?.getString("eventId"))
+    }
     node(Tab.MAP.navItemTag).assertIsSelected()
     assertGone(C.Tag.event_created_screen)
 
