@@ -15,6 +15,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
 import java.time.LocalDate
 import java.time.ZoneId
+import java.time.format.DateTimeParseException
 import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -127,7 +128,7 @@ constructor(
   private fun select(selection: EventSelection) {
     savedState[KEY_SEARCH] = selection.search
     savedState[KEY_CATEGORIES] = ArrayList(selection.categories.map { it.name })
-    savedState[KEY_DATE] = selection.date.name
+    savedState[KEY_DATE] = selection.date.saved()
     val list = loaded?.let { listFor(it, selection) } ?: _uiState.value.list
     _uiState.value = EventsUiState(list, selection)
   }
@@ -141,9 +142,7 @@ constructor(
                   .orEmpty()
                   .mapNotNull { name -> EventCategory.entries.firstOrNull { it.name == name } }
                   .toSet(),
-          date =
-              DateChoice.entries.firstOrNull { it.name == savedState.get<String>(KEY_DATE) }
-                  ?: DateChoice.ANY,
+          date = restoreDate(savedState.get<String>(KEY_DATE)),
       )
 
   private fun observeEvents() {
@@ -180,6 +179,30 @@ constructor(
 
   /** Events from the repository, and whether they are an offline copy. */
   private class Loaded(val events: List<Event>, val isOffline: Boolean)
+
+  /** The date choice as text for the saved state: its name, or the picked day (ISO 8601). */
+  private fun DateChoice.saved(): String =
+      when (this) {
+        DateChoice.Any -> "ANY"
+        DateChoice.Today -> "TODAY"
+        DateChoice.ThisWeek -> "THIS_WEEK"
+        is DateChoice.Day -> date.toString()
+      }
+
+  /** The opposite of [saved]; anything it doesn't recognize means any day. */
+  private fun restoreDate(saved: String?): DateChoice =
+      when (saved) {
+        null,
+        "ANY" -> DateChoice.Any
+        "TODAY" -> DateChoice.Today
+        "THIS_WEEK" -> DateChoice.ThisWeek
+        else ->
+            try {
+              DateChoice.Day(LocalDate.parse(saved))
+            } catch (_: DateTimeParseException) {
+              DateChoice.Any
+            }
+      }
 
   private companion object {
     const val KEY_SEARCH = "events_search"

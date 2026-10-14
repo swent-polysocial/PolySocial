@@ -262,7 +262,7 @@ class EventsViewModelTest {
   fun today_keepsOnlyTodaysEvents() {
     val viewModel = loadedViewModel()
 
-    viewModel.selectDate(DateChoice.TODAY)
+    viewModel.selectDate(DateChoice.Today)
 
     assertEquals(listOf("Later today", "Balélec warm-up"), viewModel.shownTitles())
   }
@@ -271,12 +271,33 @@ class EventsViewModelTest {
   fun thisWeek_runsUntilSunday() {
     val viewModel = loadedViewModel()
 
-    viewModel.selectDate(DateChoice.THIS_WEEK)
+    viewModel.selectDate(DateChoice.ThisWeek)
 
     assertEquals(
         listOf("Later today", "Balélec warm-up", "Sunday climbing"),
         viewModel.shownTitles(),
     )
+  }
+
+  @Test
+  fun aPickedDay_keepsOnlyThatDay() {
+    val viewModel = loadedViewModel()
+
+    viewModel.selectDate(DateChoice.Day(today.plusDays(3)))
+
+    assertEquals(listOf("Sunday climbing"), viewModel.shownTitles())
+  }
+
+  @Test
+  fun aPickedDay_survivesTheViewModelBeingRecreated() {
+    val savedState = SavedStateHandle()
+    loadedViewModel(savedState).selectDate(DateChoice.Day(today.plusDays(4)))
+
+    val second = createViewModel(savedState)
+    runPending()
+
+    assertEquals(DateChoice.Day(today.plusDays(4)), second.uiState.value.selection.date)
+    assertEquals(listOf("Monday study"), second.shownTitles())
   }
 
   @Test
@@ -305,7 +326,7 @@ class EventsViewModelTest {
     val viewModel = loadedViewModel()
     viewModel.setSearch("study")
     viewModel.toggleCategory(EventCategory.PARTY)
-    viewModel.selectDate(DateChoice.TODAY)
+    viewModel.selectDate(DateChoice.Today)
     assertEquals(EventsListState.NoMatch(isOffline = false), viewModel.state())
 
     viewModel.clearSearchAndFilters()
@@ -320,13 +341,13 @@ class EventsViewModelTest {
     val first = loadedViewModel(savedState)
     first.setSearch("s")
     first.toggleCategory(EventCategory.SPORTS)
-    first.selectDate(DateChoice.THIS_WEEK)
+    first.selectDate(DateChoice.ThisWeek)
 
     val second = createViewModel(savedState)
     runPending()
 
     assertEquals(
-        EventSelection("s", setOf(EventCategory.SPORTS), DateChoice.THIS_WEEK),
+        EventSelection("s", setOf(EventCategory.SPORTS), DateChoice.ThisWeek),
         second.uiState.value.selection,
     )
     assertEquals(listOf("Sunday climbing"), second.shownTitles())

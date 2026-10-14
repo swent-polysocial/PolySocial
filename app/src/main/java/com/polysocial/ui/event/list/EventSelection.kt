@@ -1,4 +1,4 @@
-// Contributors: Claude (the Events tab's search and filter selection, #115).
+// Contributors: Claude (the Events tab's search and filter selection, and a picked day, #115).
 package com.polysocial.ui.event.list
 
 import com.polysocial.model.event.DateRange
@@ -8,13 +8,17 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.temporal.TemporalAdjusters
 
-/** The days the Events tab's date chips keep. */
-enum class DateChoice {
-  ANY,
-  TODAY,
+/** The days the Events tab's date filter keeps. */
+sealed interface DateChoice {
+  data object Any : DateChoice
+
+  data object Today : DateChoice
 
   /** From today until Sunday included (Figma, #113). */
-  THIS_WEEK,
+  data object ThisWeek : DateChoice
+
+  /** One day, picked among the next 14 days in the Filters sheet. */
+  data class Day(val date: LocalDate) : DateChoice
 }
 
 /**
@@ -24,7 +28,7 @@ enum class DateChoice {
 data class EventSelection(
     val search: String = "",
     val categories: Set<EventCategory> = emptySet(),
-    val date: DateChoice = DateChoice.ANY,
+    val date: DateChoice = DateChoice.Any,
 ) {
   /** The filter for this selection, with the days counted from [today]. */
   fun toFilter(today: LocalDate): EventFilter =
@@ -33,7 +37,8 @@ data class EventSelection(
 
 private fun DateChoice.toRange(today: LocalDate): DateRange? =
     when (this) {
-      DateChoice.ANY -> null
-      DateChoice.TODAY -> DateRange(today, today.plusDays(1))
-      DateChoice.THIS_WEEK -> DateRange(today, today.with(TemporalAdjusters.next(DayOfWeek.MONDAY)))
+      DateChoice.Any -> null
+      DateChoice.Today -> DateRange(today, today.plusDays(1))
+      DateChoice.ThisWeek -> DateRange(today, today.with(TemporalAdjusters.next(DayOfWeek.MONDAY)))
+      is DateChoice.Day -> DateRange(date, date.plusDays(1))
     }
