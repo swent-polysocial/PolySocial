@@ -1,7 +1,7 @@
 // Contributors: Claude (profile step screen for #34, built from the Figma "First proposal
 // revamped" Profile frames; layout that grows with large text, one save report and picker
 // accessibility after review; plain Column layout after review; exact text from the theme, and
-// Back locked while saving, #74).
+// Back locked while saving, #74; generic save error with Log out, #142).
 package com.polysocial.ui.profile
 
 import androidx.activity.compose.BackHandler
@@ -111,6 +111,7 @@ object ProfileSetupTestTags {
   const val SECTION = "profile_setup_section"
   const val YEAR = "profile_setup_year"
   const val ERROR = "profile_setup_error"
+  const val LOG_OUT = "profile_setup_log_out"
   const val CONTINUE = "profile_setup_continue"
 
   fun sectionOption(code: String) = "profile_setup_section_$code"
@@ -149,6 +150,8 @@ fun ProfileSetupScreen(
       onSectionChange = viewModel::onSectionChange,
       onYearChange = viewModel::onYearChange,
       onContinue = viewModel::onContinue,
+      // Logging out is what Back does: it signs out, and logging in again gets a fresh token.
+      onLogOut = onBack,
   )
 }
 
@@ -165,6 +168,7 @@ fun ProfileSetupContent(
     onSectionChange: (String) -> Unit,
     onYearChange: (String) -> Unit,
     onContinue: () -> Unit,
+    onLogOut: () -> Unit,
 ) {
   val typography = MaterialTheme.typography
   val saving = state.status == ProfileSetupStatus.Saving
@@ -247,8 +251,16 @@ fun ProfileSetupContent(
           PrivacyNote()
           if (state.status == ProfileSetupStatus.CouldNotSave) {
             Spacer(Modifier.height(6.dp))
-            ErrorMessage()
+            ErrorMessage(R.string.profile_could_not_save)
             Spacer(Modifier.height(50.dp))
+          } else if (state.status == ProfileSetupStatus.CouldNotSaveGeneric) {
+            // Figma "Profile · couldn't save · generic": Log out 4 dp under the message, Continue
+            // where it is on the offline frame.
+            Spacer(Modifier.height(6.dp))
+            ErrorMessage(R.string.profile_could_not_save_generic)
+            Spacer(Modifier.height(4.dp))
+            LogOutAction(onLogOut)
+            Spacer(Modifier.height(31.dp))
           } else {
             Spacer(Modifier.height(11.dp))
           }
@@ -628,7 +640,7 @@ private fun PrivacyNote() {
 }
 
 @Composable
-private fun ErrorMessage() {
+private fun ErrorMessage(@StringRes message: Int) {
   Row(
       Modifier.testTag(ProfileSetupTestTags.ERROR),
       horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -639,12 +651,26 @@ private fun ErrorMessage() {
         modifier = Modifier.padding(top = 1.dp),
     )
     Text(
-        stringResource(R.string.profile_could_not_save),
+        stringResource(message),
         style = MaterialTheme.typography.bodySmall.exact(),
         color = AccentText,
         modifier = Modifier.heightIn(min = 30.dp),
     )
   }
+}
+
+/** The generic error's action, aligned with the message's text, in the error's red. */
+@Composable
+private fun LogOutAction(onClick: () -> Unit) {
+  Text(
+      stringResource(R.string.profile_log_out),
+      style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold).exact(),
+      color = AccentText,
+      modifier =
+          Modifier.padding(start = 20.dp)
+              .clickable(role = Role.Button, onClick = onClick)
+              .testTag(ProfileSetupTestTags.LOG_OUT),
+  )
 }
 
 @Composable

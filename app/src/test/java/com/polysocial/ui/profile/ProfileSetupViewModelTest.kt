@@ -1,5 +1,6 @@
 // Contributors: Claude Opus 5.5 (wrote these tests; unverified account refused); Claude Opus 5.5
-// (testing agent: the lock after saving, no signed-in user); Claude (reset, #74).
+// (testing agent: the lock after saving, no signed-in user); Claude (reset, #74; offline vs generic
+// save errors, #142).
 package com.polysocial.ui.profile
 
 import com.polysocial.model.auth.AuthUser
@@ -201,14 +202,14 @@ class ProfileSetupViewModelTest {
   }
 
   @Test
-  fun unexpectedError_showsCouldNotSave() {
+  fun unexpectedError_showsTheGenericError() {
     profiles.createProfileResult = CreateProfileResult.UnexpectedError
     val vm = viewModel()
     vm.fill()
 
     vm.continueAndSettle()
 
-    assertEquals(ProfileSetupStatus.CouldNotSave, vm.status())
+    assertEquals(ProfileSetupStatus.CouldNotSaveGeneric, vm.status())
   }
 
   @Test
@@ -225,7 +226,7 @@ class ProfileSetupViewModelTest {
   }
 
   @Test
-  fun signedOutUser_showsCouldNotSaveWithoutARepositoryCall() {
+  fun signedOutUser_showsTheGenericErrorWithoutARepositoryCall() {
     val vm = viewModel()
     vm.fill()
     auth.user = null
@@ -233,11 +234,11 @@ class ProfileSetupViewModelTest {
     vm.continueAndSettle()
 
     assertTrue(profiles.createdProfiles.isEmpty())
-    assertEquals(ProfileSetupStatus.CouldNotSave, vm.status())
+    assertEquals(ProfileSetupStatus.CouldNotSaveGeneric, vm.status())
   }
 
   @Test
-  fun unverifiedUser_neverGetsAProfile() {
+  fun unverifiedUser_neverGetsAProfileAndSeesTheGenericError() {
     auth.user = user.copy(isEmailVerified = false)
     val vm = viewModel()
     vm.fill()
@@ -245,7 +246,7 @@ class ProfileSetupViewModelTest {
     vm.continueAndSettle()
 
     assertTrue(profiles.createdProfiles.isEmpty())
-    assertEquals(ProfileSetupStatus.CouldNotSave, vm.status())
+    assertEquals(ProfileSetupStatus.CouldNotSaveGeneric, vm.status())
   }
 
   @Test
