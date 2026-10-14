@@ -1,5 +1,6 @@
 // Contributors: Claude (logIn, logOut and currentUser for #32); OpenAI Codex
-// (GPT-6.1 Sol, medium; sign-up and display-name integration).
+// (GPT-6.1 Sol, medium; sign-up and display-name integration; verification delivery and
+// token refresh for #31).
 package com.polysocial.model.auth
 
 import com.google.firebase.FirebaseException
@@ -80,6 +81,40 @@ class FirebaseAuthRepository private constructor(authProvider: () -> FirebaseAut
       } catch (e: FirebaseException) {
         LogInResult.UnexpectedError
       }
+
+  override suspend fun sendVerificationEmail(): SendVerificationResult {
+    val user = auth.currentUser ?: return SendVerificationResult.NotSignedIn
+    return try {
+      user.sendEmailVerification().await()
+      SendVerificationResult.Sent
+    } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (_: FirebaseTooManyRequestsException) {
+      SendVerificationResult.Throttled
+    } catch (_: FirebaseNetworkException) {
+      SendVerificationResult.NetworkError
+    } catch (_: Exception) {
+      SendVerificationResult.UnexpectedError
+    }
+  }
+
+  override suspend fun reloadAndCheckVerified(): VerificationResult {
+    val user = auth.currentUser ?: return VerificationResult.NotSignedIn
+    return try {
+      user.reload().await()
+      if (auth.currentUser?.uid != user.uid) return VerificationResult.NotSignedIn
+      if (!user.isEmailVerified) return VerificationResult.Unverified
+      user.getIdToken(true).await()
+      if (auth.currentUser?.uid != user.uid) VerificationResult.NotSignedIn
+      else VerificationResult.Verified
+    } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (_: FirebaseNetworkException) {
+      VerificationResult.NetworkError
+    } catch (_: Exception) {
+      VerificationResult.UnexpectedError
+    }
+  }
 
   override fun logOut() = auth.signOut()
 

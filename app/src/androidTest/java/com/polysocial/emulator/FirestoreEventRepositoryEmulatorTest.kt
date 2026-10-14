@@ -1,11 +1,14 @@
 // Contributors: Claude (event repository read tests against the Firestore emulator, #118).
+// OpenAI Codex (adapted the event-test auth fixture to the verification contract, #31).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.LogInResult
+import com.polysocial.model.auth.SendVerificationResult
 import com.polysocial.model.auth.SignUpResult
+import com.polysocial.model.auth.VerificationResult
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.EVENTS_COLLECTION
 import com.polysocial.model.event.Event
@@ -220,6 +223,12 @@ class FirestoreEventRepositoryEmulatorTest {
 
     override suspend fun logIn(email: String, password: String): LogInResult =
         throw UnsupportedOperationException("Sign in with FirebaseEmulator.signInVerifiedUser")
+
+    override suspend fun sendVerificationEmail(): SendVerificationResult =
+        throw UnsupportedOperationException("Verification is outside this event-test fixture")
+
+    override suspend fun reloadAndCheckVerified(): VerificationResult =
+        throw UnsupportedOperationException("Verification is outside this event-test fixture")
 
     override fun logOut() = emulator.auth.signOut()
 
