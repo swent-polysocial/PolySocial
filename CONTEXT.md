@@ -1,4 +1,4 @@
-<!-- Contributors: OpenAI Codex (sign-up foundation context and review reconciliation; event visibility rules and query requirements, #52); Claude (drafted the initial content from the repository, the wiki and the Scrum Board; association accounts without an EPFL email; Security Rules and rules-test entries for #33; Create Event design update, #44; tab loading state, #43; per-tab back stacks, #42; ViewModel rule wording; profile repository and profile step, #34; users/{uid} rule and default deny, #35; reading public events, #49; verified association badge, #45; Events tab list, #105; failure-handling rule; @epfl.ch associations and accountType values, #161; event filter, #114; Firestore emulator tests, #117; disableNetwork trap, #119; emulators in CI, #159; Create Event navigation, #110). OpenAI Codex (sign-up form, startup integration, rebase reconciliation and submission Back handling; Mapbox integration and setup, #50; one-off location foundation and screen integration, #51). -->
+<!-- Contributors: written with AI assistance (Claude, OpenAI Codex) and by the team; each PR says what AI contributed. Fixed header: never edit it (see AGENTS.md, "Acknowledging AI and other sources"). -->
 
 # Project context
 
@@ -120,6 +120,7 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 
+- 2026-10-14 · `AGENTS.md` and `CONTEXT.md` keep a fixed AI header that nobody edits, so it stops causing rebase conflicts; each PR says what AI contributed. ([#187](https://github.com/swent-polysocial/PolySocial/pull/187))
 - 2026-10-13 · Events are filtered on the device over the loaded events (title search ignoring case and accents, categories OR, criteria AND, end-exclusive dates); a distance without a user location is ignored. ([#169](https://github.com/swent-polysocial/PolySocial/pull/169))
 - 2026-10-13 · Create Event opens full screen inside the Events or Map tab's graph; "View event" uses the placeholder detail until #112; the map's "+" hides while an event card is open. ([#174](https://github.com/swent-polysocial/PolySocial/pull/174))
 - 2026-10-13 · Location reads use the declared coarse permission and network provider; cancelled platform operations show Unavailable unless the caller itself is cancelled. ([#96](https://github.com/swent-polysocial/PolySocial/pull/96))
