@@ -58,6 +58,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
 import com.polysocial.model.auth.*
+import com.polysocial.model.user.MAX_DISPLAY_NAME_LENGTH
 import com.polysocial.ui.common.ErrorState
 import com.polysocial.ui.common.LoadingState
 import com.polysocial.ui.login.LoginScreen
@@ -440,7 +441,11 @@ fun SignUpScreen(
               { onBlur(field) },
           )
           if (fieldError != null) {
-            ErrorLabel(stringResource(fieldError.message()), SignUpTags.error(field))
+            // Only the too-long message has an argument, the limit; the others ignore it.
+            ErrorLabel(
+                stringResource(fieldError.message(), MAX_DISPLAY_NAME_LENGTH),
+                SignUpTags.error(field),
+            )
           }
           if (field == SignUpField.Email) {
             when {
