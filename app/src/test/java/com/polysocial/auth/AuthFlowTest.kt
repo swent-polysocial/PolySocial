@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (session loss routing and Profile placeholder in shell tests, #109).
+// Contributors: OpenAI Codex (session loss during router replacement and Profile placeholder in
+// shell tests, #109).
 // Contributors: OpenAI Codex (tested startup/session routing, profile failure recovery and system
 // Back handoffs and verification/profile integration); Claude (signed-in shell without Hilt, #105;
 // signed-out back stack, profile step, sign-out and Figma start states, #74; sign-out from
@@ -131,6 +132,42 @@ class AuthFlowTest {
         .onNodeWithTag(LoginScreenTestTags.PASSWORD)
         .assert(SemanticsMatcher.expectValue(SemanticsProperties.EditableText, AnnotatedString("")))
     assertEquals(1, auth.logOutCalls)
+  }
+
+  @Test
+  fun losingSessionDuringRouterReplacementLeavesLoadingAndIgnoresTheOldProfileRead() {
+    auth.user = user
+    profiles.getProfileResult =
+        ProfileResult.Found(UserProfile(user.uid, user.email, "Test Student", "IN", "BA1"))
+    val start = AppStartViewModel(auth, profiles)
+    val currentStart = mutableStateOf(start)
+    compose.setContent {
+      PolySocialTheme {
+        AuthFlow(signUp, { exits++ }, login, currentStart.value) {
+          Text("Signed in", Modifier.testTag("signed_in"))
+        }
+      }
+    }
+    compose.onNodeWithTag("signed_in").assertIsDisplayed()
+    val pendingProfile = CompletableDeferred<Unit>()
+    compose.runOnIdle {
+      profiles.gate = pendingProfile
+      start.refresh()
+    }
+    compose.onNodeWithTag("auth_start_loading").assertIsDisplayed()
+    compose.runOnIdle {
+      auth.user = null
+      currentStart.value = AppStartViewModel(auth, profiles)
+    }
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    compose.onNodeWithTag("auth_start_loading").assertDoesNotExist()
+    compose.runOnIdle { pendingProfile.complete(Unit) }
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    compose.onNodeWithTag("signed_in").assertDoesNotExist()
+    pressSystemBack()
+    assertEquals(1, exits)
+    assertEquals(2, profiles.getProfileCalls)
+    assertEquals(null, auth.user)
   }
 
   @Test
