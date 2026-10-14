@@ -112,6 +112,7 @@ class ProfileSetupScreenTest {
             onSectionChange = {},
             onYearChange = {},
             onContinue = {},
+            onLogOut = {},
         )
       }
     }
@@ -475,6 +476,7 @@ class ProfileSetupScreenTest {
               onSectionChange = {},
               onYearChange = {},
               onContinue = { continueCalls++ },
+              onLogOut = {},
           )
         }
       }
@@ -521,6 +523,7 @@ class ProfileSetupScreenTest {
               onSectionChange = {},
               onYearChange = {},
               onContinue = {},
+              onLogOut = {},
           )
         }
       }
