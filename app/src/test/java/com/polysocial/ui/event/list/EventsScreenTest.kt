@@ -402,6 +402,46 @@ class EventsScreenTest {
     composeTestRule.onNodeWithTag(EventsTags.card("party")).assertIsDisplayed()
   }
 
+  @Test
+  fun noMatch_clearFiltersRestoresTheFullList() {
+    val repository = FakeEventRepository()
+    val tomorrow = repository.now.plusSeconds(24 * 3600)
+    repository.seed(
+        validEvent(title = "Climbing session", startTime = tomorrow)
+            .copy(id = "climbing", category = EventCategory.SPORTS),
+        validEvent(title = "Balélec warm-up", startTime = tomorrow.plusSeconds(3600))
+            .copy(id = "party", category = EventCategory.PARTY),
+    )
+    val network =
+        object : NetworkMonitor {
+          override fun isOnline() = true
+        }
+    val viewModel =
+        EventsViewModel(
+            repository,
+            network,
+            Clock.fixed(repository.now, lausanne),
+            SavedStateHandle(),
+        )
+    composeTestRule.setContent { PolySocialTheme { EventsRoute(viewModel = viewModel) } }
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+    // A search and a category that no event has together.
+    composeTestRule.onNodeWithTag(EventsTags.SEARCH).performTextInput("climb")
+    composeTestRule.onNodeWithTag(EventsTags.chip("PARTY")).performClick()
+    composeTestRule.onNodeWithTag(EventsTags.NO_MATCH).assertIsDisplayed()
+
+    composeTestRule.onNodeWithTag(EventsTags.CLEAR_FILTERS).performClick()
+
+    composeTestRule.onNodeWithTag(EventsTags.card("climbing")).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(EventsTags.card("party")).assertIsDisplayed()
+    composeTestRule.onAllNodesWithTag(EventsTags.NO_MATCH).assertCountEquals(0)
+    // The search is empty again, so its placeholder shows.
+    composeTestRule
+        .onNodeWithTag(EventsTags.SEARCH)
+        .assertTextEquals(string(R.string.events_search_placeholder), "")
+    composeTestRule.onNodeWithTag(EventsTags.chip("ALL")).assertIsSelected()
+  }
+
   // Typing that leaves no match used to draw the field again in another branch, which lost its
   // focus and put the cursor back at the start, so the next letters went in the wrong place.
   @Test
