@@ -1,4 +1,4 @@
-// Contributors: Claude (wrote these tests, #156).
+// Contributors: Claude (wrote these tests, including the cancelled-caller clear, #156).
 package com.polysocial.model.firebase
 
 import com.google.android.gms.tasks.Task
@@ -121,17 +121,21 @@ class ResettableFirestoreProviderTest {
   }
 
   @Test
-  fun cancellingTheCaller_stillCancelsTheClear() = runTest {
-    every { first.terminate() } returns TaskCompletionSource<Void>().task
+  fun cancellingTheCallerMidTermination_stillClearsTheCacheThenCancelsTheCaller() = runTest {
+    val termination = TaskCompletionSource<Void>()
+    every { first.terminate() } returns termination.task
     provider.get()
     var result: ClearCacheResult? = null
     val clearing = launch(start = CoroutineStart.UNDISPATCHED) { result = provider.clearCache() }
 
     clearing.cancel()
+    termination.setResult(null)
     clearing.join()
 
+    verify(exactly = 1) { first.clearPersistence() }
     assertTrue(clearing.isCancelled)
     assertEquals(null, result)
+    assertSame(second, provider.get())
   }
 
   @Test

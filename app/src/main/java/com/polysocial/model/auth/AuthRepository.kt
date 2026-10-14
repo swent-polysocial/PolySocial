@@ -72,7 +72,8 @@ interface AuthRepository {
 
   /**
    * Signs out, then clears the app's offline cache so the next account on this phone can't read
-   * this one's data (#156). The next app start routes to Log in (#32).
+   * this one's data (#156). Once signed out, the cache is cleared even if the caller is cancelled
+   * meanwhile; the caller is cancelled afterwards. The next app start routes to Log in (#32).
    */
   suspend fun logOut(): LogOutResult
 

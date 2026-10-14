@@ -1,9 +1,11 @@
-// Contributors: Claude (drafted the resettable Firestore provider and its cache clearing, #156).
+// Contributors: Claude (drafted the resettable Firestore provider and its cache clearing, and
+// made a started clear finish even if its caller is cancelled, #156).
 package com.polysocial.model.firebase
 
 import com.google.firebase.FirebaseException
 import com.google.firebase.firestore.FirebaseFirestore
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -11,6 +13,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 
 /** Outcome of [FirestoreProvider.clearCache]. */
 sealed interface ClearCacheResult {
@@ -42,6 +45,10 @@ interface FirestoreProvider {
    * Terminates the current instance and deletes Firestore's offline cache (cached documents and
    * pending writes), so the next account on this phone starts empty. The next [get] returns a fresh
    * instance, even if clearing failed.
+   *
+   * Once started, the clear runs to the end even if the caller is cancelled, so a cancelled logout
+   * never leaves the next instance on the previous account's cache; the caller still gets its
+   * [CancellationException] afterwards.
    */
   suspend fun clearCache(): ClearCacheResult
 }
@@ -67,22 +74,28 @@ class ResettableFirestoreProvider(private val create: () -> FirebaseFirestore) :
     current.first { it !== db }
   }
 
-  override suspend fun clearCache(): ClearCacheResult = lock.withLock {
-    try {
-      // A cache written in an earlier app session is cleared even if nothing used it since.
-      val db = current.value ?: create()
-      current.value = null
-      db.terminate().await()
-      db.clearPersistence().await()
-      ClearCacheResult.Cleared
-    } catch (e: FirebaseException) {
-      ClearCacheResult.Failed
-    } catch (e: CancellationException) {
-      // A cancelled caller stops here; a cancelled Firebase task is a failure.
-      currentCoroutineContext().ensureActive()
-      ClearCacheResult.Failed
-    } catch (e: Exception) {
-      ClearCacheResult.Failed
-    }
+  override suspend fun clearCache(): ClearCacheResult {
+    // NonCancellable: stopping between terminate() and clearPersistence() would let the next get()
+    // open a fresh instance on the old cache, and nothing would report it.
+    val result = lock.withLock { withContext(NonCancellable) { terminateAndClear() } }
+    currentCoroutineContext().ensureActive()
+    return result
   }
+
+  private suspend fun terminateAndClear(): ClearCacheResult =
+      try {
+        // A cache written in an earlier app session is cleared even if nothing used it since.
+        val db = current.value ?: create()
+        current.value = null
+        db.terminate().await()
+        db.clearPersistence().await()
+        ClearCacheResult.Cleared
+      } catch (e: FirebaseException) {
+        ClearCacheResult.Failed
+      } catch (e: CancellationException) {
+        // The caller can't cancel this (NonCancellable), so a Firebase task was cancelled.
+        ClearCacheResult.Failed
+      } catch (e: Exception) {
+        ClearCacheResult.Failed
+      }
 }

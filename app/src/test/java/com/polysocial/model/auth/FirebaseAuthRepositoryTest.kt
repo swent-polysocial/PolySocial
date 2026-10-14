@@ -1,6 +1,6 @@
-// Contributors: Claude Opus 5.5 (wrote these tests; logout clears the offline cache, #156);
-// OpenAI Codex (GPT-6.1 Sol, medium; adapted display-name fixtures and consolidated sign-up
-// adapter tests).
+// Contributors: Claude Opus 5.5 (wrote these tests; logout clears the offline cache, even for a
+// cancelled caller, #156); OpenAI Codex (GPT-6.1 Sol, medium; adapted display-name fixtures and
+// consolidated sign-up adapter tests).
 package com.polysocial.model.auth
 
 import android.app.Application
@@ -29,10 +29,10 @@ import io.mockk.mockk
 import io.mockk.runs
 import io.mockk.slot
 import io.mockk.verify
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -161,14 +161,23 @@ class FirebaseAuthRepositoryTest {
   }
 
   @Test
-  fun logOut_cancelledWhileClearingTheCache_isCancelledButSignedOut() = runTest {
+  fun logOut_cancelledWhileClearingTheCache_finishesTheClearThenIsCancelled() = runTest {
     every { auth.signOut() } just runs
-    coEvery { firestore.clearCache() } coAnswers { awaitCancellation() }
+    val release = CompletableDeferred<Unit>()
+    var clearFinished = false
+    coEvery { firestore.clearCache() } coAnswers
+        {
+          release.await()
+          clearFinished = true
+          ClearCacheResult.Cleared
+        }
     val loggingOut = launch(start = CoroutineStart.UNDISPATCHED) { repository.logOut() }
 
     loggingOut.cancel()
+    release.complete(Unit)
     loggingOut.join()
 
+    assertTrue(clearFinished)
     assertTrue(loggingOut.isCancelled)
     verify(exactly = 1) { auth.signOut() }
   }

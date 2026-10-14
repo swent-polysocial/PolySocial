@@ -1,5 +1,6 @@
 // Contributors: Claude (logIn, logOut and currentUser for #32; clearing the offline cache on
-// logout, #156); OpenAI Codex (GPT-6.1 Sol, medium; sign-up and display-name integration).
+// logout, even when the caller is cancelled, #156); OpenAI Codex (GPT-6.1 Sol, medium; sign-up
+// and display-name integration).
 package com.polysocial.model.auth
 
 import com.google.firebase.FirebaseException
@@ -15,7 +16,11 @@ import com.google.firebase.auth.UserProfileChangeRequest
 import com.polysocial.model.firebase.ClearCacheResult
 import com.polysocial.model.firebase.FirestoreProvider
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 
 /**
  * [AuthRepository] backed by Firebase Authentication. FirebaseAuth is resolved on the first
@@ -91,10 +96,17 @@ private constructor(
   /**
    * Signs out before clearing the cache, so a failed clear never keeps the user signed in, and a
    * read still running for this user can't refill the cache once it's cleared.
+   *
+   * Once signed out, the cache is always cleared, even if the caller is cancelled meanwhile (for
+   * example when the screen that started the logout closes); the caller is still cancelled after
+   * the clear ends.
    */
   override suspend fun logOut(): LogOutResult {
     auth.signOut()
-    return when (firestore.clearCache()) {
+    // NonCancellable also covers waiting for the provider's lock, before the clear starts.
+    val cleared = withContext(NonCancellable) { firestore.clearCache() }
+    currentCoroutineContext().ensureActive()
+    return when (cleared) {
       ClearCacheResult.Cleared -> LogOutResult.Success
       ClearCacheResult.Failed -> LogOutResult.CacheNotCleared
     }
