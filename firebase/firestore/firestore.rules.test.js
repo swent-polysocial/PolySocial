@@ -1,4 +1,4 @@
-// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge and locationName tests after review).
+// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName and profile-delete tests after review).
 const { after, before, beforeEach, test } = require("node:test");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
@@ -970,6 +970,16 @@ test("an unverified association account with an @epfl.ch email can't create even
     });
   });
   const db = firestoreAs("club@epfl.ch", true, "epflClub");
+  await assertFails(setDoc(doc(db, "events/new"), eventBy("epflClub")));
+});
+
+test("an unverified @epfl.ch association can't delete its profile to create events as a student", async () => {
+  // Without its users/{uid}, the account would count as a student (reported in the review of
+  // #102; the profile delete is denied since #161).
+  await seedEpflAssociation("epflClub", false);
+  const db = epflAssociationDb("epflClub");
+
+  await assertFails(deleteDoc(doc(db, "users/epflClub")));
   await assertFails(setDoc(doc(db, "events/new"), eventBy("epflClub")));
 });
 
