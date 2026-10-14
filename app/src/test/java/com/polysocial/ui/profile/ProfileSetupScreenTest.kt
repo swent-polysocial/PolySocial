@@ -1,9 +1,8 @@
 // Contributors: Claude Opus 5.5 (wrote these tests; large font scale, layout at the default font
 // size, one save report after rotation, picker accessibility); Claude Opus 5.5 (testing agent:
-// double tap, blocked
-// Continue, existing profile, error retry and picker menu behaviour); Claude (Back locked while
-// saving, #74); Claude Opus 5.5 (testing agent: generic save error tests, #142); Claude (Log out
-// touch area, #142).
+// double tap, blocked Continue, existing profile, error retry and picker menu behaviour); Claude
+// (Back locked while saving, #74); Claude Opus 5.5 (testing agent: generic save error tests,
+// #142); Claude (Log out touch area and test tidying after review, #142).
 package com.polysocial.ui.profile
 
 import android.app.Application
@@ -89,6 +88,11 @@ class ProfileSetupScreenTest {
   private var backCalls = 0
   private var savedCalls = 0
 
+  // What ProfileSetupContent reports when shown with setContent.
+  private var contentBackCalls = 0
+  private var contentContinueCalls = 0
+  private var contentLogOutCalls = 0
+
   private fun string(id: Int) =
       ApplicationProvider.getApplicationContext<Application>().getString(id)
 
@@ -115,12 +119,12 @@ class ProfileSetupScreenTest {
       PolySocialTheme {
         ProfileSetupContent(
             state = state,
-            onBack = {},
+            onBack = { contentBackCalls++ },
             onDisplayNameChange = {},
             onSectionChange = {},
             onYearChange = {},
-            onContinue = {},
-            onLogOut = {},
+            onContinue = { contentContinueCalls++ },
+            onLogOut = { contentLogOutCalls++ },
         )
       }
     }
@@ -406,19 +410,6 @@ class ProfileSetupScreenTest {
   }
 
   @Test
-  fun offline_showsNoLogOut() {
-    profiles.createProfileResult = CreateProfileResult.NetworkError
-    setScreen()
-    pickSectionAndYear()
-
-    node(ProfileSetupTestTags.CONTINUE).performClick()
-    composeTestRule.waitForIdle()
-
-    node(ProfileSetupTestTags.ERROR).assertExists()
-    node(ProfileSetupTestTags.LOG_OUT).assertDoesNotExist()
-  }
-
-  @Test
   fun genericError_editingHidesTheErrorAndLogOut() {
     profiles.createProfileResult = CreateProfileResult.UnexpectedError
     setScreen()
@@ -509,27 +500,6 @@ class ProfileSetupScreenTest {
     node(ProfileSetupTestTags.ERROR).assert(shows(string(R.string.profile_could_not_save)))
   }
 
-  private var continueCalls = 0
-  private var logOutCalls = 0
-  private var contentBackCalls = 0
-
-  /** Like [setContent], but counting each callback. */
-  private fun setCountingContent(state: ProfileSetupUiState) {
-    composeTestRule.setContent {
-      PolySocialTheme {
-        ProfileSetupContent(
-            state = state,
-            onBack = { contentBackCalls++ },
-            onDisplayNameChange = {},
-            onSectionChange = {},
-            onYearChange = {},
-            onContinue = { continueCalls++ },
-            onLogOut = { logOutCalls++ },
-        )
-      }
-    }
-  }
-
   @Test
   fun couldNotSave_hasNoLogOut() {
     setContent(filled.copy(status = ProfileSetupStatus.CouldNotSave))
@@ -551,7 +521,7 @@ class ProfileSetupScreenTest {
 
   @Test
   fun couldNotSaveGeneric_showsTheGenericMessageAndLogOut() {
-    setCountingContent(filled.copy(status = ProfileSetupStatus.CouldNotSaveGeneric))
+    setContent(filled.copy(status = ProfileSetupStatus.CouldNotSaveGeneric))
 
     node(ProfileSetupTestTags.ERROR)
         .assert(shows(string(R.string.profile_could_not_save_generic)))
@@ -572,23 +542,23 @@ class ProfileSetupScreenTest {
 
   @Test
   fun couldNotSaveGeneric_logOutCallsOnlyOnLogOut() {
-    setCountingContent(filled.copy(status = ProfileSetupStatus.CouldNotSaveGeneric))
+    setContent(filled.copy(status = ProfileSetupStatus.CouldNotSaveGeneric))
 
     node(ProfileSetupTestTags.LOG_OUT).performScrollTo().performClick()
 
-    assertEquals(1, logOutCalls)
+    assertEquals(1, contentLogOutCalls)
     assertEquals(0, contentBackCalls)
-    assertEquals(0, continueCalls)
+    assertEquals(0, contentContinueCalls)
   }
 
   @Test
   fun couldNotSaveGeneric_continueRetriesWithoutLoggingOut() {
-    setCountingContent(filled.copy(status = ProfileSetupStatus.CouldNotSaveGeneric))
+    setContent(filled.copy(status = ProfileSetupStatus.CouldNotSaveGeneric))
 
     node(ProfileSetupTestTags.CONTINUE).performScrollTo().performClick()
 
-    assertEquals(1, continueCalls)
-    assertEquals(0, logOutCalls)
+    assertEquals(1, contentContinueCalls)
+    assertEquals(0, contentLogOutCalls)
   }
 
   @Test
