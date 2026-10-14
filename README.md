@@ -1,3 +1,4 @@
+<!-- Contributors: OpenAI Codex (Firebase-managed Google account linking clarification, #106). -->
 <!-- Contributors: OpenAI Codex (Google provider and keystore setup for #106). -->
 <!-- Contributors: Claude (drafted the README structure, Setup, Running and testing, Tech stack and Project links sections; Firestore index deployment, #49; Firestore emulator tests, #117); OpenAI Codex (documented startup routing and rebase reconciliation); OpenAI Codex (Mapbox integration and setup, #50; one-off Map location privacy note, #51). -->
 <!-- Contributors: OpenAI Codex (verification startup integration and Back sign-out, #31). -->
@@ -113,7 +114,7 @@ For the CI APK to show the map, a repository maintainer must configure the GitHu
 
 ### Google sign-in setup
 
-In Firebase console → Authentication → Sign-in method, enable **Google** and select a support email. Keep **one account per email address** enabled: Firebase can link compatible providers to the same UID, while a provider collision requires signing in with the original method first. Never delete or recreate an existing account to resolve a collision. A Google-only account cannot sign up again with the same email; Firebase password reset can add a password (the in-app Forgot password flow is a separate task).
+In Firebase console → Authentication → Sign-in method, enable **Google** and select a support email. Keep **one account per email address** enabled: Firebase manages compatible provider linking and returns the existing UID. The owner confirmed automatic linking for EPFL Google accounts through EPFL SSO; the app uses Firebase's returned identity without a separate linking screen or provider lookup. A Google-only account cannot sign up again with the same email; Firebase password reset can add a password (the in-app Forgot password flow is a separate task).
 
 In Project settings → Your apps → `com.polysocial`, register the **SHA-1 fingerprints of every teammate's debug keystore, CI keystore, and release/Play signing keystore**. Use `./gradlew signingReport` to obtain local fingerprints; do not commit keystores. Download a fresh `app/google-services.json` after enabling Google and registering fingerprints, and update the existing CI secret through the repository owner. Its OAuth configuration generates `default_web_client_id` (the **Web** client ID, not the Android client ID). The config must contain the Web OAuth client before building Google sign-in. If `default_web_client_id` is missing at compilation, download the updated config; do not hardcode a client ID or commit the config.
 

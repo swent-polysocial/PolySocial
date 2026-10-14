@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (Google credential service and typed outcomes for #106);
+// Contributors: OpenAI Codex (Google credential service and typed outcomes; removed collision
+// outcome for #106);
 // Android Developers (Credential Manager button-flow API reference).
 package com.polysocial.model.auth
 
@@ -21,8 +22,6 @@ sealed interface GoogleSignInResult {
   data object Cancelled : GoogleSignInResult
 
   data class NotEpfl(val account: GoogleAccount) : GoogleSignInResult
-
-  data class OtherSignInMethod(val account: GoogleAccount) : GoogleSignInResult
 
   data object NetworkError : GoogleSignInResult
 

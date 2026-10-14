@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (offline Google authentication regression tests for #106).
+// Contributors: OpenAI Codex (offline Google authentication and Firebase-managed account regression
+// tests for #106).
 package com.polysocial.model.auth
 
 import android.app.Application
@@ -9,7 +10,7 @@ import com.google.android.gms.tasks.Tasks
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.auth.AuthResult
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.FirebaseAuthUserCollisionException
+import com.google.firebase.auth.FirebaseAuthException
 import com.google.firebase.auth.FirebaseUser
 import io.mockk.coEvery
 import io.mockk.every
@@ -66,7 +67,10 @@ class GoogleAuthRepositoryTest {
         GoogleSignInResult.Success(AuthUser("existing", account.email, true, account.displayName)),
         repository.signInWithGoogle(context),
     )
-    verify(exactly = 0) { auth.signOut() }
+    verify(exactly = 0) {
+      auth.signOut()
+      auth.createUserWithEmailAndPassword(any(), any())
+    }
   }
 
   @Test
@@ -136,16 +140,11 @@ class GoogleAuthRepositoryTest {
   }
 
   @Test
-  fun collisionDoesNotReplaceOrLinkExistingAccount() = runTest {
+  fun firebaseFailureIsRecoverableWithoutCreatingAnotherAccount() = runTest {
     every { auth.signInWithCredential(any()) } returns
-        Tasks.forException(
-            FirebaseAuthUserCollisionException(
-                "ERROR_ACCOUNT_EXISTS_WITH_DIFFERENT_CREDENTIAL",
-                "test",
-            )
-        )
+        Tasks.forException(FirebaseAuthException("ERROR_INTERNAL_ERROR", "test"))
     assertEquals(
-        GoogleSignInResult.OtherSignInMethod(account),
+        GoogleSignInResult.UnexpectedError,
         repository.signInWithGoogle(context),
     )
     verify(exactly = 1) { auth.signOut() }

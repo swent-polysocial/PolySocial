@@ -1,4 +1,4 @@
-// Contributors: OpenAI Codex (verified EPFL Google sign-in and provider-collision handling).
+// Contributors: OpenAI Codex (verified EPFL Google sign-in; Firebase-managed account linking).
 // Contributors: Claude (logIn, logOut and currentUser for #32); OpenAI Codex
 // (GPT-6.1 Sol, medium; sign-up and display-name integration; verification delivery and
 // token refresh for #31);
@@ -44,10 +44,8 @@ private constructor(
   constructor() : this({ FirebaseAuth.getInstance() }, AndroidGoogleCredentialSource())
 
   override suspend fun signInWithGoogle(context: Context): GoogleSignInResult {
-    var selected: GoogleAccount? = null
     return try {
       val google = googleCredentials.get(context)
-      selected = google.account
       // Reject before Firebase can create an account. This is only a preliminary check;
       // Firebase validates the token and the resulting identity is checked again below.
       if (!isEpflEmail(google.account.email) || !google.account.email.endsWith("@epfl.ch")) {
@@ -74,12 +72,6 @@ private constructor(
       GoogleSignInResult.Success(user.snapshot())
     } catch (_: GetCredentialCancellationException) {
       GoogleSignInResult.Cancelled
-    } catch (_: FirebaseAuthUserCollisionException) {
-      // Never merge accounts based on an email alone. The original provider must authenticate
-      // the existing account before explicit linking is possible; keep that account unchanged.
-      auth.signOut()
-      selected?.let { GoogleSignInResult.OtherSignInMethod(it) }
-          ?: GoogleSignInResult.UnexpectedError
     } catch (_: FirebaseNetworkException) {
       auth.signOut()
       GoogleSignInResult.NetworkError
