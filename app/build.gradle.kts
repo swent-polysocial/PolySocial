@@ -2,7 +2,7 @@
 // Contributors: Claude (Hilt, KSP and Hilt testing setup, JaCoCo on Hilt-rewritten classes, #70;
 // Navigation Compose dependency, #41; MockK and kotlinx-coroutines-play-services, #32; emulator
 // tests only with -Pemulator and no protobuf-lite in instrumented tests, #117; -Pemulator=all for
-// CI, #159; unit tests in parallel forks, #192);
+// CI, #159; unit tests in parallel forks and coverage of sharded device tests, #192);
 // OpenAI Codex (sign-up test dependencies, review cleanup and Android UI-test MockK binding).
 import java.util.Properties
 
@@ -276,7 +276,8 @@ tasks.register("jacocoTestReport", JacocoReport::class) {
   executionData.setFrom(
       fileTree(project.layout.buildDirectory.get()) {
         include("outputs/unit_test_code_coverage/debugUnitTest/testDebugUnitTest.exec")
-        include("outputs/code_coverage/debugAndroidTest/connected/*/coverage.ec")
+        // At any depth: CI puts each shard's coverage of the device tests in its own folder
+        include("outputs/code_coverage/debugAndroidTest/connected/**/coverage.ec")
       }
   )
 }
