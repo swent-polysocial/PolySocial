@@ -1,7 +1,8 @@
 // Contributors: OpenAI Codex (profile reset and account isolation regression for #107).
 // Contributors: Claude Opus 5.5 (wrote these tests; unverified account refused); Claude Opus 5.5
 // (testing agent: the lock after saving, no signed-in user); Claude (reset, #74; offline vs generic
-// save errors, #142); Claude Opus 5.5 (testing agent: generic save error tests, #142).
+// save errors, #142); Claude Opus 5.5 (testing agent: generic save error tests, #142); Claude (the
+// full name's limit, written test-first, #143).
 package com.polysocial.ui.profile
 
 import com.polysocial.model.auth.AuthUser
@@ -9,6 +10,7 @@ import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.user.AccountType
 import com.polysocial.model.user.CreateProfileResult
 import com.polysocial.model.user.FakeUserProfileRepository
+import com.polysocial.model.user.MAX_DISPLAY_NAME_LENGTH
 import com.polysocial.model.user.UserProfile
 import com.polysocial.utils.MainDispatcherRule
 import kotlinx.coroutines.CompletableDeferred
@@ -44,6 +46,70 @@ class ProfileSetupViewModelTest {
   }
 
   private fun ProfileSetupViewModel.status() = uiState.value.status
+
+  // ---- The full name's limit (#143) ----
+
+  @Test
+  fun aNameOverTheLimit_isFlaggedBlocksContinueAndIsNeverSaved() {
+    val vm = viewModel()
+    vm.fill()
+    vm.onDisplayNameChange("a".repeat(MAX_DISPLAY_NAME_LENGTH + 1))
+
+    assertTrue(vm.uiState.value.nameTooLong)
+    assertFalse(vm.uiState.value.canContinue)
+    vm.continueAndSettle()
+
+    assertTrue(profiles.createdProfiles.isEmpty())
+    assertEquals(ProfileSetupStatus.Editing, vm.status())
+  }
+
+  @Test
+  fun aNameAtTheLimit_isSavedTrimmed() {
+    val atTheLimit = "a".repeat(MAX_DISPLAY_NAME_LENGTH)
+    val vm = viewModel()
+    vm.fill()
+    vm.onDisplayNameChange("  $atTheLimit ")
+
+    assertFalse(vm.uiState.value.nameTooLong)
+    assertTrue(vm.uiState.value.canContinue)
+    vm.continueAndSettle()
+
+    assertEquals(atTheLimit, profiles.createdProfiles.single().displayName)
+    assertEquals(ProfileSetupStatus.Saved, vm.status())
+  }
+
+  @Test
+  fun aPrefilledNameOverTheLimit_isFlaggedFromTheStart() {
+    // For example a long name kept by the account from sign-up or Google.
+    auth.user = user.copy(displayName = "b".repeat(MAX_DISPLAY_NAME_LENGTH + 5))
+    val vm = viewModel()
+    vm.fill()
+
+    assertTrue(vm.uiState.value.nameTooLong)
+    assertFalse(vm.uiState.value.canContinue)
+  }
+
+  @Test
+  fun shorteningTheName_clearsTheFlagAndAllowsContinue() {
+    val vm = viewModel()
+    vm.fill()
+    vm.onDisplayNameChange("a".repeat(MAX_DISPLAY_NAME_LENGTH + 1))
+
+    vm.onDisplayNameChange("a".repeat(MAX_DISPLAY_NAME_LENGTH))
+
+    assertFalse(vm.uiState.value.nameTooLong)
+    assertTrue(vm.uiState.value.canContinue)
+  }
+
+  @Test
+  fun aBlankName_isNotTooLong_butStillCannotContinue() {
+    val vm = viewModel()
+    vm.fill()
+    vm.onDisplayNameChange(" ".repeat(80))
+
+    assertFalse(vm.uiState.value.nameTooLong)
+    assertFalse(vm.uiState.value.canContinue)
+  }
 
   @Test
   fun initialState_prefillsTheNameAndVerifiedEmailAndCannotContinue() {
