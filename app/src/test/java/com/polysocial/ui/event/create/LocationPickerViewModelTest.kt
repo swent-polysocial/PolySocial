@@ -1,4 +1,5 @@
-// Contributors: Claude (drafted the location picker ViewModel tests, #111).
+// Contributors: Claude (drafted the location picker ViewModel tests, #111; timings from
+// SETTLE_DELAY after review).
 package com.polysocial.ui.event.create
 
 import com.polysocial.model.event.Coordinates
@@ -6,6 +7,7 @@ import com.polysocial.model.geocoding.FakeGeocodingService
 import com.polysocial.model.geocoding.Place
 import com.polysocial.model.geocoding.PlaceSearchResult
 import com.polysocial.model.geocoding.ReverseGeocodeResult
+import com.polysocial.ui.event.create.LocationPickerViewModel.Companion.SETTLE_DELAY
 import com.polysocial.utils.MainDispatcherRule
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.CompletableDeferred
@@ -32,7 +34,7 @@ class LocationPickerViewModelTest {
 
   /** Runs the lookup started by the last pin move, which waits for the map to settle first. */
   private fun TestScope.settle() {
-    advanceTimeBy(500.milliseconds)
+    advanceTimeBy(SETTLE_DELAY)
     runCurrent()
   }
 
@@ -240,7 +242,7 @@ class LocationPickerViewModelTest {
     geocoding.reverseResult = ReverseGeocodeResult.Found(OTHER)
     viewModel.open(INITIAL)
     viewModel.onPinMove(ELSEWHERE)
-    advanceTimeBy(100.milliseconds)
+    advanceTimeBy(SETTLE_DELAY / 2)
 
     viewModel.onResultSelect(LEARNING_CENTER)
     advanceUntilIdle()
@@ -300,7 +302,7 @@ class LocationPickerViewModelTest {
     viewModel.open(INITIAL)
     viewModel.onPinMove(ELSEWHERE)
 
-    advanceTimeBy(499.milliseconds)
+    advanceTimeBy(SETTLE_DELAY - 1.milliseconds)
     runCurrent()
     assertTrue(geocoding.reverses.isEmpty())
 
@@ -319,9 +321,9 @@ class LocationPickerViewModelTest {
     viewModel.open(INITIAL)
 
     viewModel.onPinMove(ELSEWHERE)
-    advanceTimeBy(400.milliseconds)
+    advanceTimeBy(SETTLE_DELAY - 100.milliseconds)
     viewModel.onPinMove(second)
-    advanceTimeBy(499.milliseconds)
+    advanceTimeBy(SETTLE_DELAY - 1.milliseconds)
     viewModel.onPinMove(third)
     advanceUntilIdle()
 
