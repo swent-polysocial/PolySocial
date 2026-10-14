@@ -1,6 +1,6 @@
 // Contributors: Claude Opus 5.5 (wrote these tests; unverified account refused); Claude Opus 5.5
 // (testing agent: the lock after saving, no signed-in user); Claude (reset, #74; offline vs generic
-// save errors, #142).
+// save errors, #142); Claude Opus 5.5 (testing agent: generic save error tests, #142).
 package com.polysocial.ui.profile
 
 import com.polysocial.model.auth.AuthUser
@@ -210,6 +210,60 @@ class ProfileSetupViewModelTest {
     vm.continueAndSettle()
 
     assertEquals(ProfileSetupStatus.CouldNotSaveGeneric, vm.status())
+  }
+
+  @Test
+  fun unexpectedError_keepsContinueEnabledAndARetryCanSucceed() {
+    profiles.createProfileResult = CreateProfileResult.UnexpectedError
+    val vm = viewModel()
+    vm.fill()
+    vm.continueAndSettle()
+    assertEquals(ProfileSetupStatus.CouldNotSaveGeneric, vm.status())
+    assertTrue(vm.uiState.value.canContinue)
+
+    profiles.createProfileResult = CreateProfileResult.Created
+    vm.continueAndSettle()
+
+    assertEquals(2, profiles.createdProfiles.size)
+    assertEquals(ProfileSetupStatus.Saved, vm.status())
+  }
+
+  @Test
+  fun unverifiedUser_continueStaysEnabledAndSavesOnceTheAccountIsVerified() {
+    auth.user = user.copy(isEmailVerified = false)
+    val vm = viewModel()
+    vm.fill()
+    vm.continueAndSettle()
+    assertEquals(ProfileSetupStatus.CouldNotSaveGeneric, vm.status())
+    assertTrue(vm.uiState.value.canContinue)
+
+    auth.user = user
+    vm.continueAndSettle()
+
+    assertEquals(1, profiles.createdProfiles.size)
+    assertEquals(ProfileSetupStatus.Saved, vm.status())
+  }
+
+  @Test
+  fun editingAfterTheGenericError_clearsIt() {
+    profiles.createProfileResult = CreateProfileResult.UnexpectedError
+    val vm = viewModel()
+    vm.fill()
+
+    for (edit in
+        listOf<ProfileSetupViewModel.() -> Unit>(
+            { onDisplayNameChange("New Name") },
+            { onSectionChange("SC") },
+            { onYearChange("MA1") },
+        )) {
+      vm.continueAndSettle()
+      assertEquals(ProfileSetupStatus.CouldNotSaveGeneric, vm.status())
+      vm.edit()
+      assertEquals(ProfileSetupStatus.Editing, vm.status())
+    }
+    assertEquals("New Name", vm.uiState.value.displayName)
+    assertEquals("SC", vm.uiState.value.section)
+    assertEquals("MA1", vm.uiState.value.year)
   }
 
   @Test
