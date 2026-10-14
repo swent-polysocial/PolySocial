@@ -50,6 +50,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.polysocial.R
+import com.polysocial.model.event.DEFAULT_UPCOMING_WINDOW_DAYS
 import com.polysocial.model.event.EventCategory
 import com.polysocial.ui.event.style
 import com.polysocial.ui.theme.Bg
@@ -204,7 +205,10 @@ private fun DateSection(date: DateChoice, today: LocalDate, onSelectDate: (DateC
   }
 }
 
-/** Figma's "Next 14 days": one 48 × 60 dp tile per day, from [today]. */
+/**
+ * Figma's "Next 14 days": one 48 × 60 dp tile per day, from [today], over the days the tab loads
+ * ([DEFAULT_UPCOMING_WINDOW_DAYS]).
+ */
 @Composable
 private fun DayStrip(picked: LocalDate?, today: LocalDate, onPick: (LocalDate) -> Unit) {
   LazyRow(
@@ -212,7 +216,10 @@ private fun DayStrip(picked: LocalDate?, today: LocalDate, onPick: (LocalDate) -
       contentPadding = PaddingValues(horizontal = 20.dp),
       horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
-    items((0L until DAYS_TO_PICK).map { today.plusDays(it) }, { it.toEpochDay() }) { day ->
+    items(
+        (0L until DEFAULT_UPCOMING_WINDOW_DAYS).map { today.plusDays(it) },
+        { it.toEpochDay() },
+    ) { day ->
       DayTile(day, selected = day == picked) { onPick(day) }
     }
   }
@@ -394,9 +401,6 @@ private fun Buttons(shownCount: Int, onClear: () -> Unit, onShow: () -> Unit) {
     }
   }
 }
-
-/** Figma's 14-day strip, today included. */
-private const val DAYS_TO_PICK = 14L
 
 /** "Sat" above the day's number. */
 private val weekdayFormat = DateTimeFormatter.ofPattern("EEE")
