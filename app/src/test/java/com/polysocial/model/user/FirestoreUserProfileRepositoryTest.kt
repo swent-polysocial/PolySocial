@@ -1,5 +1,5 @@
 // Contributors: Claude Opus 5.5 (wrote these tests; cancelled tasks and wrong-typed fields);
-// Claude (isAssociationVerified tests, #45).
+// Claude (isAssociationVerified tests, #45; unexpected failures and cancelled writes, #182).
 package com.polysocial.model.user
 
 import com.google.android.gms.tasks.TaskCompletionSource
@@ -351,6 +351,62 @@ class FirestoreUserProfileRepositoryTest {
     every { ref.get() } returns TaskCompletionSource<DocumentSnapshot>().task
     var result: ProfileResult? = null
     val call = launch(start = CoroutineStart.UNDISPATCHED) { result = repository.getProfile("u1") }
+
+    call.cancel()
+    call.join()
+
+    assertTrue(call.isCancelled)
+    assertEquals(null, result)
+  }
+
+  // ---- Unexpected failures (#182) ----
+
+  /** What Firestore throws when it is used after being shut down: not a FirebaseException. */
+  private fun terminated() = IllegalStateException("The client has already been terminated")
+
+  @Test
+  fun getProfile_unexpectedException_returnsUnexpectedError() = runTest {
+    every { ref.get() } throws terminated()
+
+    assertEquals(ProfileResult.UnexpectedError, repository.getProfile("u1"))
+  }
+
+  @Test
+  fun createProfile_unexpectedException_returnsUnexpectedError() = runTest {
+    every { db.runTransaction(any<Transaction.Function<Boolean>>()) } throws terminated()
+
+    assertEquals(CreateProfileResult.UnexpectedError, repository.createProfile(profile))
+  }
+
+  @Test
+  fun updateProfile_unexpectedFailureOfTheTask_returnsUnexpectedError() = runTest {
+    transactionsFail(IllegalArgumentException("not a valid document"))
+
+    assertEquals(UpdateProfileResult.UnexpectedError, repository.updateProfile(profile))
+  }
+
+  @Test
+  fun createProfile_cancellingTheCaller_stillCancelsTheCall() = runTest {
+    every { db.runTransaction(any<Transaction.Function<Boolean>>()) } returns
+        TaskCompletionSource<Boolean>().task
+    var result: CreateProfileResult? = null
+    val call =
+        launch(start = CoroutineStart.UNDISPATCHED) { result = repository.createProfile(profile) }
+
+    call.cancel()
+    call.join()
+
+    assertTrue(call.isCancelled)
+    assertEquals(null, result)
+  }
+
+  @Test
+  fun updateProfile_cancellingTheCaller_stillCancelsTheCall() = runTest {
+    every { db.runTransaction(any<Transaction.Function<Boolean>>()) } returns
+        TaskCompletionSource<Boolean>().task
+    var result: UpdateProfileResult? = null
+    val call =
+        launch(start = CoroutineStart.UNDISPATCHED) { result = repository.updateProfile(profile) }
 
     call.cancel()
     call.join()

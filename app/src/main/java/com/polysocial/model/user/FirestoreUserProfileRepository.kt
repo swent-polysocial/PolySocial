@@ -1,5 +1,6 @@
 // Contributors: Claude (Firestore profile repository, #34; cancelled tasks and wrong-typed fields
-// reported as errors after review; reading isAssociationVerified, #45).
+// reported as errors after review; reading isAssociationVerified, #45; other unexpected failures
+// reported as errors, #182).
 package com.polysocial.model.user
 
 import com.google.firebase.FirebaseException
@@ -71,8 +72,9 @@ class FirestoreUserProfileRepository(private val db: FirebaseFirestore) : UserPr
 
 /**
  * Runs [call] and turns its failures into results, so the caller never hangs on "saving": offline
- * becomes [offline]; any other Firebase failure, or a Firebase task cancelled while the caller is
- * still running, becomes [failed]. Cancelling the caller's coroutine still cancels it.
+ * becomes [offline]; any other Firebase failure, a Firebase task cancelled while the caller is
+ * still running, or any other exception (for example a Firestore client that was shut down) becomes
+ * [failed]. Cancelling the caller's coroutine still cancels it.
  */
 private suspend fun <T> reportFailures(offline: T, failed: T, call: suspend () -> T): T =
     try {
@@ -81,6 +83,8 @@ private suspend fun <T> reportFailures(offline: T, failed: T, call: suspend () -
       if (e.isOffline()) offline else failed
     } catch (e: CancellationException) {
       currentCoroutineContext().ensureActive()
+      failed
+    } catch (e: Exception) {
       failed
     }
 
