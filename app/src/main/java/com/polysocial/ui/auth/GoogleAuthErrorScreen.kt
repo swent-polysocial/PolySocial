@@ -1,5 +1,5 @@
 // Contributors: Figma mockup (Google error-screen layout); OpenAI Codex (responsive Compose
-// translation, provider-conflict wording and recovery actions for #107).
+// translation and recovery actions; removed collision UI for #107).
 package com.polysocial.ui.auth
 
 import androidx.compose.foundation.Image
@@ -71,26 +71,22 @@ fun GoogleAuthErrorScreen(result: GoogleSignInResult, onBack: () -> Unit, onRetr
   val account =
       when (result) {
         is GoogleSignInResult.NotEpfl -> result.account
-        is GoogleSignInResult.OtherSignInMethod -> result.account
         else -> null
       }
   val title =
       when (result) {
         is GoogleSignInResult.NotEpfl -> R.string.google_not_epfl_title
-        is GoogleSignInResult.OtherSignInMethod -> R.string.google_other_method_title
         else -> R.string.google_sign_in_error_title
       }
   val message =
       when (result) {
         is GoogleSignInResult.NotEpfl -> R.string.google_not_epfl_message
-        is GoogleSignInResult.OtherSignInMethod -> R.string.google_other_method_message
         GoogleSignInResult.NetworkError -> R.string.google_network_error
         else -> R.string.google_unexpected_error
       }
   val footnote =
       when (result) {
         is GoogleSignInResult.NotEpfl -> R.string.google_not_epfl_footnote
-        is GoogleSignInResult.OtherSignInMethod -> R.string.google_other_method_footnote
         else -> null
       }
   BoxWithConstraints(

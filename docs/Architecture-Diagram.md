@@ -1,3 +1,4 @@
+<!-- Contributors: OpenAI Codex (removed obsolete Google collision UI, #107). -->
 <!-- Contributors: OpenAI Codex (Firebase-managed account linking clarification, #106). -->
 <!-- Contributors: OpenAI Codex (Google entry routing for #107). -->
 <!-- Contributors: OpenAI Codex (Google authentication architecture for #106; preserved contributor acknowledgments during rebase). -->
@@ -397,7 +398,7 @@ Every PR that changes rules follows the process in `AGENTS.md`: "Changes Securit
 
 ## 7. Design decisions
 
-- **Google entry (#107):** Welcome and Log in share typed Google outcomes and responsive error UI. Verified users use the existing profile lookup; missing profiles enter the existing form with Google name/email prefilled. Profile-save completion opens the app without a second read; Back is locked during saving. Error Back restores the initiating auth screen. The provider-conflict copy refers to the original sign-in method, because Profile-tab linking is not built.
+- **Google entry (#107):** Welcome and Log in share typed Google outcomes and responsive error UI. Verified users use the existing profile lookup; missing profiles enter the existing form with Google name/email prefilled. Profile-save completion opens the app without a second read; Back is locked during saving. Error Back restores the initiating auth screen. Google relies on Firebase-managed account linking; errors show non-EPFL guidance or a generic recoverable failure.
 
 - **Google sign-in (#106):** both entry buttons use Credential Manager through the auth repository. Invalid domains are rejected before Firebase account creation; Firebase validates the token and verified exact `@epfl.ch` identity before profile access. Firebase manages compatible account linking; the owner confirmed automatic linking for EPFL Google accounts through EPFL SSO. Use Firebase's returned UID without client-side linking or a dedicated collision flow.
 

@@ -101,7 +101,7 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 
 Closed issues keep their original text, so where one disagrees with this section, this section wins. #31 still names a shared `AuthViewModel`; follow "Names fixed by Sprint 1 issues" above.
 
-- **Google entry (#107):** new verified Google users enter the existing profile form with name/email prefilled; existing users use the shared startup profile lookup. Error screens use two columns in wide, short windows, like Verify Email (#99), and Back returns to the original auth screen. Cancellation is silent. Provider-conflict wording directs users to their original method, because linking in the Profile tab is not implemented. The real profile form replaces the startup marker here; broader navigation/reset work in #144 and Verify Email #99 still need reconciliation when those PRs land.
+- **Google entry (#107):** new verified Google users enter the existing profile form with name/email prefilled; existing users use the shared startup profile lookup. Error screens use two columns in wide, short windows, like Verify Email (#99), and Back returns to the original auth screen. Cancellation is silent. Google uses Firebase-managed account linking; no original-method error screen is shown. Unexpected failures offer Try again. The real profile form replaces the startup marker here; broader navigation/reset work in #144 and Verify Email #99 still need reconciliation when those PRs land.
 
 ## Traps
 
@@ -169,11 +169,12 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 ## Decision log
 
+- 2026-10-14 · [#107](https://github.com/swent-polysocial/PolySocial/issues/107): remove the original-method error screen and Figma mockup following owner-confirmed Firebase linking; retain non-EPFL guidance and generic Retry.
 - 2026-10-14 · [#106](https://github.com/swent-polysocial/PolySocial/issues/106): owner confirmed automatic Firebase linking for EPFL Google accounts through EPFL SSO; remove the original-method collision flow and retain generic failure recovery.
 
 - 2026-10-13 · [#168](https://github.com/swent-polysocial/PolySocial/pull/168): owner approved consolidating profile callbacks to remove unreachable Compose captures; both Back paths keep the same reset/logout behavior.
 
-- 2026-10-13 · [#107](https://github.com/swent-polysocial/PolySocial/issues/107): share Google error UI across entry screens, wire the existing profile form, and use accurate provider-conflict recovery wording (owner confirmed).
+- 2026-10-13 · [#107](https://github.com/swent-polysocial/PolySocial/issues/107): share Google error UI across entry screens and wire the existing profile form.
 
 - 2026-10-13 · [#106](https://github.com/swent-polysocial/PolySocial/issues/106): Google credentials stay in the repository; reject invalid domains before Firebase and use its returned verified identity.
 
