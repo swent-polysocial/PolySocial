@@ -472,6 +472,48 @@ class FirestoreEventRepositoryTest {
   }
 
   @Test
+  fun upcomingEvents_anUnexpectedExceptionWhileStartingToListen_emitsAnErrorAndEnds() = runTest {
+    stubPublicEventsQuery()
+    every { sorted.addSnapshotListener(MetadataChanges.INCLUDE, any()) } throws terminated()
+
+    assertEquals(listOf(PublicEventsResult.Error), repository.getUpcomingPublicEvents().toList())
+  }
+
+  @Test
+  fun upcomingEvents_aSnapshotThatCannotBeRead_emitsAnErrorAndEnds() = runTest {
+    stubPublicEventsQuery()
+    val results = mutableListOf<PublicEventsResult>()
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) {
+          repository.getUpcomingPublicEvents().toList(results)
+        }
+    val unreadable = mockk<QuerySnapshot>()
+    every { unreadable.documents } throws terminated()
+
+    listener.captured.onEvent(unreadable, null)
+    collecting.join()
+
+    assertEquals(listOf(PublicEventsResult.Error), results)
+    verify { registration.remove() }
+  }
+
+  @Test
+  fun upcomingEvents_cancellingTheCollector_stillCancelsItWithoutAnError() = runTest {
+    stubPublicEventsQuery()
+    val results = mutableListOf<PublicEventsResult>()
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) {
+          repository.getUpcomingPublicEvents().toList(results)
+        }
+
+    collecting.cancel()
+    collecting.join()
+
+    assertTrue(collecting.isCancelled)
+    assertEquals(emptyList<PublicEventsResult>(), results)
+  }
+
+  @Test
   fun upcomingEvents_rejectsAWindowThatIsNotPositive() {
     assertThrows(IllegalArgumentException::class.java) {
       repository.getUpcomingPublicEvents(windowDays = -1)
