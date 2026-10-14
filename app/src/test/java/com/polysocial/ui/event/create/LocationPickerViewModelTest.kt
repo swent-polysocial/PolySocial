@@ -1,5 +1,5 @@
 // Contributors: Claude (drafted the location picker ViewModel tests, #111; timings from
-// SETTLE_DELAY after review).
+// SETTLE_DELAY after review; your location, confirming, the camera and duplicates, #111).
 package com.polysocial.ui.event.create
 
 import com.polysocial.model.event.Coordinates
@@ -8,6 +8,8 @@ import com.polysocial.model.geocoding.Place
 import com.polysocial.model.geocoding.PlaceSearchResult
 import com.polysocial.model.geocoding.ReverseGeocodeResult
 import com.polysocial.model.location.FakeLocationService
+import com.polysocial.model.location.LocationResult
+import com.polysocial.model.location.LocationService
 import com.polysocial.ui.event.create.LocationPickerViewModel.Companion.SETTLE_DELAY
 import com.polysocial.utils.MainDispatcherRule
 import kotlin.time.Duration.Companion.milliseconds
@@ -19,6 +21,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -543,6 +546,363 @@ class LocationPickerViewModelTest {
     )
   }
 
+  // ---------- Your location ----------
+
+  @Test
+  fun openingWithLocationAccess_putsThePinOnTheStudentWithoutLookingItUp() = runTest {
+    location.permissionGranted = true
+    location.result = LocationResult.Available(HOME)
+
+    viewModel.open(null)
+    advanceUntilIdle()
+
+    assertTrue(state().hasLocationAccess)
+    assertEquals(HOME, state().pin)
+    assertEquals(PinPlaceState.YourLocation, state().pinPlace)
+    assertEquals(HOME, state().camera.target)
+    // Privacy (#111): the student's position is never sent to Nominatim on its own.
+    assertTrue(geocoding.reverses.isEmpty())
+  }
+
+  @Test
+  fun theMapSettlingOnTheStudentsPosition_sendsNothing() = runTest {
+    location.permissionGranted = true
+    location.result = LocationResult.Available(HOME)
+    viewModel.open(null)
+    advanceUntilIdle()
+
+    viewModel.onPinMove(HOME)
+    advanceUntilIdle()
+
+    assertEquals(PinPlaceState.YourLocation, state().pinPlace)
+    assertTrue(geocoding.reverses.isEmpty())
+  }
+
+  @Test
+  fun movingTheMapAwayFromTheStudent_looksUpTheNewSpot() = runTest {
+    location.permissionGranted = true
+    location.result = LocationResult.Available(HOME)
+    viewModel.open(null)
+    advanceUntilIdle()
+
+    viewModel.onPinMove(ELSEWHERE)
+    settle()
+
+    assertEquals(listOf(ELSEWHERE), geocoding.reverses)
+  }
+
+  @Test
+  fun openingWithAccessButNoPosition_fallsBackToLausanne() = runTest {
+    location.permissionGranted = true
+    location.result = LocationResult.Unavailable
+
+    viewModel.open(null)
+    advanceUntilIdle()
+
+    assertTrue(state().hasLocationAccess)
+    assertEquals(LocationPickerViewModel.LAUSANNE, state().pin)
+    assertEquals(listOf(LocationPickerViewModel.LAUSANNE), geocoding.reverses)
+  }
+
+  @Test
+  fun aPermissionRevokedWhileOpening_showsAccessOffAndFallsBackToLausanne() = runTest {
+    location.permissionGranted = true
+    viewModel.open(null)
+    // Revoked before the position is read.
+    location.permissionGranted = false
+    advanceUntilIdle()
+
+    assertFalse(state().hasLocationAccess)
+    assertEquals(LocationPickerViewModel.LAUSANNE, state().pin)
+    assertEquals(listOf(LocationPickerViewModel.LAUSANNE), geocoding.reverses)
+  }
+
+  @Test
+  fun openingWithoutLocationAccess_neverReadsThePosition() = runTest {
+    viewModel.open(null)
+    advanceUntilIdle()
+
+    assertFalse(state().hasLocationAccess)
+    assertEquals(0, location.requestCount)
+    assertEquals(listOf(LocationPickerViewModel.LAUSANNE), geocoding.reverses)
+  }
+
+  @Test
+  fun openingOnTheFormsPlace_neverReadsThePositionEvenWithAccess() = runTest {
+    location.permissionGranted = true
+    location.result = LocationResult.Available(HOME)
+
+    viewModel.open(INITIAL)
+    advanceUntilIdle()
+
+    assertEquals(INITIAL.coordinates, state().pin)
+    assertEquals(INITIAL.coordinates, state().camera.target)
+    assertEquals(0, location.requestCount)
+  }
+
+  @Test
+  fun aDragWhileThePositionIsRead_winsOverThePosition() = runTest {
+    val gated = GatedLocation()
+    val picker = LocationPickerViewModel(geocoding, gated)
+    picker.open(null)
+    runCurrent()
+
+    picker.onPinMove(ELSEWHERE)
+    gated.answer.complete(LocationResult.Available(HOME))
+    advanceUntilIdle()
+
+    assertEquals(ELSEWHERE, picker.uiState.value.pin)
+    assertEquals(listOf(ELSEWHERE), geocoding.reverses)
+  }
+
+  // ---------- The location button ----------
+
+  @Test
+  fun theLocationButton_movesThePinAndTheMapToTheStudent() = runTest {
+    location.permissionGranted = true
+    location.result = LocationResult.Available(HOME)
+    viewModel.open(INITIAL)
+    advanceUntilIdle()
+    val cameraBefore = state().camera.id
+
+    viewModel.onMyLocation()
+    advanceUntilIdle()
+
+    assertEquals(HOME, state().pin)
+    assertEquals(PinPlaceState.YourLocation, state().pinPlace)
+    assertEquals(CameraRequest(HOME, cameraBefore + 1), state().camera)
+    assertTrue(geocoding.reverses.isEmpty())
+  }
+
+  @Test
+  fun theLocationButtonWithoutPermission_showsAccessOffAndKeepsThePin() = runTest {
+    viewModel.open(INITIAL)
+    advanceUntilIdle()
+
+    viewModel.onMyLocation()
+    advanceUntilIdle()
+
+    assertFalse(state().hasLocationAccess)
+    assertEquals(INITIAL.coordinates, state().pin)
+    assertEquals(0, location.requestCount)
+  }
+
+  @Test
+  fun theLocationButtonWithNoPosition_keepsThePinAndItsName() = runTest {
+    location.permissionGranted = true
+    location.result = LocationResult.Unavailable
+    viewModel.open(INITIAL)
+    advanceUntilIdle()
+
+    viewModel.onMyLocation()
+    advanceUntilIdle()
+
+    assertEquals(INITIAL.coordinates, state().pin)
+    assertTrue(state().pinPlace is PinPlaceState.Found)
+    assertTrue(state().hasLocationAccess)
+  }
+
+  @Test
+  fun onLocationAccessCheck_readsThePermissionAgain() = runTest {
+    viewModel.open(null)
+    advanceUntilIdle()
+    assertFalse(state().hasLocationAccess)
+
+    // Granted in Settings, then back in the app.
+    location.permissionGranted = true
+    viewModel.onLocationAccessCheck()
+
+    assertTrue(state().hasLocationAccess)
+  }
+
+  // ---------- Confirming ----------
+
+  @Test
+  fun useThisLocation_withAKnownPlaceConfirmsAtOnce() = runTest {
+    viewModel.open(INITIAL)
+    advanceUntilIdle()
+
+    viewModel.onUseLocation()
+
+    assertTrue(state().confirmed)
+    assertEquals(INITIAL, viewModel.selection("Dropped pin"))
+  }
+
+  @Test
+  fun useThisLocation_onAnUnnamedPinConfirmsAtOnce() = runTest {
+    geocoding.reverseResult = ReverseGeocodeResult.NetworkError
+    viewModel.open(null)
+    advanceUntilIdle()
+
+    viewModel.onUseLocation()
+
+    assertTrue(state().confirmed)
+    assertFalse(viewModel.selection("Dropped pin").isNamed)
+  }
+
+  @Test
+  fun useThisLocation_whileLookingUpWaitsForTheName() = runTest {
+    geocoding.reverseResult = ReverseGeocodeResult.Found(OTHER)
+    viewModel.open(null)
+    runCurrent()
+
+    viewModel.onUseLocation()
+    assertTrue(state().confirming)
+    assertFalse(state().confirmed)
+    settle()
+
+    assertTrue(state().confirmed)
+    assertFalse(state().confirming)
+    assertEquals(OTHER.name, viewModel.selection("Dropped pin").name)
+  }
+
+  @Test
+  fun useThisLocation_whileLookingUpStillConfirmsIfTheLookupFails() = runTest {
+    geocoding.reverseResult = ReverseGeocodeResult.UnexpectedError
+    viewModel.open(null)
+    runCurrent()
+
+    viewModel.onUseLocation()
+    settle()
+
+    assertTrue(state().confirmed)
+    assertEquals(
+        PickedLocation(LocationPickerViewModel.LAUSANNE, "Dropped pin", isNamed = false),
+        viewModel.selection("Dropped pin"),
+    )
+  }
+
+  @Test
+  fun useThisLocation_onTheStudentsPositionLooksItUpAtOnceThenConfirms() = runTest {
+    location.permissionGranted = true
+    location.result = LocationResult.Available(HOME)
+    geocoding.reverseResult = ReverseGeocodeResult.Found(OTHER)
+    viewModel.open(null)
+    advanceUntilIdle()
+
+    viewModel.onUseLocation()
+    // Confirming is the student's explicit action, so no settle delay.
+    runCurrent()
+
+    assertEquals(listOf(HOME), geocoding.reverses)
+    assertTrue(state().confirmed)
+    assertEquals(
+        PickedLocation(HOME, OTHER.name, OTHER.address),
+        viewModel.selection("Dropped pin"),
+    )
+  }
+
+  @Test
+  fun useThisLocation_whileThePositionIsReadConfirmsItOnceItArrives() = runTest {
+    val gated = GatedLocation()
+    val picker = LocationPickerViewModel(geocoding, gated)
+    geocoding.reverseResult = ReverseGeocodeResult.Found(OTHER)
+    picker.open(null)
+    runCurrent()
+
+    picker.onUseLocation()
+    gated.answer.complete(LocationResult.Available(HOME))
+    runCurrent()
+
+    assertEquals(listOf(HOME), geocoding.reverses)
+    assertTrue(picker.uiState.value.confirmed)
+    assertEquals(HOME, picker.selection("Dropped pin").coordinates)
+  }
+
+  @Test
+  fun movingTheMapAfterUseThisLocation_cancelsTheConfirmation() = runTest {
+    viewModel.open(null)
+    runCurrent()
+    viewModel.onUseLocation()
+
+    viewModel.onPinMove(ELSEWHERE)
+    settle()
+
+    assertFalse(state().confirming)
+    assertFalse(state().confirmed)
+  }
+
+  @Test
+  fun choosingAResultAfterUseThisLocation_cancelsTheConfirmation() = runTest {
+    viewModel.open(null)
+    runCurrent()
+    viewModel.onUseLocation()
+
+    viewModel.onResultSelect(GARE)
+    advanceUntilIdle()
+
+    assertFalse(state().confirming)
+    assertFalse(state().confirmed)
+  }
+
+  // ---------- The camera ----------
+
+  @Test
+  fun choosingAResult_movesTheMapThere() = runTest {
+    viewModel.open(null)
+    val before = state().camera.id
+
+    viewModel.onResultSelect(GARE)
+
+    assertEquals(CameraRequest(GARE.coordinates, before + 1), state().camera)
+  }
+
+  @Test
+  fun movingTheMap_neverMovesTheCamera() = runTest {
+    viewModel.open(null)
+    val camera = state().camera
+
+    viewModel.onPinMove(ELSEWHERE)
+    settle()
+
+    assertEquals(camera, state().camera)
+  }
+
+  // ---------- Duplicate results ----------
+
+  @Test
+  fun resultsWithTheSameNameWithinAHundredMetres_showOnce() = runTest {
+    val entrance = GARE.copy(address = "Entrance", coordinates = Coordinates(46.5170, 6.6293))
+    val farNamesake = GARE.copy(address = "Elsewhere", coordinates = Coordinates(46.2044, 6.1432))
+    val nearbyOtherName = OTHER.copy(coordinates = Coordinates(46.5168, 6.6292))
+    geocoding.searchResult =
+        PlaceSearchResult.Found(listOf(GARE, entrance, nearbyOtherName, farNamesake))
+    viewModel.onQueryChange("gare")
+
+    viewModel.onSearch()
+    advanceUntilIdle()
+
+    // The first, better match stays; a namesake far away and a different place nearby stay too.
+    assertEquals(
+        PlaceSearchState.Results(listOf(GARE, nearbyOtherName, farNamesake)),
+        state().search,
+    )
+  }
+
+  @Test
+  fun withoutNearbyDuplicates_keepsTheFirstAtTheLimitOnly() {
+    // About 111 m north: just over the limit, so both stay.
+    val justOver = GARE.copy(coordinates = Coordinates(46.5177, 6.6291))
+    // About 89 m north: within the limit, so only the first stays.
+    val justUnder = GARE.copy(coordinates = Coordinates(46.5175, 6.6291))
+
+    assertEquals(listOf(GARE, justOver), withoutNearbyDuplicates(listOf(GARE, justOver)))
+    assertEquals(listOf(GARE), withoutNearbyDuplicates(listOf(GARE, justUnder)))
+  }
+
+  /** A location service whose answer the test releases, to act while the position is read. */
+  private class GatedLocation : LocationService {
+    val answer = CompletableDeferred<LocationResult>()
+
+    override fun hasPermission() = true
+
+    override fun shouldRequestPermission() = false
+
+    override fun markPermissionRequested() = Unit
+
+    override suspend fun currentLocation() = answer.await()
+  }
+
   private companion object {
     val LEARNING_CENTER =
         Place(
@@ -559,6 +919,7 @@ class LocationPickerViewModelTest {
             Coordinates(46.5208, 6.6267),
         )
     val ELSEWHERE = Coordinates(46.5100, 6.6000)
+    val HOME = Coordinates(46.5300, 6.6100)
     val INITIAL =
         PickedLocation(
             Coordinates(46.5220, 6.5660),
