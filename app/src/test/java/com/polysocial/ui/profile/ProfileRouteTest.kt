@@ -3,6 +3,8 @@ package com.polysocial.ui.profile
 
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
@@ -36,6 +38,45 @@ class ProfileRouteTest {
 
   private fun back() {
     compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+  }
+
+  @Test
+  fun rememberedRouteKeepsConfirmationDuringParentRecompositionAndLogsOutOnce() {
+    val revision = mutableStateOf(0)
+    var clears = 0
+    var completed = 0
+    compose.setContent {
+      PolySocialTheme {
+        val retained = remember {
+          ProfileViewModel(
+              auth,
+              object : SessionCache {
+                override suspend fun clear(): CacheClearResult {
+                  clears++
+                  return CacheClearResult.Cleared
+                }
+              },
+          )
+        }
+        androidx.compose.material3.Text(
+            "Parent revision ${revision.value}",
+            androidx.compose.ui.Modifier.testTag("parent_revision"),
+        )
+        ProfileRoute({ completed++ }, retained)
+      }
+    }
+    compose.onNodeWithTag(ProfileTags.Logout).performClick()
+    compose.runOnIdle { revision.value++ }
+    compose.onNodeWithTag("parent_revision").assertTextEquals("Parent revision 1")
+    compose.onNodeWithTag(ProfileTags.Dialog).assertIsDisplayed()
+    assertEquals(0, clears)
+    compose.onNodeWithTag(ProfileTags.Confirm).performClick()
+    compose.onNodeWithTag(ProfileTags.Dialog).assertDoesNotExist()
+    compose.runOnIdle { revision.value++ }
+    compose.onNodeWithTag("parent_revision").assertTextEquals("Parent revision 2")
+    assertEquals(1, completed)
+    assertEquals(1, clears)
+    assertEquals(1, auth.logOutCalls)
   }
 
   @Test
