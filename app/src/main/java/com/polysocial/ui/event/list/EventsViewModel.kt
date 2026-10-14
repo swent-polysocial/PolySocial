@@ -119,6 +119,9 @@ constructor(
   /** Keeps only the events starting on [date]. */
   fun selectDate(date: DateChoice) = select(selection().copy(date = date))
 
+  /** Clears every filter but keeps the search, like Figma's *All* chip. */
+  fun clearFilters() = select(EventSelection(search = selection().search))
+
   /** Clears the search and every filter, showing all the events again. */
   fun clearSearchAndFilters() = select(EventSelection())
 

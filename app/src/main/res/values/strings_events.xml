@@ -17,6 +17,9 @@
     <string name="events_empty_title">No upcoming events</string>
     <string name="events_empty_body">No public events in the next two weeks yet.</string>
     <string name="events_search_placeholder">Search events</string>
+    <string name="events_filter_all">All</string>
+    <string name="events_filter_today">Today</string>
+    <string name="events_filter_this_week">This week</string>
     <string name="events_no_match_title">No matching events</string>
     <string name="events_no_match_body">Try another search or fewer filters.</string>
     <string name="events_clear_filters">Clear filters</string>

@@ -1,11 +1,13 @@
-// Contributors: Claude (screen tests for the Events tab list, #105; no matching event and search,
-// #115).
+// Contributors: Claude (screen tests for the Events tab list, #105; no matching event, search and
+// filter chips, #115).
 package com.polysocial.ui.event.list
 
 import android.content.Context
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -67,6 +69,9 @@ class EventsScreenTest {
   private var retries = 0
   private var clears = 0
   private val searches = mutableListOf<String>()
+  private val dates = mutableListOf<DateChoice>()
+  private val toggled = mutableListOf<EventCategory>()
+  private var chipClears = 0
 
   private fun show(list: EventsListState, selection: EventSelection = EventSelection()) {
     composeTestRule.setContent {
@@ -77,6 +82,9 @@ class EventsScreenTest {
             onRetry = { retries++ },
             onClearFilters = { clears++ },
             onSearchChange = { searches += it },
+            onSelectDate = { dates += it },
+            onToggleCategory = { toggled += it },
+            onClearChipFilters = { chipClears++ },
         )
       }
     }
@@ -425,5 +433,122 @@ class EventsScreenTest {
     field.assertIsFocused()
     field.performTextInput("y")
     field.assertTextEquals("climbxy")
+  }
+
+  // ---- Filter chips ----
+
+  private fun chip(key: String) = composeTestRule.onNodeWithTag(EventsTags.chip(key))
+
+  private fun left(key: String) = chip(key).fetchSemanticsNode().boundsInRoot.left
+
+  @Test
+  fun withoutFilters_allIsOn_andTheQuickFiltersFollowInFigmasOrder() {
+    show(someEvents())
+
+    chip("ALL").assertIsSelected()
+    for (key in listOf("TODAY", "THIS_WEEK", "PARTY", "SPORTS")) chip(key).assertIsNotSelected()
+    chip("TODAY").assertTextEquals(string(R.string.events_filter_today))
+    val order = listOf("ALL", "TODAY", "THIS_WEEK", "PARTY", "SPORTS").map { left(it) }
+    assertEquals(order.sorted(), order)
+  }
+
+  @Test
+  fun activeFilters_comeRightAfterAll_withTheDateFirst() {
+    show(
+        someEvents(),
+        EventSelection(categories = setOf(EventCategory.SPORTS), date = DateChoice.THIS_WEEK),
+    )
+
+    chip("ALL").assertIsNotSelected()
+    chip("THIS_WEEK").assertIsSelected()
+    chip("SPORTS").assertIsSelected()
+    chip("TODAY").assertIsNotSelected()
+    val order = listOf("ALL", "THIS_WEEK", "SPORTS", "TODAY", "PARTY").map { left(it) }
+    assertEquals(order.sorted(), order)
+  }
+
+  @Test
+  fun tappingAQuickFilter_turnsItOn() {
+    show(someEvents())
+
+    chip("TODAY").performClick()
+    chip("PARTY").performClick()
+
+    assertEquals(listOf(DateChoice.TODAY), dates)
+    assertEquals(listOf(EventCategory.PARTY), toggled)
+  }
+
+  @Test
+  fun tappingAnActiveFilter_removesIt() {
+    show(
+        someEvents(),
+        EventSelection(categories = setOf(EventCategory.STUDY), date = DateChoice.TODAY),
+    )
+
+    chip("TODAY").performClick()
+    chip("STUDY").performClick()
+
+    assertEquals(listOf(DateChoice.ANY), dates)
+    assertEquals(listOf(EventCategory.STUDY), toggled)
+  }
+
+  @Test
+  fun tappingAll_clearsTheChipFilters() {
+    show(someEvents(), EventSelection(categories = setOf(EventCategory.PARTY)))
+
+    chip("ALL").performClick()
+
+    assertEquals(1, chipClears)
+  }
+
+  @Test
+  fun theChips_stayWhenNothingMatches_soAFilterCanBeRemoved() {
+    show(EventsListState.NoMatch(isOffline = false), EventSelection(date = DateChoice.TODAY))
+
+    chip("TODAY").assertIsSelected()
+  }
+
+  @Test
+  fun theChips_areHidden_whenThereIsNothingToFilter() {
+    show(EventsListState.Empty(isOffline = false))
+
+    composeTestRule.onAllNodesWithTag(EventsTags.CHIPS).assertCountEquals(0)
+  }
+
+  @Test
+  fun selectingACategory_showsOnlyItsEvents_andAllShowsThemAgain() {
+    val repository = FakeEventRepository()
+    val tomorrow = repository.now.plusSeconds(24 * 3600)
+    repository.seed(
+        validEvent(title = "Climbing session", startTime = tomorrow)
+            .copy(id = "climbing", category = EventCategory.SPORTS),
+        validEvent(title = "Balélec warm-up", startTime = tomorrow.plusSeconds(3600))
+            .copy(id = "party", category = EventCategory.PARTY),
+    )
+    val network =
+        object : NetworkMonitor {
+          override fun isOnline() = true
+        }
+    val viewModel =
+        EventsViewModel(
+            repository,
+            network,
+            Clock.fixed(repository.now, lausanne),
+            SavedStateHandle(),
+        )
+    composeTestRule.setContent { PolySocialTheme { EventsRoute(viewModel = viewModel) } }
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+
+    chip("SPORTS").performClick()
+
+    composeTestRule.onNodeWithTag(EventsTags.card("climbing")).assertIsDisplayed()
+    composeTestRule.onAllNodesWithTag(EventsTags.card("party")).assertCountEquals(0)
+    chip("SPORTS").assertIsSelected()
+
+    chip("ALL").performClick()
+
+    composeTestRule.onNodeWithTag(EventsTags.card("climbing")).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(EventsTags.card("party")).assertIsDisplayed()
+    chip("ALL").assertIsSelected()
   }
 }
