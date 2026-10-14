@@ -1,5 +1,6 @@
 // Contributors: Claude (state of the Events tab's list, #105; offline only when the device is,
-// after review; search and filters, and the one-off location for the distance filter, #115).
+// after review; search and filters, and the one-off location and its permission for the distance
+// filter, #115).
 package com.polysocial.ui.event.list
 
 import androidx.lifecycle.SavedStateHandle
@@ -58,6 +59,18 @@ sealed interface EventsLocationState {
   data object Off : EventsLocationState
 }
 
+/** What the screen must do after *Turn on* ([EventsViewModel.turnOnLocation]). */
+enum class LocationAction {
+  /** Nothing: the permission is granted, and the location is being read again. */
+  NONE,
+
+  /** Show Android's permission dialog, then call [EventsViewModel.onPermissionResult]. */
+  REQUEST_PERMISSION,
+
+  /** Android won't show the dialog again, so open the app's settings. */
+  OPEN_SETTINGS,
+}
+
 /** The Events tab's list. */
 sealed interface EventsListState {
   /** The first result has not arrived yet. */
@@ -95,9 +108,10 @@ sealed interface EventsListState {
  * The selection is kept in [savedState], so it survives rotation and the process being recreated.
  *
  * The distance filter needs the student's location: [locationService] reads it once, the first time
- * a distance is picked, and only if the permission is already granted (this ViewModel never asks
- * for it). Without it, the location is [EventsLocationState.Off] and the distance is dropped, so
- * the selection never holds a distance that can't apply.
+ * a distance is picked, and only if the permission is already granted. Without it, the location is
+ * [EventsLocationState.Off] and the distance is dropped, so the selection never holds a distance
+ * that can't apply. Only *Turn on* asks for the permission ([turnOnLocation]); [onResume] notices a
+ * permission granted or revoked in the settings.
  *
  * After an error the repository stops emitting, so the list stays in [EventsListState.Error] until
  * [retry].
@@ -171,6 +185,44 @@ constructor(
   fun selectDistance(meters: Int?) {
     if (meters != null && location() == EventsLocationState.Off) return
     select(selection().copy(maxDistanceMeters = meters))
+  }
+
+  /**
+   * *Turn on* for the distance filters. With the permission, it reads the location again (it was
+   * unavailable). Without it, the screen asks for it if Android still can, which it can the first
+   * time or when [showRationale] (Android's `shouldShowRequestPermissionRationale`) is true, and
+   * opens the app's settings otherwise.
+   */
+  fun turnOnLocation(showRationale: Boolean): LocationAction =
+      when {
+        locationService.hasPermission() -> {
+          readLocation()
+          LocationAction.NONE
+        }
+        locationService.shouldRequestPermission() || showRationale -> {
+          locationService.markPermissionRequested()
+          LocationAction.REQUEST_PERMISSION
+        }
+        else -> LocationAction.OPEN_SETTINGS
+      }
+
+  /** After the permission dialog: if granted, the distance filters can be used. */
+  fun onPermissionResult() = onResume()
+
+  /**
+   * When the tab comes back to the foreground, maybe from the settings: a newly granted permission
+   * turns the distance filters back on, and a revoked one turns them off.
+   */
+  fun onResume() {
+    val granted = locationService.hasPermission()
+    when {
+      granted && location() == EventsLocationState.Off ->
+          show(selection(), EventsLocationState.NotRead)
+      !granted && location() != EventsLocationState.Off -> {
+        locationRequest?.cancel()
+        locationOff()
+      }
+    }
   }
 
   /** Clears every filter but keeps the search: the Filters sheet's *Clear*. */

@@ -23,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -129,7 +130,8 @@ fun EventsChipRow(
 
 /**
  * A 36 dp Figma chip inside a 48 dp touch target: dark when [selected], outlined otherwise. A
- * [removable] chip ends with an ×; [leadingIcon] is drawn before the label ("Pick a date").
+ * [removable] chip ends with an ×; [leadingIcon] is drawn before the label ("Pick a date"). A
+ * disabled chip is faded to 40 %, as in Figma.
  */
 @Composable
 internal fun EventsChip(
@@ -140,6 +142,7 @@ internal fun EventsChip(
     removable: Boolean = false,
     role: Role = Role.Checkbox,
     @DrawableRes leadingIcon: Int? = null,
+    enabled: Boolean = true,
 ) {
   val shape = RoundedCornerShape(18.dp)
   val colors =
@@ -148,7 +151,8 @@ internal fun EventsChip(
   Row(
       modifier =
           Modifier.heightIn(min = 48.dp)
-              .selectable(selected = selected, role = role, onClick = onClick)
+              .alpha(if (enabled) 1f else DISABLED_ALPHA)
+              .selectable(selected = selected, enabled = enabled, role = role, onClick = onClick)
               .testTag(tag),
       verticalAlignment = Alignment.CenterVertically,
   ) {
@@ -192,6 +196,7 @@ internal fun EventsChip(
 }
 
 private const val ALL = "ALL"
+private const val DISABLED_ALPHA = 0.4f
 private const val PICKED_DAY = "DAY"
 private const val DISTANCE = "DISTANCE"
 

@@ -1,7 +1,14 @@
 // Contributors: Claude (Events tab list from the Figma "Discover events" frames, #105; no matching
-// event state, search field, filter chips and Filters sheet, #115).
+// event state, search field, filter chips, Filters sheet and its location permission, #115).
 package com.polysocial.ui.event.list
 
+import android.Manifest
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import androidx.activity.compose.LocalActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -34,6 +41,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -44,7 +52,9 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.app.ActivityCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
 import com.polysocial.model.event.Event
@@ -71,6 +81,9 @@ object EventsTags {
   const val FILTERS_CLEAR = "events_filters_clear"
   const val FILTERS_SHOW = "events_filters_show"
   const val DAY_STRIP = "events_day_strip"
+  const val LOCATION_OFF = "events_location_off"
+  const val TURN_ON_LOCATION = "events_turn_on_location"
+  const val LOCATING = "events_locating"
   const val OFFLINE_BANNER = "events_offline_banner"
   const val EMPTY = "events_empty"
   const val NO_MATCH = "events_no_match"
@@ -98,10 +111,31 @@ object EventsTags {
   fun day(date: LocalDate) = "events_day_$date"
 }
 
-/** The Events tab's root: the upcoming public events from [EventsViewModel]. */
+/**
+ * The Events tab's root: the upcoming public events from [EventsViewModel]. It is also the Android
+ * boundary for the distance filter's location permission: it shows the permission dialog or opens
+ * the app's settings when *Turn on* asks for it, and tells the ViewModel when the tab resumes.
+ *
+ * @param showRationale Android's `shouldShowRequestPermissionRationale` for approximate location;
+ *   tests replace it.
+ */
 @Composable
-fun EventsRoute(modifier: Modifier = Modifier, viewModel: EventsViewModel = hiltViewModel()) {
+fun EventsRoute(
+    modifier: Modifier = Modifier,
+    viewModel: EventsViewModel = hiltViewModel(),
+    showRationale: (() -> Boolean)? = null,
+) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
+  val activity = LocalActivity.current
+  val context = LocalContext.current
+  val permissionLauncher =
+      rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
+        viewModel.onPermissionResult()
+      }
+  LifecycleResumeEffect(viewModel) {
+    viewModel.onResume()
+    onPauseOrDispose {}
+  }
   EventsScreen(
       state,
       zone = viewModel.zone,
@@ -113,6 +147,27 @@ fun EventsRoute(modifier: Modifier = Modifier, viewModel: EventsViewModel = hilt
       onToggleCategory = viewModel::toggleCategory,
       onClearSheetFilters = viewModel::clearFilters,
       onSelectDistance = viewModel::selectDistance,
+      onTurnOnLocation = {
+        val rationale =
+            showRationale?.invoke()
+                ?: (activity != null &&
+                    ActivityCompat.shouldShowRequestPermissionRationale(
+                        activity,
+                        Manifest.permission.ACCESS_COARSE_LOCATION,
+                    ))
+        when (viewModel.turnOnLocation(rationale)) {
+          LocationAction.NONE -> Unit
+          LocationAction.REQUEST_PERMISSION ->
+              permissionLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+          LocationAction.OPEN_SETTINGS ->
+              context.startActivity(
+                  Intent(
+                      Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                      Uri.fromParts("package", context.packageName, null),
+                  )
+              )
+        }
+      },
       modifier = modifier,
   )
 }
@@ -133,6 +188,7 @@ fun EventsScreen(
     onToggleCategory: (EventCategory) -> Unit,
     onClearSheetFilters: () -> Unit,
     onSelectDistance: (Int?) -> Unit,
+    onTurnOnLocation: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
   val list = state.list
@@ -142,8 +198,10 @@ fun EventsScreen(
         selection = state.selection,
         today = today,
         shownCount = (list as? EventsListState.Events)?.sections?.sumOf { it.events.size } ?: 0,
+        location = state.location,
         onSelectDate = onSelectDate,
         onSelectDistance = onSelectDistance,
+        onTurnOnLocation = onTurnOnLocation,
         onToggleCategory = onToggleCategory,
         onClearFilters = onClearSheetFilters,
         onDismiss = { showFilters = false },

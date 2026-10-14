@@ -1,5 +1,5 @@
 // Contributors: Claude (screen tests for the Events tab list, #105; no matching event, search and
-// filter chips and Filters sheet, #115).
+// filter chips, Filters sheet and location off, #115).
 package com.polysocial.ui.event.list
 
 import android.content.Context
@@ -9,7 +9,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
@@ -28,6 +30,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
+import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.validEvent
@@ -81,12 +84,17 @@ class EventsScreenTest {
   private val toggled = mutableListOf<EventCategory>()
   private var sheetClears = 0
   private val distances = mutableListOf<Int?>()
+  private var turnOns = 0
 
-  private fun show(list: EventsListState, selection: EventSelection = EventSelection()) {
+  private fun show(
+      list: EventsListState,
+      selection: EventSelection = EventSelection(),
+      location: EventsLocationState = EventsLocationState.NotRead,
+  ) {
     composeTestRule.setContent {
       PolySocialTheme {
         EventsScreen(
-            EventsUiState(list, selection),
+            EventsUiState(list, selection, location),
             zone = lausanne,
             today = today,
             onRetry = { retries++ },
@@ -96,6 +104,7 @@ class EventsScreenTest {
             onToggleCategory = { toggled += it },
             onClearSheetFilters = { sheetClears++ },
             onSelectDistance = { distances += it },
+            onTurnOnLocation = { turnOns++ },
         )
       }
     }
@@ -836,6 +845,7 @@ class EventsScreenTest {
             onToggleCategory = {},
             onClearSheetFilters = {},
             onSelectDistance = {},
+            onTurnOnLocation = {},
         )
       }
     }
@@ -862,6 +872,7 @@ class EventsScreenTest {
             onToggleCategory = {},
             onClearSheetFilters = {},
             onSelectDistance = {},
+            onTurnOnLocation = {},
         )
       }
     }
@@ -935,5 +946,53 @@ class EventsScreenTest {
     show(someEvents())
 
     composeTestRule.onAllNodesWithTag(EventsTags.chip("DISTANCE")).assertCountEquals(0)
+  }
+
+  // ---- Location for the distance filter ----
+
+  @Test
+  fun locationOff_disablesTheDistanceChips_andTurnOnCallsBack() {
+    show(someEvents(), location = EventsLocationState.Off)
+    openFilters()
+
+    composeTestRule.onNodeWithTag(EventsTags.LOCATION_OFF).assertIsDisplayed()
+    composeTestRule.onNodeWithText(string(R.string.events_location_off)).assertIsDisplayed()
+    sheetChip("DISTANCE_ANY").assertIsNotEnabled().assertIsNotSelected()
+    sheetChip("DISTANCE_2000").assertIsNotEnabled().performClick()
+    assertEquals(emptyList<Int?>(), distances)
+    sheetChip("TODAY").assertIsEnabled()
+    sheetChip("PARTY").assertIsEnabled()
+
+    composeTestRule.onNodeWithTag(EventsTags.TURN_ON_LOCATION).performClick()
+
+    assertEquals(1, turnOns)
+  }
+
+  @Test
+  fun whileLocating_theSheetSaysSo() {
+    show(
+        someEvents(),
+        EventSelection(maxDistanceMeters = 1_000),
+        location = EventsLocationState.Locating,
+    )
+    openFilters()
+
+    composeTestRule.onNodeWithTag(EventsTags.LOCATING).assertIsDisplayed()
+    sheetChip("DISTANCE_1000").assertIsEnabled().assertIsSelected()
+    composeTestRule.onAllNodesWithTag(EventsTags.LOCATION_OFF).assertCountEquals(0)
+  }
+
+  @Test
+  fun withALocation_theDistanceChipsAreEnabled_withoutANote() {
+    show(
+        someEvents(),
+        location =
+            EventsLocationState.Available(Coordinates(latitude = 46.5191, longitude = 6.5668)),
+    )
+    openFilters()
+
+    sheetChip("DISTANCE_500").assertIsEnabled()
+    composeTestRule.onAllNodesWithTag(EventsTags.LOCATION_OFF).assertCountEquals(0)
+    composeTestRule.onAllNodesWithTag(EventsTags.LOCATING).assertCountEquals(0)
   }
 }

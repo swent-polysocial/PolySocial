@@ -40,6 +40,9 @@
     <string name="events_distance_km">%d km</string>
     <!-- An active distance filter in the chip row, for example "≤ 2 km". -->
     <string name="events_filter_within">≤ %s</string>
+    <string name="events_location_off">Location is off, so distance filters are unavailable.</string>
+    <string name="events_location_turn_on">Turn on</string>
+    <string name="events_locating">Finding your location…</string>
     <string name="events_filter_category">Category</string>
     <string name="events_filter_clear">Clear</string>
     <!-- Closes the Filters sheet; the number is how many events the filters keep. -->
