@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (verify session Firestore provider, #109).
 // Contributors: Claude (wrote this test, #45).
 package com.polysocial.model.firebase
 
@@ -31,6 +32,6 @@ class FirebaseModuleTest {
       )
     }
 
-    assertSame(FirebaseFirestore.getInstance(), FirebaseModule.firestore())
+    assertSame(FirebaseFirestore.getInstance(), FirebaseModule.firestore(FirestoreSession()))
   }
 }
