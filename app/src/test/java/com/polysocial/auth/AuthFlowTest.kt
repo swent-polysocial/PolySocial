@@ -7,7 +7,8 @@
 // Back handoffs and verification/profile integration); Claude (signed-in shell without Hilt, #105;
 // signed-out back stack, profile step, sign-out and Figma start states, #74; sign-out from
 // anywhere and from Verify Email, form resets and rotation cases after review); Claude Opus 5.5
-// (testing agent: generic save error tests, #142).
+// (testing agent: generic save error tests, #142); Claude (the full name's limit, written
+// test-first, #143).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -791,6 +792,53 @@ class AuthFlowTest {
     pick(ProfileSetupTestTags.SECTION, ProfileSetupTestTags.sectionOption("IN"))
     pick(ProfileSetupTestTags.YEAR, ProfileSetupTestTags.yearOption("BA3"))
     profileNode(ProfileSetupTestTags.CONTINUE).performScrollTo().performClick()
+  }
+
+  // ---- The full name's limit (#143), through the whole entry flow ----
+
+  @Test
+  fun aFullNameOverTheLimitOnSignUp_neverCreatesTheAccount() {
+    launch()
+    compose.onNodeWithTag(WelcomeTags.SignUp).performScrollTo().performClick()
+    compose
+        .onNodeWithTag(SignUpTags.input(SignUpField.FullName))
+        .performTextInput("a".repeat(MAX_DISPLAY_NAME_LENGTH + 1))
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.Email)).performTextInput(user.email)
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.Password)).performTextInput("password1")
+    compose
+        .onNodeWithTag(SignUpTags.input(SignUpField.ConfirmPassword))
+        .performTextInput("password1")
+
+    compose.onNodeWithTag(SignUpTags.Submit).performScrollTo().performClick()
+
+    compose
+        .onNodeWithTag(SignUpTags.error(SignUpField.FullName))
+        .performScrollTo()
+        .assertTextEquals("Use at most 50 characters")
+    compose.onNodeWithTag(SignUpTags.VerifyEmailDestination).assertDoesNotExist()
+    assertEquals(0, auth.signUpCalls)
+  }
+
+  @Test
+  fun aPrefilledFullNameOverTheLimit_mustBeShortenedBeforeTheProfileIsSaved() {
+    // A verified account whose name (from sign-up before #143, or from Google) is too long.
+    auth.user = user.copy(displayName = "b".repeat(MAX_DISPLAY_NAME_LENGTH + 10))
+    launch()
+    compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertIsDisplayed()
+
+    pick(ProfileSetupTestTags.SECTION, ProfileSetupTestTags.sectionOption("IN"))
+    pick(ProfileSetupTestTags.YEAR, ProfileSetupTestTags.yearOption("BA3"))
+    profileNode(ProfileSetupTestTags.NAME_ERROR).assertExists()
+    profileNode(ProfileSetupTestTags.CONTINUE).performScrollTo().assertIsNotEnabled()
+    assertTrue(profiles.createdProfiles.isEmpty())
+
+    val shortened = "b".repeat(MAX_DISPLAY_NAME_LENGTH)
+    profileNode(ProfileSetupTestTags.FULL_NAME).performTextReplacement(shortened)
+    profileNode(ProfileSetupTestTags.NAME_ERROR).assertDoesNotExist()
+    profileNode(ProfileSetupTestTags.CONTINUE).performScrollTo().performClick()
+
+    compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
+    assertEquals(shortened, profiles.createdProfiles.single().displayName)
   }
 
   @Test
