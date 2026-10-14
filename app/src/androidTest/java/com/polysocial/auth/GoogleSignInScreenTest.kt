@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (offline Google auth device tests and synthetic screenshots for #107).
+// Contributors: OpenAI Codex (offline Google auth device tests, generic failure recovery and
+// synthetic screenshots for #107).
 package com.polysocial.auth
 
 import android.graphics.Bitmap
@@ -28,6 +29,7 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Rule
@@ -137,21 +139,19 @@ class GoogleSignInScreenTest {
   }
 
   @Test
-  fun collisionHasAccurateRecoveryAndReturnsToLogin() {
-    result = GoogleSignInResult.OtherSignInMethod(GoogleAccount(demo.email, "Demo Student"))
+  fun unexpectedFailureOffersRetryAndRoutesAfterSuccess() {
+    result = GoogleSignInResult.UnexpectedError
     launch()
     clickGoogle(true)
-    compose.onNodeWithText("Use your original sign-in method").assertIsDisplayed()
-    compose
-        .onNodeWithText(
-            "This email already uses another sign-in method. Log in with the method you originally used."
-        )
-        .assertIsDisplayed()
+    compose.onNodeWithTag(GoogleAuthTags.Retry).assertIsDisplayed()
+    compose.onNodeWithTag(GoogleAuthTags.Account).assertDoesNotExist()
     assertNull(user)
-    capture("google-provider-conflict")
-    compose.onNodeWithTag(GoogleAuthTags.Back).performClick()
-    compose.onNodeWithTag(LoginScreenTestTags.SCREEN).assertIsDisplayed()
+    capture("google-unexpected-error")
     coVerify(exactly = 0) { profiles.getProfile(any()) }
+    result = GoogleSignInResult.Success(demo)
+    compose.onNodeWithTag(GoogleAuthTags.Retry).performClick()
+    compose.onNodeWithTag(ProfileSetupTestTags.FULL_NAME).assertTextContains("Demo Student")
+    assertEquals(demo.uid, user?.uid)
   }
 
   @Test

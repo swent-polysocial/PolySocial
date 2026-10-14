@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (removed obsolete collision outcome coverage for #107).
 // Contributors: OpenAI Codex (Google state, cancellation and submission-race tests for #107).
 package com.polysocial.ui.auth
 
@@ -68,7 +69,6 @@ class GoogleSignInViewModelTest {
     for (result in
         listOf(
             GoogleSignInResult.NotEpfl(account),
-            GoogleSignInResult.OtherSignInMethod(account),
             GoogleSignInResult.NetworkError,
             GoogleSignInResult.UnexpectedError,
         )) {

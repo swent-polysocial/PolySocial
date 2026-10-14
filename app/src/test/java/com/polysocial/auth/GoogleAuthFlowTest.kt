@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (offline Google navigation, recovery and layout tests for #107).
+// Contributors: OpenAI Codex (offline Google navigation, generic failure recovery and layout tests
+// for #107).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -152,15 +153,15 @@ class GoogleAuthFlowTest {
   }
 
   @Test
-  fun loginProviderConflictPreservesPasswordFormAndDoesNotReadProfiles() {
-    auth.googleResult =
-        GoogleSignInResult.OtherSignInMethod(GoogleAccount(user.email, "Demo Student"))
+  fun loginUnexpectedFailurePreservesPasswordFormAndDoesNotReadProfiles() {
+    auth.googleResult = GoogleSignInResult.UnexpectedError
     launch()
     compose.onNodeWithTag(WelcomeTags.LogIn).performScrollTo().performClick()
     compose.onNodeWithTag(LoginScreenTestTags.EMAIL).performTextInput(user.email)
     compose.onNodeWithTag(LoginScreenTestTags.PASSWORD).performTextInput("test-password")
     compose.onNodeWithTag(LoginScreenTestTags.GOOGLE).performClick()
-    compose.onNodeWithText("Use your original sign-in method").assertIsDisplayed()
+    compose.onNodeWithTag(GoogleAuthTags.Retry).assertIsDisplayed()
+    compose.onNodeWithTag(GoogleAuthTags.Account).assertDoesNotExist()
     assertNull(auth.currentUser())
     assertEquals(0, profiles.getProfileCalls)
     compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
@@ -365,7 +366,7 @@ class GoogleAuthFlowTest {
   @Config(qualifiers = "w360dp-h420dp")
   fun portraitErrorScrollsWithGuidanceAndBack() {
     auth.googleResult =
-        GoogleSignInResult.OtherSignInMethod(GoogleAccount(user.email, "Demo Student"))
+        GoogleSignInResult.NotEpfl(GoogleAccount("student@example.org", "Demo Student"))
     launch()
     google(false)
     compose.onNodeWithTag(GoogleAuthTags.TwoColumns).assertDoesNotExist()
