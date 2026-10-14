@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Contributors: Claude (registered the Hilt application class, #70; network state permission for the online check; network security config that debug builds override, #117); OpenAI Codex (GPT-6.1 Sol Medium; removed activity labels to inherit the PolySocial app name; enabled keyboard resizing for the auth forms; foreground location permissions, #51). -->
+<!-- Contributors: Claude (registered the Hilt application class, #70; network state permission for the online check; network security config that debug builds override, #117); OpenAI Codex (GPT-6.1 Sol Medium; removed activity labels to inherit the PolySocial app name; enabled keyboard resizing for the auth forms; foreground location permissions, #51); Claude Opus 5.5 (notification permission for event reminders, #123). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Lets NetworkMonitor check whether the device is online before writing to Firestore. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Event reminders (#123). Asked on Android 13+ the first time a student turns one on. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:name=".PolySocialApp"
