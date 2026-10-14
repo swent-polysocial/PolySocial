@@ -234,9 +234,10 @@ jobs:
       - name: Gradle cache
         uses: gradle/actions/setup-gradle@v5
 
-      # Installing and booting the emulator takes about 100 s, so the app and test APKs build
-      # meanwhile, in the background. "Instrumented tests (emulator)" waits for this build and
-      # prints its log. The output goes to a file, so this step doesn't wait for the build.
+      # The app and test APKs build in the background while the next steps install the Firebase
+      # CLI and the emulator (about 1 minute). "Instrumented tests (emulator)" waits for this build
+      # before it boots the emulator, which would otherwise slow it down. The output goes to a file,
+      # so this step doesn't wait for the build.
       - name: Build APKs (in the background)
         run: |
           (./gradlew assembleDebug assembleDebugAndroidTest -Pemulator=all; echo $? > "$RUNNER_TEMP/apk-build-status") \
@@ -266,12 +267,16 @@ jobs:
           arch: x86_64
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          # Each line runs in its own shell. The first waits for the background APK build and stops
-          # here if it failed. -Pemulator=all runs the @EmulatorTest tests together with the others,
-          # in one run, so the coverage report gets them all. The Firebase emulators stop when the
-          # run ends.
+          # Runs after the emulator is installed, before it boots: waits for the background APK build
+          # and prints its log
+          pre-emulator-launch-script: |
+            while [ ! -f "$RUNNER_TEMP/apk-build-status" ]; do sleep 1; done; cat "$RUNNER_TEMP/apk-build.log"
+          # Each line runs in its own shell. The first stops here if the APK build failed (a failed
+          # pre-launch script doesn't stop the step). -Pemulator=all runs the @EmulatorTest tests
+          # together with the others, in one run, so the coverage report gets them all. The Firebase
+          # emulators stop when the run ends.
           script: |
-            while [ ! -f "$RUNNER_TEMP/apk-build-status" ]; do sleep 1; done; cat "$RUNNER_TEMP/apk-build.log"; exit "$(cat "$RUNNER_TEMP/apk-build-status")"
+            exit "$(cat "$RUNNER_TEMP/apk-build-status")"
             firebase emulators:exec --project demo-polysocial --only firestore,auth "./gradlew connectedCheck -Pemulator=all"
 
       # For the "Coverage and SonarCloud" job
