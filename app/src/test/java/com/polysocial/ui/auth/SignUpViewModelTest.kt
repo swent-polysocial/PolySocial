@@ -1,6 +1,6 @@
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; tested sign-up state and failure paths with
 // the shared fake and MainDispatcherRule; cancellation recovery and cleared-password handoff);
-// Claude (reset after a sign-out, #74).
+// Claude (reset after a sign-out, #74; the full name's limit, written test-first, #143).
 package com.polysocial.ui.auth
 
 import com.polysocial.model.auth.AuthUser
@@ -8,6 +8,7 @@ import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.auth.FieldError
 import com.polysocial.model.auth.SignUpField
 import com.polysocial.model.auth.SignUpResult
+import com.polysocial.model.user.MAX_DISPLAY_NAME_LENGTH
 import com.polysocial.utils.MainDispatcherRule
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -73,6 +74,47 @@ class SignUpViewModelTest {
             }
         assertEquals(0, repository.signUpCalls)
       }
+
+  @Test
+  fun aFullNameOverTheLimit_showsTooLongAndNeverReachesTheRepository() =
+      runTest(dispatcher) {
+        validForm()
+        viewModel.update(SignUpField.FullName, "a".repeat(MAX_DISPLAY_NAME_LENGTH + 1))
+
+        assertEquals(FieldError.TooLong, viewModel.uiState.value.visibleError(SignUpField.FullName))
+        assertFalse(viewModel.uiState.value.canSubmit)
+        viewModel.signUp()
+        runCurrent()
+
+        assertEquals(0, repository.signUpCalls)
+        assertEquals(FieldError.TooLong, viewModel.uiState.value.visibleError(SignUpField.FullName))
+      }
+
+  @Test
+  fun aFullNameAtTheLimit_isSubmittedTrimmed() =
+      runTest(dispatcher) {
+        validForm()
+        val atTheLimit = "a".repeat(MAX_DISPLAY_NAME_LENGTH)
+        viewModel.update(SignUpField.FullName, "  $atTheLimit ")
+
+        assertNull(viewModel.uiState.value.visibleError(SignUpField.FullName))
+        viewModel.signUp()
+        runCurrent()
+
+        assertEquals(1, repository.signUpCalls)
+        assertEquals(atTheLimit, repository.lastSignUpFullName)
+      }
+
+  @Test
+  fun shorteningATooLongFullName_clearsTheErrorAndAllowsSubmitting() {
+    validForm()
+    viewModel.update(SignUpField.FullName, "a".repeat(MAX_DISPLAY_NAME_LENGTH + 1))
+
+    viewModel.update(SignUpField.FullName, "a".repeat(MAX_DISPLAY_NAME_LENGTH))
+
+    assertNull(viewModel.uiState.value.visibleError(SignUpField.FullName))
+    assertTrue(viewModel.uiState.value.canSubmit)
+  }
 
   @Test
   fun requiredFieldsAndWeakPasswordsBlockSubmission() =
