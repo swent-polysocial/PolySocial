@@ -1,5 +1,5 @@
 // Contributors: Claude (Events tab list from the Figma "Discover events" frames, #105; no matching
-// event state and search field, #115).
+// event state, search field and filter chips, #115).
 package com.polysocial.ui.event.list
 
 import androidx.compose.foundation.background
@@ -45,6 +45,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
 import com.polysocial.model.event.Event
+import com.polysocial.model.event.EventCategory
 import com.polysocial.resources.C
 import com.polysocial.ui.common.LoadingState
 import com.polysocial.ui.event.style
@@ -61,6 +62,7 @@ import java.time.format.DateTimeFormatter
 object EventsTags {
   const val LIST = "events_list"
   const val SEARCH = "events_search"
+  const val CHIPS = "events_chips"
   const val OFFLINE_BANNER = "events_offline_banner"
   const val EMPTY = "events_empty"
   const val NO_MATCH = "events_no_match"
@@ -71,6 +73,9 @@ object EventsTags {
   fun dayHeader(index: Int) = "events_day_header_$index"
 
   fun card(eventId: String) = "events_card_$eventId"
+
+  /** A filter chip: `ALL`, a [DateChoice] or an `EventCategory` name. */
+  fun chip(key: String) = "events_chip_$key"
 }
 
 /** The Events tab's root: the upcoming public events from [EventsViewModel]. */
@@ -83,6 +88,9 @@ fun EventsRoute(modifier: Modifier = Modifier, viewModel: EventsViewModel = hilt
       onRetry = viewModel::retry,
       onClearFilters = viewModel::clearSearchAndFilters,
       onSearchChange = viewModel::setSearch,
+      onSelectDate = viewModel::selectDate,
+      onToggleCategory = viewModel::toggleCategory,
+      onClearChipFilters = viewModel::clearFilters,
       modifier = modifier,
   )
 }
@@ -95,6 +103,9 @@ fun EventsScreen(
     onRetry: () -> Unit,
     onClearFilters: () -> Unit,
     onSearchChange: (String) -> Unit,
+    onSelectDate: (DateChoice) -> Unit,
+    onToggleCategory: (EventCategory) -> Unit,
+    onClearChipFilters: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
   val list = state.list
@@ -106,7 +117,7 @@ fun EventsScreen(
     // One header for both states, so the search field keeps its focus and cursor when typing
     // switches the list between matching events and none.
     if (list is EventsListState.Events || list is EventsListState.NoMatch) {
-      Header(state.selection, onSearchChange)
+      Header(state.selection, onSearchChange, onSelectDate, onToggleCategory, onClearChipFilters)
     }
     when (list) {
       EventsListState.Loading -> Unit
@@ -141,13 +152,30 @@ private fun ScreenContent(modifier: Modifier, content: @Composable () -> Unit) {
   Column(modifier.fillMaxSize().testTag(C.Tag.screen_events)) { content() }
 }
 
-/** The search above the list, shown while there are events to search. */
+/**
+ * The search and the filter chips above the list, shown while there are events to search. The
+ * chips' 48 dp touch targets add 6 dp above and below, so the gaps around them are 6 dp smaller
+ * than Figma's 14 dp.
+ */
 @Composable
-private fun Header(selection: EventSelection, onSearchChange: (String) -> Unit) {
+private fun Header(
+    selection: EventSelection,
+    onSearchChange: (String) -> Unit,
+    onSelectDate: (DateChoice) -> Unit,
+    onToggleCategory: (EventCategory) -> Unit,
+    onClearChipFilters: () -> Unit,
+) {
   EventsSearchField(
       selection.search,
       onSearchChange,
-      Modifier.padding(start = 20.dp, top = 10.dp, end = 20.dp, bottom = 14.dp),
+      Modifier.padding(start = 20.dp, top = 10.dp, end = 20.dp, bottom = 8.dp),
+  )
+  EventsChipRow(
+      selection,
+      onSelectDate,
+      onToggleCategory,
+      onClearChipFilters,
+      Modifier.padding(bottom = 8.dp),
   )
 }
 
