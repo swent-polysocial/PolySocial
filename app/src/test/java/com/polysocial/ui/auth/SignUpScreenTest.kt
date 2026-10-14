@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (tested name hints, recovery layout and field-specific errors).
+// Contributors: OpenAI Codex (tested name hints, recovery layout and field-specific errors); Claude
+// (the full name's limit, written test-first, #143).
 package com.polysocial.ui.auth
 
 import androidx.compose.ui.test.*
@@ -6,6 +7,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.auth.*
+import com.polysocial.model.user.MAX_DISPLAY_NAME_LENGTH
 import com.polysocial.ui.theme.PolySocialTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -95,5 +97,36 @@ class SignUpScreenTest {
         .assertTextContains("Use at least 8 characters and include a number.")
     compose.onNodeWithTag(SignUpTags.Submit).performScrollTo().assertIsNotEnabled()
     assertEquals(0, auth.signUpCalls)
+  }
+
+  @Test
+  fun aFullNameOverTheLimit_showsTheFigmaErrorAndBlocksCreateAccount() {
+    launch()
+    fill()
+
+    compose
+        .onNodeWithTag(SignUpTags.input(SignUpField.FullName))
+        .performTextReplacement("a".repeat(MAX_DISPLAY_NAME_LENGTH + 1))
+
+    // Figma "Sign up · name too long".
+    compose
+        .onNodeWithTag(SignUpTags.error(SignUpField.FullName))
+        .assertTextEquals("Use at most 50 characters")
+    compose.onNodeWithTag(SignUpTags.Submit).performScrollTo().assertIsNotEnabled()
+    compose.onNodeWithTag(SignUpTags.Submit).performClick()
+    assertEquals(0, auth.signUpCalls)
+  }
+
+  @Test
+  fun aFullNameAtTheLimit_showsNoErrorAndCanCreateTheAccount() {
+    launch()
+    fill()
+
+    compose
+        .onNodeWithTag(SignUpTags.input(SignUpField.FullName))
+        .performTextReplacement("a".repeat(MAX_DISPLAY_NAME_LENGTH))
+
+    compose.onNodeWithTag(SignUpTags.error(SignUpField.FullName)).assertDoesNotExist()
+    compose.onNodeWithTag(SignUpTags.Submit).performScrollTo().assertIsEnabled()
   }
 }
