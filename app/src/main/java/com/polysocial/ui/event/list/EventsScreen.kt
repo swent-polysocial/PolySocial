@@ -97,36 +97,41 @@ fun EventsScreen(
     onSearchChange: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-  when (val list = state.list) {
-    EventsListState.Loading -> LoadingState(stringResource(R.string.loading_events), modifier)
-    is EventsListState.Empty ->
-        ScreenContent(modifier) {
-          if (list.isOffline) OfflineBanner(Modifier.padding(horizontal = 20.dp))
-          EmptyState(
-              title = stringResource(R.string.events_empty_title),
-              body = stringResource(R.string.events_empty_body),
-              tag = EventsTags.EMPTY,
-          )
+  val list = state.list
+  if (list == EventsListState.Loading) {
+    LoadingState(stringResource(R.string.loading_events), modifier)
+    return
+  }
+  ScreenContent(modifier) {
+    // One header for both states, so the search field keeps its focus and cursor when typing
+    // switches the list between matching events and none.
+    if (list is EventsListState.Events || list is EventsListState.NoMatch) {
+      Header(state.selection, onSearchChange)
+    }
+    when (list) {
+      EventsListState.Loading -> Unit
+      is EventsListState.Empty -> {
+        if (list.isOffline) OfflineBanner(Modifier.padding(horizontal = 20.dp))
+        EmptyState(
+            title = stringResource(R.string.events_empty_title),
+            body = stringResource(R.string.events_empty_body),
+            tag = EventsTags.EMPTY,
+        )
+      }
+      is EventsListState.NoMatch -> {
+        if (list.isOffline) OfflineBanner(Modifier.padding(horizontal = 20.dp))
+        EmptyState(
+            title = stringResource(R.string.events_no_match_title),
+            body = stringResource(R.string.events_no_match_body),
+            tag = EventsTags.NO_MATCH,
+        ) {
+          Spacer(Modifier.height(20.dp))
+          ClearFiltersLink(onClearFilters)
         }
-    is EventsListState.NoMatch ->
-        ScreenContent(modifier) {
-          Header(state.selection, onSearchChange)
-          if (list.isOffline) OfflineBanner(Modifier.padding(horizontal = 20.dp))
-          EmptyState(
-              title = stringResource(R.string.events_no_match_title),
-              body = stringResource(R.string.events_no_match_body),
-              tag = EventsTags.NO_MATCH,
-          ) {
-            Spacer(Modifier.height(20.dp))
-            ClearFiltersLink(onClearFilters)
-          }
-        }
-    is EventsListState.Events ->
-        ScreenContent(modifier) {
-          Header(state.selection, onSearchChange)
-          EventList(list, zone)
-        }
-    EventsListState.Error -> ScreenContent(modifier) { ErrorState(onRetry) }
+      }
+      is EventsListState.Events -> EventList(list, zone)
+      EventsListState.Error -> ErrorState(onRetry)
+    }
   }
 }
 
