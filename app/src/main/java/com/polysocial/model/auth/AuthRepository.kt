@@ -1,7 +1,6 @@
 // Contributors: Claude (auth contract for #32; Sign up and Verify Email methods left to #30 and
 // #31 after review; logout clears the offline cache, #156); OpenAI Codex (GPT-6.1 Sol, medium;
-// integrated sign-up results and display
-// name).
+// integrated sign-up results and display name).
 package com.polysocial.model.auth
 
 /** The signed-in Firebase user, reduced to what the app needs. */

@@ -1,7 +1,6 @@
 // Contributors: Claude (test fake for #32; logout result, #156); Claude Opus 5.5 (recorded the
-// logIn arguments,
-// added the logIn gate); OpenAI Codex (GPT-6.1 Sol, medium; extended the existing fake to
-// the sign-up contract and added sign-up call, gate and failure controls).
+// logIn arguments, added the logIn gate); OpenAI Codex (GPT-6.1 Sol, medium; extended the
+// existing fake to the sign-up contract and added sign-up call, gate and failure controls).
 package com.polysocial.model.auth
 
 import kotlinx.coroutines.CompletableDeferred
