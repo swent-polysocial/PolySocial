@@ -57,4 +57,12 @@ class EventSelectionTest {
   fun aPickedDay_isThatDayOnly() {
     assertEquals(DateRange(sunday, monday), datesOn(wednesday, DateChoice.Day(sunday)))
   }
+
+  @Test
+  fun aDistance_isKeptInMeters() {
+    assertEquals(
+        EventFilter(maxDistanceMeters = 1_000.0),
+        EventSelection(maxDistanceMeters = 1_000).toFilter(wednesday),
+    )
+  }
 }

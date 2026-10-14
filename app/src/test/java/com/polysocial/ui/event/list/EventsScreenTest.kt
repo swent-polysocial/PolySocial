@@ -24,6 +24,7 @@ import com.polysocial.R
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.validEvent
+import com.polysocial.model.location.FakeLocationService
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.resources.C
 import com.polysocial.ui.theme.PolySocialTheme
@@ -302,7 +303,8 @@ class EventsScreenTest {
         object : NetworkMonitor {
           override fun isOnline() = true
         }
-    val viewModel = EventsViewModel(repository, network, clock, SavedStateHandle())
+    val viewModel =
+        EventsViewModel(repository, network, FakeLocationService(), clock, SavedStateHandle())
     composeTestRule.setContent { PolySocialTheme { EventsRoute(viewModel = viewModel) } }
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     composeTestRule.onNodeWithTag(EventsTags.ERROR).assertIsDisplayed()
@@ -383,6 +385,7 @@ class EventsScreenTest {
         EventsViewModel(
             repository,
             network,
+            FakeLocationService(),
             Clock.fixed(repository.now, lausanne),
             SavedStateHandle(),
         )
@@ -418,6 +421,7 @@ class EventsScreenTest {
         EventsViewModel(
             repository,
             network,
+            FakeLocationService(),
             Clock.fixed(repository.now, lausanne),
             SavedStateHandle(),
         )
@@ -457,6 +461,7 @@ class EventsScreenTest {
         EventsViewModel(
             repository,
             network,
+            FakeLocationService(),
             Clock.fixed(repository.now, lausanne),
             SavedStateHandle(),
         )
@@ -571,6 +576,7 @@ class EventsScreenTest {
         EventsViewModel(
             repository,
             network,
+            FakeLocationService(),
             Clock.fixed(repository.now, lausanne),
             SavedStateHandle(),
         )
@@ -608,6 +614,7 @@ class EventsScreenTest {
         EventsViewModel(
             repository,
             network,
+            FakeLocationService(),
             Clock.fixed(repository.now, lausanne),
             SavedStateHandle(),
         )
