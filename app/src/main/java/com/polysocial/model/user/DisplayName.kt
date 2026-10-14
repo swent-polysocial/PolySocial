@@ -9,10 +9,7 @@ const val MAX_DISPLAY_NAME_LENGTH = 50
 
 /**
  * Whether [name] is over [MAX_DISPLAY_NAME_LENGTH]. The name is saved trimmed, so spaces around it
- * don't count, and characters are counted like the Security Rule counts them: an emoji or an
- * accented letter is one character, not its UTF-16 units.
+ * don't count. Characters are counted in UTF-16 units, as the Security Rule's `size()` counts them
+ * (checked on the Firestore emulator): an accented letter is one, an emoji is two.
  */
-fun isDisplayNameTooLong(name: String): Boolean {
-  val trimmed = name.trim()
-  return trimmed.codePointCount(0, trimmed.length) > MAX_DISPLAY_NAME_LENGTH
-}
+fun isDisplayNameTooLong(name: String): Boolean = name.trim().length > MAX_DISPLAY_NAME_LENGTH
