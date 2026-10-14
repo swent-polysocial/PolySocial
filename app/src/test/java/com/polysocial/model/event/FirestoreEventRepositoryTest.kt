@@ -1,8 +1,9 @@
 // Contributors: Claude (wrote these tests; verified association badge, #45; the upcoming-events
-// listener, #49).
+// listener, #49; unexpected failures and cancellation, #182).
 package com.polysocial.model.event
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.CollectionReference
@@ -34,6 +35,7 @@ import java.time.Clock
 import java.time.Duration
 import java.time.ZoneOffset
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
@@ -43,6 +45,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -229,6 +232,52 @@ class FirestoreEventRepositoryTest {
     repository.createEvent(validEvent())
 
     assertEquals(0, profiles.getProfileCalls)
+  }
+
+  /** What Firestore throws when it is used after being shut down: not a FirebaseException. */
+  private fun terminated() = IllegalStateException("The client has already been terminated")
+
+  @Test
+  fun anUnexpectedExceptionBeforeTheWrite_isAnUnexpectedError() = runTest {
+    every { collection.document() } throws terminated()
+
+    assertEquals(CreateEventResult.UnexpectedError, repository.createEvent(validEvent()))
+  }
+
+  @Test
+  fun anUnexpectedFailureOfTheWrite_isAnUnexpectedError() = runTest {
+    every {
+      db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Transaction>>())
+    } returns Tasks.forException(terminated())
+
+    assertEquals(CreateEventResult.UnexpectedError, repository.createEvent(validEvent()))
+  }
+
+  @Test
+  fun aWriteTaskCancelledWhileTheCallerRuns_isAnUnexpectedError() = runTest {
+    every {
+      db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Transaction>>())
+    } returns Tasks.forCanceled()
+
+    assertEquals(CreateEventResult.UnexpectedError, repository.createEvent(validEvent()))
+  }
+
+  @Test
+  fun cancellingTheCaller_stillCancelsTheWrite() = runTest {
+    every {
+      db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Transaction>>())
+    } returns TaskCompletionSource<Transaction>().task
+    var result: CreateEventResult? = null
+    val call =
+        launch(start = CoroutineStart.UNDISPATCHED) {
+          result = repository.createEvent(validEvent())
+        }
+
+    call.cancel()
+    call.join()
+
+    assertTrue(call.isCancelled)
+    assertEquals(null, result)
   }
 
   // Reading the public upcoming events (#49)
