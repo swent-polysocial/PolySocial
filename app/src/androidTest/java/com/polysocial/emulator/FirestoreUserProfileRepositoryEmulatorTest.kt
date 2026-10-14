@@ -1,5 +1,6 @@
 // Contributors: Claude (profile repository tests against the Firestore emulator, #119; offline,
-// wrong-typed field and createdAt tests after an adversarial test review).
+// wrong-typed field and createdAt tests after an adversarial test review; offline helper's
+// Wi-Fi hint and failure reporting, #181).
 package com.polysocial.emulator
 
 import android.content.Context
@@ -260,18 +261,40 @@ class FirestoreUserProfileRepositoryEmulatorTest {
    * Runs [block] with the device in airplane mode, so the emulators can't be reached, then turns
    * the network back on and waits until [uid]'s document can be read from the server again.
    *
+   * It assumes airplane mode turns Wi-Fi off. On a phone where Wi-Fi was once turned back on during
+   * airplane mode, Android remembers it and keeps Wi-Fi on, so the device never goes offline.
+   *
    * `FirebaseFirestore.disableNetwork()` is not enough: transactions still reach the server with
    * it, so they would succeed instead of failing (see CONTEXT.md, Traps).
+   *
+   * If [block] fails and the reconnection then times out too, [block]'s failure is reported, with
+   * the timeout attached to it as suppressed.
    */
   private suspend fun <T> offline(uid: String, block: suspend () -> T): T {
     setAirplaneMode(true)
+    // What block() threw, so that a reconnection timeout doesn't replace it. Failed assertions are
+    // AssertionErrors, not Exceptions, hence the two catches.
+    var failure: Throwable? = null
     try {
-      waitUntil("the device to go offline") { !hasNetwork() }
+      waitUntil("the device to go offline (is Wi-Fi set to stay on in airplane mode?)") {
+        !hasNetwork()
+      }
       return block()
+    } catch (e: Exception) {
+      failure = e
+      throw e
+    } catch (e: AssertionError) {
+      failure = e
+      throw e
     } finally {
       setAirplaneMode(false)
-      waitUntil("the emulators to be reachable again") {
-        hasNetwork() && runCatchingFirestore { document(uid).get(Source.SERVER).await() }
+      try {
+        waitUntil("the emulators to be reachable again") {
+          hasNetwork() && runCatchingFirestore { document(uid).get(Source.SERVER).await() }
+        }
+      } catch (timeout: AssertionError) {
+        if (failure == null) throw timeout
+        failure.addSuppressed(timeout)
       }
     }
   }
