@@ -1,5 +1,5 @@
 // Contributors: Claude (the Events tab's Filters sheet from the Figma "Events · filters" and
-// "Events · filters, pick a date" frames, #115).
+// "Events · filters, pick a date" and "Events · filters, location off" frames, #115).
 package com.polysocial.ui.event.list
 
 import androidx.compose.foundation.BorderStroke
@@ -20,11 +20,13 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -40,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -51,8 +54,11 @@ import com.polysocial.model.event.EventCategory
 import com.polysocial.ui.event.style
 import com.polysocial.ui.theme.Bg
 import com.polysocial.ui.theme.Border
+import com.polysocial.ui.theme.Info
+import com.polysocial.ui.theme.InfoSoft
 import com.polysocial.ui.theme.Ink
 import com.polysocial.ui.theme.Ink2
+import com.polysocial.ui.theme.Surface
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.launch
@@ -60,7 +66,8 @@ import kotlinx.coroutines.launch
 /**
  * Figma's Filters sheet: the date, the distance and the categories. Every tap updates the list
  * right away, like the chip row; *Clear* clears the filters (not the search), and "Show N events"
- * only closes the sheet. *Pick a date* opens a strip of the next 14 days from [today].
+ * only closes the sheet. *Pick a date* opens a strip of the next 14 days from [today]. Without the
+ * student's [location], the distance chips are disabled and *Turn on* calls [onTurnOnLocation].
  *
  * @param shownCount how many events the current search and filters keep.
  */
@@ -70,8 +77,10 @@ fun EventsFiltersSheet(
     selection: EventSelection,
     today: LocalDate,
     shownCount: Int,
+    location: EventsLocationState,
     onSelectDate: (DateChoice) -> Unit,
     onSelectDistance: (Int?) -> Unit,
+    onTurnOnLocation: () -> Unit,
     onToggleCategory: (EventCategory) -> Unit,
     onClearFilters: () -> Unit,
     onDismiss: () -> Unit,
@@ -99,7 +108,7 @@ fun EventsFiltersSheet(
       Spacer(Modifier.height(20.dp))
       DateSection(selection.date, today, onSelectDate)
       Spacer(Modifier.height(16.dp))
-      DistanceSection(selection.maxDistanceMeters, onSelectDistance)
+      DistanceSection(selection.maxDistanceMeters, location, onSelectDistance, onTurnOnLocation)
       Spacer(Modifier.height(16.dp))
       CategorySection(selection.categories, onToggleCategory)
       Spacer(Modifier.height(18.dp))
@@ -238,14 +247,22 @@ private fun DayTile(day: LocalDate, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun DistanceSection(maxDistanceMeters: Int?, onSelectDistance: (Int?) -> Unit) {
+private fun DistanceSection(
+    maxDistanceMeters: Int?,
+    location: EventsLocationState,
+    onSelectDistance: (Int?) -> Unit,
+    onTurnOnLocation: () -> Unit,
+) {
+  // Figma shows no chip selected while location is off.
+  val enabled = location != EventsLocationState.Off
   Section(stringResource(R.string.events_filter_distance)) {
     EventsChip(
         label = stringResource(R.string.events_filter_any),
-        selected = maxDistanceMeters == null,
+        selected = enabled && maxDistanceMeters == null,
         onClick = { onSelectDistance(null) },
         tag = EventsTags.sheetChip("DISTANCE_ANY"),
         role = Role.RadioButton,
+        enabled = enabled,
     )
     DISTANCE_CHOICES_METERS.forEach { meters ->
       EventsChip(
@@ -254,6 +271,68 @@ private fun DistanceSection(maxDistanceMeters: Int?, onSelectDistance: (Int?) ->
           onClick = { onSelectDistance(meters) },
           tag = EventsTags.sheetChip("DISTANCE_$meters"),
           role = Role.RadioButton,
+          enabled = enabled,
+      )
+    }
+  }
+  when (location) {
+    EventsLocationState.Off -> {
+      Spacer(Modifier.height(4.dp))
+      LocationOff(onTurnOnLocation)
+    }
+    EventsLocationState.Locating ->
+        Text(
+            text = stringResource(R.string.events_locating),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Normal,
+            color = Ink2,
+            modifier = Modifier.padding(horizontal = 20.dp).testTag(EventsTags.LOCATING),
+        )
+    else -> Unit
+  }
+}
+
+/** Figma's "Location off" note under the distance chips, with its *Turn on* button. */
+@Composable
+private fun LocationOff(onTurnOnLocation: () -> Unit) {
+  Row(
+      modifier =
+          Modifier.padding(horizontal = 20.dp)
+              .fillMaxWidth()
+              .background(Surface, RoundedCornerShape(14.dp))
+              .padding(start = 12.dp, top = 10.dp, end = 10.dp, bottom = 10.dp)
+              .testTag(EventsTags.LOCATION_OFF),
+      horizontalArrangement = Arrangement.spacedBy(10.dp),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Box(
+        modifier = Modifier.size(32.dp).background(InfoSoft, CircleShape),
+        contentAlignment = Alignment.Center,
+    ) {
+      Icon(
+          painterResource(R.drawable.ic_navigation),
+          contentDescription = null,
+          tint = Info,
+          modifier = Modifier.size(16.dp),
+      )
+    }
+    Text(
+        text = stringResource(R.string.events_location_off),
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.Normal,
+        color = Ink,
+        modifier = Modifier.weight(1f),
+    )
+    Button(
+        onClick = onTurnOnLocation,
+        colors = ButtonDefaults.buttonColors(containerColor = Ink, contentColor = Bg),
+        contentPadding = PaddingValues(horizontal = 12.dp),
+        modifier = Modifier.height(36.dp).testTag(EventsTags.TURN_ON_LOCATION),
+    ) {
+      Text(
+          stringResource(R.string.events_location_turn_on),
+          style = MaterialTheme.typography.labelMedium,
+          fontWeight = FontWeight.Bold,
       )
     }
   }

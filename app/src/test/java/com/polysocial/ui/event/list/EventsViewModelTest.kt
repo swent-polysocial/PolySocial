@@ -17,6 +17,7 @@ import java.time.Duration
 import java.time.LocalDate
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -560,5 +561,86 @@ class EventsViewModelTest {
     assertEquals(EventsLocationState.Available(rolex), second.location())
     assertEquals(listOf("Later today"), second.shownTitles())
     assertEquals(2, location.requestCount)
+  }
+
+  // ---- Turn on ----
+
+  @Test
+  fun turnOn_withThePermission_readsTheLocationAgain() {
+    location.result = LocationResult.Unavailable
+    val viewModel = nearAndFarViewModel()
+    viewModel.selectDistance(1_000)
+    runPending()
+    assertEquals(EventsLocationState.Off, viewModel.location())
+
+    location.result = LocationResult.Available(rolex)
+    val action = viewModel.turnOnLocation(showRationale = false)
+    runPending()
+
+    assertEquals(LocationAction.NONE, action)
+    assertEquals(EventsLocationState.Available(rolex), viewModel.location())
+    assertEquals(2, location.requestCount)
+  }
+
+  @Test
+  fun turnOn_withoutThePermission_asksForIt_theFirstTime() {
+    location.permissionGranted = false
+    val viewModel = nearAndFarViewModel()
+
+    assertEquals(LocationAction.REQUEST_PERMISSION, viewModel.turnOnLocation(showRationale = false))
+    assertTrue(location.permissionRequested)
+  }
+
+  @Test
+  fun turnOn_afterARefusal_asksAgainOnlyIfAndroidStillCan() {
+    location.permissionGranted = false
+    location.markPermissionRequested()
+    val viewModel = nearAndFarViewModel()
+
+    assertEquals(LocationAction.REQUEST_PERMISSION, viewModel.turnOnLocation(showRationale = true))
+    assertEquals(LocationAction.OPEN_SETTINGS, viewModel.turnOnLocation(showRationale = false))
+    assertEquals(0, location.requestCount)
+  }
+
+  @Test
+  fun aGrantedPermission_turnsTheDistanceFiltersBackOn_withoutReadingYet() {
+    location.permissionGranted = false
+    val viewModel = nearAndFarViewModel()
+    viewModel.onPermissionResult()
+    assertEquals(EventsLocationState.Off, viewModel.location())
+
+    location.permissionGranted = true
+    viewModel.onPermissionResult()
+
+    assertEquals(EventsLocationState.NotRead, viewModel.location())
+    assertEquals(0, location.requestCount)
+  }
+
+  @Test
+  fun aPermissionRevokedWhileAway_turnsTheLocationOff_andDropsTheDistance() {
+    location.result = LocationResult.Available(rolex)
+    val viewModel = nearAndFarViewModel()
+    viewModel.selectDistance(1_000)
+    runPending()
+
+    location.permissionGranted = false
+    viewModel.onResume()
+
+    assertEquals(EventsLocationState.Off, viewModel.location())
+    assertEquals(null, viewModel.uiState.value.selection.maxDistanceMeters)
+    assertEquals(listOf("Later today", "Flon apéro"), viewModel.shownTitles())
+  }
+
+  @Test
+  fun resumingWithNothingChanged_keepsTheLocation() {
+    location.result = LocationResult.Available(rolex)
+    val viewModel = nearAndFarViewModel()
+    viewModel.selectDistance(1_000)
+    runPending()
+
+    viewModel.onResume()
+
+    assertEquals(EventsLocationState.Available(rolex), viewModel.location())
+    assertEquals(1, location.requestCount)
   }
 }
