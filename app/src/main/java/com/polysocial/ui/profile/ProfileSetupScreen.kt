@@ -1,7 +1,7 @@
 // Contributors: Claude (profile step screen for #34, built from the Figma "First proposal
 // revamped" Profile frames; layout that grows with large text, one save report and picker
 // accessibility after review; plain Column layout after review; exact text from the theme, and
-// Back locked while saving, #74; generic save error with Log out, #142).
+// Back locked while saving, #74; generic save error with Log out, #142; full name limit, #143).
 // Contributors: Claude (the shared field label, #251).
 package com.polysocial.ui.profile
 
@@ -68,6 +68,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
@@ -90,9 +91,11 @@ import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.polysocial.R
+import com.polysocial.model.user.MAX_DISPLAY_NAME_LENGTH
 import com.polysocial.model.user.SECTIONS
 import com.polysocial.model.user.YEARS
 import com.polysocial.ui.common.FieldLabel
+import com.polysocial.ui.theme.Accent
 import com.polysocial.ui.theme.AccentText
 import com.polysocial.ui.theme.Bg
 import com.polysocial.ui.theme.Border
@@ -115,6 +118,7 @@ object ProfileSetupTestTags {
   const val SECTION = "profile_setup_section"
   const val YEAR = "profile_setup_year"
   const val ERROR = "profile_setup_error"
+  const val NAME_ERROR = "profile_setup_name_error"
   const val LOG_OUT = "profile_setup_log_out"
   const val CONTINUE = "profile_setup_continue"
 
@@ -214,7 +218,14 @@ fun ProfileSetupContent(
           Spacer(Modifier.height(15.5.dp))
           MeasuredFieldLabel(R.string.profile_full_name)
           Spacer(Modifier.height(5.5.dp))
-          NameField(state.displayName, onDisplayNameChange, enabled = editable, faded = saving)
+          NameField(
+              state.displayName,
+              onDisplayNameChange,
+              enabled = editable,
+              faded = saving,
+              tooLong = state.nameTooLong,
+          )
+          if (state.nameTooLong) NameTooLong()
           Spacer(Modifier.height(13.5.dp))
           EmailLabel()
           Spacer(Modifier.height(5.5.dp))
@@ -370,9 +381,11 @@ private fun NameField(
     onValueChange: (String) -> Unit,
     enabled: Boolean,
     faded: Boolean,
+    tooLong: Boolean,
 ) {
   // While saving, Figma fades the editable fields to 45%.
   val shape = MaterialTheme.shapes.small
+  val tooLongMessage = stringResource(R.string.full_name_too_long, MAX_DISPLAY_NAME_LENGTH)
   BasicTextField(
       value = value,
       onValueChange = onValueChange,
@@ -384,13 +397,15 @@ private fun NameField(
       modifier =
           Modifier.fillMaxWidth()
               .alpha(if (faded) 0.45f else 1f)
+              .semantics { if (tooLong) error(tooLongMessage) }
               .testTag(ProfileSetupTestTags.FULL_NAME),
       decorationBox = { innerTextField ->
         Box(
             Modifier.fillMaxWidth()
                 .heightIn(min = 50.dp)
                 .background(Bg, shape)
-                .border(1.dp, Border, shape)
+                // Figma "Profile · name too long": a 2 dp border in the error red.
+                .border(if (tooLong) 2.dp else 1.dp, if (tooLong) Accent else Border, shape)
                 .padding(horizontal = 15.dp),
             contentAlignment = Alignment.CenterStart,
         ) {
@@ -660,6 +675,29 @@ private fun ErrorMessage(@StringRes message: Int) {
         style = MaterialTheme.typography.bodySmall.exact(),
         color = AccentText,
         modifier = Modifier.heightIn(min = 30.dp),
+    )
+  }
+}
+
+/**
+ * Figma "Profile · name too long" (#143): the error icon and "Use at most 50 characters" in red, 7
+ * dp under the name field, which pushes the fields below down.
+ */
+@Composable
+private fun NameTooLong() {
+  Row(
+      Modifier.padding(top = 7.dp).testTag(ProfileSetupTestTags.NAME_ERROR),
+      horizontalArrangement = Arrangement.spacedBy(6.dp),
+  ) {
+    Image(
+        painterResource(R.drawable.ic_error),
+        contentDescription = null,
+        modifier = Modifier.padding(top = 1.dp),
+    )
+    Text(
+        stringResource(R.string.full_name_too_long, MAX_DISPLAY_NAME_LENGTH),
+        style = MaterialTheme.typography.bodySmall.exact(),
+        color = AccentText,
     )
   }
 }
