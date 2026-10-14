@@ -43,10 +43,14 @@ class SignUpFormTest {
   }
 
   @Test
-  fun emojiCountAsOneCharacter() {
-    val form = valid.copy(fullName = "😀".repeat(MAX_DISPLAY_NAME_LENGTH))
+  fun emojiCountAsTwo_likeTheRule() {
+    val emoji = "\uD83D\uDE00"
 
-    assertNull(form.error(SignUpField.FullName))
+    assertNull(valid.copy(fullName = emoji.repeat(25)).error(SignUpField.FullName))
+    assertEquals(
+        FieldError.TooLong,
+        valid.copy(fullName = emoji.repeat(26)).error(SignUpField.FullName),
+    )
   }
 
   @Test

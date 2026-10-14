@@ -1,7 +1,7 @@
 // Contributors: Claude (isEpflUser helper, #33; own users/{uid} rule and no catch-all, #35;
 // fixed uid and accountType after review, #35; @epfl.ch associations aren't students and
 // accountType values on create, association profiles not deletable by the client, #161;
-// associations/{uid}, #126);
+// associations/{uid}, #126; displayName limit, written test-first, #143);
 // OpenAI Codex (public/private event read rules, #52); Claude Opus 5.5 (event write rules, #47;
 // badge and locationName checks after review; isStudent for writes after #161; organizers
 // stay allowed readers after review).
@@ -45,6 +45,14 @@ service cloud.firestore {
         return hasVerifiedEmail() && request.auth.uid == uid;
       }
 
+      // The full name's limit (#143): a displayName, when present, is a string of at most 50
+      // characters (the app's MAX_DISPLAY_NAME_LENGTH). size() counts UTF-16 units, as the app does.
+      function hasValidDisplayName() {
+        return !('displayName' in request.resource.data)
+            || (request.resource.data.displayName is string
+                && request.resource.data.displayName.size() <= 50);
+      }
+
       allow read: if isOwner();
       allow delete: if isOwner()
           && (resource == null || resource.data.get('accountType', 'student') != 'association');
@@ -53,10 +61,12 @@ service cloud.firestore {
           && (!('accountType' in request.resource.data)
               || request.resource.data.accountType in ['student', 'association'])
           && (!('isAssociationVerified' in request.resource.data)
-              || request.resource.data.isAssociationVerified == false);
+              || request.resource.data.isAssociationVerified == false)
+          && hasValidDisplayName();
       allow update: if isOwner()
           && !request.resource.data.diff(resource.data).affectedKeys()
-              .hasAny(['uid', 'accountType', 'isAssociationVerified']);
+              .hasAny(['uid', 'accountType', 'isAssociationVerified'])
+          && hasValidDisplayName();
     }
 
     // No recursive match grants access to event subcollections. Private queries also need

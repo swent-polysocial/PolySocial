@@ -1,4 +1,4 @@
-// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review).
+// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review).
 const { after, before, beforeEach, test } = require("node:test");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
@@ -433,6 +433,123 @@ test("recreating your own users/{uid} needs a valid accountType too", async () =
     setDoc(doc(db, "users/club"), { uid: "club", accountType: "admin" }, { merge: true }),
   );
   await assertSucceeds(setDoc(doc(db, "users/club"), { uid: "club", accountType: "association" }));
+});
+
+// ---- users/{uid}: the full name's limit (#143) ----
+// At most 50 characters (the app's MAX_DISPLAY_NAME_LENGTH). The rule's size() counts UTF-16 units,
+// as the app does: an accented letter is 1, an emoji is 2 (pinned below).
+
+const NAME_AT_LIMIT = "a".repeat(50);
+const NAME_OVER_LIMIT = "a".repeat(51);
+const EMOJI = "\u{1F600}"; // 😀: one character, two UTF-16 units
+
+async function storeUserAsAdmin(uid, data) {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), `users/${uid}`), data);
+  });
+}
+
+test("creating your own users/{uid} with a displayName at the limit is allowed", async () => {
+  await assertSucceeds(
+    setDoc(doc(studentDb("u3"), "users/u3"), { uid: "u3", displayName: NAME_AT_LIMIT }),
+  );
+});
+
+test("creating your own users/{uid} with a displayName over the limit is denied", async () => {
+  const db = studentDb("u3");
+
+  await assertFails(setDoc(doc(db, "users/u3"), { uid: "u3", displayName: NAME_OVER_LIMIT }));
+  await assertFails(
+    setDoc(doc(db, "users/u3"), { uid: "u3", displayName: NAME_OVER_LIMIT }, { merge: true }),
+  );
+  if ((await storedUser("u3")) !== undefined) throw new Error("users/u3 was created");
+});
+
+test("the displayName limit counts an emoji as 2: 25 are allowed, 26 are denied", async () => {
+  const db = studentDb("u3");
+
+  await assertFails(setDoc(doc(db, "users/u3"), { uid: "u3", displayName: EMOJI.repeat(26) }));
+  await assertSucceeds(setDoc(doc(db, "users/u3"), { uid: "u3", displayName: EMOJI.repeat(25) }));
+});
+
+test("the displayName limit counts an accented letter as one character", async () => {
+  const db = studentDb("u3");
+
+  await assertFails(setDoc(doc(db, "users/u3"), { uid: "u3", displayName: "é".repeat(51) }));
+  await assertSucceeds(setDoc(doc(db, "users/u3"), { uid: "u3", displayName: "é".repeat(50) }));
+});
+
+for (const [name, displayName] of [
+  ["a number", 42],
+  ["null", null],
+  ["a list", [NAME_AT_LIMIT]],
+  ["a map", { first: "Franek" }],
+]) {
+  test(`creating your own users/{uid} with ${name} as displayName is denied`, async () => {
+    await assertFails(setDoc(doc(studentDb("u3"), "users/u3"), { uid: "u3", displayName }));
+  });
+}
+
+test("creating your own users/{uid} without a displayName is still allowed", async () => {
+  await assertSucceeds(setDoc(doc(studentDb("u3"), "users/u3"), { uid: "u3", section: "IN" }));
+});
+
+test("updating your own displayName to the limit is allowed, over it is denied", async () => {
+  await storeUserAsAdmin("u3", { uid: "u3", displayName: "Short" });
+  const db = studentDb("u3");
+
+  await assertFails(updateDoc(doc(db, "users/u3"), { displayName: NAME_OVER_LIMIT }));
+  await assertFails(
+    setDoc(doc(db, "users/u3"), { displayName: NAME_OVER_LIMIT }, { merge: true }),
+  );
+  await assertFails(setDoc(doc(db, "users/u3"), { uid: "u3", displayName: NAME_OVER_LIMIT }));
+  await assertSucceeds(updateDoc(doc(db, "users/u3"), { displayName: NAME_AT_LIMIT }));
+  if ((await storedUser("u3")).displayName !== NAME_AT_LIMIT) throw new Error("not updated");
+});
+
+test("updating your own displayName to a non-string is denied", async () => {
+  await storeUserAsAdmin("u3", { uid: "u3", displayName: "Short" });
+
+  await assertFails(updateDoc(doc(studentDb("u3"), "users/u3"), { displayName: 42 }));
+});
+
+test("a batch can't slip a displayName over the limit into your own users/{uid}", async () => {
+  await storeUserAsAdmin("u3", { uid: "u3", displayName: "Short" });
+  const db = studentDb("u3");
+  const batch = writeBatch(db);
+  batch.update(doc(db, "users/u3"), { section: "IN" });
+  batch.update(doc(db, "users/u3"), { displayName: NAME_OVER_LIMIT });
+
+  await assertFails(batch.commit());
+  if ((await storedUser("u3")).displayName !== "Short") throw new Error("the batch was applied");
+});
+
+test("a stored displayName over the limit must be shortened before any other update", async () => {
+  // A document written before #143, or by an admin.
+  await storeUserAsAdmin("u3", { uid: "u3", displayName: NAME_OVER_LIMIT });
+  const db = studentDb("u3");
+
+  await assertFails(updateDoc(doc(db, "users/u3"), { section: "IN" }));
+  await assertSucceeds(updateDoc(doc(db, "users/u3"), { displayName: NAME_AT_LIMIT, section: "IN" }));
+});
+
+test("an association's displayName has the same limit", async () => {
+  const db = associationDb("newClub");
+
+  await assertFails(
+    setDoc(doc(db, "users/newClub"), {
+      uid: "newClub",
+      accountType: "association",
+      displayName: NAME_OVER_LIMIT,
+    }),
+  );
+  await assertSucceeds(
+    setDoc(doc(db, "users/newClub"), {
+      uid: "newClub",
+      accountType: "association",
+      displayName: NAME_AT_LIMIT,
+    }),
+  );
 });
 
 // ---- users/{uid}: attacks beyond a single get or write (#35) ----
