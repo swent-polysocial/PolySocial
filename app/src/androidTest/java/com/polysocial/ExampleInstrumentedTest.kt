@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (retain injected placeholders for shared navigation tests, #109).
 // Contributors: Claude (app-shell smoke test, #41); OpenAI Codex
 // (GPT-6.1 Sol, medium; welcome entry/navigation test and preserved shell smoke test); Claude
 // (placeholder Events root, #105; Hilt test rule, #136).
@@ -50,7 +51,12 @@ class MainActivityTest : TestCase() {
     // Session routing remains for #74; exercise the signed-in shell directly here.
     // The placeholder Events root keeps this test off the live Firestore backend.
     composeTestRule.activity.setContent {
-      PolySocialTheme { AppShell(eventsContent = { TabRootScreen(Tab.EVENTS) }) }
+      PolySocialTheme {
+        AppShell(
+            eventsContent = { TabRootScreen(Tab.EVENTS) },
+            profileContent = { TabRootScreen(Tab.PROFILE) },
+        )
+      }
     }
     step("Show signed-in app shell") {
       ComposeScreen.onComposeScreen<MainScreen>(composeTestRule) {

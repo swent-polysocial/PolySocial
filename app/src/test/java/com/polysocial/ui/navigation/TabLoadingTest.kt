@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (retain injected placeholders for shared navigation tests, #109).
 // Contributors: Claude (UI tests for the tab loading state, #43; placeholder Events root without
 // Hilt, #105; map stub given the "+" action, #110).
 // OpenAI Codex (injected map placeholder to keep shared-loading tests offline after #50).
@@ -41,6 +42,7 @@ class TabLoadingTest {
         // Exercise the shared tab loader; MapScreen's own states have separate map tests.
         AppShell(
             eventsContent = { TabRootScreen(Tab.EVENTS) },
+            profileContent = { TabRootScreen(Tab.PROFILE) },
             mapContent = { _, _ -> TabRootScreen(Tab.MAP) },
         )
       }

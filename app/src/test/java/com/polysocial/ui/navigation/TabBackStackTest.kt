@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (retain injected placeholders for shared navigation tests, #109).
 // Contributors: Claude (UI tests for the per-tab back stacks, #42; placeholder Events root
 // without Hilt, #105; map stub given the "+" action, #110).
 // Contributors: OpenAI Codex (inject an offline Map placeholder while testing shared navigation).
@@ -39,6 +40,7 @@ class TabBackStackTest {
         AppShell(
             navController = navController,
             eventsContent = { TabRootScreen(Tab.EVENTS) },
+            profileContent = { TabRootScreen(Tab.PROFILE) },
             mapContent = { _, _ -> TabRootScreen(Tab.MAP) },
         )
       }

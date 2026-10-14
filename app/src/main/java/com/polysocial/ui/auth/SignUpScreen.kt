@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (fresh signed-out forms and Welcome after logout, #109).
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; translated the Figma sign-up form to Compose
 // Foundation, reusing the shared app theme; connected login and added the official Google
 // placeholder button; connected the welcome entry screen and app-start/profile routing;
@@ -156,7 +157,7 @@ fun AuthFlow(
     verificationViewModel: VerifyEmailViewModel = hiltViewModel(),
     profileSetupViewModel: ProfileSetupViewModel = hiltViewModel(),
     recoveryViewModel: PasswordRecoveryViewModel? = null,
-    signedInContent: @Composable () -> Unit = { AppShell() },
+    signedInContent: @Composable (() -> Unit) -> Unit = { done -> AppShell(onLoggedOut = done) },
 ) {
   // A session that needs no profile read is resolved at once, so it opens on its screen instead
   // of showing "Loading your profile…" for the first frame.
@@ -194,7 +195,8 @@ fun AuthFlow(
         !startupApplied ||
             (startDestination != StartDestination.Login &&
                 startDestination != StartDestination.VerifyEmail) ||
-            destination == AuthDestination.Loading
+            destination == AuthDestination.Loading ||
+            destination == AuthDestination.SignedIn
     ) {
       val target =
           when (startDestination) {
@@ -262,6 +264,7 @@ fun AuthFlow(
     // other.
     startViewModel.onVerificationNeeded()
   }
+  BackHandler(destination == AuthDestination.Welcome) { onExit() }
   BackHandler(destination != AuthDestination.Welcome && destination != AuthDestination.SignedIn) {
     when (destination) {
       AuthDestination.SignUp,
@@ -339,7 +342,15 @@ fun AuthFlow(
       }
       PasswordRecoveryRoute(recovery, onBack = ::back)
     }
-    AuthDestination.SignedIn -> signedInContent()
+    AuthDestination.SignedIn ->
+        signedInContent {
+          viewModel.reset()
+          loginViewModel.reset()
+          profileSetupViewModel.reset()
+          backStack = emptyList()
+          destination = AuthDestination.Welcome
+          startViewModel.refresh()
+        }
   }
 }
 

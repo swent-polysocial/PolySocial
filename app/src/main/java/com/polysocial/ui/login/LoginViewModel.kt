@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (discard previous session form state on logout, #109).
 // Contributors: Claude (Log in screen state for #32); Claude Opus 5.5 (block Log in while
 // redirecting). Contributors: OpenAI Codex (cleared login state when verification changes account
 // for #31; ); Claude (fresh form after a sign-out, #74).
