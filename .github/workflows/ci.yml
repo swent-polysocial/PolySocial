@@ -1,5 +1,6 @@
 # Contributors: Claude (split the jobs, added docs-only detection and the CI summary job, #67;
-# Firebase emulators for the rules and emulator tests, #159).
+# Firebase emulators for the rules and emulator tests, #159; parallel checks, unit test,
+# instrumented test and SonarCloud jobs, #192).
 
 name: CI - Test Runner
 
@@ -109,16 +110,16 @@ jobs:
       - name: Build debug app
         run: |
           # To run the CI with debug information, add --info
-          ./gradlew assembleDebug --parallel --build-cache
+          ./gradlew assembleDebug
 
       - name: Lint
         run: |
-          ./gradlew lint --parallel --build-cache
+          ./gradlew lint
 
       # Not check: the rest of check (ktfmt and lint) already has its own step
       - name: Unit tests
         run: |
-          ./gradlew testDebugUnitTest --parallel --build-cache
+          ./gradlew testDebugUnitTest
 
       # The rules tests and the @EmulatorTest instrumented tests need the Firebase emulators (Auth
       # and Firestore), started with the Firebase CLI. The Android emulator reaches them at 10.0.2.2.
@@ -151,7 +152,7 @@ jobs:
           disable-animations: true
           # -Pemulator=all runs the @EmulatorTest tests together with the others, in one run, so the
           # coverage report gets them all. The Firebase emulators stop when the run ends.
-          script: firebase emulators:exec --project demo-polysocial --only firestore,auth "./gradlew connectedCheck -Pemulator=all --parallel --build-cache"
+          script: firebase emulators:exec --project demo-polysocial --only firestore,auth "./gradlew connectedCheck -Pemulator=all"
 
       # Merges the unit and instrumented test coverage for Sonar
       - name: Coverage report
@@ -162,7 +163,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-        run: ./gradlew sonar --parallel --build-cache
+        run: ./gradlew sonar
 
       # Lint, unit test and instrumented test reports (with the emulator's logcat), to debug a failed
       # run. Download them from the run's summary page.
@@ -208,7 +209,7 @@ jobs:
 
       - name: Build release app
         run: |
-          ./gradlew assembleRelease --parallel --build-cache
+          ./gradlew assembleRelease
 
   # The main ruleset requires a single status check named "CI". This job reports the result of the
   # jobs above, so jobs can be added or split without changing the ruleset.
