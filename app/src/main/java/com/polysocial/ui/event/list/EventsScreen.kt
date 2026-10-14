@@ -90,7 +90,6 @@ fun EventsRoute(modifier: Modifier = Modifier, viewModel: EventsViewModel = hilt
       onSearchChange = viewModel::setSearch,
       onSelectDate = viewModel::selectDate,
       onToggleCategory = viewModel::toggleCategory,
-      onClearChipFilters = viewModel::clearFilters,
       modifier = modifier,
   )
 }
@@ -105,7 +104,6 @@ fun EventsScreen(
     onSearchChange: (String) -> Unit,
     onSelectDate: (DateChoice) -> Unit,
     onToggleCategory: (EventCategory) -> Unit,
-    onClearChipFilters: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
   val list = state.list
@@ -117,7 +115,7 @@ fun EventsScreen(
     // One header for both states, so the search field keeps its focus and cursor when typing
     // switches the list between matching events and none.
     if (list is EventsListState.Events || list is EventsListState.NoMatch) {
-      Header(state.selection, onSearchChange, onSelectDate, onToggleCategory, onClearChipFilters)
+      Header(state.selection, onSearchChange, onSelectDate, onToggleCategory, onClearFilters)
     }
     when (list) {
       EventsListState.Loading -> Unit
@@ -163,7 +161,7 @@ private fun Header(
     onSearchChange: (String) -> Unit,
     onSelectDate: (DateChoice) -> Unit,
     onToggleCategory: (EventCategory) -> Unit,
-    onClearChipFilters: () -> Unit,
+    onClearFilters: () -> Unit,
 ) {
   EventsSearchField(
       selection.search,
@@ -174,7 +172,7 @@ private fun Header(
       selection,
       onSelectDate,
       onToggleCategory,
-      onClearChipFilters,
+      onClearFilters,
       Modifier.padding(bottom = 8.dp),
   )
 }
