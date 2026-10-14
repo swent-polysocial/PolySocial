@@ -16,6 +16,9 @@
     <string name="events_offline">You\'re offline. Showing saved events.</string>
     <string name="events_empty_title">No upcoming events</string>
     <string name="events_empty_body">No public events in the next two weeks yet.</string>
+    <string name="events_no_match_title">No matching events</string>
+    <string name="events_no_match_body">Try another search or fewer filters.</string>
+    <string name="events_clear_filters">Clear filters</string>
     <string name="events_error">Couldn\'t load events. Check your connection and try again.</string>
     <string name="events_retry">Retry</string>
 </resources>

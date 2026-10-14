@@ -1,4 +1,4 @@
-// Contributors: Claude (screen tests for the Events tab list, #105).
+// Contributors: Claude (screen tests for the Events tab list, #105; no matching event, #115).
 package com.polysocial.ui.event.list
 
 import android.content.Context
@@ -11,6 +11,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
@@ -60,16 +61,24 @@ class EventsScreenTest {
           .copy(id = id, category = category)
 
   private var retries = 0
+  private var clears = 0
 
-  private fun show(state: EventsUiState) {
+  private fun show(list: EventsListState) {
     composeTestRule.setContent {
-      PolySocialTheme { EventsScreen(state, zone = lausanne, onRetry = { retries++ }) }
+      PolySocialTheme {
+        EventsScreen(
+            EventsUiState(list),
+            zone = lausanne,
+            onRetry = { retries++ },
+            onClearFilters = { clears++ },
+        )
+      }
     }
   }
 
   @Test
   fun loading_showsTheSharedLoadingState() {
-    show(EventsUiState.Loading)
+    show(EventsListState.Loading)
 
     composeTestRule.onNodeWithTag(C.Tag.loading_state).assertIsDisplayed()
     composeTestRule.onNodeWithText(string(R.string.loading_events)).assertIsDisplayed()
@@ -82,7 +91,7 @@ class EventsScreenTest {
     val climbing = event("climbing", "Climbing", LocalDateTime.of(2026, 10, 12, 10, 0))
     val film = event("film", "Ciné-club: Dune", LocalDateTime.of(2026, 10, 14, 19, 30))
     show(
-        EventsUiState.Events(
+        EventsListState.Events(
             listOf(
                 EventDaySection(today, listOf(party)),
                 EventDaySection(today.plusDays(1), listOf(climbing)),
@@ -110,7 +119,7 @@ class EventsScreenTest {
     val brunch = event("brunch", "Brunch", LocalDateTime.of(2026, 11, 1, 11, 0))
     val lecture = event("lecture", "Lecture", LocalDateTime.of(2026, 11, 2, 8, 15))
     show(
-        EventsUiState.Events(
+        EventsListState.Events(
             listOf(
                 EventDaySection(LocalDate.of(2026, 11, 1), listOf(brunch)),
                 EventDaySection(LocalDate.of(2026, 11, 2), listOf(lecture)),
@@ -141,7 +150,7 @@ class EventsScreenTest {
             category = EventCategory.SPORTS,
         )
     show(
-        EventsUiState.Events(
+        EventsListState.Events(
             listOf(EventDaySection(today, listOf(withoutEnd, withEnd))),
             today = today,
             isOffline = false,
@@ -163,7 +172,7 @@ class EventsScreenTest {
             )
             .copy(id = "utc", category = EventCategory.STUDY)
     show(
-        EventsUiState.Events(
+        EventsListState.Events(
             listOf(EventDaySection(today, listOf(event))),
             today = today,
             isOffline = false,
@@ -181,7 +190,7 @@ class EventsScreenTest {
           event(category.name, category.name, start, category = category)
         }
     show(
-        EventsUiState.Events(
+        EventsListState.Events(
             listOf(EventDaySection(today, events)),
             today = today,
             isOffline = false,
@@ -204,7 +213,7 @@ class EventsScreenTest {
   fun offlineEvents_showTheOfflineBannerAboveTheList() {
     val event = event("party", "Party", LocalDateTime.of(2026, 10, 11, 20, 0))
     show(
-        EventsUiState.Events(
+        EventsListState.Events(
             listOf(EventDaySection(today, listOf(event))),
             today = today,
             isOffline = true,
@@ -218,7 +227,7 @@ class EventsScreenTest {
 
   @Test
   fun noEvents_showTheEmptyState() {
-    show(EventsUiState.Empty(isOffline = false))
+    show(EventsListState.Empty(isOffline = false))
 
     composeTestRule.onNodeWithTag(EventsTags.EMPTY).assertIsDisplayed()
     composeTestRule.onNodeWithText(string(R.string.events_empty_title)).assertIsDisplayed()
@@ -229,15 +238,37 @@ class EventsScreenTest {
 
   @Test
   fun noEventsWhileOffline_showTheBannerAboveTheEmptyState() {
-    show(EventsUiState.Empty(isOffline = true))
+    show(EventsListState.Empty(isOffline = true))
 
     composeTestRule.onNodeWithTag(EventsTags.OFFLINE_BANNER).assertIsDisplayed()
     composeTestRule.onNodeWithTag(EventsTags.EMPTY).assertIsDisplayed()
   }
 
   @Test
+  fun noMatchingEvent_showsItsStateAndClearFiltersCallsBack() {
+    show(EventsListState.NoMatch(isOffline = false))
+
+    composeTestRule.onNodeWithTag(EventsTags.NO_MATCH).assertIsDisplayed()
+    composeTestRule.onNodeWithText(string(R.string.events_no_match_title)).assertIsDisplayed()
+    composeTestRule.onNodeWithText(string(R.string.events_no_match_body)).assertIsDisplayed()
+    composeTestRule.onAllNodesWithTag(EventsTags.EMPTY).assertCountEquals(0)
+    composeTestRule.onAllNodesWithTag(EventsTags.OFFLINE_BANNER).assertCountEquals(0)
+    composeTestRule.onNodeWithTag(EventsTags.CLEAR_FILTERS).performClick()
+
+    assertEquals(1, clears)
+  }
+
+  @Test
+  fun noMatchingEventWhileOffline_showsTheBannerAboveIt() {
+    show(EventsListState.NoMatch(isOffline = true))
+
+    composeTestRule.onNodeWithTag(EventsTags.OFFLINE_BANNER).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(EventsTags.NO_MATCH).assertIsDisplayed()
+  }
+
+  @Test
   fun anError_showsTheMessageAndRetryCallsBack() {
-    show(EventsUiState.Error)
+    show(EventsListState.Error)
 
     composeTestRule.onNodeWithTag(EventsTags.ERROR).assertIsDisplayed()
     composeTestRule.onNodeWithText(string(R.string.events_error)).assertIsDisplayed()
@@ -259,7 +290,7 @@ class EventsScreenTest {
         object : NetworkMonitor {
           override fun isOnline() = true
         }
-    val viewModel = EventsViewModel(repository, network, clock)
+    val viewModel = EventsViewModel(repository, network, clock, SavedStateHandle())
     composeTestRule.setContent { PolySocialTheme { EventsRoute(viewModel = viewModel) } }
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     composeTestRule.onNodeWithTag(EventsTags.ERROR).assertIsDisplayed()

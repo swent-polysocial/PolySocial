@@ -1,17 +1,21 @@
-// Contributors: Claude (Events tab list from the Figma "Discover events" frames, #105).
+// Contributors: Claude (Events tab list from the Figma "Discover events" frames, #105; no matching
+// event state, #115).
 package com.polysocial.ui.event.list
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -30,8 +34,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -56,6 +62,8 @@ object EventsTags {
   const val LIST = "events_list"
   const val OFFLINE_BANNER = "events_offline_banner"
   const val EMPTY = "events_empty"
+  const val NO_MATCH = "events_no_match"
+  const val CLEAR_FILTERS = "events_clear_filters"
   const val ERROR = "events_error"
   const val RETRY = "events_retry"
 
@@ -68,7 +76,13 @@ object EventsTags {
 @Composable
 fun EventsRoute(modifier: Modifier = Modifier, viewModel: EventsViewModel = hiltViewModel()) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
-  EventsScreen(state, zone = viewModel.zone, onRetry = viewModel::retry, modifier = modifier)
+  EventsScreen(
+      state,
+      zone = viewModel.zone,
+      onRetry = viewModel::retry,
+      onClearFilters = viewModel::clearSearchAndFilters,
+      modifier = modifier,
+  )
 }
 
 /** Draws [state]; start times and dates are shown in [zone]. */
@@ -77,17 +91,34 @@ fun EventsScreen(
     state: EventsUiState,
     zone: ZoneId,
     onRetry: () -> Unit,
+    onClearFilters: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-  when (state) {
-    EventsUiState.Loading -> LoadingState(stringResource(R.string.loading_events), modifier)
-    is EventsUiState.Empty ->
+  when (val list = state.list) {
+    EventsListState.Loading -> LoadingState(stringResource(R.string.loading_events), modifier)
+    is EventsListState.Empty ->
         ScreenContent(modifier) {
-          if (state.isOffline) OfflineBanner(Modifier.padding(horizontal = 20.dp))
-          EmptyState()
+          if (list.isOffline) OfflineBanner(Modifier.padding(horizontal = 20.dp))
+          EmptyState(
+              title = stringResource(R.string.events_empty_title),
+              body = stringResource(R.string.events_empty_body),
+              tag = EventsTags.EMPTY,
+          )
         }
-    is EventsUiState.Events -> ScreenContent(modifier) { EventList(state, zone) }
-    EventsUiState.Error -> ScreenContent(modifier) { ErrorState(onRetry) }
+    is EventsListState.NoMatch ->
+        ScreenContent(modifier) {
+          if (list.isOffline) OfflineBanner(Modifier.padding(horizontal = 20.dp))
+          EmptyState(
+              title = stringResource(R.string.events_no_match_title),
+              body = stringResource(R.string.events_no_match_body),
+              tag = EventsTags.NO_MATCH,
+          ) {
+            Spacer(Modifier.height(20.dp))
+            ClearFiltersLink(onClearFilters)
+          }
+        }
+    is EventsListState.Events -> ScreenContent(modifier) { EventList(list, zone) }
+    EventsListState.Error -> ScreenContent(modifier) { ErrorState(onRetry) }
   }
 }
 
@@ -98,7 +129,7 @@ private fun ScreenContent(modifier: Modifier, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun EventList(state: EventsUiState.Events, zone: ZoneId) {
+private fun EventList(state: EventsListState.Events, zone: ZoneId) {
   LazyColumn(
       modifier = Modifier.fillMaxSize().testTag(EventsTags.LIST),
       contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 20.dp),
@@ -199,10 +230,16 @@ private fun OfflineBanner(modifier: Modifier = Modifier) {
   }
 }
 
+/** The Figma empty state: the events icon, [title] and [body], then an optional [action]. */
 @Composable
-private fun EmptyState() {
+private fun EmptyState(
+    title: String,
+    body: String,
+    tag: String,
+    action: @Composable ColumnScope.() -> Unit = {},
+) {
   Column(
-      modifier = Modifier.fillMaxSize().padding(horizontal = 40.dp).testTag(EventsTags.EMPTY),
+      modifier = Modifier.fillMaxSize().padding(horizontal = 40.dp).testTag(tag),
       verticalArrangement = Arrangement.Center,
       horizontalAlignment = Alignment.CenterHorizontally,
   ) {
@@ -219,17 +256,41 @@ private fun EmptyState() {
     }
     Spacer(Modifier.height(14.dp))
     Text(
-        text = stringResource(R.string.events_empty_title),
+        text = title,
         style = MaterialTheme.typography.titleMedium.copy(fontSize = 20.sp),
         color = Ink,
         textAlign = TextAlign.Center,
     )
     Spacer(Modifier.height(8.dp))
     Text(
-        text = stringResource(R.string.events_empty_body),
+        text = body,
         style = MaterialTheme.typography.bodyLarge,
         color = Ink2,
         textAlign = TextAlign.Center,
+    )
+    action()
+  }
+}
+
+/** Figma's underlined "Clear filters" text, with a 48 dp touch target. */
+@Composable
+private fun ClearFiltersLink(onClick: () -> Unit) {
+  Box(
+      modifier =
+          Modifier.heightIn(min = 48.dp)
+              .clickable(role = Role.Button, onClick = onClick)
+              .padding(horizontal = 12.dp)
+              .testTag(EventsTags.CLEAR_FILTERS),
+      contentAlignment = Alignment.Center,
+  ) {
+    Text(
+        text = stringResource(R.string.events_clear_filters),
+        style =
+            MaterialTheme.typography.labelLarge.copy(
+                fontWeight = FontWeight.Bold,
+                textDecoration = TextDecoration.Underline,
+            ),
+        color = Ink,
     )
   }
 }
