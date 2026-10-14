@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (minimal Profile tab and shared logout dialog, #109).
+// Contributors: OpenAI Codex (Profile tab, shared logout dialog and remembered action binding,
+// #109).
 package com.polysocial.ui.profile
 
 import androidx.activity.compose.BackHandler
@@ -27,10 +28,18 @@ object ProfileTags {
 @Composable
 fun ProfileRoute(onLoggedOut: () -> Unit, viewModel: ProfileViewModel = hiltViewModel()) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
-  BackHandler(state != LogoutState.Idle) { viewModel.cancelLogout() }
+  val actions = remember(viewModel) { LogoutActions(viewModel) }
+  BackHandler(state != LogoutState.Idle, actions.cancel)
   val callback by rememberUpdatedState(onLoggedOut)
   LaunchedEffect(state) { if (state == LogoutState.LoggedOut) callback() }
-  ProfileScreen(state, viewModel::requestLogout, viewModel::cancelLogout, viewModel::confirmLogout)
+  ProfileScreen(state, actions.request, actions.cancel, actions.confirm)
+}
+
+/** Keeps the screen and Back action bound to the same ViewModel across recomposition. */
+private class LogoutActions(viewModel: ProfileViewModel) {
+  val request = viewModel::requestLogout
+  val cancel = viewModel::cancelLogout
+  val confirm = viewModel::confirmLogout
 }
 
 @Composable
