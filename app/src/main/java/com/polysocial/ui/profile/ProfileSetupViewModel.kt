@@ -1,6 +1,5 @@
 // Contributors: Claude (profile step state for #34; unverified accounts refused after review;
-// reset,
-// #74).
+// reset on sign-out, #74).
 package com.polysocial.ui.profile
 
 import androidx.lifecycle.ViewModel
