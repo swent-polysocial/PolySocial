@@ -1,7 +1,9 @@
 // Contributors: Claude (the Events tab's filter chips from the Figma "Events · date chips" and
-// "Events · active filters" frames, and a picked day, #115).
+// "Events · active filters" frames, a picked day, and the chip shared with the Filters sheet,
+// #115).
 package com.polysocial.ui.event.list
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -54,6 +56,7 @@ fun EventsChipRow(
     onSelectDate: (DateChoice) -> Unit,
     onToggleCategory: (EventCategory) -> Unit,
     onClearFilters: () -> Unit,
+    onSelectDistance: (Int?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
   val quickDates =
@@ -76,6 +79,17 @@ fun EventsChipRow(
           onSelectDate(DateChoice.Any)
         }
       }
+  // Likewise for a distance, as "≤ 2 km".
+  val distance =
+      selection.maxDistanceMeters?.let { meters ->
+        FilterChip(
+            DISTANCE,
+            stringResource(R.string.events_filter_within, distanceLabel(meters)),
+            isActive = true,
+        ) {
+          onSelectDistance(null)
+        }
+      }
   val categoryChips = CHIP_CATEGORIES.map { category ->
     FilterChip(
         category.name,
@@ -85,7 +99,7 @@ fun EventsChipRow(
       onToggleCategory(category)
     }
   }
-  val chips = listOfNotNull(pickedDay) + dateChips + categoryChips
+  val chips = listOfNotNull(pickedDay, distance) + dateChips + categoryChips
   val all =
       FilterChip(
           ALL,
@@ -102,22 +116,40 @@ fun EventsChipRow(
         listOf(all) + chips.filter { it.isActive } + chips.filterNot { it.isActive },
         { it.key },
     ) { chip ->
-      Chip(chip, removable = chip.isActive && chip.key != ALL)
+      EventsChip(
+          label = chip.label,
+          selected = chip.isActive,
+          onClick = chip.onClick,
+          tag = EventsTags.chip(chip.key),
+          removable = chip.isActive && chip.key != ALL,
+      )
     }
   }
 }
 
-/** A 36 dp Figma chip inside a 48 dp touch target. */
+/**
+ * A 36 dp Figma chip inside a 48 dp touch target: dark when [selected], outlined otherwise. A
+ * [removable] chip ends with an ×; [leadingIcon] is drawn before the label ("Pick a date").
+ */
 @Composable
-private fun Chip(chip: FilterChip, removable: Boolean) {
+internal fun EventsChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    tag: String,
+    removable: Boolean = false,
+    role: Role = Role.Checkbox,
+    @DrawableRes leadingIcon: Int? = null,
+) {
   val shape = RoundedCornerShape(18.dp)
   val colors =
-      if (chip.isActive) Modifier.background(Ink, shape) else Modifier.border(1.dp, Border, shape)
+      if (selected) Modifier.background(Ink, shape) else Modifier.border(1.dp, Border, shape)
+  val content = if (selected) Bg else Ink
   Row(
       modifier =
           Modifier.heightIn(min = 48.dp)
-              .selectable(selected = chip.isActive, role = Role.Checkbox, onClick = chip.onClick)
-              .testTag(EventsTags.chip(chip.key)),
+              .selectable(selected = selected, role = role, onClick = onClick)
+              .testTag(tag),
       verticalAlignment = Alignment.CenterVertically,
   ) {
     Row(
@@ -126,17 +158,26 @@ private fun Chip(chip: FilterChip, removable: Boolean) {
                 .clip(shape)
                 .then(colors)
                 .padding(
-                    start = if (removable) 16.dp else 15.dp,
+                    start =
+                        when {
+                          removable -> 16.dp
+                          leadingIcon != null -> 13.dp
+                          else -> 15.dp
+                        },
                     end = if (removable) 12.dp else 15.dp,
                 ),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (leadingIcon != null) 6.dp else 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-      Text(
-          text = chip.label,
-          style = MaterialTheme.typography.labelLarge,
-          color = if (chip.isActive) Bg else Ink,
-      )
+      if (leadingIcon != null) {
+        Icon(
+            painterResource(leadingIcon),
+            contentDescription = null,
+            tint = content,
+            modifier = Modifier.size(16.dp),
+        )
+      }
+      Text(text = label, style = MaterialTheme.typography.labelLarge, color = content)
       if (removable) {
         // The chip's selected state already says the filter is on, so the × is decorative.
         Icon(
@@ -152,12 +193,13 @@ private fun Chip(chip: FilterChip, removable: Boolean) {
 
 private const val ALL = "ALL"
 private const val PICKED_DAY = "DAY"
+private const val DISTANCE = "DISTANCE"
 
 /** Figma's "Sat 4 Oct", as in the list's day headings. */
 private val dayFormat = DateTimeFormatter.ofPattern("EEE d MMM")
 
 /** The categories in Figma's chip order, which isn't the enum's. */
-private val CHIP_CATEGORIES =
+internal val CHIP_CATEGORIES =
     listOf(
         EventCategory.PARTY,
         EventCategory.SPORTS,

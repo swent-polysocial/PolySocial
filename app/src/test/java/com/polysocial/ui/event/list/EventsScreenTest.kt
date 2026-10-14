@@ -1,20 +1,27 @@
 // Contributors: Claude (screen tests for the Events tab list, #105; no matching event, search and
-// filter chips, #115).
+// filter chips and Filters sheet, #115).
 package com.polysocial.ui.event.list
 
 import android.content.Context
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.SavedStateHandle
@@ -72,6 +79,8 @@ class EventsScreenTest {
   private val searches = mutableListOf<String>()
   private val dates = mutableListOf<DateChoice>()
   private val toggled = mutableListOf<EventCategory>()
+  private var sheetClears = 0
+  private val distances = mutableListOf<Int?>()
 
   private fun show(list: EventsListState, selection: EventSelection = EventSelection()) {
     composeTestRule.setContent {
@@ -79,11 +88,14 @@ class EventsScreenTest {
         EventsScreen(
             EventsUiState(list, selection),
             zone = lausanne,
+            today = today,
             onRetry = { retries++ },
             onClearFilters = { clears++ },
             onSearchChange = { searches += it },
             onSelectDate = { dates += it },
             onToggleCategory = { toggled += it },
+            onClearSheetFilters = { sheetClears++ },
+            onSelectDistance = { distances += it },
         )
       }
     }
@@ -652,5 +664,276 @@ class EventsScreenTest {
     show(someEvents(), EventSelection(date = DateChoice.Today))
 
     composeTestRule.onAllNodesWithTag(EventsTags.chip("DAY")).assertCountEquals(0)
+  }
+
+  // ---- Filters sheet ----
+
+  private fun sheetChip(key: String) = composeTestRule.onNodeWithTag(EventsTags.sheetChip(key))
+
+  private fun openFilters() =
+      composeTestRule.onNodeWithTag(EventsTags.FILTERS_BUTTON).performClick()
+
+  private fun twoEvents() =
+      EventsListState.Events(
+          listOf(
+              EventDaySection(
+                  today,
+                  listOf(
+                      event("party", "Balélec warm-up", today.atTime(20, 0)),
+                      event("film", "Ciné-club", today.atTime(21, 0)),
+                  ),
+              )
+          ),
+          today = today,
+          isOffline = false,
+      )
+
+  @Test
+  fun theFiltersButton_saysHowManyFiltersAreOn() {
+    show(
+        someEvents(),
+        EventSelection(
+            search = "party",
+            categories = setOf(EventCategory.PARTY, EventCategory.STUDY),
+            date = DateChoice.Today,
+        ),
+    )
+
+    // The search has its own field, so it doesn't count.
+    composeTestRule
+        .onNodeWithTag(EventsTags.FILTERS_BUTTON)
+        .assertContentDescriptionEquals("Filters, 3 active")
+  }
+
+  @Test
+  fun withoutFilters_theFiltersButtonHasNoCount() {
+    show(someEvents(), EventSelection(search = "party"))
+
+    composeTestRule
+        .onNodeWithTag(EventsTags.FILTERS_BUTTON)
+        .assertContentDescriptionEquals("Filters")
+    composeTestRule.onAllNodesWithTag(EventsTags.FILTERS_SHEET).assertCountEquals(0)
+  }
+
+  @Test
+  fun theFiltersButton_opensTheSheet_showingTheCurrentSelection() {
+    show(
+        someEvents(),
+        EventSelection(
+            categories = setOf(EventCategory.SPORTS),
+            date = DateChoice.ThisWeek,
+            maxDistanceMeters = 1_000,
+        ),
+    )
+
+    openFilters()
+
+    composeTestRule.onNodeWithTag(EventsTags.FILTERS_SHEET).assertIsDisplayed()
+    sheetChip("THIS_WEEK").assertIsSelected()
+    sheetChip("DATE_ANY").assertIsNotSelected()
+    sheetChip("DISTANCE_1000").assertIsSelected().assertTextEquals("1 km")
+    sheetChip("DISTANCE_500").assertIsNotSelected().assertTextEquals("500 m")
+    sheetChip("SPORTS").assertIsSelected()
+    sheetChip("PARTY").assertIsNotSelected()
+    composeTestRule.onAllNodesWithTag(EventsTags.DAY_STRIP).assertCountEquals(0)
+  }
+
+  @Test
+  fun theSheetChips_callBackWithTheirChoice() {
+    show(someEvents())
+    openFilters()
+
+    sheetChip("TODAY").performClick()
+    sheetChip("DISTANCE_2000").performClick()
+    sheetChip("DISTANCE_ANY").performClick()
+    sheetChip("CULTURE").performClick()
+    composeTestRule.onNodeWithTag(EventsTags.FILTERS_CLEAR).performClick()
+
+    assertEquals(listOf<DateChoice>(DateChoice.Today), dates)
+    assertEquals(listOf(2_000, null), distances)
+    assertEquals(listOf(EventCategory.CULTURE), toggled)
+    assertEquals(1, sheetClears)
+    // Clear keeps the sheet open, so more filters can be picked.
+    composeTestRule.onNodeWithTag(EventsTags.FILTERS_SHEET).assertIsDisplayed()
+  }
+
+  @Test
+  fun pickADate_opensTheNext14Days_andTappingADayPicksIt() {
+    show(someEvents())
+    openFilters()
+
+    sheetChip("PICK_DATE").performClick()
+
+    sheetChip("PICK_DATE").assertIsSelected()
+    sheetChip("DATE_ANY").assertIsNotSelected()
+    val strip = composeTestRule.onNodeWithTag(EventsTags.DAY_STRIP)
+    composeTestRule.onNodeWithTag(EventsTags.day(today)).assertIsDisplayed()
+    strip.performScrollToNode(hasTestTag(EventsTags.day(today.plusDays(13))))
+    composeTestRule.onNodeWithTag(EventsTags.day(today.plusDays(13))).assertIsDisplayed()
+    composeTestRule.onAllNodesWithTag(EventsTags.day(today.plusDays(14))).assertCountEquals(0)
+    composeTestRule.onAllNodesWithTag(EventsTags.day(today.minusDays(1))).assertCountEquals(0)
+
+    strip.performScrollToNode(hasTestTag(EventsTags.day(today.plusDays(2))))
+    composeTestRule.onNodeWithTag(EventsTags.day(today.plusDays(2))).performClick()
+
+    assertEquals(listOf<DateChoice>(DateChoice.Day(today.plusDays(2))), dates)
+  }
+
+  @Test
+  fun aPickedDay_isSelectedInTheStrip_andTappingItAgainDropsIt() {
+    val tuesday = today.plusDays(2)
+    show(someEvents(), EventSelection(date = DateChoice.Day(tuesday)))
+    openFilters()
+
+    sheetChip("PICK_DATE").assertIsSelected()
+    composeTestRule
+        .onNodeWithTag(EventsTags.day(tuesday))
+        .assertIsSelected()
+        .assertTextEquals("Tue", "13")
+    composeTestRule.onNodeWithTag(EventsTags.day(today)).assertIsNotSelected()
+
+    composeTestRule.onNodeWithTag(EventsTags.day(tuesday)).performClick()
+
+    assertEquals(listOf<DateChoice>(DateChoice.Any), dates)
+  }
+
+  @Test
+  fun tappingPickADateAgain_closesTheStrip() {
+    show(someEvents())
+    openFilters()
+
+    sheetChip("PICK_DATE").performClick()
+    sheetChip("PICK_DATE").performClick()
+
+    composeTestRule.onAllNodesWithTag(EventsTags.DAY_STRIP).assertCountEquals(0)
+    sheetChip("PICK_DATE").assertIsNotSelected()
+  }
+
+  @Test
+  fun theShowButton_countsTheShownEvents_andClosesTheSheet() {
+    show(twoEvents(), EventSelection(categories = setOf(EventCategory.PARTY)))
+    openFilters()
+
+    composeTestRule.onNodeWithTag(EventsTags.FILTERS_SHOW).assertTextEquals("Show 2 events")
+    composeTestRule.onNodeWithTag(EventsTags.FILTERS_SHOW).performClick()
+
+    composeTestRule.onAllNodesWithTag(EventsTags.FILTERS_SHEET).assertCountEquals(0)
+  }
+
+  @Test
+  fun theShowButton_saysOneEvent_orNoneWhenNothingMatches() {
+    var list: EventsListState by mutableStateOf(someEvents())
+    composeTestRule.setContent {
+      PolySocialTheme {
+        EventsScreen(
+            EventsUiState(list),
+            zone = lausanne,
+            today = today,
+            onRetry = {},
+            onClearFilters = {},
+            onSearchChange = {},
+            onSelectDate = {},
+            onToggleCategory = {},
+            onClearSheetFilters = {},
+            onSelectDistance = {},
+        )
+      }
+    }
+    openFilters()
+
+    composeTestRule.onNodeWithTag(EventsTags.FILTERS_SHOW).assertTextEquals("Show 1 event")
+    list = EventsListState.NoMatch(isOffline = false)
+    composeTestRule.onNodeWithTag(EventsTags.FILTERS_SHOW).assertTextEquals("Show 0 events")
+  }
+
+  @Test
+  fun theSheet_staysOpenAcrossRotation() {
+    val restoration = StateRestorationTester(composeTestRule)
+    restoration.setContent {
+      PolySocialTheme {
+        EventsScreen(
+            EventsUiState(someEvents()),
+            zone = lausanne,
+            today = today,
+            onRetry = {},
+            onClearFilters = {},
+            onSearchChange = {},
+            onSelectDate = {},
+            onToggleCategory = {},
+            onClearSheetFilters = {},
+            onSelectDistance = {},
+        )
+      }
+    }
+    openFilters()
+
+    restoration.emulateSavedInstanceStateRestore()
+
+    composeTestRule.onNodeWithTag(EventsTags.FILTERS_SHEET).assertIsDisplayed()
+  }
+
+  @Test
+  fun aCategoryPickedInTheSheet_narrowsTheListRightAway() {
+    val repository = FakeEventRepository()
+    val tomorrow = repository.now.plusSeconds(24 * 3600)
+    repository.seed(
+        validEvent(title = "Climbing session", startTime = tomorrow)
+            .copy(id = "climbing", category = EventCategory.SPORTS),
+        validEvent(title = "Balélec warm-up", startTime = tomorrow.plusSeconds(3600))
+            .copy(id = "party", category = EventCategory.PARTY),
+    )
+    val network =
+        object : NetworkMonitor {
+          override fun isOnline() = true
+        }
+    val viewModel =
+        EventsViewModel(
+            repository,
+            network,
+            FakeLocationService(),
+            Clock.fixed(repository.now, lausanne),
+            SavedStateHandle(),
+        )
+    composeTestRule.setContent { PolySocialTheme { EventsRoute(viewModel = viewModel) } }
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+    openFilters()
+
+    sheetChip("SPORTS").performClick()
+
+    composeTestRule.onNodeWithTag(EventsTags.FILTERS_SHOW).assertTextEquals("Show 1 event")
+    composeTestRule.onNodeWithTag(EventsTags.FILTERS_SHOW).performClick()
+    composeTestRule.onNodeWithTag(EventsTags.card("climbing")).assertIsDisplayed()
+    composeTestRule.onAllNodesWithTag(EventsTags.card("party")).assertCountEquals(0)
+    composeTestRule
+        .onNodeWithTag(EventsTags.FILTERS_BUTTON)
+        .assertContentDescriptionEquals("Filters, 1 active")
+  }
+
+  @Test
+  fun aDistance_showsAsAnActiveChip_andTappingItRemovesIt() {
+    show(
+        someEvents(),
+        EventSelection(
+            categories = setOf(EventCategory.SPORTS),
+            date = DateChoice.Day(LocalDate.of(2026, 10, 17)),
+            maxDistanceMeters = 2_000,
+        ),
+    )
+
+    // Figma's order: the day, the distance, then the categories.
+    chip("DISTANCE").assertIsSelected().assertTextEquals("≤ 2 km")
+    val order = listOf("ALL", "DAY", "DISTANCE", "SPORTS").map { left(it) }
+    assertEquals(order.sorted(), order)
+
+    chip("DISTANCE").performClick()
+
+    assertEquals(listOf<Int?>(null), distances)
+  }
+
+  @Test
+  fun withoutADistance_thereIsNoDistanceChip() {
+    show(someEvents())
+
+    composeTestRule.onAllNodesWithTag(EventsTags.chip("DISTANCE")).assertCountEquals(0)
   }
 }

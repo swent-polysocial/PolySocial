@@ -342,6 +342,20 @@ class EventsViewModelTest {
   }
 
   @Test
+  fun clearingTheFilters_keepsTheSearch() {
+    val viewModel = loadedViewModel()
+    viewModel.setSearch("i")
+    viewModel.toggleCategory(EventCategory.SPORTS)
+    viewModel.selectDate(DateChoice.Today)
+    viewModel.selectDistance(500)
+
+    viewModel.clearFilters()
+
+    assertEquals(EventSelection(search = "i"), viewModel.uiState.value.selection)
+    assertEquals(listOf("Sunday climbing"), viewModel.shownTitles())
+  }
+
+  @Test
   fun theSelection_survivesTheViewModelBeingRecreated() {
     val savedState = SavedStateHandle()
     val first = loadedViewModel(savedState)
