@@ -1,5 +1,5 @@
 // Contributors: Claude (Events tab list from the Figma "Discover events" frames, #105; no matching
-// event state, search field and filter chips, #115).
+// event state, search field, filter chips and Filters sheet, #115).
 package com.polysocial.ui.event.list
 
 import androidx.compose.foundation.background
@@ -29,6 +29,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -63,6 +66,11 @@ object EventsTags {
   const val LIST = "events_list"
   const val SEARCH = "events_search"
   const val CHIPS = "events_chips"
+  const val FILTERS_BUTTON = "events_filters_button"
+  const val FILTERS_SHEET = "events_filters_sheet"
+  const val FILTERS_CLEAR = "events_filters_clear"
+  const val FILTERS_SHOW = "events_filters_show"
+  const val DAY_STRIP = "events_day_strip"
   const val OFFLINE_BANNER = "events_offline_banner"
   const val EMPTY = "events_empty"
   const val NO_MATCH = "events_no_match"
@@ -75,9 +83,19 @@ object EventsTags {
   fun card(eventId: String) = "events_card_$eventId"
 
   /**
-   * A filter chip: `ALL`, `TODAY`, `THIS_WEEK`, `DAY` (a picked day) or an `EventCategory` name.
+   * A filter chip: `ALL`, `TODAY`, `THIS_WEEK`, `DAY` (a picked day), `DISTANCE` or an
+   * `EventCategory` name.
    */
   fun chip(key: String) = "events_chip_$key"
+
+  /**
+   * A chip of the Filters sheet: `DATE_ANY`, `TODAY`, `THIS_WEEK`, `PICK_DATE`, `DISTANCE_ANY`,
+   * `DISTANCE_<meters>` or an `EventCategory` name.
+   */
+  fun sheetChip(key: String) = "events_sheet_chip_$key"
+
+  /** A day of the Filters sheet's 14-day strip. */
+  fun day(date: LocalDate) = "events_day_$date"
 }
 
 /** The Events tab's root: the upcoming public events from [EventsViewModel]. */
@@ -87,28 +105,50 @@ fun EventsRoute(modifier: Modifier = Modifier, viewModel: EventsViewModel = hilt
   EventsScreen(
       state,
       zone = viewModel.zone,
+      today = viewModel.today,
       onRetry = viewModel::retry,
       onClearFilters = viewModel::clearSearchAndFilters,
       onSearchChange = viewModel::setSearch,
       onSelectDate = viewModel::selectDate,
       onToggleCategory = viewModel::toggleCategory,
+      onClearSheetFilters = viewModel::clearFilters,
+      onSelectDistance = viewModel::selectDistance,
       modifier = modifier,
   )
 }
 
-/** Draws [state]; start times and dates are shown in [zone]. */
+/**
+ * Draws [state]; start times and dates are shown in [zone]. The Filters sheet lists the 14 days
+ * from [today]; whether it is open is kept across rotation.
+ */
 @Composable
 fun EventsScreen(
     state: EventsUiState,
     zone: ZoneId,
+    today: LocalDate,
     onRetry: () -> Unit,
     onClearFilters: () -> Unit,
     onSearchChange: (String) -> Unit,
     onSelectDate: (DateChoice) -> Unit,
     onToggleCategory: (EventCategory) -> Unit,
+    onClearSheetFilters: () -> Unit,
+    onSelectDistance: (Int?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
   val list = state.list
+  var showFilters by rememberSaveable { mutableStateOf(false) }
+  if (showFilters) {
+    EventsFiltersSheet(
+        selection = state.selection,
+        today = today,
+        shownCount = (list as? EventsListState.Events)?.sections?.sumOf { it.events.size } ?: 0,
+        onSelectDate = onSelectDate,
+        onSelectDistance = onSelectDistance,
+        onToggleCategory = onToggleCategory,
+        onClearFilters = onClearSheetFilters,
+        onDismiss = { showFilters = false },
+    )
+  }
   if (list == EventsListState.Loading) {
     LoadingState(stringResource(R.string.loading_events), modifier)
     return
@@ -117,7 +157,15 @@ fun EventsScreen(
     // One header for both states, so the search field keeps its focus and cursor when typing
     // switches the list between matching events and none.
     if (list is EventsListState.Events || list is EventsListState.NoMatch) {
-      Header(state.selection, onSearchChange, onSelectDate, onToggleCategory, onClearFilters)
+      Header(
+          state.selection,
+          onSearchChange,
+          onOpenFilters = { showFilters = true },
+          onSelectDate,
+          onToggleCategory,
+          onClearFilters,
+          onSelectDistance,
+      )
     }
     when (list) {
       EventsListState.Loading -> Unit
@@ -161,13 +209,17 @@ private fun ScreenContent(modifier: Modifier, content: @Composable () -> Unit) {
 private fun Header(
     selection: EventSelection,
     onSearchChange: (String) -> Unit,
+    onOpenFilters: () -> Unit,
     onSelectDate: (DateChoice) -> Unit,
     onToggleCategory: (EventCategory) -> Unit,
     onClearFilters: () -> Unit,
+    onSelectDistance: (Int?) -> Unit,
 ) {
   EventsSearchField(
       selection.search,
       onSearchChange,
+      selection.activeFilterCount,
+      onOpenFilters,
       Modifier.padding(start = 20.dp, top = 10.dp, end = 20.dp, bottom = 8.dp),
   )
   EventsChipRow(
@@ -175,6 +227,7 @@ private fun Header(
       onSelectDate,
       onToggleCategory,
       onClearFilters,
+      onSelectDistance,
       Modifier.padding(bottom = 8.dp),
   )
 }

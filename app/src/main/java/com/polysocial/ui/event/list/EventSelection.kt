@@ -40,6 +40,16 @@ data class EventSelection(
           dates = date.toRange(today),
           maxDistanceMeters = maxDistanceMeters?.toDouble(),
       )
+
+  /**
+   * How many filters are on, for the badge on the Filters button: the date, the distance and each
+   * category count as one. The search doesn't count, since its own field shows it.
+   */
+  val activeFilterCount: Int
+    get() =
+        (if (date != DateChoice.Any) 1 else 0) +
+            (if (maxDistanceMeters != null) 1 else 0) +
+            categories.size
 }
 
 /** The distances the Filters sheet offers, in meters (Figma, #113); "Any" is null. */

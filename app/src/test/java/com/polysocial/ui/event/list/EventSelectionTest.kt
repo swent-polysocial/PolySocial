@@ -65,4 +65,19 @@ class EventSelectionTest {
         EventSelection(maxDistanceMeters = 1_000).toFilter(wednesday),
     )
   }
+
+  @Test
+  fun theActiveFilterCount_countsTheDateTheDistanceAndEachCategory() {
+    assertEquals(0, EventSelection(search = "party").activeFilterCount)
+    assertEquals(1, EventSelection(date = DateChoice.Day(sunday)).activeFilterCount)
+    assertEquals(
+        4,
+        EventSelection(
+                categories = setOf(EventCategory.PARTY, EventCategory.STUDY),
+                date = DateChoice.Today,
+                maxDistanceMeters = 500,
+            )
+            .activeFilterCount,
+    )
+  }
 }

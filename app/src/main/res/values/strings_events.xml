@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Contributors: Claude (Events tab texts from the Figma "Discover events" frames, #105). -->
+<!-- Contributors: Claude (Events tab texts from the Figma "Discover events" frames, #105; search and
+     filters, #115). -->
 <resources>
     <string name="event_category_party">Party</string>
     <string name="event_category_sports">Sports</string>
@@ -23,6 +24,29 @@
     <string name="events_no_match_title">No matching events</string>
     <string name="events_no_match_body">Try another search or fewer filters.</string>
     <string name="events_clear_filters">Clear filters</string>
+    <string name="events_filters">Filters</string>
+    <!-- The Filters button's description for screen readers when filters are on. -->
+    <plurals name="events_filters_active">
+        <item quantity="one">Filters, %d active</item>
+        <item quantity="other">Filters, %d active</item>
+    </plurals>
+    <string name="events_filter_date">Date</string>
+    <string name="events_filter_any">Any</string>
+    <string name="events_filter_pick_date">Pick a date</string>
+    <string name="events_filter_distance">Distance · straight-line</string>
+    <!-- A distance filter, for example "500 m". -->
+    <string name="events_distance_meters">%d m</string>
+    <!-- A distance filter, for example "2 km". -->
+    <string name="events_distance_km">%d km</string>
+    <!-- An active distance filter in the chip row, for example "≤ 2 km". -->
+    <string name="events_filter_within">≤ %s</string>
+    <string name="events_filter_category">Category</string>
+    <string name="events_filter_clear">Clear</string>
+    <!-- Closes the Filters sheet; the number is how many events the filters keep. -->
+    <plurals name="events_filter_show">
+        <item quantity="one">Show %d event</item>
+        <item quantity="other">Show %d events</item>
+    </plurals>
     <string name="events_error">Couldn\'t load events. Check your connection and try again.</string>
     <string name="events_retry">Retry</string>
 </resources>

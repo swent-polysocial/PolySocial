@@ -122,6 +122,10 @@ constructor(
   val zone: ZoneId
     get() = clock.zone
 
+  /** The current date, from which the Filters sheet lists the next 14 days. */
+  val today: LocalDate
+    get() = LocalDate.now(clock)
+
   /** The events last loaded; null while loading or after an error. */
   private var loaded: Loaded? = null
   private var observation: Job? = null
@@ -168,6 +172,9 @@ constructor(
     if (meters != null && location() == EventsLocationState.Off) return
     select(selection().copy(maxDistanceMeters = meters))
   }
+
+  /** Clears every filter but keeps the search: the Filters sheet's *Clear*. */
+  fun clearFilters() = select(EventSelection(search = selection().search))
 
   /** Clears the search and every filter, showing all the events again. */
   fun clearSearchAndFilters() = select(EventSelection())
