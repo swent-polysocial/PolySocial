@@ -5,6 +5,7 @@ package com.polysocial.ui.event.list
 import android.content.Context
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -391,5 +392,38 @@ class EventsScreenTest {
 
     composeTestRule.onNodeWithTag(EventsTags.card("climbing")).assertIsDisplayed()
     composeTestRule.onNodeWithTag(EventsTags.card("party")).assertIsDisplayed()
+  }
+
+  // Typing that leaves no match used to draw the field again in another branch, which lost its
+  // focus and put the cursor back at the start, so the next letters went in the wrong place.
+  @Test
+  fun theSearchField_keepsItsFocus_whenTypingLeavesNoMatch() {
+    val repository = FakeEventRepository()
+    repository.seed(
+        validEvent(title = "Climbing session", startTime = repository.now.plusSeconds(24 * 3600))
+            .copy(id = "climbing")
+    )
+    val network =
+        object : NetworkMonitor {
+          override fun isOnline() = true
+        }
+    val viewModel =
+        EventsViewModel(
+            repository,
+            network,
+            Clock.fixed(repository.now, lausanne),
+            SavedStateHandle(),
+        )
+    composeTestRule.setContent { PolySocialTheme { EventsRoute(viewModel = viewModel) } }
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+    val field = composeTestRule.onNodeWithTag(EventsTags.SEARCH)
+
+    field.performClick()
+    field.performTextInput("climbx")
+
+    composeTestRule.onNodeWithTag(EventsTags.NO_MATCH).assertIsDisplayed()
+    field.assertIsFocused()
+    field.performTextInput("y")
+    field.assertTextEquals("climbxy")
   }
 }
