@@ -1,5 +1,5 @@
 // Contributors: Claude (Events tab list from the Figma "Discover events" frames, #105; no matching
-// event state, #115).
+// event state and search field, #115).
 package com.polysocial.ui.event.list
 
 import androidx.compose.foundation.background
@@ -60,6 +60,7 @@ import java.time.format.DateTimeFormatter
 
 object EventsTags {
   const val LIST = "events_list"
+  const val SEARCH = "events_search"
   const val OFFLINE_BANNER = "events_offline_banner"
   const val EMPTY = "events_empty"
   const val NO_MATCH = "events_no_match"
@@ -81,6 +82,7 @@ fun EventsRoute(modifier: Modifier = Modifier, viewModel: EventsViewModel = hilt
       zone = viewModel.zone,
       onRetry = viewModel::retry,
       onClearFilters = viewModel::clearSearchAndFilters,
+      onSearchChange = viewModel::setSearch,
       modifier = modifier,
   )
 }
@@ -92,6 +94,7 @@ fun EventsScreen(
     zone: ZoneId,
     onRetry: () -> Unit,
     onClearFilters: () -> Unit,
+    onSearchChange: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
   when (val list = state.list) {
@@ -107,6 +110,7 @@ fun EventsScreen(
         }
     is EventsListState.NoMatch ->
         ScreenContent(modifier) {
+          Header(state.selection, onSearchChange)
           if (list.isOffline) OfflineBanner(Modifier.padding(horizontal = 20.dp))
           EmptyState(
               title = stringResource(R.string.events_no_match_title),
@@ -117,7 +121,11 @@ fun EventsScreen(
             ClearFiltersLink(onClearFilters)
           }
         }
-    is EventsListState.Events -> ScreenContent(modifier) { EventList(list, zone) }
+    is EventsListState.Events ->
+        ScreenContent(modifier) {
+          Header(state.selection, onSearchChange)
+          EventList(list, zone)
+        }
     EventsListState.Error -> ScreenContent(modifier) { ErrorState(onRetry) }
   }
 }
@@ -126,6 +134,16 @@ fun EventsScreen(
 @Composable
 private fun ScreenContent(modifier: Modifier, content: @Composable () -> Unit) {
   Column(modifier.fillMaxSize().testTag(C.Tag.screen_events)) { content() }
+}
+
+/** The search above the list, shown while there are events to search. */
+@Composable
+private fun Header(selection: EventSelection, onSearchChange: (String) -> Unit) {
+  EventsSearchField(
+      selection.search,
+      onSearchChange,
+      Modifier.padding(start = 20.dp, top = 10.dp, end = 20.dp, bottom = 14.dp),
+  )
 }
 
 @Composable
