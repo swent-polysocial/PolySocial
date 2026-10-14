@@ -1,4 +1,4 @@
-// Contributors: OpenAI Codex (refresh Firestore after cache reset, #109).
+// Contributors: OpenAI Codex (refresh Firestore and handle blocked cache access, #156).
 // Contributors: Claude (Firestore profile repository, #34; cancelled tasks and wrong-typed fields
 // reported as errors after review; reading isAssociationVerified, #45; other unexpected failures
 // reported as errors, #182).
