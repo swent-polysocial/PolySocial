@@ -1,4 +1,5 @@
-// Contributors: Claude (the distance filter's location permission on the Events tab, #115).
+// Contributors: Claude (the distance filter's location permission on the Events tab, and reading it
+// only in the foreground after review, #115).
 package com.polysocial.ui.event.list
 
 import android.Manifest
@@ -201,6 +202,31 @@ class EventsRouteTest {
 
     composeTestRule.onAllNodesWithTag(EventsTags.LOCATION_OFF).assertCountEquals(0)
     sheetChip("DISTANCE_500").assertIsEnabled()
+  }
+
+  @Test
+  fun leavingTheTabWhileLocating_cancelsTheRead_andComingBackReadsAgain() {
+    location.permissionGranted = true
+    location.result = LocationResult.Available(onCampus.location)
+    show()
+    // The read is started but hasn't run yet: the test dispatcher only runs it in settle().
+    sheetChip("DISTANCE_1000").performClick()
+    assertEquals(EventsLocationState.Locating, viewModel.uiState.value.location)
+
+    composeTestRule.runOnIdle { lifecycle.registry.currentState = Lifecycle.State.STARTED }
+    settle()
+
+    assertEquals(EventsLocationState.NotRead, viewModel.uiState.value.location)
+    assertEquals(1_000, viewModel.uiState.value.selection.maxDistanceMeters)
+    assertEquals(0, location.requestCount)
+
+    composeTestRule.runOnIdle { lifecycle.registry.currentState = Lifecycle.State.RESUMED }
+    settle()
+
+    assertEquals(1, location.requestCount)
+    composeTestRule.onNodeWithTag(EventsTags.FILTERS_SHOW).performClick()
+    composeTestRule.onNodeWithTag(EventsTags.card("onCampus")).assertIsDisplayed()
+    composeTestRule.onAllNodesWithTag(EventsTags.card("inTown")).assertCountEquals(0)
   }
 
   private class ControlledLifecycleOwner : LifecycleOwner {
