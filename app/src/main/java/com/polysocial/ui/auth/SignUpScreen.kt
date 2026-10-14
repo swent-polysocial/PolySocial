@@ -4,7 +4,7 @@
 // preserved submission handoffs on Back and aligned form hints, loading and recovery layout);
 // Claude (injectable signed-in content, so tests run without Hilt, #105).
 // Contributors: OpenAI Codex (verification routing, Back sign-out and replacement-session
-// entry for #31).
+// entry and stable current-model callbacks for #31).
 package com.polysocial.ui.auth
 
 import androidx.activity.compose.BackHandler
@@ -156,26 +156,29 @@ fun AuthFlow(
     }
   }
   val verificationState by verificationViewModel.uiState.collectAsStateWithLifecycle()
+  val latestVerificationViewModel by rememberUpdatedState(verificationViewModel)
   LaunchedEffect(verificationViewModel) {
-    if (verificationViewModel.takeStartupVerification()) destination = AuthDestination.VerifyEmail
+    if (latestVerificationViewModel.takeStartupVerification())
+        destination = AuthDestination.VerifyEmail
   }
   val lifecycleOwner = LocalLifecycleOwner.current
   DisposableEffect(lifecycleOwner, verificationViewModel) {
     val observer = LifecycleEventObserver { _, event ->
-      if (event == Lifecycle.Event.ON_RESUME) verificationViewModel.checkVerified(manual = false)
+      if (event == Lifecycle.Event.ON_RESUME)
+          latestVerificationViewModel.checkVerified(manual = false)
     }
     lifecycleOwner.lifecycle.addObserver(observer)
     onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
   }
   LaunchedEffect(destination, verificationViewModel) {
-    if (destination == AuthDestination.VerifyEmail) verificationViewModel.enter()
+    if (destination == AuthDestination.VerifyEmail) latestVerificationViewModel.enter()
   }
   LaunchedEffect(verificationState.verified) {
     if (verificationState.verified) startViewModel.refresh()
   }
   var loginOrigin by rememberSaveable { mutableStateOf(AuthDestination.Welcome) }
   val backFromVerification = {
-    verificationViewModel.changeAddress()
+    latestVerificationViewModel.changeAddress()
     viewModel.reset()
     loginViewModel.reset()
     loginOrigin = AuthDestination.Welcome
@@ -238,15 +241,15 @@ fun AuthFlow(
             verificationState,
             onBack = backFromVerification,
             onChangeAddress = {
-              verificationViewModel.changeAddress()
+              latestVerificationViewModel.changeAddress()
               viewModel.reset()
               loginViewModel.reset()
               loginOrigin = AuthDestination.Welcome
               destination = AuthDestination.SignUp
             },
-            onContinue = { verificationViewModel.checkVerified() },
-            onResend = verificationViewModel::resend,
-            onSnackbarShown = verificationViewModel::snackbarShown,
+            onContinue = { latestVerificationViewModel.checkVerified() },
+            onResend = { latestVerificationViewModel.resend() },
+            onSnackbarShown = { latestVerificationViewModel.snackbarShown() },
         )
     AuthDestination.LogIn ->
         LoginScreen(
