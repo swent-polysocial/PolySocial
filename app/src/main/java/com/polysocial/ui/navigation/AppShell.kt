@@ -114,7 +114,8 @@ fun AppShell(
       } ?: Tab.EVENTS
   // Figma shows Create Event full screen, without the app bar and the bottom bar.
   val showBars = destination?.route != currentTab.createEventRoute
-  // The action belongs to the tab's root: the screen it opens doesn't offer it again.
+  // The app bar action (TabAction, set per tab in Tab.action) shows only on the current tab's root
+  // screen: it is hidden on the screens opened from there, including the one the action opens.
   val action = currentTab.action.takeIf { destination?.route == currentTab.rootRoute }
 
   Scaffold(
