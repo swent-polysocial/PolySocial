@@ -2,13 +2,16 @@
 // size, one save report after rotation, picker accessibility); Claude Opus 5.5 (testing agent:
 // double tap, blocked
 // Continue, existing profile, error retry and picker menu behaviour); Claude (Back locked while
-// saving, #74).
+// saving, #74); Claude Opus 5.5 (testing agent: generic save error tests, #142).
 package com.polysocial.ui.profile
 
 import android.app.Application
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -44,6 +47,7 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -54,9 +58,11 @@ import com.polysocial.model.user.CreateProfileResult
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.SECTIONS
 import com.polysocial.model.user.YEARS
+import com.polysocial.ui.theme.AccentText
 import com.polysocial.ui.theme.PolySocialTheme
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -378,6 +384,54 @@ class ProfileSetupScreenTest {
   }
 
   @Test
+  fun unexpectedError_showsTheGenericErrorAndLogOutCallsOnBack() {
+    profiles.createProfileResult = CreateProfileResult.UnexpectedError
+    setScreen()
+    pickSectionAndYear()
+
+    node(ProfileSetupTestTags.CONTINUE).performClick()
+    composeTestRule.waitForIdle()
+
+    node(ProfileSetupTestTags.ERROR).assert(shows(string(R.string.profile_could_not_save_generic)))
+    node(ProfileSetupTestTags.CONTINUE).assertIsEnabled()
+    // Logging out is the step's Back: AuthFlow signs out and returns to Welcome.
+    node(ProfileSetupTestTags.LOG_OUT).performScrollTo().performClick()
+    composeTestRule.waitForIdle()
+
+    assertEquals(1, backCalls)
+    assertEquals(0, savedCalls)
+    assertEquals(1, profiles.createdProfiles.size)
+  }
+
+  @Test
+  fun offline_showsNoLogOut() {
+    profiles.createProfileResult = CreateProfileResult.NetworkError
+    setScreen()
+    pickSectionAndYear()
+
+    node(ProfileSetupTestTags.CONTINUE).performClick()
+    composeTestRule.waitForIdle()
+
+    node(ProfileSetupTestTags.ERROR).assertExists()
+    node(ProfileSetupTestTags.LOG_OUT).assertDoesNotExist()
+  }
+
+  @Test
+  fun genericError_editingHidesTheErrorAndLogOut() {
+    profiles.createProfileResult = CreateProfileResult.UnexpectedError
+    setScreen()
+    pickSectionAndYear()
+    node(ProfileSetupTestTags.CONTINUE).performClick()
+    composeTestRule.waitForIdle()
+    node(ProfileSetupTestTags.LOG_OUT).assertExists()
+
+    node(ProfileSetupTestTags.FULL_NAME).performTextInput("x")
+
+    node(ProfileSetupTestTags.ERROR).assertDoesNotExist()
+    node(ProfileSetupTestTags.LOG_OUT).assertDoesNotExist()
+  }
+
+  @Test
   fun pickerMenu_backClosesItAndKeepsTheValue() {
     setScreen()
     pick(ProfileSetupTestTags.SECTION, ProfileSetupTestTags.sectionOption("IN"))
@@ -451,6 +505,104 @@ class ProfileSetupScreenTest {
     setContent(filled.copy(status = ProfileSetupStatus.CouldNotSave))
 
     node(ProfileSetupTestTags.ERROR).assert(shows(string(R.string.profile_could_not_save)))
+  }
+
+  private var continueCalls = 0
+  private var logOutCalls = 0
+  private var contentBackCalls = 0
+
+  /** Like [setContent], but counting each callback. */
+  private fun setCountingContent(state: ProfileSetupUiState) {
+    composeTestRule.setContent {
+      PolySocialTheme {
+        ProfileSetupContent(
+            state = state,
+            onBack = { contentBackCalls++ },
+            onDisplayNameChange = {},
+            onSectionChange = {},
+            onYearChange = {},
+            onContinue = { continueCalls++ },
+            onLogOut = { logOutCalls++ },
+        )
+      }
+    }
+  }
+
+  @Test
+  fun couldNotSave_hasNoLogOut() {
+    setContent(filled.copy(status = ProfileSetupStatus.CouldNotSave))
+
+    node(ProfileSetupTestTags.ERROR)
+        .assert(shows(string(R.string.profile_could_not_save)))
+        .assert(hasAnyDescendant(hasText(string(R.string.profile_could_not_save_generic))).not())
+    node(ProfileSetupTestTags.LOG_OUT).assertDoesNotExist()
+    node(ProfileSetupTestTags.CONTINUE).assertIsEnabled()
+  }
+
+  @Test
+  fun editing_showsNoLogOut() {
+    setContent(filled)
+
+    node(ProfileSetupTestTags.LOG_OUT).assertDoesNotExist()
+    composeTestRule.onNodeWithText(string(R.string.profile_log_out)).assertDoesNotExist()
+  }
+
+  @Test
+  fun couldNotSaveGeneric_showsTheGenericMessageAndLogOut() {
+    setCountingContent(filled.copy(status = ProfileSetupStatus.CouldNotSaveGeneric))
+
+    node(ProfileSetupTestTags.ERROR)
+        .assert(shows(string(R.string.profile_could_not_save_generic)))
+        .assert(hasAnyDescendant(hasText(string(R.string.profile_could_not_save))).not())
+    assertEquals(
+        "Couldn't save your profile. Log out and log in again, then try once more.",
+        string(R.string.profile_could_not_save_generic),
+    )
+    node(ProfileSetupTestTags.LOG_OUT)
+        .assertTextEquals(string(R.string.profile_log_out))
+        .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
+    assertEquals("Log out", string(R.string.profile_log_out))
+    // Continue retries.
+    node(ProfileSetupTestTags.CONTINUE)
+        .assert(shows(string(R.string.profile_continue)))
+        .assertIsEnabled()
+  }
+
+  @Test
+  fun couldNotSaveGeneric_logOutCallsOnlyOnLogOut() {
+    setCountingContent(filled.copy(status = ProfileSetupStatus.CouldNotSaveGeneric))
+
+    node(ProfileSetupTestTags.LOG_OUT).performScrollTo().performClick()
+
+    assertEquals(1, logOutCalls)
+    assertEquals(0, contentBackCalls)
+    assertEquals(0, continueCalls)
+  }
+
+  @Test
+  fun couldNotSaveGeneric_continueRetriesWithoutLoggingOut() {
+    setCountingContent(filled.copy(status = ProfileSetupStatus.CouldNotSaveGeneric))
+
+    node(ProfileSetupTestTags.CONTINUE).performScrollTo().performClick()
+
+    assertEquals(1, continueCalls)
+    assertEquals(0, logOutCalls)
+  }
+
+  @Test
+  fun couldNotSaveGeneric_logOutIsBoldTwelveSpInTheErrorRed() {
+    setContent(filled.copy(status = ProfileSetupStatus.CouldNotSaveGeneric))
+
+    val layouts = mutableListOf<TextLayoutResult>()
+    node(ProfileSetupTestTags.LOG_OUT)
+        .fetchSemanticsNode()
+        .config[SemanticsActions.GetTextLayoutResult]
+        .action
+        ?.invoke(layouts)
+    val style = layouts.single().layoutInput.style
+    assertEquals(FontWeight.Bold, style.fontWeight)
+    assertEquals(12.sp, style.fontSize)
+    assertEquals(AccentText, style.color)
   }
 
   @Test
@@ -609,6 +761,90 @@ class ProfileSetupScreenTest {
     setFilledForm(fontScale = 2f)
 
     assertTextsFitAndNothingOverlaps()
+  }
+
+  @Test
+  // The Figma frame size, with real text metrics.
+  @Config(qualifiers = "w360dp-h800dp")
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  fun genericError_matchesTheFigmaFrameAndKeepsContinueWhereTheOfflineErrorHasIt() {
+    var status by mutableStateOf(ProfileSetupStatus.CouldNotSave)
+    composeTestRule.setContent {
+      PolySocialTheme {
+        ProfileSetupContent(
+            state = filled.copy(status = status),
+            onBack = {},
+            onDisplayNameChange = {},
+            onSectionChange = {},
+            onYearChange = {},
+            onContinue = {},
+            onLogOut = {},
+        )
+      }
+    }
+    val density = composeTestRule.density.density
+    fun SemanticsNode.dp() = positionInRoot.let { it.x / density to it.y / density }
+    val screenTop = node(ProfileSetupTestTags.SCREEN).node().top() / density
+    val offlineContinue = node(ProfileSetupTestTags.CONTINUE).node()
+
+    status = ProfileSetupStatus.CouldNotSaveGeneric
+    composeTestRule.waitForIdle()
+
+    val error = node(ProfileSetupTestTags.ERROR).node()
+    val message =
+        textNode(string(R.string.profile_could_not_save_generic), ProfileSetupTestTags.ERROR)
+    val logOut = node(ProfileSetupTestTags.LOG_OUT).node()
+    val continueButton = node(ProfileSetupTestTags.CONTINUE).node()
+    // Figma "Profile · couldn't save · generic": message at y 640 (two lines, 30 dp), Log out at
+    // y 674 (4 dp under it), aligned with the message's text, and Continue at y 720.
+    assertEquals(640f, error.top() / density - screenTop, 1f)
+    assertEquals(30f, (error.bottom() - error.top()) / density, 1f)
+    assertEquals(4f, (logOut.top() - error.bottom()) / density, 0.5f)
+    assertEquals(674f, logOut.top() / density - screenTop, 1f)
+    assertEquals(message.dp().first, logOut.dp().first, 0.5f)
+    assertEquals(40f, logOut.dp().first, 0.5f)
+    assertEquals(720f, continueButton.top() / density - screenTop, 1f)
+    assertFalse("the message is clipped", message.textOverflows())
+    assertFalse("Log out is clipped", logOut.textOverflows())
+    // Continue doesn't move between the two error frames.
+    assertEquals(offlineContinue.positionInRoot, continueButton.positionInRoot)
+    assertEquals(offlineContinue.size, continueButton.size)
+  }
+
+  @Test
+  // Real text metrics: the legacy graphics mode measures text with fixed fake sizes.
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  fun doubleFontSize_genericErrorFitsAndLogOutCanBeScrolledToAndTapped() {
+    var logOuts = 0
+    composeTestRule.setContent {
+      val density = LocalDensity.current
+      CompositionLocalProvider(LocalDensity provides Density(density.density, 2f)) {
+        PolySocialTheme {
+          ProfileSetupContent(
+              state = filled.copy(status = ProfileSetupStatus.CouldNotSaveGeneric),
+              onBack = {},
+              onDisplayNameChange = {},
+              onSectionChange = {},
+              onYearChange = {},
+              onContinue = {},
+              onLogOut = { logOuts++ },
+          )
+        }
+      }
+    }
+
+    val message =
+        textNode(string(R.string.profile_could_not_save_generic), ProfileSetupTestTags.ERROR)
+    val error = node(ProfileSetupTestTags.ERROR).node()
+    val logOut = node(ProfileSetupTestTags.LOG_OUT).node()
+    val continueButton = node(ProfileSetupTestTags.CONTINUE).node()
+    assertFalse("the message is clipped", message.textOverflows())
+    assertFalse("Log out is clipped", logOut.textOverflows())
+    assertTrue("Log out overlaps the message", logOut.top() >= error.bottom() - 1)
+    assertTrue("Continue overlaps Log out", continueButton.top() >= logOut.bottom() - 1)
+
+    node(ProfileSetupTestTags.LOG_OUT).performScrollTo().assertIsDisplayed().performClick()
+    assertEquals(1, logOuts)
   }
 
   // ---- Rotation and accessibility ----
