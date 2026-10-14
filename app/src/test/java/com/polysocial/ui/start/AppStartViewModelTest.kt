@@ -1,5 +1,5 @@
 // Contributors: Claude Opus 5.5 (wrote these tests; refresh after Log in; full profile fixture,
-// #34); Claude (log out and the created profile, #74).
+// #34); Claude (log out and the created profile; Verify Email opened in-session, #74).
 package com.polysocial.ui.start
 
 import com.polysocial.model.auth.AuthUser
@@ -271,5 +271,34 @@ class AppStartViewModelTest {
 
     // Only the profile step may open the app this way, never a signed-out user.
     assertEquals(StartDestination.Login, viewModel.destination.value)
+  }
+
+  @Test
+  fun onVerificationNeeded_whenSignedOut_opensVerifyEmailAndLogOutReturnsToLogin() = runTest {
+    val viewModel = AppStartViewModel(auth, profiles)
+    advanceUntilIdle()
+    assertEquals(StartDestination.Login, viewModel.destination.value)
+
+    viewModel.onVerificationNeeded()
+    assertEquals(StartDestination.VerifyEmail, viewModel.destination.value)
+
+    // The move back to Login is what lets the signed-out start reset the forms.
+    viewModel.logOut()
+    assertEquals(StartDestination.Login, viewModel.destination.value)
+    assertEquals(0, profiles.getProfileCalls)
+  }
+
+  @Test
+  fun onVerificationNeeded_whenSignedIn_changesNothing() = runTest {
+    auth.user = verified
+    profiles.getProfileResult = found
+    val viewModel = AppStartViewModel(auth, profiles)
+    advanceUntilIdle()
+    assertEquals(StartDestination.Main, viewModel.destination.value)
+
+    viewModel.onVerificationNeeded()
+
+    // A verified session must never be sent back to Verify Email.
+    assertEquals(StartDestination.Main, viewModel.destination.value)
   }
 }

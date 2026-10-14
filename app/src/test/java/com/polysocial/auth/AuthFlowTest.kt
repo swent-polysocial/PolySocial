@@ -651,6 +651,50 @@ class AuthFlowTest {
   }
 
   @Test
+  fun signOutFromVerifyEmailAfterASignUpReturnsToAFreshWelcome() {
+    auth.signUpResult = SignUpResult.Success(user.copy(isEmailVerified = false))
+    launch()
+    openSignUpAndSubmit()
+    compose.onNodeWithTag(SignUpTags.VerifyEmailDestination).assertIsDisplayed()
+
+    // What Back on the real Verify Email screen (#99) does: only the start routing's logOut().
+    compose.runOnIdle { start.logOut() }
+
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    compose.onNodeWithTag(WelcomeTags.SignUp).performScrollTo().performClick()
+    // A kept SignedUp status would have redirected straight to Verify Email.
+    compose.onNodeWithTag(SignUpTags.Screen).assertIsDisplayed()
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.FullName)).assert(hasNoInput())
+    assertEquals(1, auth.signUpCalls)
+  }
+
+  @Test
+  fun signOutFromVerifyEmailAfterAnUnverifiedLogInReturnsToAFreshLogIn() {
+    auth.logInGate = CompletableDeferred()
+    auth.logInResult = LogInResult.Success(user.copy(isEmailVerified = false))
+    launch()
+    openLoginAndSubmit()
+    // As in backFromVerifyEmailAfterAnUnverifiedLogInDoesNotLoop: the banner's spinner never lets
+    // the clock settle, so time moves on by hand.
+    compose.mainClock.autoAdvance = false
+    try {
+      compose.runOnIdle { auth.logInGate!!.complete(Unit) }
+      compose.mainClock.advanceTimeBy(com.polysocial.ui.login.UNVERIFIED_REDIRECT_DELAY_MS + 100)
+      compose.onNodeWithTag(SignUpTags.VerifyEmailDestination).assertIsDisplayed()
+    } finally {
+      compose.mainClock.autoAdvance = true
+    }
+
+    compose.runOnIdle { start.logOut() }
+
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    compose.onNodeWithTag(WelcomeTags.LogIn).performScrollTo().performClick()
+    compose.onNodeWithTag(LoginScreenTestTags.SCREEN).assertIsDisplayed()
+    compose.onNodeWithTag(LoginScreenTestTags.EMAIL).assert(hasNoInput())
+    assertEquals(1, auth.logInCalls)
+  }
+
+  @Test
   fun backAfterAFailedProfileSaveSignsOut() {
     auth.user = user
     profiles.createProfileResult = CreateProfileResult.NetworkError
