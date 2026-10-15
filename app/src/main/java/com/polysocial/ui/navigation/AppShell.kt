@@ -353,7 +353,7 @@ private fun AppBar(title: String, action: TabAction?, onAction: (TabAction) -> U
 
 @Composable
 private fun BottomNavBar(currentTab: Tab, onTabSelected: (Tab) -> Unit) {
-  // Figma "09 Â· App shell": a thin border above the bar, dark labels (bold when selected) and Ink3
+  // Figma "09 · App shell": a thin border above the bar, dark labels (bold when selected) and Ink3
   // for unselected tabs. The light-red pill and the red selected icon come from the theme.
   Column {
     HorizontalDivider(color = MaterialTheme.colorScheme.outline)
