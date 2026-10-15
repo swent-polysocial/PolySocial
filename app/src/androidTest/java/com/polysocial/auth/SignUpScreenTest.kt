@@ -1,4 +1,5 @@
 // Contributors: OpenAI Codex (inject Profile placeholder in unrelated shell tests, #109).
+// Contributors: OpenAI Codex (Google dependency injection for #107).
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; tested tagged validation, backend errors and
 // sign-up handoff with MockK; backend failure messages, recovery actions, login navigation and
 // official Google placeholder behavior, welcome navigation and startup routing injection); Claude
@@ -47,6 +48,7 @@ class SignUpScreenTest {
   private val viewModel = SignUpViewModel(repository)
   private val loginViewModel = LoginViewModel(repository)
   private val profiles = mockk<UserProfileRepository>()
+  private val welcomeViewModel by lazy { com.polysocial.ui.auth.WelcomeViewModel(repository) }
   private lateinit var startViewModel: AppStartViewModel
   private val verificationStore =
       object : VerificationStore {
@@ -403,6 +405,7 @@ class SignUpScreenTest {
             loginViewModel = loginViewModel,
             startViewModel = startViewModel,
             verificationViewModel = verificationViewModel,
+            welcomeViewModel = welcomeViewModel,
             profileSetupViewModel = profileSetupViewModel,
         )
       }
@@ -431,6 +434,7 @@ class SignUpScreenTest {
             loginViewModel = loginViewModel,
             startViewModel = startViewModel,
             verificationViewModel = verificationViewModel,
+            welcomeViewModel = welcomeViewModel,
             profileSetupViewModel = profileSetupViewModel,
         )
       }
@@ -460,6 +464,7 @@ class SignUpScreenTest {
             loginViewModel = loginViewModel,
             startViewModel = startViewModel,
             verificationViewModel = verificationViewModel,
+            welcomeViewModel = welcomeViewModel,
             profileSetupViewModel = profileSetupViewModel,
         )
       }
@@ -489,6 +494,7 @@ class SignUpScreenTest {
             loginViewModel = loginViewModel,
             startViewModel = startViewModel,
             verificationViewModel = verificationViewModel,
+            welcomeViewModel = welcomeViewModel,
             profileSetupViewModel = profileSetupViewModel,
         )
       }
@@ -519,6 +525,7 @@ class SignUpScreenTest {
             onExit = {},
             loginViewModel = loginViewModel,
             startViewModel = startViewModel,
+            welcomeViewModel = welcomeViewModel,
             profileSetupViewModel = profileSetupViewModel,
             signedInContent = {
               AppShell(
@@ -566,6 +573,7 @@ class SignUpScreenTest {
             loginViewModel = loginViewModel,
             startViewModel = startViewModel,
             verificationViewModel = verificationViewModel,
+            welcomeViewModel = welcomeViewModel,
             profileSetupViewModel = profileSetupViewModel,
         )
       }
@@ -620,6 +628,7 @@ class SignUpScreenTest {
             loginViewModel = loginViewModel,
             startViewModel = startViewModel,
             verificationViewModel = verificationViewModel,
+            welcomeViewModel = welcomeViewModel,
             profileSetupViewModel = profileSetupViewModel,
         )
       }

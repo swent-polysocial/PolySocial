@@ -1,6 +1,8 @@
+// Contributors: OpenAI Codex (inject Google entry state after #107 rebase).
 // Contributors: OpenAI Codex (session loss during router replacement and Profile placeholder in
 // shell tests; logout uses replacement verification/profile state and startup router, #109).
 // Contributors: OpenAI Codex (verification rerouting regressions from app and loading, #109).
+// Contributors: OpenAI Codex (Google ViewModel injection for #107).
 // Contributors: OpenAI Codex (tested startup/session routing, profile failure recovery and system
 // Back handoffs and verification/profile integration); Claude (signed-in shell without Hilt, #105;
 // signed-out back stack, profile step, sign-out and Figma start states, #74; sign-out from
@@ -55,6 +57,7 @@ class AuthFlowTest {
   private val signUp = SignUpViewModel(auth)
   private val login = LoginViewModel(auth)
   private val profileSetup = ProfileSetupViewModel(auth, profiles)
+  private val welcome = com.polysocial.ui.auth.WelcomeViewModel(auth)
   private val restoration = StateRestorationTester(compose)
 
   private var exits = 0
@@ -86,7 +89,15 @@ class AuthFlowTest {
     // The real Events tab needs Hilt; these tests only check that the shell opens.
     restoration.setContent {
       PolySocialTheme {
-        AuthFlow(signUp, { exits++ }, login, start, verification, profileStep) {
+        AuthFlow(
+            signUp,
+            { exits++ },
+            login,
+            start,
+            verification,
+            profileStep,
+            welcomeViewModel = welcome,
+        ) {
           AppShell(
               eventsContent = { TabRootScreen(Tab.EVENTS) },
               profileContent = { TabRootScreen(Tab.PROFILE) },
@@ -128,7 +139,15 @@ class AuthFlowTest {
     val verification = verificationModel()
     compose.setContent {
       PolySocialTheme {
-        AuthFlow(signUp, { exits++ }, login, currentStart.value, verification, profileSetup) {
+        AuthFlow(
+            signUp,
+            { exits++ },
+            login,
+            currentStart.value,
+            verification,
+            profileSetup,
+            welcomeViewModel = welcome,
+        ) {
           Text("Signed in", Modifier.testTag("signed_in"))
         }
       }
@@ -170,6 +189,7 @@ class AuthFlowTest {
             start,
             currentVerification.value,
             currentProfile.value,
+            welcomeViewModel = welcome,
         ) { done ->
           TextButton(
               {
@@ -220,7 +240,15 @@ class AuthFlowTest {
     val verification = verificationModel()
     restoration.setContent {
       PolySocialTheme {
-        AuthFlow(signUp, { exits++ }, login, current.value, verification, profileSetup) { done ->
+        AuthFlow(
+            signUp,
+            { exits++ },
+            login,
+            current.value,
+            verification,
+            profileSetup,
+            welcomeViewModel = welcome,
+        ) { done ->
           TextButton(
               {
                 auth.logOut()
@@ -271,6 +299,7 @@ class AuthFlowTest {
             start,
             verification,
             profileSetup,
+            welcomeViewModel = welcome,
         ) { done ->
           TextButton(
               {
@@ -328,6 +357,7 @@ class AuthFlowTest {
             currentStart.value,
             verification,
             profileSetup,
+            welcomeViewModel = welcome,
         ) {
           Text("Signed in", Modifier.testTag("signed_in"))
         }
@@ -371,6 +401,7 @@ class AuthFlowTest {
             start,
             verification,
             profileSetup,
+            welcomeViewModel = welcome,
         ) {
           AppShell(
               eventsContent = { TabRootScreen(Tab.EVENTS) },
@@ -404,6 +435,7 @@ class AuthFlowTest {
             start,
             verification,
             profileSetup,
+            welcomeViewModel = welcome,
         ) {}
       }
     }

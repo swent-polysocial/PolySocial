@@ -1,5 +1,7 @@
 // Contributors: OpenAI Codex (fresh signed-out forms, shared reset action and Welcome after
 // logout, #109).
+// Contributors: OpenAI Codex (Google startup and profile-step integration for #107).
+// Contributors: OpenAI Codex (Google startup, shared profile callbacks and integration for #107).
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; translated the Figma sign-up form to Compose
 // Foundation, reusing the shared app theme; connected login and added the official Google
 // placeholder button; connected the welcome entry screen and app-start/profile routing;
@@ -40,6 +42,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
@@ -132,6 +135,23 @@ private val BackStackSaver =
         restore = { names -> names.map(AuthDestination::valueOf) },
     )
 
+/** Keeps profile completion and both Back paths bound to the same session controllers. */
+private class ProfileSetupCallbacks(
+    private val welcome: WelcomeViewModel,
+    private val login: LoginViewModel,
+    private val signup: SignUpViewModel,
+    private val start: AppStartViewModel,
+) {
+  fun leave() {
+    welcome.reset()
+    login.reset()
+    signup.reset()
+    start.logOut()
+  }
+
+  fun saved() = start.onProfileCreated()
+}
+
 /**
  * The app's entry point (#74): follows [AppStartViewModel] to the app-start loading or error state,
  * Verify Email, the profile step or the app shell, and moves between the signed-out screens
@@ -157,9 +177,20 @@ fun AuthFlow(
     startViewModel: AppStartViewModel = hiltViewModel(),
     verificationViewModel: VerifyEmailViewModel = hiltViewModel(),
     profileSetupViewModel: ProfileSetupViewModel = hiltViewModel(),
+    welcomeViewModel: WelcomeViewModel = hiltViewModel(),
+    profileContent: @Composable (() -> Unit, () -> Unit) -> Unit = { onBack, onSaved ->
+      ProfileSetupScreen(onBack, onSaved, viewModel = profileSetupViewModel)
+    },
     recoveryViewModel: PasswordRecoveryViewModel? = null,
     signedInContent: @Composable (() -> Unit) -> Unit = { done -> AppShell(onLoggedOut = done) },
 ) {
+  val profileCallbacks =
+      ProfileSetupCallbacks(welcomeViewModel, loginViewModel, viewModel, startViewModel)
+  val welcomeState by welcomeViewModel.uiState.collectAsStateWithLifecycle()
+  val context = LocalContext.current
+  LaunchedEffect(welcomeState.result) {
+    if (welcomeState.result is GoogleSignInResult.Success) startViewModel.refresh()
+  }
   // A session that needs no profile read is resolved at once, so it opens on its screen instead
   // of showing "Loading your profile…" for the first frame.
   var destination by rememberSaveable {
@@ -178,11 +209,13 @@ fun AuthFlow(
   // sign-out (a move to Login) from a recreation, which applies the current one again.
   var lastStartWasLogin by rememberSaveable { mutableStateOf<Boolean?>(null) }
   // Retained navigation callbacks must reset the current models after a model is replaced.
+  val latestWelcomeViewModel by rememberUpdatedState(welcomeViewModel)
   val latestSignUpViewModel by rememberUpdatedState(viewModel)
   val latestLoginViewModel by rememberUpdatedState(loginViewModel)
   val latestVerificationViewModel by rememberUpdatedState(verificationViewModel)
   val latestProfileSetupViewModel by rememberUpdatedState(profileSetupViewModel)
   fun resetSessionState() {
+    latestWelcomeViewModel.reset()
     latestSignUpViewModel.reset()
     latestLoginViewModel.reset()
     latestVerificationViewModel.reset()
@@ -223,6 +256,11 @@ fun AuthFlow(
       }
       destination = target
       backStack = emptyList()
+      if (startDestination in setOf(StartDestination.Main, StartDestination.ProfileSetup)) {
+        welcomeViewModel.reset()
+        loginViewModel.reset()
+        viewModel.reset()
+      }
       if (startDestination != StartDestination.Loading) startupApplied = true
     }
   }
@@ -276,7 +314,7 @@ fun AuthFlow(
     when (destination) {
       AuthDestination.SignUp,
       AuthDestination.LogIn -> back()
-      AuthDestination.ProfileSetup -> startViewModel.logOut()
+      AuthDestination.ProfileSetup -> profileCallbacks.leave()
       AuthDestination.VerifyEmail -> backFromVerification()
       AuthDestination.PasswordRecovery -> back()
       else -> onExit()
@@ -293,16 +331,30 @@ fun AuthFlow(
             modifier = Modifier.background(Bg),
         )
     AuthDestination.ProfileSetup ->
-        ProfileSetupScreen(
-            onBack = startViewModel::logOut,
-            onProfileSaved = startViewModel::onProfileCreated,
-            viewModel = profileSetupViewModel,
+        profileContent(
+            {
+              profileCallbacks.leave()
+              destination = AuthDestination.Welcome
+            },
+            profileCallbacks::saved,
         )
-    AuthDestination.Welcome ->
-        WelcomeScreen(
-            onSignUp = { open(AuthDestination.SignUp) },
-            onLogIn = { open(AuthDestination.LogIn) },
+    AuthDestination.Welcome -> {
+      BackHandler(welcomeState.busy) {}
+      if (welcomeState.error != null) {
+        BackHandler { welcomeViewModel.reset() }
+        GoogleAuthErrorScreen(
+            welcomeState.error!!,
+            onBack = welcomeViewModel::reset,
+            onRetry = { welcomeViewModel.onGoogle(context) },
         )
+      } else
+          WelcomeScreen(
+              onGoogle = { welcomeViewModel.onGoogle(context) },
+              busy = welcomeState.busy,
+              onSignUp = { open(AuthDestination.SignUp) },
+              onLogIn = { open(AuthDestination.LogIn) },
+          )
+    }
     AuthDestination.SignUp ->
         SignUpRoute(
             viewModel,

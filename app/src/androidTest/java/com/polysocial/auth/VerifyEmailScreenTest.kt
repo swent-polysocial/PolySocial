@@ -2,12 +2,13 @@
 // tests for #31; verified app-shell resume and orientation-specific review captures;
 // synchronized Continue checks with startup work and semantic actions for PR #99's CI failures;
 // preserved the injected Events tab test shell when rebasing onto main).
+// Contributors: OpenAI Codex (integrated real profile form and offline injection after PR #168
+// rebase).
 package com.polysocial.auth
 
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
-import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
@@ -97,6 +98,10 @@ class VerifyEmailScreenTest {
   private lateinit var login: LoginViewModel
   private lateinit var start: AppStartViewModel
   private val profiles = mockk<UserProfileRepository>()
+  private val welcome by lazy { com.polysocial.ui.auth.WelcomeViewModel(repository) }
+  private val profile by lazy {
+    com.polysocial.ui.profile.ProfileSetupViewModel(repository, profiles)
+  }
 
   @After
   fun disposeVerification() {
@@ -127,8 +132,9 @@ class VerifyEmailScreenTest {
             onExit = {},
             loginViewModel = login,
             verificationViewModel = vm,
+            welcomeViewModel = welcome,
+            profileSetupViewModel = profile,
             startViewModel = start,
-            profileSetupViewModel = remember { ProfileSetupViewModel(repository, profiles) },
             signedInContent = { AppShell(eventsContent = { TabRootScreen(Tab.EVENTS) }) },
         )
       }

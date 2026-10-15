@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (inject Google entry state after #107 rebase).
 // Contributors: OpenAI Codex (fake-backed logout navigation and account-switch regression tests,
 // verification injection after rebase, #109).
 package com.polysocial.ui.profile
@@ -65,6 +66,8 @@ class LogoutFlowTest {
       }
   private var exits = 0
 
+  private val welcome = com.polysocial.ui.auth.WelcomeViewModel(auth)
+
   private fun launch() {
     val start = AppStartViewModel(auth, profiles)
     val profileSetup = ProfileSetupViewModel(auth, profiles)
@@ -77,6 +80,7 @@ class LogoutFlowTest {
             start,
             verification,
             profileSetup,
+            welcomeViewModel = welcome,
         ) { done ->
           AppShell(
               eventsContent = { TabRootScreen(Tab.EVENTS) },
