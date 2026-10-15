@@ -1,6 +1,7 @@
 # Contributors: Claude (split the jobs, added docs-only detection and the CI summary job, #67;
 # Firebase emulators for the rules and emulator tests, #159; parallel checks, unit test,
-# instrumented test and SonarCloud jobs, #192).
+# instrumented test and SonarCloud jobs, system image download retries, and the APK install and
+# broadcast wait before the device tests, #192).
 
 name: CI - Test Runner
 
@@ -264,6 +265,25 @@ jobs:
         run: |
           npm install -g firebase-tools@15.33.0
 
+      # The next step installs this system image too, but about 1 run in 50 its download arrives
+      # corrupted ("Error on ZipFile unknown archive") and the job fails before the emulator starts.
+      # Installing it here first, with retries, lets that step find it installed. Keep it in line with
+      # the next step's api-level, target and arch.
+      - name: Install the emulator system image
+        run: |
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses > /dev/null
+          for attempt in 1 2 3; do
+            if "$sdkmanager" --install 'system-images;android-34;google_apis;x86_64' --channel=0 > /dev/null; then
+              exit 0
+            fi
+            echo "::warning::The system image download failed (attempt $attempt of 3)."
+            # sdkmanager's partial downloads, so the next attempt starts again from scratch
+            rm -rf "$ANDROID_HOME/.temp" "$ANDROID_HOME/.downloadIntermediates"
+            sleep 10
+          done
+          exit 1
+
       # The emulator boots from scratch (~30 s). A cached snapshot is rejected as soon as the
       # runner installs a newer emulator, and restoring the 1.9 GB cache took as long as a cold boot.
       - name: Instrumented tests (emulator)
@@ -279,11 +299,19 @@ jobs:
           pre-emulator-launch-script: |
             while [ ! -f "$RUNNER_TEMP/apk-build-status" ]; do sleep 1; done; cat "$RUNNER_TEMP/apk-build.log"
           # Each line runs in its own shell. The first stops here if the APK build failed (a failed
-          # pre-launch script doesn't stop the step). -Pemulator=all runs the @EmulatorTest tests
-          # together with the others, in one run, so the coverage report gets them all. The Firebase
-          # emulators stop when the run ends.
+          # pre-launch script doesn't stop the step). The next two install the APKs and wait until
+          # the emulator has delivered the broadcasts for that install and its startup: when Android
+          # handles a newly added app late, during the first test, it restarts the app's activity,
+          # which then has no Compose content ("No compose hierarchies found"). connectedCheck then
+          # installs the same APKs again as an update, which Android doesn't handle as a new app. The
+          # install goes through Gradle with connectedCheck's arguments: inside this step, Gradle
+          # signs the APKs again with another debug key, so the background build's APKs can't be
+          # updated. -Pemulator=all runs the @EmulatorTest tests together with the others, in one
+          # run, so the coverage report gets them all. The Firebase emulators stop when the run ends.
           script: |
             exit "$(cat "$RUNNER_TEMP/apk-build-status")"
+            ./gradlew installDebug installDebugAndroidTest -Pemulator=all -Pandroid.testInstrumentationRunnerArguments.numShards=2 -Pandroid.testInstrumentationRunnerArguments.shardIndex=${{ matrix.shard }}
+            timeout 180 "$ANDROID_HOME/platform-tools/adb" shell am wait-for-broadcast-idle || echo "::warning::The emulator's broadcasts were still not idle after 180 s."
             firebase emulators:exec --project demo-polysocial --only firestore,auth "./gradlew connectedCheck -Pemulator=all -Pandroid.testInstrumentationRunnerArguments.numShards=2 -Pandroid.testInstrumentationRunnerArguments.shardIndex=${{ matrix.shard }}"
 
       # For the "Coverage and SonarCloud" job
