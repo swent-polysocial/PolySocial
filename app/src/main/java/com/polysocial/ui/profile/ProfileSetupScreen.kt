@@ -689,8 +689,10 @@ private fun LogOutAction(onClick: () -> Unit) {
   )
 }
 
-/** Touch area added above and below Log out: 17 + 15 + 17 = 49 dp. */
-private val LOG_OUT_TOUCH_EXTRA = 17.dp
+/**
+ * Touch area added above and below Log out: 17 + 15 + 17 = 49 dp. Tests measure the text with it.
+ */
+internal val LOG_OUT_TOUCH_EXTRA = 17.dp
 
 @Composable
 private fun ContinueButton(state: ProfileSetupUiState, onClick: () -> Unit) {
