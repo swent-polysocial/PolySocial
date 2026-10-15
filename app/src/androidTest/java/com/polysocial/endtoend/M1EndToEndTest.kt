@@ -178,10 +178,12 @@ class M1EndToEndTest {
   private fun setUpProfile() {
     await(ProfileSetupTestTags.SCREEN)
     node(ProfileSetupTestTags.FULL_NAME).assertTextContains(NAME)
+    // The option lists scroll: on a small screen (like CI's emulator) the option can be below the
+    // visible part of the list, where a tap would miss it and leave the list open.
     node(ProfileSetupTestTags.SECTION).performScrollTo().performClick()
-    node(ProfileSetupTestTags.sectionOption(SECTION)).performClick()
+    node(ProfileSetupTestTags.sectionOption(SECTION)).performScrollTo().performClick()
     node(ProfileSetupTestTags.YEAR).performScrollTo().performClick()
-    node(ProfileSetupTestTags.yearOption(YEAR)).performClick()
+    node(ProfileSetupTestTags.yearOption(YEAR)).performScrollTo().performClick()
     node(ProfileSetupTestTags.CONTINUE).performScrollTo().performClick()
 
     await(C.Tag.app_shell)
