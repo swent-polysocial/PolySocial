@@ -2,7 +2,8 @@
 // Contributors: Claude (Hilt, KSP and Hilt testing setup, JaCoCo on Hilt-rewritten classes, #70;
 // Navigation Compose dependency, #41; MockK and kotlinx-coroutines-play-services, #32; emulator
 // tests only with -Pemulator and no protobuf-lite in instrumented tests, #117; -Pemulator=all for
-// CI, #159; unit tests in parallel forks and coverage of sharded device tests, #192);
+// CI, #159; unit tests in parallel forks and coverage of sharded device tests, #192; fakes shared
+// with instrumented tests, #136);
 // OpenAI Codex (sign-up test dependencies, review cleanup and Android UI-test MockK binding).
 import java.util.Properties
 
@@ -105,7 +106,11 @@ android {
     java.directories.addAll(test.java.directories)
     res.directories.addAll(test.res.directories)
     resources.directories.addAll(test.resources.directories)
+    kotlin.directories.add("src/sharedTest/java")
   }
+
+  // The fakes in src/sharedTest serve both the unit tests and the instrumented tests (#136).
+  sourceSets.getByName("androidTest") { kotlin.directories.add("src/sharedTest/java") }
 
   sourceSets.getByName("test") {
     java.directories.clear()
