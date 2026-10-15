@@ -1,8 +1,8 @@
 // Contributors: OpenAI Codex (tested startup/session routing, profile failure recovery and system
 // Back handoffs and verification/profile integration); Claude (signed-in shell without Hilt, #105;
 // signed-out back stack, profile step, sign-out and Figma start states, #74; sign-out from
-// anywhere, form resets and rotation cases after review; ); Claude Opus 5.5 (testing agent: generic
-// save error tests, #142).
+// anywhere and from Verify Email, form resets and rotation cases after review); Claude Opus 5.5
+// (testing agent: generic save error tests, #142).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
