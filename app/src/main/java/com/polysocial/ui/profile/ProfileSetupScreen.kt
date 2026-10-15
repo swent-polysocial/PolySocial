@@ -138,9 +138,6 @@ fun ProfileSetupScreen(
     viewModel: ProfileSetupViewModel = hiltViewModel(),
 ) {
   val state by viewModel.uiState.collectAsState()
-  BackHandler(
-      state.status == ProfileSetupStatus.Saving || state.status == ProfileSetupStatus.Saved
-  ) {}
   // Reported once: after a rotation the ViewModel is still Saved, and the effect runs again.
   var savedReported by rememberSaveable { mutableStateOf(false) }
   LaunchedEffect(state.status) {
