@@ -92,7 +92,6 @@ class CreateEventNavigationTest {
               createEventViewModel = viewModel
               CreateEventScreen(
                   onClose = navigation.onClose,
-                  onPickLocation = {},
                   onViewEvent = navigation.onViewEvent,
                   onBackToMap = navigation.onBackToMap,
                   viewModel = viewModel,
