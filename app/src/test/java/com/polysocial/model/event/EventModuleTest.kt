@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (adapt to replaceable Firestore provider, #109).
 // Contributors: Claude (wrote this test; shared Firestore instance and profiles, #45).
 package com.polysocial.model.event
 
@@ -21,7 +22,7 @@ class EventModuleTest {
 
     val repository =
         EventModule.eventRepository(
-            mockk<FirebaseFirestore>(),
+            javax.inject.Provider { mockk<FirebaseFirestore>() },
             FakeAuthRepository(),
             FakeUserProfileRepository(),
             offline,
