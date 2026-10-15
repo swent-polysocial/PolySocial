@@ -134,6 +134,7 @@ private val BackStackSaver =
         save = { stack -> stack.map { it.name } },
         restore = { names -> names.map(AuthDestination::valueOf) },
     )
+
 /** Keeps profile completion and both Back paths bound to the same session controllers. */
 private class ProfileSetupCallbacks(
     private val welcome: WelcomeViewModel,

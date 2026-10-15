@@ -11,7 +11,7 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 
 - **Session cache (#156):** `FirestoreSession` owns the replaceable database; repositories resolve it per operation. Cleanup serializes callers and protects holder state across threads. Once started, termination and persistence removal run with a 10-second timeout despite caller cancellation, then propagate cancellation. Access fails through typed repository errors until cleanup succeeds; retry reuses the stopped instance for persistence removal. Offline persistence stays enabled between logouts. The team confirmed clear-before-sign-out with blocking Retry in [#177 review](https://github.com/swent-polysocial/PolySocial/pull/177#issuecomment-6168926664). Profile integration is provided by #109 below.
 
-- **Profile logout (#109):** Profile offers Log out with confirmation. Its ViewModel clears Firestore persistence before `AuthRepository.logOut()`. `AppShell` removes active and saved tab stacks; `AuthFlow` resets login, sign-up, verification and profile-setup state before Welcome. Cleanup failure keeps the user signed in behind blocking Retry, as confirmed by the team in [#177 review](https://github.com/swent-polysocial/PolySocial/pull/177#issuecomment-6168926664). The cache lifecycle is provided by #156. [Shared Figma confirmation (#108)](https://www.figma.com/design/7Gt7tmy1ikpNyNBh1P6QdY/App-Mockup?node-id=673-118).
+- **Profile logout (#109):** Profile offers Log out with confirmation. Its ViewModel clears Firestore persistence before `AuthRepository.logOut()`. `AppShell` removes active and saved tab stacks; `AuthFlow` resets Welcome Google state, login, sign-up, verification and profile-setup state before Welcome. Cleanup failure keeps the user signed in behind blocking Retry, as confirmed by the team in [#177 review](https://github.com/swent-polysocial/PolySocial/pull/177#issuecomment-6168926664). The cache lifecycle is provided by #156. [Shared Figma confirmation (#108)](https://www.figma.com/design/7Gt7tmy1ikpNyNBh1P6QdY/App-Mockup?node-id=673-118).
 
 - **Verification foundation (#31):** `AuthRepository` sends verification links with typed delivery/throttling failures and reloads the account plus a forced ID-token refresh before reporting verification. `VerifyEmailViewModel` restores per-UID resend deadlines (45 seconds after delivery, three minutes after throttling), handles browser-return/entry races and cancellation, and keeps deadlines across sign-out. Only timestamps are persisted; successful verification clears them. The screen and navigation came with [#99](https://github.com/swent-polysocial/PolySocial/pull/99) (see the next entry).
 
@@ -107,7 +107,7 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 
 Closed issues keep their original text, so where one disagrees with this section, this section wins. #31 still names a shared `AuthViewModel`; follow "Names fixed by Sprint 1 issues" above.
 
-- **Google entry (#107):** new verified Google users enter the existing profile form with name/email prefilled; existing users use the shared startup profile lookup. Error screens use two columns in wide, short windows, like Verify Email (#99), and Back returns to the original auth screen. Cancellation is silent. Google uses Firebase-managed account linking; no original-method error screen is shown. Unexpected failures offer Try again. The real profile form replaces the startup marker here and is shared with the Verify Email flow on main; broader navigation/reset work remains in #144.
+- **Google entry (#107):** new verified Google users enter the existing profile form with name/email prefilled; existing users use the shared startup profile lookup. Error screens use two columns in wide, short windows, like Verify Email (#99), and Back returns to the original auth screen. Cancellation is silent. Google uses Firebase-managed account linking; no original-method error screen is shown. Unexpected failures offer Try again. The real profile form replaces the startup marker here and is shared with the Verify Email flow on main; navigation, verification, password recovery and logout reset behavior from main are preserved.
 
 ## Traps
 
@@ -176,15 +176,6 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 ## Decision log
 
-- 2026-10-14 · [#107](https://github.com/swent-polysocial/PolySocial/issues/107): remove the original-method error screen and Figma mockup following owner-confirmed Firebase linking; retain non-EPFL guidance and generic Retry.
-- 2026-10-14 · [#106](https://github.com/swent-polysocial/PolySocial/issues/106): owner confirmed automatic Firebase linking for EPFL Google accounts through EPFL SSO; remove the original-method collision flow and retain generic failure recovery.
-
-- 2026-10-13 · [#168](https://github.com/swent-polysocial/PolySocial/pull/168): owner approved consolidating profile callbacks to remove unreachable Compose captures; both Back paths keep the same reset/logout behavior.
-
-- 2026-10-13 · [#107](https://github.com/swent-polysocial/PolySocial/issues/107): share Google error UI across entry screens and wire the existing profile form.
-
-- 2026-10-13 · [#106](https://github.com/swent-polysocial/PolySocial/issues/106): Google credentials stay in the repository; reject invalid domains before Firebase and use its returned verified identity.
-
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 
 - 2026-10-27 · [#165 review](https://github.com/swent-polysocial/PolySocial/pull/165): a private config without a Web OAuth client fails compilation; CI Google sign-in awaits the stable signing key already tracked in #137.
@@ -203,6 +194,10 @@ Newest first, one line each, with a link. Remove a line once its content lives i
 - 2026-10-15 · Sign-in is email/password and Google only: Microsoft would need EPFL's admin to whitelist the app, and Google, through EPFL's SSO, proves the address just as well. ([#197 review](https://github.com/swent-polysocial/PolySocial/pull/197#pullrequestreview-5539093813))
 - 2026-10-15 · Event writes keep every organizer in `allowedUids`, on create and update, so a co-organizer can always read the private event they manage. ([#102](https://github.com/swent-polysocial/PolySocial/pull/102))
 - 2026-10-15 · CI installs the APKs and waits for the emulator's broadcasts before the device tests, and retries the system image download, after both made runs fail at random. ([#192](https://github.com/swent-polysocial/PolySocial/issues/192))
+- 2026-10-14 · [#106](https://github.com/swent-polysocial/PolySocial/issues/106): owner confirmed automatic Firebase linking for EPFL Google accounts through EPFL SSO; remove the original-method collision flow and retain generic failure recovery.
+
+- 2026-10-14 · [#107](https://github.com/swent-polysocial/PolySocial/issues/107): remove the original-method error screen and Figma mockup following owner-confirmed Firebase linking; retain non-EPFL guidance and generic Retry.
+
 - 2026-10-14 · CI runs checks, build and unit tests, instrumented tests and the release build in parallel, with the instrumented tests in two shards, then coverage and Sonar from the files the test jobs upload; Gradle caches builds and configuration and runs unit tests in parallel forks. ([#193](https://github.com/swent-polysocial/PolySocial/pull/193))
 
 - 2026-10-14 · Confirm clear-before-sign-out; bound and serialize cleanup despite caller cancellation, and deny database access until success. ([#177 review](https://github.com/swent-polysocial/PolySocial/pull/177#issuecomment-6168926664))
@@ -213,6 +208,12 @@ Newest first, one line each, with a link. Remove a line once its content lives i
 
 - 2026-10-14 · Auth navigation wired (#74): profile step in the flow, Back on it signs out, signed-out back stack, one `logOut()` path, Figma app-start loading and error states (frames added to section 01), shared `ErrorState`. ([#144](https://github.com/swent-polysocial/PolySocial/pull/144))
 - 2026-10-14 · [#111](https://github.com/swent-polysocial/PolySocial/issues/111) map screen: the picker opens inside Create Event (no route, no `onPickLocation`), never sends the student's position on its own, and two Figma frames were added for unnamed pins.
+- 2026-10-13 · [#106](https://github.com/swent-polysocial/PolySocial/issues/106): Google credentials stay in the repository; reject invalid domains before Firebase and use its returned verified identity.
+
+- 2026-10-13 · [#107](https://github.com/swent-polysocial/PolySocial/issues/107): share Google error UI across entry screens and wire the existing profile form.
+
+- 2026-10-13 · [#168](https://github.com/swent-polysocial/PolySocial/pull/168): owner approved consolidating profile callbacks to remove unreachable Compose captures; both Back paths keep the same reset/logout behavior.
+
 - 2026-10-13 · [#164](https://github.com/swent-polysocial/PolySocial/issues/164): owner re-enabled enumeration protection and authorized completing account-neutral recovery; conditional Figma confirmation replaces provider lookup, superseding the cancelled prototype.
 
 - 2026-10-13 · App bar actions: one `TabAction` per tab (none on Map), shown only at the tab root, opening a placeholder route inside the tab. ([#166](https://github.com/swent-polysocial/PolySocial/pull/166))

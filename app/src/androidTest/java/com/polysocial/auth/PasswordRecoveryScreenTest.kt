@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (inject Google entry state after #107 rebase).
 // Contributors: OpenAI Codex (offline device recovery navigation and synthetic visual checks,
 // #164); Claude (the profile step's ViewModel, #74).
 package com.polysocial.auth
@@ -45,9 +46,19 @@ class PasswordRecoveryScreenTest {
             mockk<VerificationStore>(relaxed = true),
             VerificationClock { 1000 },
         )
+    val welcome = com.polysocial.ui.auth.WelcomeViewModel(auth)
     compose.setContent {
       PolySocialTheme {
-        AuthFlow(signup, {}, login, start, verification, profileStep, recoveryViewModel = recovery)
+        AuthFlow(
+            signup,
+            {},
+            login,
+            start,
+            verification,
+            profileStep,
+            recoveryViewModel = recovery,
+            welcomeViewModel = welcome,
+        )
       }
     }
     compose.onNodeWithTag(WelcomeTags.LogIn).performScrollTo().performClick()

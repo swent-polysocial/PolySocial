@@ -49,9 +49,6 @@ class SignUpScreenTest {
   private val loginViewModel = LoginViewModel(repository)
   private val profiles = mockk<UserProfileRepository>()
   private val welcomeViewModel by lazy { com.polysocial.ui.auth.WelcomeViewModel(repository) }
-  private val profileSetupViewModel by lazy {
-    com.polysocial.ui.profile.ProfileSetupViewModel(repository, profiles)
-  }
   private lateinit var startViewModel: AppStartViewModel
   private val verificationStore =
       object : VerificationStore {
