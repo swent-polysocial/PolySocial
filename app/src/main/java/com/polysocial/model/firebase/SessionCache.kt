@@ -22,6 +22,13 @@ enum class CacheClearResult {
 
 /** Cache cleanup must finish before another account may enter the app. */
 interface SessionCache {
+  /**
+   * Terminates the database and clears its persisted data before allowing a fresh instance. Returns
+   * [CacheClearResult.UnexpectedError] if database creation or cleanup fails, including SDK
+   * cancellation or the 10-second cleanup timeout. Once cleanup starts, database access stays
+   * blocked until a retry succeeds. Caller cancellation waits for started cleanup to finish or time
+   * out, then propagates to the caller.
+   */
   suspend fun clear(): CacheClearResult
 }
 

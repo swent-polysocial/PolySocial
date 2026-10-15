@@ -22,8 +22,8 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.tasks.await
 
 /** Firestore collection holding the events, one document per event. */
@@ -79,12 +79,13 @@ class FirestoreEventRepository(
       val fields = event.withCreator(user.uid, isVerifiedAssociation).toFirestoreMap()
       db.runTransaction(SINGLE_ATTEMPT) { it.set(document, fields) }.await()
       CreateEventResult.Created(document.id)
-    } catch (e: CancellationException) {
-      currentCoroutineContext().ensureActive()
-      CreateEventResult.UnexpectedError
     } catch (e: FirebaseException) {
       if (e.isOffline()) CreateEventResult.NetworkError else CreateEventResult.UnexpectedError
-    } catch (_: Exception) {
+    } catch (e: CancellationException) {
+      // A task cancelled while the caller still runs is a failure; a cancelled caller rethrows.
+      currentCoroutineContext().ensureActive()
+      CreateEventResult.UnexpectedError
+    } catch (e: Exception) {
       CreateEventResult.UnexpectedError
     }
   }

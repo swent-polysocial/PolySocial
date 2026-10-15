@@ -68,6 +68,11 @@ class SessionRepositoryFailureTest {
   }
 
   @Test
+  fun singleEventListenerReportsBlockedCacheAndCompletes() = runTest {
+    assertEquals(listOf(EventResult.NotFound), events.getEvent("event-1").toList())
+  }
+
+  @Test
   fun cancelledSdkAccessReportsEventFailureWhileCallerRemainsActive() = runTest {
     accessFailure = CancellationException("SDK operation cancelled")
     val event =
