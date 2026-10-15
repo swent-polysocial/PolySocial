@@ -1,6 +1,6 @@
-// Contributors: OpenAI Codex (password-reset contract in the event-test fixture, #164).
 // Contributors: Claude (event repository read tests against the Firestore emulator, #118).
-// OpenAI Codex (adapted the event-test auth fixture to the verification contract, #31).
+// OpenAI Codex (adapted the event-test auth fixture to the verification contract, #31);
+// OpenAI Codex (password-reset contract in the event-test fixture, #164).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4

@@ -1,11 +1,11 @@
-// Contributors: OpenAI Codex (password recovery destination and Back routing for #164).
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; translated the Figma sign-up form to Compose
 // Foundation, reusing the shared app theme; connected login and added the official Google
 // placeholder button; connected the welcome entry screen and app-start/profile routing;
 // preserved submission handoffs on Back and aligned form hints, loading and recovery layout);
 // Claude (injectable signed-in content, so tests run without Hilt, #105).
-// Contributors: OpenAI Codex (verification routing, Back sign-out and replacement-session
-// entry and stable current-model callbacks for #31).
+// OpenAI Codex (verification routing, Back sign-out and replacement-session
+// entry and stable current-model callbacks for #31);
+// OpenAI Codex (password recovery destination and Back routing for #164).
 package com.polysocial.ui.auth
 
 import androidx.activity.compose.BackHandler
@@ -269,6 +269,8 @@ fun AuthFlow(
             },
         )
     AuthDestination.PasswordRecovery -> {
+      // Resolve only on entry, so other auth routes and their non-Hilt tests need no recovery
+      // model.
       val recovery = recoveryViewModel ?: hiltViewModel<PasswordRecoveryViewModel>()
       LaunchedEffect(recovery) {
         if (!recoveryInitialized) {

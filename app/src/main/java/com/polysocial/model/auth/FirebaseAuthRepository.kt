@@ -1,8 +1,7 @@
-// Contributors: OpenAI Codex (enumeration-protected password recovery and failure handling for
-// #164).
 // Contributors: Claude (logIn, logOut and currentUser for #32); OpenAI Codex
 // (GPT-6.1 Sol, medium; sign-up and display-name integration; verification delivery and
-// token refresh for #31).
+// token refresh for #31);
+// OpenAI Codex (enumeration-protected password recovery and failure handling for #164).
 package com.polysocial.model.auth
 
 import com.google.firebase.FirebaseException

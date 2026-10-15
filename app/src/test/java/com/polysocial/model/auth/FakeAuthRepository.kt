@@ -1,7 +1,7 @@
-// Contributors: OpenAI Codex (account-neutral recovery fake for #164).
 // Contributors: Claude (test fake for #32); Claude Opus 5.5 (recorded the logIn arguments,
 // added the logIn gate); OpenAI Codex (GPT-6.1 Sol, medium; extended the existing fake to
-// the sign-up contract with submission controls and added verification controls for #31).
+// the sign-up contract with submission controls and added verification controls for #31);
+// OpenAI Codex (account-neutral recovery fake for #164).
 package com.polysocial.model.auth
 
 import kotlinx.coroutines.CompletableDeferred
