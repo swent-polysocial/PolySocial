@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (offline recovery navigation, privacy and responsive UI for #164).
+// Contributors: OpenAI Codex (offline recovery navigation, privacy and responsive UI for #164);
+// Claude (the profile step's ViewModel, #74).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -12,6 +13,7 @@ import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.ui.auth.*
 import com.polysocial.ui.login.LoginScreenTestTags
 import com.polysocial.ui.login.LoginViewModel
+import com.polysocial.ui.profile.ProfileSetupViewModel
 import com.polysocial.ui.start.AppStartViewModel
 import com.polysocial.ui.theme.PolySocialTheme
 import kotlinx.coroutines.CompletableDeferred
@@ -34,9 +36,10 @@ class PasswordRecoveryFlowTest {
     val start = AppStartViewModel(auth, FakeUserProfileRepository())
     val verification =
         VerifyEmailViewModel(auth, MemoryVerificationStore(), VerificationClock { 1000 })
+    val profileStep = ProfileSetupViewModel(auth, FakeUserProfileRepository())
     restore.setContent {
       PolySocialTheme {
-        AuthFlow(signup, {}, login, start, verification, recoveryViewModel = recovery)
+        AuthFlow(signup, {}, login, start, verification, profileStep, recoveryViewModel = recovery)
       }
     }
     compose.onNodeWithTag(WelcomeTags.LogIn).performScrollTo().performClick()
