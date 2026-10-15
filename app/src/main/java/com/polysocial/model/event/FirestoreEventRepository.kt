@@ -1,5 +1,6 @@
 // Contributors: Claude (drafted the Firestore event repository; verified association badge, #45;
-// the public upcoming-events listener, #49; unexpected failures reported as errors, #182).
+// the public upcoming-events listener, #49; unexpected failures reported as errors, #182; the
+// single-event listener and its failures, #112).
 package com.polysocial.model.event
 
 import com.google.firebase.FirebaseException
@@ -20,6 +21,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.tasks.await
 
 /** Firestore collection holding the events, one document per event. */
@@ -125,6 +127,63 @@ class FirestoreEventRepository(
                     }
               } catch (e: Exception) {
                 fail()
+                null
+              }
+          awaitClose { registration?.remove() }
+        }
+        .buffer(Channel.CONFLATED)
+  }
+
+  /**
+   * Listens to `events/[id]`. Metadata changes are included, so the flow also emits when only
+   * [EventResult.Found]'s `fromCache` changes, for example when the device comes back online.
+   *
+   * A missing document is [EventResult.NotCached] when the snapshot comes from the cache (offline,
+   * and never read before) and [EventResult.NotFound] when it comes from the server. Any listener
+   * error, in practice a read the Security Rules deny, is [EventResult.NotFound]: Firestore stops a
+   * listener after an error, so the flow ends. #52's read rule checks the document's fields, so a
+   * document that doesn't exist may also reach the app as a denied read, with the same result. Like
+   * [getUpcomingPublicEvents], the flow is conflated and the final result is never dropped, and an
+   * unexpected failure while registering the listener or reading a snapshot (#182) is also
+   * [EventResult.NotFound] and ends the flow, instead of crashing the app.
+   */
+  override fun getEvent(id: String): Flow<EventResult> {
+    if (!isReadableEventId(id)) return flowOf(EventResult.NotFound)
+    return callbackFlow {
+          fun notFound() {
+            trySend(EventResult.NotFound)
+            close()
+          }
+          // Like getUpcomingPublicEvents (#182): nothing in this try suspends, so it can't catch
+          // the
+          // collector's cancellation, and awaitClose still ends a cancelled collection.
+          val registration =
+              try {
+                db.collection(EVENTS_COLLECTION).document(id).addSnapshotListener(
+                    MetadataChanges.INCLUDE
+                ) { snapshot, error ->
+                  if (error != null || snapshot == null) notFound()
+                  else
+                      try {
+                        val fromCache = snapshot.metadata.isFromCache
+                        val event =
+                            if (snapshot.exists()) eventFromFirestore(id, snapshot.data.orEmpty())
+                            else null
+                        trySend(
+                            when {
+                              event != null -> EventResult.Found(event, fromCache)
+                              !snapshot.exists() && fromCache -> EventResult.NotCached
+                              else -> EventResult.NotFound
+                            }
+                        )
+                      } catch (e: Exception) {
+                        // Thrown here, it would crash the app on Firestore's callback thread.
+                        notFound()
+                      }
+                }
+              } catch (e: Exception) {
+                // For example a client terminated at logout (#185): ending beats crashing.
+                notFound()
                 null
               }
           awaitClose { registration?.remove() }
