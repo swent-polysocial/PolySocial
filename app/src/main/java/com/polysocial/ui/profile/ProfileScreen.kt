@@ -1,23 +1,29 @@
 // Contributors: OpenAI Codex (Profile tab, shared logout dialog and remembered action binding,
-// #109).
+// #109; matched the logout row and icon to Figma).
 package com.polysocial.ui.profile
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
 import com.polysocial.resources.C
+import com.polysocial.ui.theme.exact
 
 object ProfileTags {
   const val Logout = "profile_logout"
+  const val LogoutIcon = "profile_logout_icon"
   const val Dialog = "logout_dialog"
   const val Confirm = "logout_confirm"
   const val Cancel = "logout_cancel"
@@ -50,14 +56,32 @@ fun ProfileScreen(
     onConfirm: () -> Unit,
 ) {
   Column(Modifier.fillMaxSize().padding(horizontal = 20.dp).testTag(C.Tag.screen_profile)) {
-    TextButton(
-        onClick = onLogout,
-        colors =
-            ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.onSurface),
-        modifier = Modifier.testTag(ProfileTags.Logout),
-        enabled = state == LogoutState.Idle,
+    Row(
+        modifier =
+            Modifier.fillMaxWidth()
+                .heightIn(min = 50.dp)
+                .testTag(ProfileTags.Logout)
+                .clickable(
+                    enabled = state == LogoutState.Idle,
+                    role = Role.Button,
+                    onClick = onLogout,
+                )
+                .padding(vertical = 15.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-      Text(stringResource(R.string.profile_log_out), style = MaterialTheme.typography.titleSmall)
+      Icon(
+          painterResource(R.drawable.ic_log_out),
+          contentDescription = null,
+          tint = MaterialTheme.colorScheme.onSurface,
+          modifier = Modifier.size(20.dp).testTag(ProfileTags.LogoutIcon),
+      )
+      Spacer(Modifier.width(14.dp))
+      Text(
+          stringResource(R.string.profile_log_out),
+          style =
+              MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold).exact(),
+          color = MaterialTheme.colorScheme.onSurface,
+      )
     }
   }
   if (
