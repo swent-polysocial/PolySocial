@@ -268,13 +268,23 @@ class EventsScreenTest {
     composeTestRule.setContent {
       PolySocialTheme {
         EventsScreen(
-            EventsUiState.Events(
-                listOf(EventDaySection(today, listOf(party, climbing))),
-                today = today,
-                isOffline = false,
+            EventsUiState(
+                EventsListState.Events(
+                    listOf(EventDaySection(today, listOf(party, climbing))),
+                    today = today,
+                    isOffline = false,
+                )
             ),
             zone = lausanne,
+            today = today,
             onRetry = {},
+            onClearFilters = {},
+            onSearchChange = {},
+            onSelectDate = {},
+            onToggleCategory = {},
+            onClearSheetFilters = {},
+            onSelectDistance = {},
+            onTurnOnLocation = {},
             onEventClick = { opened += it },
         )
       }
@@ -439,7 +449,9 @@ class EventsScreenTest {
             Clock.fixed(repository.now, lausanne),
             SavedStateHandle(),
         )
-    composeTestRule.setContent { PolySocialTheme { EventsRoute(viewModel = viewModel) } }
+    composeTestRule.setContent {
+      PolySocialTheme { EventsRoute(onEventClick = {}, viewModel = viewModel) }
+    }
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
 
     composeTestRule.onNodeWithTag(EventsTags.SEARCH).performTextInput("climb")
@@ -475,7 +487,9 @@ class EventsScreenTest {
             Clock.fixed(repository.now, lausanne),
             SavedStateHandle(),
         )
-    composeTestRule.setContent { PolySocialTheme { EventsRoute(viewModel = viewModel) } }
+    composeTestRule.setContent {
+      PolySocialTheme { EventsRoute(onEventClick = {}, viewModel = viewModel) }
+    }
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     // A search and a category that no event has together.
     composeTestRule.onNodeWithTag(EventsTags.SEARCH).performTextInput("climb")
@@ -515,7 +529,9 @@ class EventsScreenTest {
             Clock.fixed(repository.now, lausanne),
             SavedStateHandle(),
         )
-    composeTestRule.setContent { PolySocialTheme { EventsRoute(viewModel = viewModel) } }
+    composeTestRule.setContent {
+      PolySocialTheme { EventsRoute(onEventClick = {}, viewModel = viewModel) }
+    }
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     val field = composeTestRule.onNodeWithTag(EventsTags.SEARCH)
 
@@ -630,7 +646,9 @@ class EventsScreenTest {
             Clock.fixed(repository.now, lausanne),
             SavedStateHandle(),
         )
-    composeTestRule.setContent { PolySocialTheme { EventsRoute(viewModel = viewModel) } }
+    composeTestRule.setContent {
+      PolySocialTheme { EventsRoute(onEventClick = {}, viewModel = viewModel) }
+    }
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
 
     chip("SPORTS").performClick()
@@ -668,7 +686,9 @@ class EventsScreenTest {
             Clock.fixed(repository.now, lausanne),
             SavedStateHandle(),
         )
-    composeTestRule.setContent { PolySocialTheme { EventsRoute(viewModel = viewModel) } }
+    composeTestRule.setContent {
+      PolySocialTheme { EventsRoute(onEventClick = {}, viewModel = viewModel) }
+    }
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     composeTestRule.onNodeWithTag(EventsTags.SEARCH).performTextInput("climb")
     chip("SPORTS").performClick()
@@ -875,6 +895,7 @@ class EventsScreenTest {
             onClearSheetFilters = {},
             onSelectDistance = {},
             onTurnOnLocation = {},
+            onEventClick = {},
         )
       }
     }
@@ -902,6 +923,7 @@ class EventsScreenTest {
             onClearSheetFilters = {},
             onSelectDistance = {},
             onTurnOnLocation = {},
+            onEventClick = {},
         )
       }
     }
@@ -934,7 +956,9 @@ class EventsScreenTest {
             Clock.fixed(repository.now, lausanne),
             SavedStateHandle(),
         )
-    composeTestRule.setContent { PolySocialTheme { EventsRoute(viewModel = viewModel) } }
+    composeTestRule.setContent {
+      PolySocialTheme { EventsRoute(onEventClick = {}, viewModel = viewModel) }
+    }
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     openFilters()
 

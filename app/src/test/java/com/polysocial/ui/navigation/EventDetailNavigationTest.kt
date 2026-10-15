@@ -23,6 +23,7 @@ import com.polysocial.model.event.validEvent
 import com.polysocial.resources.C
 import com.polysocial.ui.event.detail.EventDetailViewModel
 import com.polysocial.ui.event.list.EventDaySection
+import com.polysocial.ui.event.list.EventsListState
 import com.polysocial.ui.event.list.EventsScreen
 import com.polysocial.ui.event.list.EventsTags
 import com.polysocial.ui.event.list.EventsUiState
@@ -55,7 +56,7 @@ class EventDetailNavigationTest {
   private val trickyId = "party 1/2"
 
   private val events =
-      EventsUiState.Events(
+      EventsListState.Events(
           listOf(
               EventDaySection(
                   TODAY,
@@ -79,10 +80,23 @@ class EventDetailNavigationTest {
         AppShell(
             navController = navController,
             eventsContent = { onEventClick ->
-              EventsScreen(events, zone = zone, onRetry = {}, onEventClick = onEventClick)
+              EventsScreen(
+                  EventsUiState(events),
+                  zone = zone,
+                  today = TODAY,
+                  onRetry = {},
+                  onClearFilters = {},
+                  onSearchChange = {},
+                  onSelectDate = {},
+                  onToggleCategory = {},
+                  onClearSheetFilters = {},
+                  onSelectDistance = {},
+                  onTurnOnLocation = {},
+                  onEventClick = onEventClick,
+              )
             },
             // The real map needs Hilt and the native renderer; the detail route is what's tested.
-            mapContent = { TabRootScreen(Tab.MAP) },
+            mapContent = { _, _ -> TabRootScreen(Tab.MAP) },
             eventDetailContent = { onBack ->
               val id =
                   navController.currentBackStackEntry
