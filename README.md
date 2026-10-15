@@ -3,7 +3,7 @@
 <!-- Contributors: Claude (Sprint 2 status in the Features table and the startup routing note). -->
 <!-- Contributors: OpenAI Codex (bundled Profile privacy notice and unavailable actions, #103). -->
 
-<!-- Contributors: OpenAI Codex (CI APK download instructions, #137). -->
+<!-- Contributors: OpenAI Codex (CI APK download, installation and Mapbox setup instructions, #137). -->
 
 # PolySocial
 
@@ -104,11 +104,11 @@ Keep `--only firestore:indexes`: a plain `firebase deploy` would also deploy the
 
 ## Downloading the CI APK
 
-After a successful push to `main`, open [CI - Test Runner](https://github.com/swent-polysocial/PolySocial/actions/workflows/ci.yml), choose the successful run for the desired commit on `main`, and download **polysocial-apk** from its **Artifacts** section. Sign in to GitHub if the download requires it. Extract the ZIP to obtain `app-debug.apk`; install it on an Android phone running Android 9 (API 28) or newer, allowing installation from that source when Android asks.
+Sign in to GitHub (artifacts cannot be downloaded anonymously). After a successful push to `main`, open [CI - Test Runner](https://github.com/swent-polysocial/PolySocial/actions/workflows/ci.yml), choose the successful run for the desired commit on `main`, and download **polysocial-apk** from its **Artifacts** section. Extract the ZIP to obtain `app-debug.apk`. If an older PolySocial is installed, uninstall it first: each CI run generates a different debug signing key, so Android cannot install the new APK as an update. Uninstalling removes the app's local data. Install on an Android phone running Android 9 (API 28) or newer, allowing installation from that source when Android asks.
 
-The APK uses Android's debug signing configuration. Artifacts expire after **7 days**, so use a recent successful `main` run for the Sprint review or M1. PR runs do not publish an APK. The final CI job publishes it only after the checks, unit tests, device-test shards, Sonar analysis and release build all succeed; a missing APK fails the run. The one-day `ci-main-debug-apk` artifact is an internal handoff between jobs; coaches should download **polysocial-apk**.
+The APK is built from the commit whose checks, unit tests, device-test shards, Sonar analysis and release build all succeeded; the device-test shards build their own APKs. Artifacts expire after **7 days**, so use a recent successful `main` run for the Sprint review or M1. PR runs do not publish an APK. The one-day `ci-main-debug-apk` artifact is an internal handoff between jobs; download **polysocial-apk**.
 
-The existing release variant is built with R8 but has no signing configuration, so its unsigned APK cannot replace the installable debug APK. Publishing a signed release APK requires the team to configure release signing separately, with credentials in GitHub Actions secrets.
+For the CI APK to show the map, a repository maintainer must configure the GitHub Actions `LOCAL_PROPERTIES` secret with base64-encoded properties containing `MAPBOX_ACCESS_TOKEN=your-public-token` (see [Mapbox setup](#mapbox-setup)). A developer's local file is not available to GitHub's runner. An absent secret or token still allows a successful build, but the installed app shows the map setup state. Only use a public `pk.` token; never include a secret `sk.` token or a developer's SDK path in this CI configuration.
 
 ## Running and testing
 
