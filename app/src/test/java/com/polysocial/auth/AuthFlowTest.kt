@@ -1,5 +1,5 @@
 // Contributors: OpenAI Codex (session loss during router replacement and Profile placeholder in
-// shell tests, #109).
+// shell tests; logout uses replacement verification/profile state and startup router, #109).
 // Contributors: OpenAI Codex (tested startup/session routing, profile failure recovery and system
 // Back handoffs and verification/profile integration); Claude (signed-in shell without Hilt, #105;
 // signed-out back stack, profile step, sign-out and Figma start states, #74; sign-out from
@@ -31,8 +31,10 @@ import com.polysocial.ui.navigation.AppShell
 import com.polysocial.ui.navigation.Tab
 import com.polysocial.ui.navigation.TabRootScreen
 import com.polysocial.ui.profile.ProfileSetupTestTags
+import com.polysocial.ui.profile.ProfileSetupUiState
 import com.polysocial.ui.profile.ProfileSetupViewModel
 import com.polysocial.ui.start.AppStartViewModel
+import com.polysocial.ui.start.StartDestination
 import com.polysocial.ui.theme.PolySocialTheme
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.After
@@ -91,6 +93,106 @@ class AuthFlowTest {
         }
       }
     }
+  }
+
+  @Test
+  fun logoutClearsReplacementVerificationAndProfileState() {
+    auth.user = user
+    profiles.getProfileResult =
+        ProfileResult.Found(UserProfile(user.uid, user.email, "Test Student", "IN", "BA1"))
+    val start = AppStartViewModel(auth, profiles)
+    val currentVerification = mutableStateOf(verificationModel())
+    val currentProfile = mutableStateOf(profileSetup)
+    compose.setContent {
+      PolySocialTheme {
+        AuthFlow(
+            signUp,
+            { exits++ },
+            login,
+            start,
+            currentVerification.value,
+            currentProfile.value,
+        ) { done ->
+          TextButton(
+              {
+                auth.logOut()
+                done()
+              },
+              Modifier.testTag("logout"),
+          ) {
+            Text("Log out")
+          }
+        }
+      }
+    }
+    compose.onNodeWithTag("logout").assertIsDisplayed()
+    val replacementVerification = verificationModel()
+    val replacementProfile = ProfileSetupViewModel(auth, profiles)
+    compose.runOnIdle {
+      replacementVerification.enter()
+      replacementProfile.onDisplayNameChange("Previous Student")
+      replacementProfile.onSectionChange("IN")
+      replacementProfile.onYearChange("BA3")
+      currentVerification.value = replacementVerification
+      currentProfile.value = replacementProfile
+    }
+    compose.runOnIdle {
+      assertEquals(user.email, replacementVerification.uiState.value.email)
+      assertEquals("Previous Student", replacementProfile.uiState.value.displayName)
+      assertEquals("BA3", replacementProfile.uiState.value.year)
+    }
+    compose.onNodeWithTag("logout").performClick()
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    compose.runOnIdle {
+      assertEquals(VerifyEmailUiState(), replacementVerification.uiState.value)
+      assertEquals(ProfileSetupUiState(), replacementProfile.uiState.value)
+      assertEquals(1, auth.logOutCalls)
+    }
+    pressSystemBack()
+    assertEquals(1, exits)
+  }
+
+  @Test
+  fun logoutRefreshesReplacementRouterInsteadOfThePreviousOne() {
+    auth.user = user
+    profiles.getProfileResult =
+        ProfileResult.Found(UserProfile(user.uid, user.email, "Test Student", "IN", "BA1"))
+    val previous = AppStartViewModel(auth, profiles)
+    val current = mutableStateOf(previous)
+    val verification = verificationModel()
+    restoration.setContent {
+      PolySocialTheme {
+        AuthFlow(signUp, { exits++ }, login, current.value, verification, profileSetup) { done ->
+          TextButton(
+              {
+                auth.logOut()
+                done()
+              },
+              Modifier.testTag("logout"),
+          ) {
+            Text("Log out")
+          }
+        }
+      }
+    }
+    compose.onNodeWithTag("logout").assertIsDisplayed()
+    val replacement = AppStartViewModel(auth, profiles)
+    compose.runOnIdle { current.value = replacement }
+    compose.onNodeWithTag("logout").assertIsDisplayed()
+    compose.runOnIdle { assertEquals(StartDestination.Main, replacement.destination.value) }
+    compose.onNodeWithTag("logout").performClick()
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    compose.runOnIdle {
+      assertEquals(StartDestination.Login, replacement.destination.value)
+      assertEquals(StartDestination.Main, previous.destination.value)
+      assertNull(auth.currentUser())
+      assertEquals(1, auth.logOutCalls)
+    }
+    restoration.emulateSavedInstanceStateRestore()
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    compose.onNodeWithTag("logout").assertDoesNotExist()
+    pressSystemBack()
+    assertEquals(1, exits)
   }
 
   @Test
