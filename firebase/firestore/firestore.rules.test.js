@@ -1,4 +1,4 @@
-// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName and profile-delete tests after review).
+// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review).
 const { after, before, beforeEach, test } = require("node:test");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
@@ -955,6 +955,16 @@ for (const [name, overrides] of [
   });
 }
 
+test("an event's co-organizers must also be allowed readers", async () => {
+  const db = studentDb("u1");
+  await assertFails(setDoc(doc(db, "events/new"), eventBy("u1", {
+    isPrivate: true, organizerIds: ["u1", "u5"],
+  })));
+  await assertSucceeds(setDoc(doc(db, "events/new"), eventBy("u1", {
+    isPrivate: true, organizerIds: ["u1", "u5"], allowedUids: ["u1", "u5"],
+  })));
+});
+
 test("an unverified association account can't create events", async () => {
   const db = associationDb("club");
   await assertFails(setDoc(doc(db, "events/new"), eventBy("club")));
@@ -1064,6 +1074,16 @@ test("an organizer can add another organizer", async () => {
   }));
 });
 
+test("an organizer added with the allowlist can read and manage a private event", async () => {
+  await seedManagedEvent();
+  await assertSucceeds(updateDoc(doc(studentDb("u2"), "events/managed"), {
+    isPrivate: true, organizerIds: ["u2", "u5", "u4"], allowedUids: ["u2", "u5", "u3", "u4"],
+  }));
+  const db = studentDb("u4");
+  await assertSucceeds(getDoc(doc(db, "events/managed")));
+  await assertSucceeds(updateDoc(doc(db, "events/managed"), { title: "Moved to Rolex" }));
+});
+
 for (const [name, getDb] of [
   ["an allowed reader who isn't an organizer", () => studentDb("u3")],
   ["an unrelated student", () => studentDb("u1")],
@@ -1096,6 +1116,8 @@ for (const [name, change] of [
   ["set the association badge", { isAssociationEvent: true }],
   ["remove the creator from the organizers", { organizerIds: ["u5"] }],
   ["remove the creator from the allowlist", { allowedUids: ["u5", "u3"] }],
+  ["add an organizer who isn't in the allowlist", { organizerIds: ["u2", "u5", "u4"] }],
+  ["remove a co-organizer from the allowlist", { allowedUids: ["u2", "u3"] }],
   ["empty the title", { title: "" }],
   ["set an unknown category", { category: "MUSIC" }],
   ["set a location name over 100 characters", { locationName: "a".repeat(101) }],
