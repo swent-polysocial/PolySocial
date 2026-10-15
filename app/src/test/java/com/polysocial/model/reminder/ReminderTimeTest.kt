@@ -1,4 +1,4 @@
-// Contributors: Claude Opus 5.5 (wrote these tests, #123).
+// Contributors: Claude Opus 5.5 (wrote these tests, #123; time left after review).
 package com.polysocial.model.reminder
 
 import java.time.Instant
@@ -38,6 +38,29 @@ class ReminderTimeTest {
   @Test
   fun anEventThatHasStarted_getsNoReminder() {
     assertNull(reminderTime(now.minusSeconds(60), now))
+  }
+
+  @Test
+  fun aReminderOnTime_saysOneHour() {
+    val start = now.plusSeconds(60 * 60)
+    assertEquals(TimeLeft.Hours(1), timeLeft(start, now))
+    // WorkManager starts it a few seconds after it's due.
+    assertEquals(TimeLeft.Hours(1), timeLeft(start, now.plusSeconds(5)))
+  }
+
+  @Test
+  fun aLateReminder_saysTheMinutesLeftRoundedUp() {
+    val start = now.plusSeconds(60 * 60)
+    assertEquals(TimeLeft.Minutes(59), timeLeft(start, now.plusSeconds(60)))
+    assertEquals(TimeLeft.Minutes(10), timeLeft(start, now.plusSeconds(50 * 60)))
+    assertEquals(TimeLeft.Minutes(1), timeLeft(start, start.minusSeconds(1)))
+  }
+
+  @Test
+  fun anEarlyReminder_saysTheNearestHour() {
+    assertEquals(TimeLeft.Hours(1), timeLeft(now.plusSeconds(89 * 60), now))
+    assertEquals(TimeLeft.Hours(2), timeLeft(now.plusSeconds(90 * 60), now))
+    assertEquals(TimeLeft.Hours(49), timeLeft(now.plusSeconds(49 * 60 * 60), now))
   }
 
   @Test
