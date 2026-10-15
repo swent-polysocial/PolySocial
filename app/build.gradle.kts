@@ -3,7 +3,7 @@
 // Navigation Compose dependency, #41; MockK and kotlinx-coroutines-play-services, #32; emulator
 // tests only with -Pemulator and no protobuf-lite in instrumented tests, #117; -Pemulator=all for
 // CI, #159; unit tests in parallel forks and coverage of sharded device tests, #192; fakes shared
-// with instrumented tests, #136);
+// with instrumented tests and Hilt in instrumented tests, #136);
 // OpenAI Codex (sign-up test dependencies, review cleanup and Android UI-test MockK binding).
 import java.util.Properties
 
@@ -41,7 +41,7 @@ android {
     versionName = "1.0"
     resValue("string", "mapbox_access_token", mapboxToken)
 
-    testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    testInstrumentationRunner = "com.polysocial.HiltTestRunner"
     // Tests marked @EmulatorTest need the Firebase emulators (see the README). Without -Pemulator
     // (or with -Pemulator=false) they are skipped; -Pemulator (or -Pemulator=true) runs only them;
     // -Pemulator=all runs every instrumented test, as CI does inside `firebase emulators:exec`.
@@ -206,6 +206,8 @@ dependencies {
   implementation(libs.hilt.lifecycle.viewmodel.compose)
   testImplementation(libs.hilt.android.testing)
   kspTest(libs.hilt.compiler)
+  androidTestImplementation(libs.hilt.android.testing)
+  kspAndroidTest(libs.hilt.compiler)
 
   // --------- Kaspresso test framework ----------
   globalTestImplementation(libs.kaspresso)
