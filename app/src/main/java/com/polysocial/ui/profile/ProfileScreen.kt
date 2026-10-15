@@ -1,5 +1,6 @@
 // Contributors: OpenAI Codex (Profile tab, shared logout dialog and remembered action binding,
 // #109; matched the logout row and icon to Figma).
+// Contributors: OpenAI Codex (privacy entry alongside confirmed logout after rebase, #103).
 package com.polysocial.ui.profile
 
 import androidx.activity.compose.BackHandler
@@ -32,13 +33,17 @@ object ProfileTags {
 }
 
 @Composable
-fun ProfileRoute(onLoggedOut: () -> Unit, viewModel: ProfileViewModel = hiltViewModel()) {
+fun ProfileRoute(
+    onLoggedOut: () -> Unit,
+    viewModel: ProfileViewModel = hiltViewModel(),
+    onOpenPrivacy: (() -> Unit)? = null,
+) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   val actions = remember(viewModel) { LogoutActions(viewModel) }
   BackHandler(state != LogoutState.Idle, actions.cancel)
   val callback by rememberUpdatedState(onLoggedOut)
   LaunchedEffect(state) { if (state == LogoutState.LoggedOut) callback() }
-  ProfileScreen(state, actions.request, actions.cancel, actions.confirm)
+  ProfileScreen(state, actions.request, actions.cancel, actions.confirm, onOpenPrivacy)
 }
 
 /** Keeps the screen and Back action bound to the same ViewModel across recomposition. */
@@ -54,8 +59,12 @@ fun ProfileScreen(
     onLogout: () -> Unit,
     onCancel: () -> Unit,
     onConfirm: () -> Unit,
+    onOpenPrivacy: (() -> Unit)? = null,
 ) {
   Column(Modifier.fillMaxSize().padding(horizontal = 20.dp).testTag(C.Tag.screen_profile)) {
+    if (onOpenPrivacy != null) {
+      ProfilePrivacyEntry(onOpenPrivacy, Modifier.fillMaxWidth())
+    }
     Row(
         modifier =
             Modifier.fillMaxWidth()
