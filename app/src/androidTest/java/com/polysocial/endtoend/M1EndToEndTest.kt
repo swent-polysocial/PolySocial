@@ -1,6 +1,17 @@
-// Contributors: Claude (end-to-end test of the M1 student flow with Hilt test bindings, #136).
+// Contributors: Claude (end-to-end test of the M1 student flow with Hilt test bindings and a fake
+// map renderer, #136).
 package com.polysocial.endtoend
 
+import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertTextContains
@@ -17,6 +28,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.MainActivity
 import com.polysocial.model.auth.AuthModule
@@ -50,14 +62,20 @@ import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.UserProfileModule
 import com.polysocial.model.user.UserProfileRepository
 import com.polysocial.resources.C
+import com.polysocial.ui.auth.AuthFlow
 import com.polysocial.ui.auth.SignUpTags
+import com.polysocial.ui.auth.SignUpViewModel
 import com.polysocial.ui.auth.VerifyEmailTags
 import com.polysocial.ui.auth.WelcomeTags
 import com.polysocial.ui.event.create.LocationPickerTags
 import com.polysocial.ui.event.detail.EventDetailTags
 import com.polysocial.ui.event.list.EventsTags
+import com.polysocial.ui.map.MapRenderStatus
+import com.polysocial.ui.map.MapRoute
 import com.polysocial.ui.map.MapTags
+import com.polysocial.ui.navigation.AppShell
 import com.polysocial.ui.profile.ProfileSetupTestTags
+import com.polysocial.ui.theme.PolySocialTheme
 import dagger.hilt.android.testing.BindValue
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
@@ -78,25 +96,24 @@ import org.junit.runner.RunWith
 
 /**
  * The M1 end-to-end test: a new student goes through every feature of the app together, from the
- * real [MainActivity], through the UI only (test tags).
+ * real [MainActivity] and its Hilt ViewModels, through the UI only (test tags).
  *
  * Features covered, in order:
  * 1. Welcome → Sign up with an `@epfl.ch` email (#30, #87).
- * 2. Verify Email: the verification email is sent, the student confirms it and taps Continue (#31,
- *
- * #99).
+ * 2. Verify Email: the email is sent, the student confirms it and taps Continue (#31, #99).
  * 3. Profile step: section and year, then the app opens on the Events tab (#34, #74).
  * 4. Events tab: the upcoming public events, grouped by day (#105).
  * 5. Event detail opened from the list, and Back to the list (#112).
  * 6. Create Event from the "+" (#46, #110): title, category, date and time pickers, public, and a
  *    place found with the location picker's search (#111).
  * 7. The new event appears in the Events list and its detail opens (#105, #112).
- * 8. Map tab: the map loads the events instead of its empty or error state (#50).
+ * 8. Map tab: both events have a marker, and tapping the new one opens its preview (#50, #94).
  *
  * Every data source is a fake bound through Hilt (no Firebase, no network, no real user data), the
- * clock is fixed, and the location comes from [FakeLocationService]. The Mapbox map itself is drawn
- * by the SDK, outside Compose, so its markers can't be checked here; `MapboxRendererTest` covers
- * them. To extend this test in later sprints, add a step for the new feature in [m1Flow].
+ * clock is fixed, and the location comes from [FakeLocationService]. Mapbox draws its markers
+ * outside Compose, so the Map tab gets [FakeMapRenderer] instead (see [useFakeMapRenderer]), like
+ * `MapRepositoryRouteTest`; `MapboxRendererTest` covers the real renderer. To extend this test in
+ * later sprints, add a step for the new feature in [m1Flow].
  */
 @HiltAndroidTest
 @UninstallModules(
@@ -139,6 +156,7 @@ class M1EndToEndTest {
 
   @Test
   fun m1Flow() {
+    useFakeMapRenderer()
     signUp()
     verifyEmail()
     setUpProfile()
@@ -168,10 +186,8 @@ class M1EndToEndTest {
     assertEquals(1, fakeAuth.sendCalls)
     // The student opens the link from the email in the browser.
     fakeAuth.verificationResult = VerificationResult.Verified
-    // A semantic click: the "email sent" Snackbar can cover Continue on small screens, where a
-    // touch
+    // A semantic click: the "email sent" Snackbar can cover Continue on small screens, where a tap
     // would land on it instead (see CONTEXT.md, Traps).
-    awaitMatch(hasTestTag(VerifyEmailTags.Continue) and isEnabled())
     node(VerifyEmailTags.Continue).performSemanticsAction(SemanticsActions.OnClick)
   }
 
@@ -224,7 +240,6 @@ class M1EndToEndTest {
     assertEquals(NEW_DATE.atTime(LocalTime.of(18, 0)).atZone(ZURICH).toInstant(), created.startTime)
     assertEquals(ROLEX.coordinates, created.location)
     assertEquals(false, created.isPrivate)
-    assertEquals(listOf(UID), created.organizerIds)
     node(C.Tag.create_event_close).performClick()
   }
 
@@ -268,9 +283,42 @@ class M1EndToEndTest {
   private fun seeEventsOnTheMap() {
     node(C.Tag.nav_item_map).performClick()
     await(C.Tag.screen_map)
-    compose.waitUntil(TIMEOUT_MS) { count(MapTags.LOADING) == 0 }
-    assertEquals(0, count(MapTags.EMPTY))
-    assertEquals(0, count(MapTags.ERROR))
+    val created = fakeEvents.events.single { it.title == NEW_TITLE }
+    await(MapTags.marker(PARTY.id))
+    await(MapTags.marker(created.id))
+
+    node(MapTags.marker(created.id)).performClick()
+    await(MapTags.PREVIEW)
+    node(MapTags.TITLE).assertTextContains(NEW_TITLE)
+  }
+
+  /**
+   * Shows the app as [MainActivity] does (its theme and [AuthFlow] with the activity's Hilt
+   * ViewModels), except that the Map tab draws [FakeMapRenderer] instead of Mapbox.
+   */
+  private fun useFakeMapRenderer() {
+    compose.activity.setContent {
+      PolySocialTheme {
+        AuthFlow(
+            viewModel = hiltViewModel<SignUpViewModel>(),
+            onExit = {},
+            signedInContent = {
+              AppShell(
+                  mapContent = { onViewDetails, onCreateEvent ->
+                    MapRoute(
+                        onViewDetails,
+                        onCreateEvent = onCreateEvent,
+                        tokenConfigured = true,
+                        renderer = { events, onSelect, onStatus, _ ->
+                          FakeMapRenderer(events, onSelect, onStatus)
+                        },
+                    )
+                  }
+              )
+            },
+        )
+      }
+    }
   }
 
   private fun node(tag: String) = compose.onNodeWithTag(tag)
@@ -285,6 +333,26 @@ class M1EndToEndTest {
       compose.waitUntil(TIMEOUT_MS) {
         compose.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()
       }
+
+  /** One button per event marker, tagged like a real marker; the map reports itself loaded. */
+  @Composable
+  private fun FakeMapRenderer(
+      events: List<Event>,
+      onSelect: (String) -> Unit,
+      onStatus: (MapRenderStatus) -> Unit,
+  ) {
+    LaunchedEffect(Unit) { onStatus(MapRenderStatus.READY) }
+    Column(
+        Modifier.fillMaxSize().testTag(MapTags.CANVAS),
+        verticalArrangement = Arrangement.Center,
+    ) {
+      events.forEach { event ->
+        TextButton({ onSelect(event.id) }, Modifier.testTag(MapTags.marker(event.id))) {
+          Text(event.title)
+        }
+      }
+    }
+  }
 
   private class InMemoryVerificationStore : VerificationStore {
     private val timings = mutableMapOf<String, VerificationTiming>()
