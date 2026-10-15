@@ -1,4 +1,4 @@
-// Contributors: Claude Opus 5.5 (reminder time and notification day, #123).
+// Contributors: Claude Opus 5.5 (reminder time and notification day, #123; time left after review).
 package com.polysocial.model.reminder
 
 import java.time.Duration
@@ -15,6 +15,24 @@ val REMINDER_LEAD: Duration = Duration.ofHours(1)
  */
 fun reminderTime(startTime: Instant, now: Instant): Instant? =
     startTime.minus(REMINDER_LEAD).takeIf { it.isAfter(now) }
+
+/** The time left before an event starts, as a reminder's title says it. */
+sealed interface TimeLeft {
+  data class Minutes(val minutes: Long) : TimeLeft
+
+  data class Hours(val hours: Long) : TimeLeft
+}
+
+/**
+ * The time left between [now] and [startTime], which must be after [now]: whole minutes, rounded
+ * up, under an hour, and otherwise hours, rounded to the nearest one. A reminder on time says "1
+ * h", even if it runs a few seconds late; WorkManager may run it later than due (its delay is a
+ * minimum), and its title then gives the minutes actually left.
+ */
+fun timeLeft(startTime: Instant, now: Instant): TimeLeft {
+  val minutes = (Duration.between(now, startTime).seconds + 59) / 60
+  return if (minutes < 60) TimeLeft.Minutes(minutes) else TimeLeft.Hours((minutes + 30) / 60)
+}
 
 /** The day a reminder names for the event's start: "Today", "Tomorrow" or its date. */
 enum class ReminderDay {
