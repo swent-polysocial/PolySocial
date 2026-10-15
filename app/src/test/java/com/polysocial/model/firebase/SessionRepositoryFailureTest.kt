@@ -1,4 +1,4 @@
-// Contributors: OpenAI Codex (blocked cache access reaches typed repository errors, #156).
+// Contributors: OpenAI Codex (blocked cache errors and SDK cancellation after rebase, #156).
 package com.polysocial.model.firebase
 
 import com.polysocial.model.auth.AuthUser
@@ -16,7 +16,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
-import org.junit.Assert.fail
 import org.junit.Test
 
 class SessionRepositoryFailureTest {
@@ -85,13 +84,9 @@ class SessionRepositoryFailureTest {
   }
 
   @Test
-  fun eventListenerCancellationPropagatesInsteadOfBecomingAnErrorResult() = runTest {
-    accessFailure = CancellationException("listener cancelled")
-    try {
-      events.getUpcomingPublicEvents(14).toList()
-      fail("listener cancellation must propagate")
-    } catch (_: CancellationException) {
-      assertTrue(currentCoroutineContext().isActive)
-    }
+  fun cancelledSdkAccessReportsListenerFailureWhileCallerRemainsActive() = runTest {
+    accessFailure = CancellationException("SDK operation cancelled")
+    assertEquals(listOf(PublicEventsResult.Error), events.getUpcomingPublicEvents(14).toList())
+    assertTrue(currentCoroutineContext().isActive)
   }
 }
