@@ -1,5 +1,5 @@
 // Contributors: Claude (location picker screen from the Figma "Pick location" frames, section 04,
-// #111; pin tip on the map center after review).
+// #111; pin tip on the map center and scrollable results after review).
 package com.polysocial.ui.event.create
 
 import android.content.Intent
@@ -26,21 +26,27 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -51,7 +57,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.shadow.Shadow
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -64,6 +72,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.max
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
@@ -221,6 +230,11 @@ fun LocationPickerScreen(
 ) {
   val top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
   val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+  val keyboard = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+  var cardHeight by remember { mutableIntStateOf(0) }
+  // The top panel ends above the place card, or above the keyboard when it's higher.
+  val topPanelBottom =
+      max(bottom + 16.dp + with(LocalDensity.current) { cardHeight.toDp() }, keyboard) + 8.dp
   Box(modifier.fillMaxSize().background(MapLand).testTag(LocationPickerTags.SCREEN)) {
     renderer(state.camera, actions.onCenterSettled, actions.onMapTap, bottom + MAP_CREDITS_BOTTOM)
     // The pin's tip and its shadow sit on the map's center, the coordinate the map reports.
@@ -238,11 +252,13 @@ fun LocationPickerScreen(
                 .testTag(LocationPickerTags.PIN),
     )
     Column(
-        Modifier.align(Alignment.TopCenter).padding(top = top + 16.dp, start = 12.dp, end = 12.dp),
+        Modifier.fillMaxSize()
+            .padding(top = top + 16.dp, start = 12.dp, end = 12.dp, bottom = topPanelBottom),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
       SearchBar(state, actions)
-      TopPanel(state, actions)
+      // Takes only the height left, so long results scroll instead of running off the screen.
+      TopPanel(state, actions, Modifier.weight(1f, fill = false))
     }
     if (state.hasLocationAccess) {
       MyLocationButton(
@@ -256,7 +272,8 @@ fun LocationPickerScreen(
         state,
         actions.onUseLocation,
         Modifier.align(Alignment.BottomCenter)
-            .padding(start = 12.dp, end = 12.dp, bottom = bottom + 16.dp),
+            .padding(start = 12.dp, end = 12.dp, bottom = bottom + 16.dp)
+            .onSizeChanged { cardHeight = it.height },
     )
   }
 }
@@ -323,7 +340,11 @@ private fun SearchBar(state: LocationPickerUiState, actions: LocationPickerActio
 
 /** Below the search bar: the results or a message, else location access off, else the hint. */
 @Composable
-private fun TopPanel(state: LocationPickerUiState, actions: LocationPickerActions) {
+private fun TopPanel(
+    state: LocationPickerUiState,
+    actions: LocationPickerActions,
+    modifier: Modifier = Modifier,
+) {
   when (val search = state.search) {
     PlaceSearchState.Searching ->
         Panel(Modifier.testTag(LocationPickerTags.SEARCHING)) {
@@ -340,7 +361,7 @@ private fun TopPanel(state: LocationPickerUiState, actions: LocationPickerAction
             )
           }
         }
-    is PlaceSearchState.Results -> Results(search.places, actions.onResultSelect)
+    is PlaceSearchState.Results -> Results(search.places, actions.onResultSelect, modifier)
     PlaceSearchState.NoResults ->
         Banner(
             R.drawable.ic_picker_search,
@@ -382,9 +403,9 @@ private fun TopPanel(state: LocationPickerUiState, actions: LocationPickerAction
 }
 
 @Composable
-private fun Results(places: List<Place>, onSelect: (Place) -> Unit) {
-  Panel(Modifier.testTag(LocationPickerTags.RESULTS)) {
-    Column(Modifier.padding(top = 6.dp, bottom = 12.dp)) {
+private fun Results(places: List<Place>, onSelect: (Place) -> Unit, modifier: Modifier) {
+  Panel(modifier.testTag(LocationPickerTags.RESULTS)) {
+    Column(Modifier.verticalScroll(rememberScrollState()).padding(top = 6.dp, bottom = 12.dp)) {
       places.forEachIndexed { index, place ->
         if (index > 0) Box(Modifier.fillMaxWidth().height(1.dp).background(DIVIDER))
         Row(
