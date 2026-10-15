@@ -1,5 +1,5 @@
 // Contributors: Claude (location picker screen from the Figma "Pick location" frames, section 04,
-// #111).
+// #111; pin tip on the map center after review).
 package com.polysocial.ui.event.create
 
 import android.content.Intent
@@ -223,17 +223,19 @@ fun LocationPickerScreen(
   val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
   Box(modifier.fillMaxSize().background(MapLand).testTag(LocationPickerTags.SCREEN)) {
     renderer(state.camera, actions.onCenterSettled, actions.onMapTap, bottom + MAP_CREDITS_BOTTOM)
-    // The pin's tip and its shadow sit on the map's center, where the picked spot is.
+    // The pin's tip and its shadow sit on the map's center, the coordinate the map reports.
     Image(
         painterResource(R.drawable.ic_picker_pin_shadow),
         contentDescription = null,
-        modifier = Modifier.align(Alignment.Center).offset(y = (-4).dp),
+        modifier = Modifier.align(Alignment.Center),
     )
     Image(
         painterResource(R.drawable.ic_picker_pin),
         contentDescription = null,
         modifier =
-            Modifier.align(Alignment.Center).offset(y = (-36).dp).testTag(LocationPickerTags.PIN),
+            Modifier.align(Alignment.Center)
+                .offset(y = PIN_HEIGHT / 2 - PIN_TIP_Y)
+                .testTag(LocationPickerTags.PIN),
     )
     Column(
         Modifier.align(Alignment.TopCenter).padding(top = top + 16.dp, start = 12.dp, end = 12.dp),
@@ -648,6 +650,10 @@ private fun Modifier.figmaShadow(shape: Shape, offsetY: Dp, blur: Dp, alpha: Flo
         shape,
         Shadow(radius = blur, color = Ink.copy(alpha = alpha), offset = DpOffset(0.dp, offsetY)),
     )
+
+/** The pin vector's height, and its tip's height in it: the tip goes on the map's center. */
+private val PIN_HEIGHT = 56.dp
+private val PIN_TIP_Y = 54.dp
 
 /** The divider between search results. */
 private val DIVIDER = Color(0xFFE8E9E5)
