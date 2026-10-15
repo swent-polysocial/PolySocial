@@ -1,5 +1,5 @@
 // Contributors: OpenAI Codex (offline device recovery navigation and synthetic visual checks,
-// #164).
+// #164); Claude (the profile step's ViewModel, #74).
 package com.polysocial.auth
 
 import android.graphics.Bitmap
@@ -13,6 +13,7 @@ import com.polysocial.model.user.UserProfileRepository
 import com.polysocial.ui.auth.*
 import com.polysocial.ui.login.LoginScreenTestTags
 import com.polysocial.ui.login.LoginViewModel
+import com.polysocial.ui.profile.ProfileSetupViewModel
 import com.polysocial.ui.start.AppStartViewModel
 import com.polysocial.ui.theme.PolySocialTheme
 import io.mockk.*
@@ -32,7 +33,9 @@ class PasswordRecoveryScreenTest {
             PasswordResetResult.NetworkError,
             PasswordResetResult.Sent,
         )
-    val start = AppStartViewModel(auth, mockk<UserProfileRepository>())
+    val profiles = mockk<UserProfileRepository>()
+    val start = AppStartViewModel(auth, profiles)
+    val profileStep = ProfileSetupViewModel(auth, profiles)
     val signup = SignUpViewModel(auth)
     val login = LoginViewModel(auth)
     val recovery = PasswordRecoveryViewModel(auth)
@@ -44,7 +47,7 @@ class PasswordRecoveryScreenTest {
         )
     compose.setContent {
       PolySocialTheme {
-        AuthFlow(signup, {}, login, start, verification, recoveryViewModel = recovery)
+        AuthFlow(signup, {}, login, start, verification, profileStep, recoveryViewModel = recovery)
       }
     }
     compose.onNodeWithTag(WelcomeTags.LogIn).performScrollTo().performClick()
