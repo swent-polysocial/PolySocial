@@ -182,7 +182,7 @@
     <string name="privacy_profile_title">Name, section and year</string>
     <string name="privacy_profile_body">Your profile is private in the app. Your email is not shown to other students.</string>
     <string name="privacy_location_title">Location</string>
-    <string name="privacy_location_body">Read once for straight-line distances. Kept on screen only; map requests go to Mapbox.</string>
+    <string name="privacy_location_body">Read once for distances on Map or Events. Kept in memory; map requests go to Mapbox.</string>
     <string name="privacy_reminders_title">Reminders</string>
     <string name="privacy_reminders_body">Not available yet. This build does not store reminders.</string>
     <string name="privacy_attendance_title">Attendance</string>
@@ -191,7 +191,7 @@
     <string name="privacy_matching_unavailable">Not available yet</string>
     <string name="privacy_download">Download my data</string>
     <string name="privacy_full_notice">Full privacy notice</string>
-    <string name="privacy_updated">Updated 13 October 2026</string>
+    <string name="privacy_updated">Updated 15 October 2026</string>
     <string name="privacy_delete">Delete account</string>
     <string name="privacy_unavailable">Not available yet.</string>
     <string name="privacy_dismiss">Dismiss</string>
@@ -200,13 +200,13 @@
     <string name="privacy_notice_events_title">Events and who can see them</string>
     <string name="privacy_notice_events_body">Event data includes the title, description, category, venue coordinates, date and time, optional capacity and organizer identifiers. Verified EPFL students can read public events and private events that list them on the access list. A manually verified association can also read its own association events. An event venue is a place chosen for the event, not a history of your movements.</string>
     <string name="privacy_notice_location_title">Approximate location for distances</string>
-    <string name="privacy_notice_location_body">The Map optionally requests approximate location and reads one foreground fix to calculate straight-line distances on your device. The fix stays in screen memory and is discarded when you leave the Map or background the app. PolySocial does not save it or upload it to Firebase. Browsing still works if permission is denied. Refresh distance requests another fix; there is no continuous tracking.</string>
+    <string name="privacy_notice_location_body">Map distances and the Events distance filter optionally use approximate location for straight-line calculations on your device. Map reads one foreground fix and discards it when you leave the Map or background the app. Events reads a fix when a distance filter needs it; a successful fix stays in memory for that Events screen session, including when you switch tabs. Pending reads are cancelled when the screen pauses. Coordinates are not saved to disk or uploaded to Firebase. Browsing still works if permission is denied. There is no continuous tracking.</string>
     <string name="privacy_notice_services_title">Map requests and service providers</string>
     <string name="privacy_notice_services_body">Google Firebase processes account, profile and event data. Mapbox serves map requests for the area you view and processes the network and SDK metadata needed for its service. Optional Mapbox telemetry and geofencing start disabled. Provider information and telemetry choices remain accessible through the information control on the Map. The distance fix is separate from the map renderer.</string>
     <string name="privacy_notice_attendance_title">Attendance, reminders and future features</string>
     <string name="privacy_notice_attendance_body">This build does not store attendance or schedule reminders. Registration and reminders need an updated notice when enabled: organizers will see event registrations, and optional reminder data will stay on the device for local notifications. Attendance-based matching, chats, photo albums, data export and in-app account deletion are not available yet. The matching switch stays Off and does not change any consent setting.</string>
     <string name="privacy_notice_device_title">Data kept on your device</string>
-    <string name="privacy_notice_device_body">Firebase keeps previously loaded data in its device cache for offline use. Mapbox may cache map resources. The app also remembers whether it has already requested location permission, so it does not repeatedly prompt you. That preference contains no coordinates. Account and event data in Firebase are not automatically deleted by leaving a screen.</string>
+    <string name="privacy_notice_device_body">Firebase keeps previously loaded data in its device cache for offline use. Mapbox may cache map resources. The app remembers whether location permission has been requested, without storing coordinates in that preference. Event search and filter selections can survive screen or process recreation; location coordinates stay in memory only. Verification resend deadlines are stored as timestamps under an account identifier, retained across sign-out and cleared after successful verification. Account and event data in Firebase are not automatically deleted by leaving a screen.</string>
     <string name="privacy_notice_deletion_title">Requesting deletion</string>
     <string name="privacy_notice_deletion_body">In-app deletion and data export are not available yet. To ask for account and data deletion, contact the PolySocial project team privately. Do not publish your account details in a public GitHub issue.</string>
     <string name="privacy_notice_draft_title">Draft details to be confirmed</string>

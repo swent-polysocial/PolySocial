@@ -26,6 +26,8 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
@@ -33,6 +35,7 @@ import com.polysocial.model.privacy.PrivacyContactLauncher
 import com.polysocial.resources.C
 import com.polysocial.ui.navigation.AppShell
 import com.polysocial.ui.navigation.Tab
+import com.polysocial.ui.navigation.TabAction
 import com.polysocial.ui.theme.PolySocialTheme
 import java.io.File
 import org.junit.Rule
@@ -45,15 +48,21 @@ import org.robolectric.annotation.GraphicsMode
 class PrivacyScreenTest {
   @get:Rule val rule = createComposeRule()
   private val context = ApplicationProvider.getApplicationContext<Context>()
+  private lateinit var navController: NavHostController
 
   private fun text(id: Int) = context.getString(id)
 
   private fun openFromProfile() {
     rule.setContent {
       PolySocialTheme {
+        navController = rememberNavController()
         AppShell(
+            navController = navController,
             eventsContent = { Text("Events", Modifier.testTag(Tab.EVENTS.screenTag)) },
-            mapContent = { Text("Map", Modifier.testTag(Tab.MAP.screenTag)) },
+            mapContent = { _, _ -> Text("Map", Modifier.testTag(Tab.MAP.screenTag)) },
+            createEventContent = {
+              Text("Create event", Modifier.testTag(C.Tag.create_event_screen))
+            },
         )
       }
     }
@@ -70,6 +79,24 @@ class PrivacyScreenTest {
     rule.onNodeWithTag(C.Tag.privacy_back).performClick()
     rule.onNodeWithTag(C.Tag.profile_privacy_entry).assertIsDisplayed()
     rule.onNodeWithTag(C.Tag.nav_item_profile).assertIsSelected()
+  }
+
+  @Test
+  fun leavingPrivacyKeepsProfileActionsAndCreateEventNavigationWorking() {
+    openFromProfile()
+    rule.onNodeWithTag(TabAction.EDIT_PROFILE.tag).assertDoesNotExist()
+    rule.onNodeWithTag(C.Tag.privacy_back).performClick()
+    rule.onNodeWithTag(TabAction.EDIT_PROFILE.tag).performClick()
+    rule.onNodeWithTag(TabAction.EDIT_PROFILE.screenTag).assertIsDisplayed()
+    rule.runOnIdle { navController.popBackStack() }
+    rule.onNodeWithTag(C.Tag.profile_privacy_entry).assertIsDisplayed()
+    rule.onNodeWithTag(Tab.EVENTS.navItemTag).performClick()
+    rule.onNodeWithTag(C.Tag.create_event_button).performClick()
+    rule.onNodeWithTag(C.Tag.create_event_screen).assertIsDisplayed()
+    rule.onNodeWithTag(C.Tag.bottom_nav).assertDoesNotExist()
+    rule.runOnIdle { navController.popBackStack() }
+    rule.onNodeWithTag(TabAction.NOTIFICATIONS.tag).assertIsDisplayed()
+    rule.onNodeWithTag(C.Tag.create_event_button).assertIsDisplayed()
   }
 
   @Test
