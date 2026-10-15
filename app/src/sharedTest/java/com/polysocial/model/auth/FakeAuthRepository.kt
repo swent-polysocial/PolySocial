@@ -1,9 +1,11 @@
+// Contributors: OpenAI Codex (Google sign-in fake for #106).
 // Contributors: Claude (test fake for #32); Claude Opus 5.5 (recorded the logIn arguments,
 // added the logIn gate); OpenAI Codex (GPT-6.1 Sol, medium; extended the existing fake to
 // the sign-up contract with submission controls and added verification controls for #31);
 // OpenAI Codex (account-neutral recovery fake for #164).
 package com.polysocial.model.auth
 
+import android.content.Context
 import kotlinx.coroutines.CompletableDeferred
 
 /**
@@ -12,6 +14,17 @@ import kotlinx.coroutines.CompletableDeferred
  * repository).
  */
 class FakeAuthRepository(var user: AuthUser? = null) : AuthRepository {
+  var googleResult: GoogleSignInResult = GoogleSignInResult.UnexpectedError
+  var googleGate: CompletableDeferred<Unit>? = null
+  var googleCalls = 0
+    private set
+
+  override suspend fun signInWithGoogle(context: Context): GoogleSignInResult {
+    googleCalls++
+    googleGate?.await()
+    return googleResult.also { user = (it as? GoogleSignInResult.Success)?.user }
+  }
+
   var signUpResult: SignUpResult = SignUpResult.UnexpectedError
 
   /** Suspends sign-up until the test releases it, like [logInGate]. */

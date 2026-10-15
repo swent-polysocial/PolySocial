@@ -1,9 +1,12 @@
 # Contributors: OpenAI Codex (Mapbox Compose and lifecycle state collection, #50).
+# Contributors: OpenAI Codex (Google sign-in dependencies for #106).
 # Contributors: Claude (Hilt, KSP and Hilt testing entries, #70; Navigation Compose entry, #41;
 # MockK and coroutines for Play Services Tasks, #32); OpenAI Codex (sign-up test entries
 # and Android MockK for the sign-up form device tests).
 [versions]
 mapbox = "11.32.0"
+credentials = "1.6.0"
+googleid = "1.2.1"
 agp = "9.3.3"
 kotlin = "2.4.20"
 coreKtx = "1.19.1"
@@ -34,6 +37,9 @@ coroutines = "1.9.0"
 mapbox-android = { module = "com.mapbox.maps:android-ndk27", version.ref = "mapbox" }
 mapbox-compose = { module = "com.mapbox.extension:maps-compose-ndk27", version.ref = "mapbox" }
 androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycleRuntimeKtx" }
+androidx-credentials = { module = "androidx.credentials:credentials", version.ref = "credentials" }
+androidx-credentials-play-services = { module = "androidx.credentials:credentials-play-services-auth", version.ref = "credentials" }
+googleid = { module = "com.google.android.libraries.identity.googleid:googleid", version.ref = "googleid" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }

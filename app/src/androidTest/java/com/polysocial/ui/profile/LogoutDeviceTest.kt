@@ -1,6 +1,8 @@
 // Contributors: OpenAI Codex (device logout proof with fakes and verification wiring, #109).
+// Contributors: OpenAI Codex (Google sign-in contract compatibility during #106 rebase).
 package com.polysocial.ui.profile
 
+import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
@@ -30,6 +32,9 @@ class LogoutDeviceTest {
   private var exits = 0
   private val auth =
       object : AuthRepository {
+        override suspend fun signInWithGoogle(context: Context): GoogleSignInResult =
+            error("Unexpected Google sign-in in this test")
+
         override fun currentUser() = user
 
         override fun logOut() {

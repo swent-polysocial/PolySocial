@@ -1,3 +1,4 @@
+<!-- Contributors: OpenAI Codex (Google sign-in setup for #106). -->
 <!-- Contributors: Claude (drafted the README structure, Setup, Running and testing, Tech stack and Project links sections; Firestore index deployment, #49; Firestore emulator tests, #117); OpenAI Codex (documented startup routing and rebase reconciliation); OpenAI Codex (Mapbox integration and setup, #50; one-off Map location privacy note, #51). -->
 <!-- Contributors: OpenAI Codex (verification startup integration and Back sign-out, #31). -->
 <!-- Contributors: Claude (Sprint 2 status in the Features table and the startup routing note). -->
@@ -96,6 +97,12 @@ firebase deploy --only firestore:indexes --project <project-id>
 `<project-id>` is the `project_id` in your `app/google-services.json`.
 
 Keep `--only firestore:indexes`: a plain `firebase deploy` would also deploy the Security Rules. A new index takes a few minutes to build (Firebase console → Firestore → Indexes). Until it's ready, the query that needs it fails. The local emulator doesn't need indexes.
+
+### Google sign-in setup
+
+In Firebase console → Authentication → Sign-in method, enable **Google** and select a support email. Keep **one account per email address** enabled.
+
+In Project settings → Your apps → `com.polysocial`, register the **SHA-1 fingerprints** for every teammate's debug keystore, CI, and release/Play signing keystores (`./gradlew signingReport` for local fingerprints). Download a fresh, git-ignored `app/google-services.json` and ask the repository owner to update the CI secret. The config must include the **Web OAuth client ID**, which generates `default_web_client_id`; never hardcode it or commit keystores.
 
 ## Running and testing
 
