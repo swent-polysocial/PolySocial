@@ -32,6 +32,8 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 
 - **Map renderer (#50):** `MapboxRenderer` is the UI-side SDK component; `MapViewModel` gets events only through injected `RepositoryMapEventSource`, adapting #49's live flow. Cached results stay usable and terminal errors permit Retry. Event-query Retry restarts the 14-day window without recreating the renderer; renderer Retry leaves the event listener and preview intact. After first map load, individual resource failures preserve cached areas; initial/style failures permit renderer Retry. Markers share one annotation group. Optional telemetry/geofencing starts disabled; attribution and its preference dialog stay accessible. The preview uses Zurich-local Today / Tonight / date labels and opens an event-ID placeholder until #112's real detail screen lands.
 
+- **Sign-in providers: email/password and Google only, no Microsoft** (#106, #107; Lucas, [#197 review](https://github.com/swent-polysocial/PolySocial/pull/197#pullrequestreview-5539093813)). Microsoft sign-in would need EPFL's admin to whitelist the app, which is unlikely (they haven't for Canva). Google is open to every app and goes through EPFL's SSO, so it proves ongoing ownership of the `@epfl.ch` address just as well. Students still need a verified `@epfl.ch` email (the rules check it); only email/password needs our Verify Email screen.
+
 - **Google sign-in buttons:** Welcome and Log in share the unchanged pre-approved Google PNG through `GoogleSignInButton`, preserving the logo, font and aspect ratio. [Google requires compliant branding](https://developers.google.com/identity/branding-guidelines) for app verification; a plain-text or monochrome G is not allowed. The light pill is our selected supported variant, not a Google requirement to use only light buttons. Actions remain unavailable until Google sign-in is implemented.
 
 - **Layers:** Compose screen → ViewModel (one `StateFlow` UI state) → repository interface → Firebase/device implementation, with a `Fake…` implementation for tests. Pure logic (validation, haversine distance, filtering, matching, QR parsing) goes in plain Kotlin with no Android/Firebase imports.
@@ -145,10 +147,9 @@ Closed issues keep their original text, so where one disagrees with this section
 - **Mapbox production account:** the team must decide billing, usage thresholds and token rotation before release; the prototype keeps the current account/token.
 
 - **Association access to other public events:** [Ayoub confirmed](https://github.com/swent-polysocial/PolySocial/pull/93#issuecomment-6069094805) that #47's writes will build on #52's own-association-events read policy. Whether associations may also read students' public events remains a separate team question; keep the current policy until a team decision. Widening it would also expose students' UIDs (`createdBy`, `organizerIds`, `allowedUids`).
-- **Sign-in providers:** Google sign-in is being built next to email/password, as in the Figma (#106, #107). Whether Microsoft (EPFL accounts are Microsoft accounts) should be added too, or instead, is still open. Every student account still needs a verified `@epfl.ch` email (checked by the rules). Only email/password needs our Verify Email screen, because Google and Microsoft deliver already-verified emails.
 - **Association members and event drafts:** Figma has them, but there is no data model yet. How does an association find and add a student as a member, and what can each role do? Drafts are not in the `Event` model.
 - **Events without an end time:** check-in (#22) and Find my group (#20) only work during the event. Which time window applies when `endTime` is not set?
-- **Uppercase or subdomain emails:** the rules deny `student@EPFL.CH` and `student@sub.epfl.ch` (#33). Revisit lowercasing the email (`.lower()`) if Google or Microsoft sign-in is added.
+- **Uppercase or subdomain emails:** the rules deny `student@EPFL.CH` and `student@sub.epfl.ch` (#33). Revisit lowercasing the email (`.lower()`) with Google sign-in (#106).
 - **Year field values:** the profile step offers BA1–BA6 and MA1–MA4 under "Year" (as in Figma and #34), but these are EPFL semesters, and there is no option for exchange or PhD students. Rename to "Semester" and/or add options?
 
 Add new ones here and in the Architecture Diagram's "Design decisions" section.
@@ -157,6 +158,7 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 
+- 2026-10-15 · Sign-in is email/password and Google only: Microsoft would need EPFL's admin to whitelist the app, and Google, through EPFL's SSO, proves the address just as well. ([#197 review](https://github.com/swent-polysocial/PolySocial/pull/197#pullrequestreview-5539093813))
 - 2026-10-15 · Event writes keep every organizer in `allowedUids`, on create and update, so a co-organizer can always read the private event they manage. ([#102](https://github.com/swent-polysocial/PolySocial/pull/102))
 - 2026-10-15 · CI installs the APKs and waits for the emulator's broadcasts before the device tests, and retries the system image download, after both made runs fail at random. ([#192](https://github.com/swent-polysocial/PolySocial/issues/192))
 - 2026-10-14 · CI runs checks, build and unit tests, instrumented tests and the release build in parallel, with the instrumented tests in two shards, then coverage and Sonar from the files the test jobs upload; Gradle caches builds and configuration and runs unit tests in parallel forks. ([#193](https://github.com/swent-polysocial/PolySocial/pull/193))
