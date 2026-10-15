@@ -1,5 +1,5 @@
 // Contributors: OpenAI Codex (fake-backed logout navigation and account-switch regression tests,
-// #109).
+// verification injection after rebase, #109).
 package com.polysocial.ui.profile
 
 import androidx.activity.ComponentActivity
@@ -8,8 +8,10 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.text.AnnotatedString
+import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.auth.MemoryVerificationStore
 import com.polysocial.model.auth.*
 import com.polysocial.model.firebase.*
 import com.polysocial.model.user.*
@@ -20,6 +22,7 @@ import com.polysocial.ui.navigation.*
 import com.polysocial.ui.start.AppStartViewModel
 import com.polysocial.ui.theme.PolySocialTheme
 import kotlinx.coroutines.CompletableDeferred
+import org.junit.After
 import org.junit.Assert.*
 import org.junit.Rule
 import org.junit.Test
@@ -38,6 +41,17 @@ class LogoutFlowTest {
       }
   private val signup = SignUpViewModel(auth)
   private val login = LoginViewModel(auth)
+  private val verification =
+      VerifyEmailViewModel(auth, MemoryVerificationStore(), VerificationClock { 1000 })
+
+  @After
+  fun clearVerification() {
+    ViewModelStore().apply {
+      put("verification", verification)
+      clear()
+    }
+  }
+
   private var clears = 0
   private var result = CacheClearResult.Cleared
   private var gate: CompletableDeferred<Unit>? = null
@@ -55,10 +69,10 @@ class LogoutFlowTest {
     val start = AppStartViewModel(auth, profiles)
     restoration.setContent {
       PolySocialTheme {
-        AuthFlow(signup, { exits++ }, login, start) { done ->
+        AuthFlow(signup, { exits++ }, login, start, verification) { done ->
           AppShell(
               eventsContent = { TabRootScreen(Tab.EVENTS) },
-              mapContent = { TabRootScreen(Tab.MAP) },
+              mapContent = { _, _ -> TabRootScreen(Tab.MAP) },
               onLoggedOut = done,
               profileContent = { callback ->
                 val vm: ProfileViewModel = viewModel { ProfileViewModel(auth, cache) }
