@@ -1,4 +1,5 @@
-// Contributors: Claude (wrote these tests, including reading events back, #49).
+// Contributors: Claude (wrote these tests, including reading events back, #49; the place name,
+// #112; the place name's read, write and round-trip tests, #112).
 package com.polysocial.model.event
 
 import com.google.firebase.Timestamp
@@ -14,7 +15,7 @@ class FirestoreEventMappingTest {
   fun toFirestoreMap_writesEveryFieldUnderItsOwnName() {
     val event =
         validEvent()
-            .copy(isPrivate = true, category = EventCategory.PARTY)
+            .copy(isPrivate = true, category = EventCategory.PARTY, locationName = "Satellite")
             .withCreator("creator", isVerifiedAssociation = true)
 
     assertEquals(
@@ -23,6 +24,7 @@ class FirestoreEventMappingTest {
             "description" to "Going through the exercise sheet together.",
             "category" to "PARTY",
             "location" to GeoPoint(46.5191, 6.5668),
+            "locationName" to "Satellite",
             "startTime" to Timestamp(event.startTime.epochSecond, 0),
             "endTime" to Timestamp(event.endTime!!.epochSecond, 0),
             "capacity" to 8,
@@ -131,5 +133,42 @@ class FirestoreEventMappingTest {
   fun eventFromFirestore_rejectsARequiredFieldWithTheWrongType() {
     assertNull(eventFromFirestore("event-1", stored.toFirestoreMap() + ("isPrivate" to "false")))
     assertNull(eventFromFirestore("event-1", stored.toFirestoreMap() + ("startTime" to "tomorrow")))
+  }
+
+  @Test
+  fun toFirestoreMap_writesABlankPlaceNameAsAnEmptyString() {
+    assertEquals("", validEvent().toFirestoreMap()["locationName"])
+  }
+
+  @Test
+  fun eventFromFirestore_readsThePlaceName() {
+    val data = stored.toFirestoreMap() + ("locationName" to "Satellite, EPFL")
+
+    assertEquals("Satellite, EPFL", eventFromFirestore("event-1", data)?.locationName)
+  }
+
+  @Test
+  fun eventFromFirestore_readsAnOlderEventWithoutAPlaceNameAsBlank() {
+    val older = stored.copy(locationName = "Satellite").toFirestoreMap() - "locationName"
+
+    val event = eventFromFirestore("event-1", older)
+
+    assertEquals(stored.copy(id = "event-1", locationName = ""), event)
+  }
+
+  @Test
+  fun eventFromFirestore_readsAPlaceNameOfTheWrongTypeAsBlank() {
+    for (wrong in listOf(42L, true, null, listOf("Satellite"))) {
+      val data = stored.toFirestoreMap() + ("locationName" to wrong)
+
+      assertEquals(wrong.toString(), "", eventFromFirestore("event-1", data)?.locationName)
+    }
+  }
+
+  @Test
+  fun eventFromFirestore_keepsThePlaceNameThroughARoundTrip() {
+    val event = stored.copy(id = "event-1", locationName = "Rolex Learning Center")
+
+    assertEquals(event, eventFromFirestore("event-1", event.toFirestoreMap()))
   }
 }

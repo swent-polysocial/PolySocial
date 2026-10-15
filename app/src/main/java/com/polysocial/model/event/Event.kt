@@ -1,4 +1,5 @@
-// Contributors: Claude (drafted the Event model and withCreator); Mohamed Khellaf (reviewed).
+// Contributors: Claude (drafted the Event model and withCreator; the place name, #112); Mohamed
+// Khellaf (reviewed).
 package com.polysocial.model.event
 
 import java.time.Instant
@@ -33,6 +34,8 @@ enum class EventCategory {
  * @property endTime when the event ends, or null if the organizer didn't say. Always after
  *   [startTime]: the form treats an end time earlier than the start time as the next day.
  * @property capacity the maximum number of attendees, or null for no limit.
+ * @property locationName the name of the place picked on the map ("Rolex Learning Center"), shown
+ *   with the location. Blank for events created before it was stored.
  */
 data class Event(
     val id: String = "",
@@ -40,6 +43,7 @@ data class Event(
     val description: String,
     val category: EventCategory,
     val location: Coordinates,
+    val locationName: String = "",
     val startTime: Instant,
     val endTime: Instant? = null,
     val capacity: Int? = null,

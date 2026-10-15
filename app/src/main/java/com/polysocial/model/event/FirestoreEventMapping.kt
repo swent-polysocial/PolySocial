@@ -1,4 +1,5 @@
-// Contributors: Claude (drafted the Firestore mapping for events, and reading it back, #49).
+// Contributors: Claude (drafted the Firestore mapping for events, and reading it back, #49; the
+// place name, #112).
 package com.polysocial.model.event
 
 import com.google.firebase.Timestamp
@@ -12,7 +13,8 @@ import java.time.Instant
  * would never match. [Event.id] isn't stored: it is the document ID.
  *
  * The category is stored by its enum name, the location as a [GeoPoint] and the times as
- * [Timestamp]s. A missing end time or capacity is stored as null.
+ * [Timestamp]s. A missing end time or capacity is stored as null. The place name is stored as
+ * `locationName`.
  */
 fun Event.toFirestoreMap(): Map<String, Any?> =
     mapOf(
@@ -20,6 +22,7 @@ fun Event.toFirestoreMap(): Map<String, Any?> =
         "description" to description,
         "category" to category.name,
         "location" to GeoPoint(location.latitude, location.longitude),
+        "locationName" to locationName,
         "startTime" to startTime.toTimestamp(),
         "endTime" to endTime?.toTimestamp(),
         "capacity" to capacity,
@@ -36,7 +39,8 @@ fun Event.toFirestoreMap(): Map<String, Any?> =
  * A stored category this app version doesn't know is read as [EventCategory.OTHER], so adding a
  * category later doesn't break older versions. Returns null if a required field (title,
  * description, category, location, start time or visibility) is missing or has the wrong type, so
- * one malformed document can't crash the map. Missing optional fields get their defaults.
+ * one malformed document can't crash the map. Missing optional fields get their defaults, so an
+ * event saved before `locationName` existed reads with a blank place name.
  */
 fun eventFromFirestore(id: String, data: Map<String, Any?>): Event? {
   val title = data["title"] as? String ?: return null
@@ -51,6 +55,7 @@ fun eventFromFirestore(id: String, data: Map<String, Any?>): Event? {
       description = description,
       category = EventCategory.entries.firstOrNull { it.name == category } ?: EventCategory.OTHER,
       location = Coordinates(location.latitude, location.longitude),
+      locationName = data["locationName"] as? String ?: "",
       startTime = startTime.toInstant(),
       endTime = (data["endTime"] as? Timestamp)?.toInstant(),
       // Firestore returns every whole number as a Long.

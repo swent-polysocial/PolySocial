@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (drew this icon in the team Figma "Event detail · Sprint 2" frame and converted it, #112; not from an icon set). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="18dp"
+    android:height="18dp"
+    android:viewportWidth="18"
+    android:viewportHeight="18">
+    <path
+        android:pathData="M8.7,5.5A2.2,2.2 0,1 1,4.3 5.5A2.2,2.2 0,1 1,8.7 5.5Z"
+        android:strokeWidth="1.6"
+        android:strokeColor="#FF000000" />
+    <path
+        android:pathData="M1.5,15.5C1.5,12 4,10.5 6.5,10.5C9,10.5 11.5,12 11.5,15.5"
+        android:strokeWidth="1.6"
+        android:strokeColor="#FF000000"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M15.2,6A1.7,1.7 0,1 1,11.8 6A1.7,1.7 0,1 1,15.2 6Z"
+        android:strokeWidth="1.6"
+        android:strokeColor="#FF000000" />
+    <path
+        android:pathData="M13,10.6C15,10.8 16.5,12.3 16.5,15.5"
+        android:strokeWidth="1.6"
+        android:strokeColor="#FF000000"
+        android:strokeLineCap="round" />
+</vector>

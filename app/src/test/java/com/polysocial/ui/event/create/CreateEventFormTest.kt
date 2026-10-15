@@ -1,9 +1,11 @@
-// Contributors: Claude (wrote these tests); Mohamed Khellaf (reviewed).
+// Contributors: Claude (wrote these tests; the place name tests, #112); Mohamed Khellaf
+// (reviewed).
 package com.polysocial.ui.event.create
 
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.MAX_DESCRIPTION_LENGTH
+import com.polysocial.model.event.MAX_LOCATION_NAME_LENGTH
 import com.polysocial.model.event.MAX_TITLE_LENGTH
 import java.time.Instant
 import java.time.LocalDate
@@ -186,5 +188,69 @@ class CreateEventFormTest {
     val form = completeForm().copy(title = "a".repeat(MAX_TITLE_LENGTH) + "  ")
 
     assertEquals(emptySet<CreateEventFormError>(), form.errors(FORM_NOW, ZURICH))
+  }
+
+  @Test
+  fun toEvent_copiesThePickedPlaceName() {
+    assertEquals("Rolex Learning Center", completeForm().toEvent(ZURICH)!!.locationName)
+  }
+
+  @Test
+  fun toEvent_trimsThePickedPlaceName() {
+    val form = completeForm().copy(location = ROLEX.copy(name = "  Satellite, EPFL \n"))
+
+    assertEquals("Satellite, EPFL", form.toEvent(ZURICH)!!.locationName)
+  }
+
+  @Test
+  fun toEvent_shortensALongPlaceNameToTheLimit() {
+    val name = "a".repeat(50) + "b".repeat(100)
+    val form = completeForm().copy(location = ROLEX.copy(name = name))
+
+    val stored = form.toEvent(ZURICH)!!.locationName
+
+    assertEquals(MAX_LOCATION_NAME_LENGTH, stored.length)
+    assertEquals(name.take(100), stored)
+  }
+
+  @Test
+  fun toEvent_keepsAPlaceNameOfExactlyTheLimit() {
+    val name = "x".repeat(99) + "y"
+    val form = completeForm().copy(location = ROLEX.copy(name = name))
+
+    assertEquals(name, form.toEvent(ZURICH)!!.locationName)
+  }
+
+  @Test
+  fun toEvent_trimsBeforeShortening() {
+    val name = "   " + "z".repeat(100)
+    val form = completeForm().copy(location = ROLEX.copy(name = name))
+
+    assertEquals("z".repeat(100), form.toEvent(ZURICH)!!.locationName)
+  }
+
+  @Test
+  fun toEvent_neverSplitsAnEmojiWhenShortening() {
+    // The emoji takes characters 100 and 101, so a plain cut would keep half of it.
+    val name = "a".repeat(99) + "\uD83C\uDF89" + "b"
+    val form = completeForm().copy(location = ROLEX.copy(name = name))
+
+    assertEquals("a".repeat(99), form.toEvent(ZURICH)!!.locationName)
+  }
+
+  @Test
+  fun toEvent_keepsAnEmojiThatFitsWhole() {
+    val name = "a".repeat(98) + "\uD83C\uDF89" + "b"
+    val form = completeForm().copy(location = ROLEX.copy(name = name))
+
+    assertEquals("a".repeat(98) + "\uD83C\uDF89", form.toEvent(ZURICH)!!.locationName)
+  }
+
+  @Test
+  fun toEvent_dropsASpaceLeftAtTheEndOfTheCut() {
+    val name = "a".repeat(99) + " and more"
+    val form = completeForm().copy(location = ROLEX.copy(name = name))
+
+    assertEquals("a".repeat(99), form.toEvent(ZURICH)!!.locationName)
   }
 }

@@ -1,5 +1,5 @@
-// Contributors: Claude (wrote these tests; the location picker's selection, #111); Mohamed
-// Khellaf (reviewed).
+// Contributors: Claude (wrote these tests; the location picker's selection, #111; saving the
+// place name, #112); Mohamed Khellaf (reviewed).
 package com.polysocial.ui.event.create
 
 import com.polysocial.model.event.Coordinates
@@ -258,5 +258,16 @@ class CreateEventViewModelTest {
 
     assertEquals(PickedLocation(pin, "Some street", "1003 Lausanne"), state().form.location)
     assertTrue(CreateEventFormError.MISSING_LOCATION !in state().form.errors(FORM_NOW, ZURICH))
+  }
+
+  @Test
+  fun submitting_savesThePickedPlaceName() = runTest {
+    fillCompleteForm()
+    viewModel.onLocationPick(PickedLocation(ROLEX.coordinates, " Satellite, EPFL "))
+
+    viewModel.onSubmit()
+    advanceUntilIdle()
+
+    assertEquals("Satellite, EPFL", repository.events.single().locationName)
   }
 }
