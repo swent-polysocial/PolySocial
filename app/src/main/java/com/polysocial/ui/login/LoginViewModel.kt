@@ -104,11 +104,6 @@ class LoginViewModel @Inject constructor(private val auth: AuthRepository) : Vie
     }
   }
 
-  /** Drops credentials after a session transition. */
-  fun reset() {
-    _uiState.value = LoginUiState()
-  }
-
   /** Returns to the unchanged password form after a Google failure. */
   fun dismissGoogleError() = _uiState.update { it.copy(google = GoogleSignInState()) }
 

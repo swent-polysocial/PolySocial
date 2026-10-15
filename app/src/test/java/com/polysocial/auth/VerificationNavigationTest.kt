@@ -1,5 +1,6 @@
 // Contributors: OpenAI Codex (cold-start, recreation and verification Back sign-out regression
 // tests for #31).
+// Contributors: OpenAI Codex (preserved offline ViewModel injection after PR #168 rebase).
 package com.polysocial.auth
 
 import androidx.compose.ui.test.assertCountEquals
@@ -46,6 +47,9 @@ class VerificationNavigationTest {
   private val signup = SignUpViewModel(repository)
   private val login = LoginViewModel(repository)
   private var start = AppStartViewModel(repository, FakeUserProfileRepository())
+  private val welcome = com.polysocial.ui.auth.WelcomeViewModel(repository)
+  private val profile =
+      com.polysocial.ui.profile.ProfileSetupViewModel(repository, FakeUserProfileRepository())
   private val models = mutableListOf<VerifyEmailViewModel>()
 
   private fun model() =
@@ -76,6 +80,7 @@ class VerificationNavigationTest {
               start,
               verification,
               profileStep,
+              welcomeViewModel = welcome,
           )
         }
       }
