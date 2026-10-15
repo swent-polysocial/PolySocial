@@ -1,9 +1,10 @@
-// Contributors: Claude (event repository read tests against the Firestore emulator, #118).
-// OpenAI Codex (adapted the event-test auth fixture to the verification contract, #31);
-// OpenAI Codex (password-reset contract in the event-test fixture, #164).
+// Contributors: Claude (event repository read and createEvent tests against the Firestore
+// emulator, #118). OpenAI Codex (adapted the event-test auth fixture to the verification
+// contract, #31); OpenAI Codex (password-reset contract in the event-test fixture, #164).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.firebase.firestore.Source
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.LogInResult
@@ -12,12 +13,15 @@ import com.polysocial.model.auth.SendVerificationResult
 import com.polysocial.model.auth.SignUpResult
 import com.polysocial.model.auth.VerificationResult
 import com.polysocial.model.event.Coordinates
+import com.polysocial.model.event.CreateEventResult
 import com.polysocial.model.event.EVENTS_COLLECTION
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.FirestoreEventRepository
 import com.polysocial.model.event.PublicEventsResult
+import com.polysocial.model.event.eventFromFirestore
 import com.polysocial.model.event.toFirestoreMap
+import com.polysocial.model.event.withCreator
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.user.FirestoreUserProfileRepository
 import java.time.Clock
@@ -28,6 +32,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -37,10 +42,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Tests [FirestoreEventRepository.getUpcomingPublicEvents] against the Firestore and Auth
- * emulators, so its query, its live listener and the event read rules (#52) run on the real
- * Firestore. Events are written as an admin would, from [Event.toFirestoreMap], so the stored field
- * names are the ones the repository writes.
+ * Tests [FirestoreEventRepository] against the Firestore and Auth emulators, so its transaction,
+ * its query, its live listener and the event rules (#47, #52) run on the real Firestore. The read
+ * tests seed events as an admin would, from [Event.toFirestoreMap], so the stored field names are
+ * the ones the repository writes; the `createEvent` tests check those names by hand.
  *
  * The clock is fixed at [NOW], far in the future, so the window never depends on the real date.
  */
@@ -191,6 +196,72 @@ class FirestoreEventRepositoryEmulatorTest {
     assertEquals(listOf(PublicEventsResult.Error), results)
   }
 
+  @Test
+  fun createEvent_storesTheHandWrittenFieldNames() = runBlocking {
+    val uid = signInStudent()
+    // The form's creator fields are replaced by the signed-in student's (withCreator).
+    val event =
+        publicEvent(startsIn = Duration.ofHours(2))
+            .copy(isPrivate = true, endTime = NOW.plus(Duration.ofHours(5)), capacity = 40)
+
+    val result = withTimeout(TIMEOUT_MS) { repository.createEvent(event) }
+
+    assertTrue("Expected Created, got $result", result is CreateEventResult.Created)
+    val id = (result as CreateEventResult.Created).eventId
+    val stored =
+        emulator.firestore
+            .collection(EVENTS_COLLECTION)
+            .document(id)
+            .get(Source.SERVER)
+            .await()
+            .data
+            .orEmpty()
+    // Firestore's automatic mapping would store `private` and `associationEvent` instead, and the
+    // queries and rules would never match them.
+    assertEquals(STORED_FIELDS, stored.keys)
+    assertEquals(true, stored["isPrivate"])
+    assertEquals(false, stored["isAssociationEvent"])
+    assertEquals(uid, stored["createdBy"])
+    assertEquals(listOf(uid), stored["organizerIds"])
+    assertEquals(listOf(uid), stored["allowedUids"])
+    assertEquals(
+        event.withCreator(uid, isVerifiedAssociation = false).copy(id = id),
+        eventFromFirestore(id, stored),
+    )
+  }
+
+  @Test
+  fun createEvent_byAVerifiedStudent_isAcceptedAndListedAsUpcoming() = runBlocking {
+    signInStudent()
+
+    val result =
+        withTimeout(TIMEOUT_MS) {
+          repository.createEvent(publicEvent(startsIn = Duration.ofHours(2)))
+        }
+
+    assertTrue("Expected Created, got $result", result is CreateEventResult.Created)
+    assertEquals(
+        listOf((result as CreateEventResult.Created).eventId),
+        firstServerResult().ids(),
+    )
+  }
+
+  @Test
+  fun createEvent_deniedByTheRules_isUnexpectedErrorAndWritesNothing() = runBlocking {
+    // A verified non-EPFL account with no verified association profile may not create events.
+    emulator.signInVerifiedUser(ASSOCIATION_EMAIL)
+
+    val result =
+        withTimeout(TIMEOUT_MS) {
+          repository.createEvent(publicEvent(startsIn = Duration.ofHours(2)))
+        }
+
+    assertEquals(CreateEventResult.UnexpectedError, result)
+    emulator.auth.signOut()
+    signInStudent()
+    assertEquals(emptyList<String>(), firstServerResult().ids())
+  }
+
   private suspend fun collectAll(): List<PublicEventsResult> {
     val results = mutableListOf<PublicEventsResult>()
     repository.getUpcomingPublicEvents(WINDOW_DAYS).collect { results += it }
@@ -254,6 +325,23 @@ class FirestoreEventRepositoryEmulatorTest {
     val WINDOW: Duration = Duration.ofDays(WINDOW_DAYS.toLong())
     val NOW: Instant = Instant.parse("2030-03-01T12:00:00Z")
     const val TIMEOUT_MS = 10_000L
+
+    /** The field names of `events/{id}`, written out here so a renamed field fails the test. */
+    val STORED_FIELDS =
+        setOf(
+            "title",
+            "description",
+            "category",
+            "location",
+            "startTime",
+            "endTime",
+            "capacity",
+            "isPrivate",
+            "createdBy",
+            "organizerIds",
+            "allowedUids",
+            "isAssociationEvent",
+        )
 
     fun publicEvent(startsIn: Duration) =
         Event(
