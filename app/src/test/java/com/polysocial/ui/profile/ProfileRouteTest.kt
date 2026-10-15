@@ -1,13 +1,19 @@
-// Contributors: OpenAI Codex (logout dismissal, callback replacement and restoration tests, #109).
+// Contributors: OpenAI Codex (logout dismissal, callback replacement, restoration and full-row
+// interaction tests, #109).
 package com.polysocial.ui.profile
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.auth.*
 import com.polysocial.model.firebase.*
@@ -38,6 +44,27 @@ class ProfileRouteTest {
 
   private fun back() {
     compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+  }
+
+  @Test
+  fun logoutRowShowsIconAndConfirmsFromItsTrailingEdge() {
+    compose.setContent { PolySocialTheme { Box(Modifier.width(360.dp)) { ProfileRoute({}, vm) } } }
+    val row = compose.onNodeWithTag(ProfileTags.Logout)
+    row.assertWidthIsEqualTo(320.dp).assertHeightIsEqualTo(50.dp)
+    row.assertTextEquals("Log out").assertHasClickAction()
+    compose
+        .onNodeWithTag(ProfileTags.LogoutIcon, useUnmergedTree = true)
+        .assertIsDisplayed()
+        .assertWidthIsEqualTo(20.dp)
+        .assertHeightIsEqualTo(20.dp)
+    // A tap far beyond the text must still open confirmation, without logging out.
+    row.performTouchInput { click(Offset(width - 1f, centerY)) }
+    compose.onNodeWithTag(ProfileTags.Dialog).assertIsDisplayed()
+    assertEquals(0, clears)
+    assertEquals(0, auth.logOutCalls)
+    compose.onNodeWithTag(ProfileTags.Cancel).performClick()
+    row.assertIsEnabled()
+    assertNotNull(auth.user)
   }
 
   @Test

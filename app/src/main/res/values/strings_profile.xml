@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Contributors: Claude (profile step texts from the Figma "First proposal revamped" frames, #34; generic save error, #142). -->
+<!-- Contributors: OpenAI Codex (logout dialog copy and consistent failure wording, #109). -->
 <resources>
     <string name="profile_back">Back</string>
     <string name="profile_step">Step 1 of 2</string>
@@ -17,4 +18,8 @@
     <string name="profile_could_not_save">Couldn\'t save your profile. Check your connection and try again.</string>
     <string name="profile_could_not_save_generic">Couldn\'t save your profile. Log out and log in again, then try once more.</string>
     <string name="profile_log_out">Log out</string>
+    <string name="profile_log_out_title">Log out?</string>
+    <string name="profile_log_out_question">Are you sure you want to log out?</string>
+    <string name="profile_log_out_cancel">Cancel</string>
+    <string name="profile_log_out_error">Couldn\'t finish logging out. Try again before continuing.</string>
 </resources>
