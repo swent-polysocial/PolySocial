@@ -98,7 +98,9 @@ class EventsRouteTest {
           LocalActivityResultRegistryOwner provides registryOwner,
           LocalLifecycleOwner provides lifecycle,
       ) {
-        PolySocialTheme { EventsRoute(viewModel = viewModel, showRationale = { showRationale }) }
+        PolySocialTheme {
+          EventsRoute(onEventClick = {}, viewModel = viewModel, showRationale = { showRationale })
+        }
       }
     }
     settle()
