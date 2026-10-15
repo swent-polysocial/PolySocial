@@ -1,6 +1,6 @@
 // Contributors: OpenAI Codex (verification state, startup routing, persistent cooldown and Back
 // sign-out for #31; documented lifecycle ordering, removed unused leave() and modeled sealed
-// entry).
+// entry; reset retained verification state on logout, #109).
 package com.polysocial.ui.auth
 
 import androidx.lifecycle.ViewModel
@@ -100,11 +100,16 @@ constructor(
 
   /** Signs out and resets verification for Back or the explicit change-address action. */
   fun changeAddress() {
+    reset()
+    repository.logOut()
+  }
+
+  /** Cancels account work and clears screen state without signing out or deleting cooldowns. */
+  fun reset() {
     entryJob?.cancel()
     sendJob?.cancel()
     checkJob?.cancel()
     ticker?.cancel()
-    repository.logOut()
     startupRoutingPending = false
     accountUid = null
     entryState = EntryState.NotEntered

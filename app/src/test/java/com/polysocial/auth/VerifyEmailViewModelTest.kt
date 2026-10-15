@@ -1,6 +1,7 @@
 // Contributors: OpenAI Codex (verification, restart, cooldown and failure regression tests for
 // #31; pending-operation account isolation, persistence failures, browser-return entry races and
-// production sign-out/re-entry, sealed-entry behavior and replacement during pending entry).
+// production sign-out/re-entry, sealed-entry behavior and replacement during pending entry;
+// reset without sign-out for #109).
 package com.polysocial.auth
 
 import androidx.lifecycle.ViewModelStore
@@ -67,6 +68,45 @@ class VerifyEmailViewModelTest {
         put("verification", vm)
         clear()
       }
+
+  @Test
+  fun resetCancelsPendingVerificationBeforeItCanRestoreThePreviousState() = runTest {
+    val vm = viewModel()
+    vm.enter()
+    runCurrent()
+    repository.checkGate = CompletableDeferred()
+    repository.verificationResult = VerificationResult.Verified
+    vm.checkVerified()
+    runCurrent()
+    assertTrue(vm.uiState.value.checking)
+    vm.reset()
+    repository.checkGate!!.complete(Unit)
+    runCurrent()
+    assertEquals(VerifyEmailUiState(), vm.uiState.value)
+    assertEquals(user, repository.user)
+    assertEquals(0, repository.logOutCalls)
+    dispose(vm)
+  }
+
+  @Test
+  fun resetPreservesAccountAndCooldown() = runTest {
+    val vm = viewModel()
+    vm.enter()
+    runCurrent()
+    val timing = store.timings[user.uid]
+    assertEquals(user.email, vm.uiState.value.email)
+    vm.reset()
+    runCurrent()
+    assertEquals(VerifyEmailUiState(), vm.uiState.value)
+    assertEquals(user, repository.user)
+    assertEquals(0, repository.logOutCalls)
+    assertEquals(timing, store.timings[user.uid])
+    vm.enter()
+    runCurrent()
+    assertEquals(user.email, vm.uiState.value.email)
+    assertEquals(1, repository.sendCalls)
+    dispose(vm)
+  }
 
   @Test
   fun startupRoutesOnlyUnverifiedSessionsAndOnlyOnce() {

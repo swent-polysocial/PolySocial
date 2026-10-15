@@ -1,4 +1,4 @@
-// Contributors: OpenAI Codex (inject Profile placeholder in unrelated shell tests, #109).
+// Contributors: OpenAI Codex (logout stack regression on the retained controller, #109).
 // Contributors: Claude (UI tests for the bottom navigation and app bar, #41; nested tab routes,
 // #42; placeholder Events root without Hilt, #105; map stub given the "+" action, #110).
 // Contributors: OpenAI Codex (map tab chrome, detail routes and injected tab regression tests,
@@ -31,6 +31,8 @@ import com.polysocial.R
 import com.polysocial.resources.C
 import com.polysocial.ui.theme.PolySocialTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -43,6 +45,8 @@ class AppShellTest {
 
   private val context = ApplicationProvider.getApplicationContext<Context>()
 
+  private lateinit var logout: () -> Unit
+  private var loggedOut = 0
   private lateinit var navController: NavHostController
 
   private fun label(tab: Tab) = context.getString(tab.label)
@@ -54,7 +58,11 @@ class AppShellTest {
       PolySocialTheme {
         AppShell(
             navController = navController,
-            profileContent = { TabRootScreen(Tab.PROFILE) },
+            profileContent = { done ->
+              logout = done
+              TabRootScreen(Tab.PROFILE)
+            },
+            onLoggedOut = { loggedOut++ },
             eventsContent = {
               Box(Modifier.testTag("injected_events_content")) { TabRootScreen(Tab.EVENTS) }
             },
@@ -84,6 +92,31 @@ class AppShellTest {
       val item = composeTestRule.onNodeWithTag(other.navItemTag)
       if (other == tab) item.assertIsSelected() else item.assertIsNotSelected()
       if (other != tab) composeTestRule.onAllNodesWithTag(other.screenTag).assertCountEquals(0)
+    }
+  }
+
+  @Test
+  fun logoutClearsActiveAndSavedStacksOnTheSameController() {
+    composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).performClick()
+    composeTestRule.onNodeWithTag("fake_map_details").performClick()
+    val mapEntry = composeTestRule.runOnIdle { navController.currentBackStackEntry!!.id }
+    composeTestRule.onNodeWithTag(Tab.CHATS.navItemTag).performClick()
+    composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).performClick()
+    composeTestRule.runOnIdle {
+      // Prove that this controller really keeps the previous account's saved stack.
+      assertEquals(mapEntry, navController.currentBackStackEntry!!.id)
+    }
+    composeTestRule.onNodeWithTag(Tab.PROFILE.navItemTag).performClick()
+    composeTestRule.runOnIdle {
+      logout()
+      assertEquals(1, loggedOut)
+      assertNull(navController.currentBackStackEntry)
+      assertNull(navController.previousBackStackEntry)
+      // Restore on this same controller: a saved stack would resurrect the old private detail.
+      navController.navigate(Tab.EVENTS.route)
+      navController.navigate(Tab.MAP.route) { restoreState = true }
+      assertEquals(Tab.MAP.rootRoute, navController.currentBackStackEntry!!.destination.route)
+      assertNotEquals(mapEntry, navController.currentBackStackEntry!!.id)
     }
   }
 

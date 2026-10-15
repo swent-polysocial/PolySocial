@@ -67,9 +67,17 @@ class LogoutFlowTest {
 
   private fun launch() {
     val start = AppStartViewModel(auth, profiles)
+    val profileSetup = ProfileSetupViewModel(auth, profiles)
     restoration.setContent {
       PolySocialTheme {
-        AuthFlow(signup, { exits++ }, login, start, verification) { done ->
+        AuthFlow(
+            signup,
+            { exits++ },
+            login,
+            start,
+            verification,
+            profileSetup,
+        ) { done ->
           AppShell(
               eventsContent = { TabRootScreen(Tab.EVENTS) },
               mapContent = { _, _ -> TabRootScreen(Tab.MAP) },
@@ -89,6 +97,21 @@ class LogoutFlowTest {
 
   private fun back() {
     compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+  }
+
+  @Test
+  fun logoutResetsRetainedVerificationWithoutSigningOutAgain() {
+    compose.runOnIdle { verification.enter() }
+    compose.waitForIdle()
+    assertEquals(first.email, verification.uiState.value.email)
+    launch()
+    compose.onNodeWithTag(ProfileTags.Confirm).performClick()
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    compose.runOnIdle {
+      assertEquals(VerifyEmailUiState(), verification.uiState.value)
+      assertEquals(1, auth.logOutCalls)
+      assertEquals(1, clears)
+    }
   }
 
   @Test

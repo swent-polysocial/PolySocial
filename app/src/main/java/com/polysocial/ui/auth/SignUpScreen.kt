@@ -141,9 +141,9 @@ private val BackStackSaver =
  * and Log in link to each other). Leaving the signed-out screens clears the stack, so Back from
  * Verify Email or the app never returns to a form that would redirect again.
  *
- * Signing out goes through [AppStartViewModel.logOut], from anywhere (Back on the profile step, Log
- * out in the app, #109). Whatever started it, the move to the signed-out start resets the forms and
- * the profile step, which outlive their screens, and returns to Welcome with an empty stack.
+ * Back on the profile step signs out through [AppStartViewModel.logOut]. Profile logout (#109)
+ * clears the cache and signs out before invoking the signed-out callback. Both paths reset the
+ * retained auth screen state and return to Welcome with an empty stack.
  *
  * @param signedInContent the app once the user is signed in. Tests replace it, because the real
  *   [AppShell] needs Hilt.
@@ -176,16 +176,20 @@ fun AuthFlow(
   // Whether the start destination last applied was Login (null before the first), to tell a
   // sign-out (a move to Login) from a recreation, which applies the current one again.
   var lastStartWasLogin by rememberSaveable { mutableStateOf<Boolean?>(null) }
+  fun resetSessionState() {
+    viewModel.reset()
+    loginViewModel.reset()
+    verificationViewModel.reset()
+    profileSetupViewModel.reset()
+    backStack = emptyList()
+  }
   val startDestination by startViewModel.destination.collectAsStateWithLifecycle()
   LaunchedEffect(startDestination) {
     val wasLogin = lastStartWasLogin
     lastStartWasLogin = startDestination == StartDestination.Login
     if (startDestination == StartDestination.Login && wasLogin == false) {
       // Signed out: nothing of the previous account may stay in the forms or the profile step.
-      viewModel.reset()
-      loginViewModel.reset()
-      profileSetupViewModel.reset()
-      backStack = emptyList()
+      resetSessionState()
       destination = AuthDestination.Welcome
       return@LaunchedEffect
     }
@@ -240,9 +244,7 @@ fun AuthFlow(
   var recoveryInitialized by rememberSaveable { mutableStateOf(false) }
   val backFromVerification = {
     latestVerificationViewModel.changeAddress()
-    viewModel.reset()
-    loginViewModel.reset()
-    backStack = emptyList()
+    resetSessionState()
     startViewModel.refresh()
     destination = AuthDestination.Welcome
   }
@@ -309,9 +311,7 @@ fun AuthFlow(
             onBack = backFromVerification,
             onChangeAddress = {
               latestVerificationViewModel.changeAddress()
-              viewModel.reset()
-              loginViewModel.reset()
-              backStack = emptyList()
+              resetSessionState()
               destination = AuthDestination.SignUp
             },
             onContinue = { latestVerificationViewModel.checkVerified() },
@@ -344,10 +344,7 @@ fun AuthFlow(
     }
     AuthDestination.SignedIn ->
         signedInContent {
-          viewModel.reset()
-          loginViewModel.reset()
-          profileSetupViewModel.reset()
-          backStack = emptyList()
+          resetSessionState()
           destination = AuthDestination.Welcome
           startViewModel.refresh()
         }

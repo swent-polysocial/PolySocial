@@ -40,6 +40,9 @@ class LogoutDeviceTest {
         override suspend fun logIn(email: String, password: String): LogInResult =
             error("Unexpected login in this test")
 
+        override suspend fun sendPasswordResetEmail(email: String): PasswordResetResult =
+            error("Unexpected password reset in this test")
+
         override suspend fun sendVerificationEmail(): SendVerificationResult =
             error("Unexpected verification email in this test")
 
@@ -78,6 +81,7 @@ class LogoutDeviceTest {
     val signup = SignUpViewModel(auth)
     val login = LoginViewModel(auth)
     val start = AppStartViewModel(auth, profiles)
+    val profileSetup = ProfileSetupViewModel(auth, profiles)
     compose.setContent {
       PolySocialTheme {
         val verification: VerifyEmailViewModel = viewModel {
@@ -87,7 +91,14 @@ class LogoutDeviceTest {
               VerificationClock { 1000 },
           )
         }
-        AuthFlow(signup, { exits++ }, login, start, verification) { done ->
+        AuthFlow(
+            signup,
+            { exits++ },
+            login,
+            start,
+            verification,
+            profileSetup,
+        ) { done ->
           AppShell(
               eventsContent = { TabRootScreen(Tab.EVENTS) },
               onLoggedOut = done,
