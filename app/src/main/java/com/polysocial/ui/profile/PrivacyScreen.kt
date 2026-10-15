@@ -38,7 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -48,15 +48,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineHeightStyle
-import androidx.compose.ui.text.style.TextMotion
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.lifecycle.viewmodel.initializer
-import androidx.lifecycle.viewmodel.viewModelFactory
 import com.polysocial.R
-import com.polysocial.model.privacy.AndroidPrivacyContactLauncher
 import com.polysocial.resources.C
 import com.polysocial.ui.theme.AccentText
 import com.polysocial.ui.theme.Bg
@@ -70,7 +66,7 @@ import com.polysocial.ui.theme.Ink3
 fun ProfilePrivacyEntry(onOpenPrivacy: () -> Unit, modifier: Modifier = Modifier) {
   PrivacyActionRow(
       R.string.privacy_title,
-      R.drawable.privacy_shield,
+      R.drawable.ic_shield,
       C.Tag.profile_privacy_entry,
       onOpenPrivacy,
       modifier,
@@ -83,7 +79,7 @@ fun ProfilePrivacyEntry(onOpenPrivacy: () -> Unit, modifier: Modifier = Modifier
 fun PrivacyRoute(
     onBack: () -> Unit,
     onFullNotice: () -> Unit,
-    viewModel: PrivacyViewModel = viewModel(),
+    viewModel: PrivacyViewModel = hiltViewModel(),
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   PrivacyScreen(
@@ -136,7 +132,7 @@ fun PrivacyScreen(
           PrivacyDataRow(
               R.string.privacy_location_title,
               R.string.privacy_location_body,
-              R.drawable.privacy_pin,
+              R.drawable.ic_pin,
           )
           HorizontalDivider(color = Border)
           PrivacyDataRow(
@@ -148,7 +144,7 @@ fun PrivacyScreen(
           PrivacyDataRow(
               R.string.privacy_attendance_title,
               R.string.privacy_attendance_body,
-              R.drawable.privacy_check,
+              R.drawable.ic_check,
           )
         }
         Spacer(Modifier.height(20.dp))
@@ -183,7 +179,7 @@ fun PrivacyScreen(
         Spacer(Modifier.height(10.dp))
         PrivacyActionRow(
             R.string.privacy_full_notice,
-            R.drawable.privacy_info,
+            R.drawable.ic_info,
             C.Tag.privacy_full_notice,
             onFullNotice,
             subtitle = R.string.privacy_updated,
@@ -205,23 +201,17 @@ fun PrivacyScreen(
 
 /** Supplies the private email action without querying account data or sending a message. */
 @Composable
-fun FullPrivacyNoticeRoute(onBack: () -> Unit, viewModel: PrivacyViewModel? = null) {
-  val context = LocalContext.current.applicationContext
-  val email = stringResource(R.string.privacy_contact_email)
+fun FullPrivacyNoticeRoute(
+    onBack: () -> Unit,
+    viewModel: PrivacyViewModel = hiltViewModel(),
+) {
   val subject = stringResource(R.string.privacy_contact_subject)
-  val factory =
-      remember(context, email) {
-        viewModelFactory {
-          initializer { PrivacyViewModel(email, AndroidPrivacyContactLauncher(context)) }
-        }
-      }
-  val model: PrivacyViewModel = viewModel ?: viewModel(factory = factory)
-  val state by model.uiState.collectAsStateWithLifecycle()
+  val state by viewModel.uiState.collectAsStateWithLifecycle()
   FullPrivacyNoticeScreen(
       onBack,
       state,
-      { model.onContactRequested(subject) },
-      model::onContactMessageDismissed,
+      { viewModel.onContactRequested(subject) },
+      viewModel::onContactMessageDismissed,
   )
 }
 
@@ -321,7 +311,7 @@ private fun PrivacyHeader(@StringRes title: Int, tag: String, onBack: () -> Unit
   ) {
     IconButton(onBack, Modifier.testTag(C.Tag.privacy_back)) {
       Image(
-          painterResource(R.drawable.privacy_back),
+          painterResource(R.drawable.ic_back),
           stringResource(R.string.privacy_back),
           Modifier.size(22.dp),
       )
@@ -338,7 +328,12 @@ private fun PrivacyHeader(@StringRes title: Int, tag: String, onBack: () -> Unit
 @Composable
 private fun PrivacyDataRow(@StringRes title: Int, @StringRes body: Int, @DrawableRes icon: Int) {
   Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
-    Image(painterResource(icon), null, Modifier.padding(top = 2.dp).size(18.dp))
+    Image(
+        painterResource(icon),
+        null,
+        Modifier.padding(top = 2.dp).size(18.dp),
+        colorFilter = ColorFilter.tint(Ink),
+    )
     Spacer(Modifier.width(12.dp))
     Column(Modifier.weight(1f)) {
       Text(stringResource(title), style = privacyTextStyle(14, 17.6f, FontWeight.Bold))
@@ -369,7 +364,12 @@ private fun PrivacyActionRow(
             .clickable(role = Role.Button, onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-      Image(painterResource(icon), null, Modifier.size(20.dp))
+      Image(
+          painterResource(icon),
+          null,
+          Modifier.size(20.dp),
+          colorFilter = ColorFilter.tint(color),
+      )
       Spacer(Modifier.width(14.dp))
       Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
         Text(
@@ -381,7 +381,7 @@ private fun PrivacyActionRow(
             Text(stringResource(subtitle), color = Ink3, style = privacyTextStyle(12, 15.1f))
       }
       if (showChevron)
-          Image(painterResource(R.drawable.privacy_chevron), null, Modifier.size(18.dp))
+          Image(painterResource(R.drawable.ic_chevron_right), null, Modifier.size(18.dp))
     }
     if (dividerAtBottom) HorizontalDivider(color = Border)
   }
@@ -395,6 +395,7 @@ private fun NoticeSection(@StringRes title: Int, @StringRes body: Int) {
   Text(stringResource(body), color = Ink2, style = privacyTextStyle(14, 21f))
 }
 
+// Preserve the Figma sizes and line heights while inheriting the app's font family.
 @Composable
 private fun privacyTextStyle(
     size: Int,
@@ -405,7 +406,6 @@ private fun privacyTextStyle(
         fontSize = size.sp,
         lineHeight = lineHeight.sp,
         fontWeight = weight,
-        textMotion = TextMotion.Animated,
         lineHeightStyle =
             LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None),
     )

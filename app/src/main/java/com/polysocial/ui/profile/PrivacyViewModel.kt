@@ -3,7 +3,10 @@
 package com.polysocial.ui.profile
 
 import androidx.lifecycle.ViewModel
+import com.polysocial.model.privacy.PrivacyContactAddress
 import com.polysocial.model.privacy.PrivacyContactLauncher
+import dagger.hilt.android.lifecycle.HiltViewModel
+import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
@@ -21,9 +24,12 @@ enum class PrivacyContactMessage {
 }
 
 /** Explains unavailable actions and opens private contact drafts without changing account data. */
-class PrivacyViewModel(
-    private val contactEmail: String = "",
-    private val contactLauncher: PrivacyContactLauncher = PrivacyContactLauncher { _, _ -> false },
+@HiltViewModel
+class PrivacyViewModel
+@Inject
+constructor(
+    @PrivacyContactAddress private val contactEmail: String,
+    private val contactLauncher: PrivacyContactLauncher,
 ) : ViewModel() {
   private val _uiState = MutableStateFlow(PrivacyUiState())
   val uiState = _uiState.asStateFlow()
