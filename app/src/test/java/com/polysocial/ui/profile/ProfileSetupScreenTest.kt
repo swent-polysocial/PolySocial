@@ -627,12 +627,12 @@ class ProfileSetupScreenTest {
 
   private fun SemanticsNode.bottom() = positionInRoot.y + size.height
 
-  /** Log out's node is its touch area: the text is drawn [LOG_OUT_TOUCH_EXTRA_DP] inside it. */
+  /** Log out's node is its touch area: the text is drawn [LOG_OUT_TOUCH_EXTRA] inside it. */
   private fun SemanticsNode.textTop() =
-      top() + LOG_OUT_TOUCH_EXTRA_DP * composeTestRule.density.density
+      top() + LOG_OUT_TOUCH_EXTRA.value * composeTestRule.density.density
 
   private fun SemanticsNode.textBottom() =
-      bottom() - LOG_OUT_TOUCH_EXTRA_DP * composeTestRule.density.density
+      bottom() - LOG_OUT_TOUCH_EXTRA.value * composeTestRule.density.density
 
   /** The text node showing [text], inside the node tagged [parentTag] when given. */
   private fun textNode(text: String, parentTag: String? = null): SemanticsNode {
@@ -894,6 +894,3 @@ class ProfileSetupScreenTest {
     node(ProfileSetupTestTags.sectionOption("IN")).assertIsNotSelected()
   }
 }
-
-/** ProfileSetupScreen's touch area added above and below Log out's text. */
-private const val LOG_OUT_TOUCH_EXTRA_DP = 17f
