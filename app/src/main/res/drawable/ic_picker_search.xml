@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (vector from the Figma "Pick location" frames, section 04, #111). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="20dp" android:height="20dp" android:viewportWidth="20" android:viewportHeight="20">
+    <path android:pathData="M4,8.5A4.5,4.5 0,1 1,13 8.5A4.5,4.5 0,1 1,4 8.5Z" android:strokeColor="#4A4A55" android:strokeWidth="2" />
+    <path android:pathData="M12.5,12.5L17,17" android:strokeColor="#4A4A55" android:strokeWidth="2" android:strokeLineCap="round" />
+</vector>

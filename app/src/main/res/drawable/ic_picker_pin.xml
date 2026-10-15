@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (vector from the Figma "Pick location" frames, section 04, #111). -->
+<!-- The pin at the center of the picker's map; its tip, at (24, 54), marks the picked spot. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="48dp" android:height="56dp" android:viewportWidth="48" android:viewportHeight="56">
+    <path android:pathData="M24,54C24,54 6,38 6,24C6,19.2261 7.89642,14.6477 11.2721,11.2721C14.6477,7.89642 19.2261,6 24,6C28.7739,6 33.3523,7.89642 36.7279,11.2721C40.1036,14.6477 42,19.2261 42,24C42,38 24,54 24,54Z"
+        android:fillColor="#D6303A" android:strokeColor="#FFFFFF" android:strokeWidth="4" />
+    <path android:pathData="M24,31C27.866,31 31,27.866 31,24C31,20.134 27.866,17 24,17C20.134,17 17,20.134 17,24C17,27.866 20.134,31 24,31Z"
+        android:fillColor="#FFFFFF" />
+</vector>

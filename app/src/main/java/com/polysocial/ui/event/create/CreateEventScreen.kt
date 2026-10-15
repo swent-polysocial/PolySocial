@@ -1,5 +1,5 @@
 // Contributors: Claude (drafted the Create Event screen and restyled it from the Figma, section 04,
-// following the Log in and profile screens).
+// following the Log in and profile screens; opens the location picker, #111).
 package com.polysocial.ui.event.create
 
 import androidx.activity.compose.BackHandler
@@ -50,6 +50,7 @@ import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -99,21 +100,59 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
 /**
+ * Shows the location picker for one opening ([session]), starting on [initial] (the form's place).
+ * Tests replace it, because the real one needs Hilt and the native map.
+ */
+typealias LocationPickerSlot =
+    @Composable
+    (
+        session: Int,
+        initial: PickedLocation?,
+        onBack: () -> Unit,
+        onPicked: (PickedLocation) -> Unit,
+    ) -> Unit
+
+/** The real picker, with a new ViewModel for each opening, so a cancelled one leaves nothing. */
+private val DefaultLocationPicker: LocationPickerSlot = { session, initial, onBack, onPicked ->
+  LocationPickerRoute(
+      initial = initial,
+      onBack = onBack,
+      onPicked = onPicked,
+      viewModel = hiltViewModel(key = "location-picker-$session"),
+  )
+}
+
+/**
  * The Create Event screen: the form, then the "Event created" confirmation.
  *
- * The location picker (a Mapbox map, set up in its own task) isn't built yet: [onPickLocation] is
- * where it will open, and it reports the picked place to [CreateEventViewModel.onLocationPick].
+ * The Location field opens the location picker (#111) full screen over the form: "Use this
+ * location" fills the field through [CreateEventViewModel.onLocationPick], and Back returns to the
+ * form unchanged. Whether the picker is open survives a rotation.
  */
 @Composable
 fun CreateEventScreen(
     onClose: () -> Unit,
-    onPickLocation: () -> Unit,
     onViewEvent: (eventId: String) -> Unit,
     onBackToMap: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: CreateEventViewModel = hiltViewModel(),
+    locationPicker: LocationPickerSlot = DefaultLocationPicker,
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
+  var picking by rememberSaveable { mutableStateOf(false) }
+  var pickerSession by rememberSaveable { mutableIntStateOf(0) }
+  if (picking) {
+    locationPicker(
+        pickerSession,
+        state.form.location,
+        { picking = false },
+        { picked ->
+          viewModel.onLocationPick(picked)
+          picking = false
+        },
+    )
+    return
+  }
   when (val status = state.status) {
     is CreateEventStatus.Created ->
         EventCreated(status, onClose, onViewEvent = { onViewEvent(status.eventId) }, onBackToMap)
@@ -132,7 +171,10 @@ fun CreateEventScreen(
                     onVisibilityChange = viewModel::onVisibilityChange,
                     onSubmit = viewModel::onSubmit,
                     onClose = onClose,
-                    onPickLocation = onPickLocation,
+                    onPickLocation = {
+                      pickerSession++
+                      picking = true
+                    },
                 ),
             modifier = modifier,
         )

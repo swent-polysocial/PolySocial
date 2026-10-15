@@ -110,8 +110,6 @@ fun AppShell(
     createEventContent: @Composable (CreateEventNavigation) -> Unit = { navigation ->
       CreateEventScreen(
           onClose = navigation.onClose,
-          // TODO(#111): open the location picker.
-          onPickLocation = {},
           onViewEvent = navigation.onViewEvent,
           onBackToMap = navigation.onBackToMap,
       )
