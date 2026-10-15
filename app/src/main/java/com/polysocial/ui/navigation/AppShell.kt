@@ -124,7 +124,12 @@ fun AppShell(
       EventDetailRoute(onBack = onBack)
     },
     onLoggedOut: () -> Unit = {},
-    profileContent: @Composable (() -> Unit) -> Unit = { done -> ProfileRoute(done) },
+    profileContent: @Composable (() -> Unit) -> Unit = { done ->
+      ProfileRoute(
+          onLoggedOut = done,
+          onOpenPrivacy = dropUnlessResumed { navController.navigate(Tab.PROFILE.privacyRoute) },
+      )
+    },
 ) {
   val backStackEntry by navController.currentBackStackEntryAsState()
   val destination = backStackEntry?.destination

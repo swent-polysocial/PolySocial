@@ -1,5 +1,5 @@
 // Contributors: OpenAI Codex (privacy navigation, unavailable actions, font scaling and render QA,
-// #103).
+// #103; privacy and confirmed logout integration after rebase).
 package com.polysocial.ui.profile
 
 import android.content.Context
@@ -89,6 +89,27 @@ class PrivacyScreenTest {
     rule.onNodeWithTag(C.Tag.privacy_back).performClick()
     rule.onNodeWithTag(C.Tag.profile_privacy_entry).assertIsDisplayed()
     rule.onNodeWithTag(C.Tag.nav_item_profile).assertIsSelected()
+  }
+
+  @Test
+  fun returningFromPrivacyPreservesLogoutConfirmationAndCancel() {
+    openFromProfile()
+    rule.onNodeWithTag(C.Tag.privacy_back).performClick()
+    rule.onNodeWithTag(ProfileTags.Logout).performClick()
+    rule.onNodeWithTag(ProfileTags.Dialog).assertIsDisplayed()
+    rule.onNodeWithTag(ProfileTags.Cancel).performClick()
+    rule.onNodeWithTag(ProfileTags.Dialog).assertDoesNotExist()
+    rule.onNodeWithTag(C.Tag.profile_privacy_entry).performClick()
+    rule.onNodeWithTag(C.Tag.privacy_heading).assertIsDisplayed()
+    rule.onNodeWithTag(C.Tag.privacy_back).performClick()
+    rule.onNodeWithTag(ProfileTags.Logout).assertIsDisplayed()
+  }
+
+  @Test
+  fun profileWithoutAPrivacyDestinationDoesNotExposeADeadAction() {
+    rule.activity.setContent { PolySocialTheme { ProfileScreen(LogoutState.Idle, {}, {}, {}) } }
+    rule.onNodeWithTag(C.Tag.profile_privacy_entry).assertDoesNotExist()
+    rule.onNodeWithTag(ProfileTags.Logout).assertIsDisplayed()
   }
 
   @Test
