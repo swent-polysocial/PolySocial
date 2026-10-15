@@ -64,6 +64,11 @@ class AuthFlowTest {
     }
   }
 
+  private fun verificationModel() =
+      VerifyEmailViewModel(auth, MemoryVerificationStore(), VerificationClock { 1000 }).also {
+        verificationModels.add(it)
+      }
+
   private lateinit var start: AppStartViewModel
 
   private fun launch() {
@@ -90,11 +95,13 @@ class AuthFlowTest {
     profiles.getProfileResult =
         ProfileResult.Found(UserProfile(user.uid, user.email, "Test Student", "IN", "BA1"))
     val start = AppStartViewModel(auth, profiles)
+    val verification = verificationModel()
     val currentSignUp = mutableStateOf(signUp)
     val currentLogin = mutableStateOf(login)
     compose.setContent {
       PolySocialTheme {
-        AuthFlow(currentSignUp.value, { exits++ }, currentLogin.value, start) { done ->
+        AuthFlow(currentSignUp.value, { exits++ }, currentLogin.value, start, verification) { done
+          ->
           TextButton(
               {
                 auth.logOut()
@@ -140,10 +147,11 @@ class AuthFlowTest {
     profiles.getProfileResult =
         ProfileResult.Found(UserProfile(user.uid, user.email, "Test Student", "IN", "BA1"))
     val start = AppStartViewModel(auth, profiles)
+    val verification = verificationModel()
     val currentStart = mutableStateOf(start)
     compose.setContent {
       PolySocialTheme {
-        AuthFlow(signUp, { exits++ }, login, currentStart.value) {
+        AuthFlow(signUp, { exits++ }, login, currentStart.value, verification) {
           Text("Signed in", Modifier.testTag("signed_in"))
         }
       }
@@ -176,9 +184,10 @@ class AuthFlowTest {
     profiles.getProfileResult =
         ProfileResult.Found(UserProfile(user.uid, user.email, "Test Student", "IN", "BA1"))
     val start = AppStartViewModel(auth, profiles)
+    val verification = verificationModel()
     compose.setContent {
       PolySocialTheme {
-        AuthFlow(signUp, { exits++ }, login, start) {
+        AuthFlow(signUp, { exits++ }, login, start, verification) {
           AppShell(
               eventsContent = { TabRootScreen(Tab.EVENTS) },
               profileContent = { TabRootScreen(Tab.PROFILE) },
@@ -201,7 +210,10 @@ class AuthFlowTest {
   @Test
   fun refreshDuringSignedOutSignUpPreservesTheActiveForm() {
     val start = AppStartViewModel(auth, profiles)
-    compose.setContent { PolySocialTheme { AuthFlow(signUp, { exits++ }, login, start) {} } }
+    val verification = verificationModel()
+    compose.setContent {
+      PolySocialTheme { AuthFlow(signUp, { exits++ }, login, start, verification) {} }
+    }
     compose.onNodeWithTag(WelcomeTags.SignUp).performScrollTo().performClick()
     compose.onNodeWithTag(SignUpTags.input(SignUpField.FullName)).performTextInput("Test Student")
     compose.runOnIdle { start.refresh() }

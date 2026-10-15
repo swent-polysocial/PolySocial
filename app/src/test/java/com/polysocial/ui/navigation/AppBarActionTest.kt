@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (inject Profile placeholder after logout rebase, #109).
 // Contributors: Claude (UI tests for the app bar actions, #84).
 package com.polysocial.ui.navigation
 
@@ -34,6 +35,7 @@ class AppBarActionTest {
       PolySocialTheme {
         AppShell(
             eventsContent = { TabRootScreen(Tab.EVENTS) },
+            profileContent = { TabRootScreen(Tab.PROFILE) },
             mapContent = { _, _ -> TabRootScreen(Tab.MAP) },
         )
       }

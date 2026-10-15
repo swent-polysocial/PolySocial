@@ -1,10 +1,11 @@
-// Contributors: OpenAI Codex (device confirmation, cancellation and Back proof with fakes, #109).
+// Contributors: OpenAI Codex (device logout proof with fakes and verification wiring, #109).
 package com.polysocial.ui.profile
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.auth.*
 import com.polysocial.model.firebase.*
@@ -39,6 +40,13 @@ class LogoutDeviceTest {
         override suspend fun logIn(email: String, password: String): LogInResult =
             error("Unexpected login in this test")
 
+        override suspend fun sendVerificationEmail(): SendVerificationResult =
+            error("Unexpected verification email in this test")
+
+        override suspend fun reloadAndCheckVerified(): VerificationResult =
+            if (user?.isEmailVerified == true) VerificationResult.Verified
+            else VerificationResult.NotSignedIn
+
         override suspend fun signUp(
             fullName: String,
             email: String,
@@ -72,7 +80,14 @@ class LogoutDeviceTest {
     val start = AppStartViewModel(auth, profiles)
     compose.setContent {
       PolySocialTheme {
-        AuthFlow(signup, { exits++ }, login, start) { done ->
+        val verification: VerifyEmailViewModel = viewModel {
+          VerifyEmailViewModel(
+              auth,
+              PreferencesVerificationStore(ApplicationProvider.getApplicationContext()),
+              VerificationClock { 1000 },
+          )
+        }
+        AuthFlow(signup, { exits++ }, login, start, verification) { done ->
           AppShell(
               eventsContent = { TabRootScreen(Tab.EVENTS) },
               onLoggedOut = done,
