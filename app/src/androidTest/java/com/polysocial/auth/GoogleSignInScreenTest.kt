@@ -64,6 +64,12 @@ class GoogleSignInScreenTest {
     val login = LoginViewModel(auth)
     val welcome = WelcomeViewModel(auth)
     val profile = ProfileSetupViewModel(auth, profiles)
+    val verification =
+        com.polysocial.ui.auth.VerifyEmailViewModel(
+            auth,
+            mockk(),
+            com.polysocial.model.auth.VerificationClock { 1000 },
+        )
     compose.setContent {
       PolySocialTheme {
         AuthFlow(
@@ -71,6 +77,7 @@ class GoogleSignInScreenTest {
             {},
             login,
             start,
+            verificationViewModel = verification,
             welcomeViewModel = welcome,
             profileSetupViewModel = profile,
             signedInContent = {

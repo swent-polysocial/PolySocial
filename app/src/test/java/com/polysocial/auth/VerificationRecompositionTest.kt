@@ -1,5 +1,6 @@
 // Contributors: OpenAI Codex (replacement-session callback and lifecycle-observer regression
 // test for verification navigation, #31).
+// Contributors: OpenAI Codex (preserved per-session injection after PR #168 rebase).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -53,6 +54,8 @@ class VerificationRecompositionTest {
       val login: LoginViewModel,
       val start: AppStartViewModel,
       val verification: VerifyEmailViewModel,
+      val welcome: com.polysocial.ui.auth.WelcomeViewModel,
+      val profile: com.polysocial.ui.profile.ProfileSetupViewModel,
   )
 
   private fun session(uid: String): Session {
@@ -65,9 +68,13 @@ class VerificationRecompositionTest {
             LoginViewModel(auth),
             AppStartViewModel(auth, FakeUserProfileRepository()),
             VerifyEmailViewModel(auth, store, VerificationClock { 100_000 }),
+            com.polysocial.ui.auth.WelcomeViewModel(auth),
+            com.polysocial.ui.profile.ProfileSetupViewModel(auth, FakeUserProfileRepository()),
         )
         .also {
-          models.addAll(listOf(it.signup, it.login, it.start, it.verification))
+          models.addAll(
+              listOf(it.signup, it.login, it.start, it.verification, it.welcome, it.profile)
+          )
           it.signup.update(SignUpField.FullName, "Test Student")
           it.login.onEmailChange(user.email)
         }
@@ -94,7 +101,8 @@ class VerificationRecompositionTest {
             current.login,
             current.start,
             current.verification,
-            remember(current) { ProfileSetupViewModel(current.auth, FakeUserProfileRepository()) },
+            welcomeViewModel = current.welcome,
+            profileSetupViewModel = current.profile,
         )
       }
     }

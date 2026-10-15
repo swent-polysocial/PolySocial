@@ -41,6 +41,8 @@ class GoogleAuthFlowTest {
   private val login = LoginViewModel(auth)
   private val signUp = SignUpViewModel(auth)
   private val profile = ProfileSetupViewModel(auth, profiles)
+  private val verification =
+      VerifyEmailViewModel(auth, MemoryVerificationStore(), VerificationClock { 1000 })
   private val restore = StateRestorationTester(compose)
 
   private fun launch(existing: Boolean = false) {
@@ -64,6 +66,7 @@ class GoogleAuthFlowTest {
             {},
             login,
             start,
+            verificationViewModel = verification,
             welcomeViewModel = welcome,
             profileSetupViewModel = profile,
             signedInContent = {

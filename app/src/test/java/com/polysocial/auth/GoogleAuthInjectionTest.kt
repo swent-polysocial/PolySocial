@@ -32,6 +32,8 @@ class GoogleAuthInjectionTest {
   private val profiles = FakeUserProfileRepository()
   @BindValue @JvmField val authBinding: AuthRepository = auth
   @BindValue @JvmField val profileBinding: UserProfileRepository = profiles
+  @BindValue @JvmField val verificationStore: VerificationStore = MemoryVerificationStore()
+  @BindValue @JvmField val verificationClock: VerificationClock = VerificationClock { 1000 }
   @get:Rule(order = 0) val hilt = HiltAndroidRule(this)
   @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
 

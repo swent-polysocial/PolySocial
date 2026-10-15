@@ -107,7 +107,7 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 
 Closed issues keep their original text, so where one disagrees with this section, this section wins. #31 still names a shared `AuthViewModel`; follow "Names fixed by Sprint 1 issues" above.
 
-- **Google entry (#107):** new verified Google users enter the existing profile form with name/email prefilled; existing users use the shared startup profile lookup. Error screens use two columns in wide, short windows, like Verify Email (#99), and Back returns to the original auth screen. Cancellation is silent. Google uses Firebase-managed account linking; no original-method error screen is shown. Unexpected failures offer Try again. The real profile form replaces the startup marker here; broader navigation/reset work in #144 and Verify Email #99 still need reconciliation when those PRs land.
+- **Google entry (#107):** new verified Google users enter the existing profile form with name/email prefilled; existing users use the shared startup profile lookup. Error screens use two columns in wide, short windows, like Verify Email (#99), and Back returns to the original auth screen. Cancellation is silent. Google uses Firebase-managed account linking; no original-method error screen is shown. Unexpected failures offer Try again. The real profile form replaces the startup marker here and is shared with the Verify Email flow on main; broader navigation/reset work remains in #144.
 
 ## Traps
 
