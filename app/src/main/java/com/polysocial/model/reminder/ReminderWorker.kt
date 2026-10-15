@@ -1,5 +1,5 @@
 // Contributors: Claude Opus 5.5 (reminder worker and notification, from the Figma frame
-// "Reminder · system notification", #123).
+// "Reminder · system notification", #123; time left after review).
 package com.polysocial.model.reminder
 
 import android.Manifest
@@ -56,8 +56,9 @@ internal fun eventReminderFrom(data: Data): EventReminder? {
 }
 
 /**
- * Posts an event's reminder: the title says the event starts in 1 h, and the text gives its day,
- * time and place, as in the Figma frame "Reminder · system notification". Tapping it opens the app.
+ * Posts an event's reminder: the title says the event starts in 1 h (or the time actually left, see
+ * [timeLeft]), and the text gives its day, time and place, as in the Figma frame "Reminder · system
+ * notification". Tapping it opens the app.
  *
  * Nothing is posted if the event has already started (the device was off when the reminder was due)
  * or if the student doesn't allow notifications. WorkManager creates this worker with the device's
@@ -104,11 +105,23 @@ constructor(
       NotificationCompat.Builder(applicationContext, REMINDER_CHANNEL_ID)
           .setSmallIcon(R.drawable.ic_notification_reminder)
           .setColor(ContextCompat.getColor(applicationContext, R.color.accent))
-          .setContentTitle(applicationContext.getString(R.string.reminder_title, reminder.title))
+          .setContentTitle(title(reminder))
           .setContentText(whenAndWhere(reminder))
           .setContentIntent(openApp())
           .setAutoCancel(true)
           .build()
+
+  private fun title(reminder: EventReminder): String =
+      when (val left = timeLeft(reminder.startTime, clock.instant())) {
+        is TimeLeft.Minutes ->
+            applicationContext.getString(
+                R.string.reminder_title_minutes,
+                reminder.title,
+                left.minutes,
+            )
+        is TimeLeft.Hours ->
+            applicationContext.getString(R.string.reminder_title_hours, reminder.title, left.hours)
+      }
 
   private fun whenAndWhere(reminder: EventReminder): String {
     val start = reminder.startTime.atZone(clock.zone)

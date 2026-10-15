@@ -1,4 +1,4 @@
-// Contributors: Claude Opus 5.5 (wrote these tests, #123).
+// Contributors: Claude Opus 5.5 (wrote these tests, #123; late reminder title after review).
 package com.polysocial.model.reminder
 
 import android.Manifest
@@ -107,11 +107,23 @@ class ReminderWorkerTest {
   }
 
   @Test
-  fun aReminderRunningLate_showsTheDate() = runTest {
-    // WorkManager may run late, for example after a long time without power.
+  fun aReminderRunningLate_saysTheMinutesLeft() = runTest {
+    // WorkManager's delay is a minimum: the system may run the reminder later than 19:00.
+    run(balelec.toWorkData(), at = Instant.parse("2026-10-03T17:50:00Z"))
+
+    val notification = notifications.single()
+    assertEquals("Balélec warm-up starts in 10 min", notification.title())
+    assertEquals("Today 20:00 · Satellite, EPFL", notification.text())
+  }
+
+  @Test
+  fun anEventOnALaterDay_showsItsDate() = runTest {
+    // Only if the device's clock moved back after the reminder was scheduled.
     run(balelec.toWorkData(), at = Instant.parse("2026-10-01T17:00:00Z"))
 
-    assertEquals("Sat 3 Oct 20:00 · Satellite, EPFL", notifications.single().text())
+    val notification = notifications.single()
+    assertEquals("Balélec warm-up starts in 49 h", notification.title())
+    assertEquals("Sat 3 Oct 20:00 · Satellite, EPFL", notification.text())
   }
 
   @Test
