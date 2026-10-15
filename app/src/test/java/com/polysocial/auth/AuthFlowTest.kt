@@ -1,5 +1,6 @@
 // Contributors: OpenAI Codex (session loss during router replacement and Profile placeholder in
 // shell tests; logout uses replacement verification/profile state and startup router, #109).
+// Contributors: OpenAI Codex (verification rerouting regressions from app and loading, #109).
 // Contributors: OpenAI Codex (tested startup/session routing, profile failure recovery and system
 // Back handoffs and verification/profile integration); Claude (signed-in shell without Hilt, #105;
 // signed-out back stack, profile step, sign-out and Figma start states, #74; sign-out from
@@ -93,6 +94,63 @@ class AuthFlowTest {
         }
       }
     }
+  }
+
+  @Test
+  fun unverifiedSessionReplacesTheOpenAppAndBackSignsOut() {
+    auth.user = user
+    profiles.getProfileResult =
+        ProfileResult.Found(UserProfile(user.uid, user.email, "Test Student", "IN", "BA1"))
+    launch()
+    compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
+    compose.runOnIdle {
+      auth.user = user.copy(isEmailVerified = false)
+      start.refresh()
+    }
+    compose.onNodeWithTag(VerifyEmailTags.Screen).assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.app_shell).assertDoesNotExist()
+    assertEquals(1, profiles.getProfileCalls)
+    pressSystemBack()
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    assertNull(auth.currentUser())
+    assertEquals(1, auth.logOutCalls)
+    pressSystemBack()
+    assertEquals(1, exits)
+  }
+
+  @Test
+  fun unverifiedReplacementDuringProfileLoadingIgnoresTheLateProfileResult() {
+    auth.user = user
+    val pendingProfile = CompletableDeferred<Unit>()
+    profiles.getProfileResult =
+        ProfileResult.Found(UserProfile(user.uid, user.email, "Test Student", "IN", "BA1"))
+    val currentStart = mutableStateOf(AppStartViewModel(auth, profiles))
+    val verification = verificationModel()
+    compose.setContent {
+      PolySocialTheme {
+        AuthFlow(signUp, { exits++ }, login, currentStart.value, verification, profileSetup) {
+          Text("Signed in", Modifier.testTag("signed_in"))
+        }
+      }
+    }
+    compose.onNodeWithTag("signed_in").assertIsDisplayed()
+    compose.runOnIdle {
+      profiles.gate = pendingProfile
+      currentStart.value.refresh()
+    }
+    compose.onNodeWithTag(C.Tag.loading_state).assertIsDisplayed()
+    compose.runOnIdle {
+      auth.user = user.copy(isEmailVerified = false)
+      currentStart.value = AppStartViewModel(auth, profiles)
+    }
+    compose.onNodeWithTag(VerifyEmailTags.Screen).assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.loading_state).assertDoesNotExist()
+    compose.runOnIdle { pendingProfile.complete(Unit) }
+    compose.onNodeWithTag(VerifyEmailTags.Screen).assertIsDisplayed()
+    compose.onNodeWithTag("signed_in").assertDoesNotExist()
+    assertEquals(2, profiles.getProfileCalls)
+    assertEquals(0, auth.logOutCalls)
+    assertEquals(false, auth.currentUser()?.isEmailVerified)
   }
 
   @Test
