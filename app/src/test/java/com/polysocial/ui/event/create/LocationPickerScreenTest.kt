@@ -1,4 +1,5 @@
-// Contributors: Claude (wrote these tests for the location picker screen, #111).
+// Contributors: Claude (wrote these tests for the location picker screen, #111; pin tip after
+// review).
 package com.polysocial.ui.event.create
 
 import android.app.Application
@@ -11,6 +12,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
@@ -19,6 +21,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
@@ -164,6 +167,16 @@ class LocationPickerScreenTest {
     node(LocationPickerTags.result(1)).performClick()
 
     assertEquals(NO_ADDRESS, selected)
+  }
+
+  @Test
+  fun thePinsTip_marksTheMapsCenter() {
+    show(access)
+
+    val screen = node(LocationPickerTags.SCREEN).getUnclippedBoundsInRoot()
+    val pin = node(LocationPickerTags.PIN).getUnclippedBoundsInRoot()
+    // The vector's tip is 54 dp down its 56 dp; the map reports its center as the picked spot.
+    assertEquals((screen.top + screen.bottom) / 2, pin.top + 54.dp)
   }
 
   @Test
