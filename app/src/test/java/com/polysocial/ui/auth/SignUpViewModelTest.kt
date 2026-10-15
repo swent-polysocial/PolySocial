@@ -1,5 +1,6 @@
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; tested sign-up state and failure paths with
-// the shared fake and MainDispatcherRule; cancellation recovery and cleared-password handoff).
+// the shared fake and MainDispatcherRule; cancellation recovery and cleared-password handoff);
+// Claude (reset after a sign-out, #74).
 package com.polysocial.ui.auth
 
 import com.polysocial.model.auth.AuthUser
@@ -264,5 +265,20 @@ class SignUpViewModelTest {
         SignUpField.entries.forEach { assertNull(viewModel.uiState.value.visibleError(it)) }
         assertFalse(viewModel.uiState.value.canSubmit)
         assertEquals(2, repository.signUpCalls)
+      }
+
+  @Test
+  fun reset_afterASignUp_startsAnEmptyIdleForm() =
+      runTest(dispatcher) {
+        validForm()
+        viewModel.signUp()
+        runCurrent()
+        assertEquals(SignUpStatus.SignedUp(user), viewModel.uiState.value.status)
+
+        viewModel.reset()
+
+        // A kept SignedUp status would send the next visit straight to Verify Email.
+        assertEquals(SignUpUiState(), viewModel.uiState.value)
+        assertEquals(1, repository.signUpCalls)
       }
 }

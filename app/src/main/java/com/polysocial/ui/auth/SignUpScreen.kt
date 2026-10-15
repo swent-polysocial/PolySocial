@@ -2,7 +2,8 @@
 // Foundation, reusing the shared app theme; connected login and added the official Google
 // placeholder button; connected the welcome entry screen and app-start/profile routing;
 // preserved submission handoffs on Back and aligned form hints, loading and recovery layout);
-// Claude (injectable signed-in content, so tests run without Hilt, #105).
+// Claude (injectable signed-in content, so tests run without Hilt, #105; signed-out back stack,
+// profile step, sign-out and Figma start states, #74).
 // OpenAI Codex (verification routing, Back sign-out and replacement-session
 // entry and stable current-model callbacks for #31);
 // OpenAI Codex (password recovery destination and Back routing for #164).
@@ -22,13 +23,12 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,11 +55,16 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
 import com.polysocial.model.auth.*
+import com.polysocial.ui.common.ErrorState
+import com.polysocial.ui.common.LoadingState
 import com.polysocial.ui.login.LoginScreen
 import com.polysocial.ui.login.LoginViewModel
 import com.polysocial.ui.navigation.AppShell
+import com.polysocial.ui.profile.ProfileSetupScreen
+import com.polysocial.ui.profile.ProfileSetupViewModel
 import com.polysocial.ui.start.AppStartViewModel
 import com.polysocial.ui.start.StartDestination
+import com.polysocial.ui.theme.Bg
 import com.polysocial.ui.theme.Disabled
 import com.polysocial.ui.theme.Success
 import kotlinx.coroutines.launch
@@ -118,8 +123,26 @@ private enum class AuthDestination {
   SignedIn,
 }
 
+/** Saves the signed-out back stack as the destinations' names. */
+private val BackStackSaver =
+    listSaver<List<AuthDestination>, String>(
+        save = { stack -> stack.map { it.name } },
+        restore = { names -> names.map(AuthDestination::valueOf) },
+    )
+
 /**
- * Connects auth screens and verification to shared session/profile routing.
+ * The app's entry point (#74): follows [AppStartViewModel] to the app-start loading or error state,
+ * Verify Email, the profile step or the app shell, and moves between the signed-out screens
+ * (Welcome, Sign up and Log in). Verify Email is #31's screen, with its own ViewModel.
+ *
+ * The signed-out screens keep a small back stack, so Back returns to the screen the user came from.
+ * Opening a screen that is already in the stack goes back to it instead of adding it again (Sign up
+ * and Log in link to each other). Leaving the signed-out screens clears the stack, so Back from
+ * Verify Email or the app never returns to a form that would redirect again.
+ *
+ * Signing out goes through [AppStartViewModel.logOut], from anywhere (Back on the profile step, Log
+ * out in the app, #109). Whatever started it, the move to the signed-out start resets the forms and
+ * the profile step, which outlive their screens, and returns to Welcome with an empty stack.
  *
  * @param signedInContent the app once the user is signed in. Tests replace it, because the real
  *   [AppShell] needs Hilt.
@@ -131,13 +154,40 @@ fun AuthFlow(
     loginViewModel: LoginViewModel = hiltViewModel(),
     startViewModel: AppStartViewModel = hiltViewModel(),
     verificationViewModel: VerifyEmailViewModel = hiltViewModel(),
+    profileSetupViewModel: ProfileSetupViewModel = hiltViewModel(),
     recoveryViewModel: PasswordRecoveryViewModel? = null,
     signedInContent: @Composable () -> Unit = { AppShell() },
 ) {
-  var destination by rememberSaveable { mutableStateOf(AuthDestination.Loading) }
+  // A session that needs no profile read is resolved at once, so it opens on its screen instead
+  // of showing "Loading your profile…" for the first frame.
+  var destination by rememberSaveable {
+    mutableStateOf(
+        when (startViewModel.destination.value) {
+          StartDestination.Login -> AuthDestination.Welcome
+          StartDestination.VerifyEmail -> AuthDestination.VerifyEmail
+          else -> AuthDestination.Loading
+        }
+    )
+  }
+  var backStack by
+      rememberSaveable(stateSaver = BackStackSaver) { mutableStateOf(emptyList<AuthDestination>()) }
   var startupApplied by rememberSaveable { mutableStateOf(false) }
+  // Whether the start destination last applied was Login (null before the first), to tell a
+  // sign-out (a move to Login) from a recreation, which applies the current one again.
+  var lastStartWasLogin by rememberSaveable { mutableStateOf<Boolean?>(null) }
   val startDestination by startViewModel.destination.collectAsStateWithLifecycle()
   LaunchedEffect(startDestination) {
+    val wasLogin = lastStartWasLogin
+    lastStartWasLogin = startDestination == StartDestination.Login
+    if (startDestination == StartDestination.Login && wasLogin == false) {
+      // Signed out: nothing of the previous account may stay in the forms or the profile step.
+      viewModel.reset()
+      loginViewModel.reset()
+      profileSetupViewModel.reset()
+      backStack = emptyList()
+      destination = AuthDestination.Welcome
+      return@LaunchedEffect
+    }
     // Preserve the active auth screen on recreation, including Back from verification.
     // Fresh launches still resolve the session.
     if (
@@ -146,7 +196,7 @@ fun AuthFlow(
                 startDestination != StartDestination.VerifyEmail) ||
             destination == AuthDestination.Loading
     ) {
-      destination =
+      val target =
           when (startDestination) {
             StartDestination.Loading -> AuthDestination.Loading
             StartDestination.Login -> AuthDestination.Welcome
@@ -155,6 +205,12 @@ fun AuthFlow(
             StartDestination.Main -> AuthDestination.SignedIn
             StartDestination.Error -> AuthDestination.Error
           }
+      // A step left half-done (or already saved) before must not come back: open it fresh.
+      if (target == AuthDestination.ProfileSetup && destination != AuthDestination.ProfileSetup) {
+        profileSetupViewModel.reset()
+      }
+      destination = target
+      backStack = emptyList()
       if (startDestination != StartDestination.Loading) startupApplied = true
     }
   }
@@ -180,66 +236,69 @@ fun AuthFlow(
     if (verificationState.verified) startViewModel.refresh()
   }
   var recoveryInitialized by rememberSaveable { mutableStateOf(false) }
-  var loginOrigin by rememberSaveable { mutableStateOf(AuthDestination.Welcome) }
   val backFromVerification = {
     latestVerificationViewModel.changeAddress()
     viewModel.reset()
     loginViewModel.reset()
-    loginOrigin = AuthDestination.Welcome
+    backStack = emptyList()
     startViewModel.refresh()
     destination = AuthDestination.Welcome
   }
+  fun open(target: AuthDestination) {
+    // A double tap reports the same screen twice; it must not be stacked on itself.
+    if (target == destination) return
+    backStack =
+        if (target in backStack) backStack.takeWhile { it != target } else backStack + destination
+    destination = target
+  }
+  fun back() {
+    destination = backStack.lastOrNull() ?: AuthDestination.Welcome
+    backStack = backStack.dropLast(1)
+  }
+  fun verifyEmail() {
+    backStack = emptyList()
+    destination = AuthDestination.VerifyEmail
+    // Also routes the start there, so a sign-out from Verify Email is a move to Login like any
+    // other.
+    startViewModel.onVerificationNeeded()
+  }
   BackHandler(destination != AuthDestination.Welcome && destination != AuthDestination.SignedIn) {
     when (destination) {
-      AuthDestination.ProfileSetup,
-      AuthDestination.Loading,
-      AuthDestination.Error -> onExit()
+      AuthDestination.SignUp,
+      AuthDestination.LogIn -> back()
+      AuthDestination.ProfileSetup -> startViewModel.logOut()
       AuthDestination.VerifyEmail -> backFromVerification()
-      AuthDestination.LogIn -> destination = loginOrigin
-      AuthDestination.PasswordRecovery -> destination = AuthDestination.LogIn
-      else -> destination = AuthDestination.Welcome
+      AuthDestination.PasswordRecovery -> back()
+      else -> onExit()
     }
   }
   when (destination) {
     AuthDestination.Loading ->
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-          CircularProgressIndicator(Modifier.semantics { testTag = "auth_start_loading" })
-        }
+        LoadingState(stringResource(R.string.app_start_loading), Modifier.background(Bg))
     AuthDestination.Error ->
-        Column(Modifier.safeDrawingPadding()) {
-          Label(
-              stringResource(R.string.auth_start_error),
-              Modifier.semantics { testTag = "auth_start_error" },
-          )
-          Button(
-              onClick = startViewModel::refresh,
-              modifier = Modifier.semantics { testTag = "auth_start_retry" },
-          ) {
-            Label(stringResource(R.string.auth_start_retry))
-          }
-        }
+        ErrorState(
+            title = stringResource(R.string.app_start_error_title),
+            message = stringResource(R.string.app_start_error_message),
+            onRetry = startViewModel::refresh,
+            modifier = Modifier.background(Bg),
+        )
     AuthDestination.ProfileSetup ->
-        Label(
-            stringResource(R.string.auth_profile_setup),
-            Modifier.safeDrawingPadding().semantics { testTag = "auth_profile_setup" },
+        ProfileSetupScreen(
+            onBack = startViewModel::logOut,
+            onProfileSaved = startViewModel::onProfileCreated,
+            viewModel = profileSetupViewModel,
         )
     AuthDestination.Welcome ->
         WelcomeScreen(
-            onSignUp = { destination = AuthDestination.SignUp },
-            onLogIn = {
-              loginOrigin = AuthDestination.Welcome
-              destination = AuthDestination.LogIn
-            },
+            onSignUp = { open(AuthDestination.SignUp) },
+            onLogIn = { open(AuthDestination.LogIn) },
         )
     AuthDestination.SignUp ->
         SignUpRoute(
             viewModel,
-            onSignedUp = { destination = AuthDestination.VerifyEmail },
-            onLogIn = {
-              loginOrigin = AuthDestination.SignUp
-              destination = AuthDestination.LogIn
-            },
-            onBack = { destination = AuthDestination.Welcome },
+            onSignedUp = { verifyEmail() },
+            onLogIn = { open(AuthDestination.LogIn) },
+            onBack = ::back,
         )
     AuthDestination.VerifyEmail ->
         VerifyEmailScreen(
@@ -249,7 +308,7 @@ fun AuthFlow(
               latestVerificationViewModel.changeAddress()
               viewModel.reset()
               loginViewModel.reset()
-              loginOrigin = AuthDestination.Welcome
+              backStack = emptyList()
               destination = AuthDestination.SignUp
             },
             onContinue = { latestVerificationViewModel.checkVerified() },
@@ -258,14 +317,14 @@ fun AuthFlow(
         )
     AuthDestination.LogIn ->
         LoginScreen(
-            onBack = { destination = loginOrigin },
+            onBack = ::back,
             onLoggedIn = startViewModel::refresh,
-            onNeedsVerification = { destination = AuthDestination.VerifyEmail },
-            onCreateAccount = { destination = AuthDestination.SignUp },
+            onNeedsVerification = ::verifyEmail,
+            onCreateAccount = { open(AuthDestination.SignUp) },
             viewModel = loginViewModel,
             onForgotPassword = {
               recoveryInitialized = false
-              destination = AuthDestination.PasswordRecovery
+              open(AuthDestination.PasswordRecovery)
             },
         )
     AuthDestination.PasswordRecovery -> {
@@ -278,7 +337,7 @@ fun AuthFlow(
           recoveryInitialized = true
         }
       }
-      PasswordRecoveryRoute(recovery, onBack = { destination = AuthDestination.LogIn })
+      PasswordRecoveryRoute(recovery, onBack = ::back)
     }
     AuthDestination.SignedIn -> signedInContent()
   }

@@ -1,4 +1,5 @@
-// Contributors: Claude (app-start routing for #32; refresh after Log in, not while loading).
+// Contributors: Claude (app-start routing for #32; refresh after Log in, not while loading; log
+// out and the created profile; Verify Email opened in-session, #74).
 package com.polysocial.ui.start
 
 import androidx.lifecycle.ViewModel
@@ -8,6 +9,7 @@ import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.UserProfileRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -44,6 +46,9 @@ constructor(
   private val _destination = MutableStateFlow<StartDestination>(StartDestination.Loading)
   val destination: StateFlow<StartDestination> = _destination.asStateFlow()
 
+  /** The running profile read, cancelled by [logOut] so it can't route the signed-out user. */
+  private var profileRead: Job? = null
+
   init {
     resolve()
   }
@@ -57,14 +62,42 @@ constructor(
     if (_destination.value != StartDestination.Loading) resolve()
   }
 
+  /**
+   * The profile step created the profile (or found that it exists): opens the main app without
+   * reading the profile again. Ignored unless the profile step is the current destination.
+   */
+  fun onProfileCreated() {
+    if (_destination.value == StartDestination.ProfileSetup)
+        _destination.value = StartDestination.Main
+  }
+
+  /**
+   * Sign-up or an unverified log in opened Verify Email in this session: routes there too, so a
+   * later [logOut] moves the destination back to [StartDestination.Login] and the signed-out start
+   * resets the forms. Ignored unless the user was signed out at the start.
+   */
+  fun onVerificationNeeded() {
+    if (_destination.value == StartDestination.Login)
+        _destination.value = StartDestination.VerifyEmail
+  }
+
+  /**
+   * Signs the user out and routes to the signed-out start. A profile read still running is
+   * cancelled, so its result can't open the main app or the profile step afterwards.
+   */
+  fun logOut() {
+    profileRead?.cancel()
+    auth.logOut()
+    _destination.value = StartDestination.Login
+  }
+
   private fun resolve() {
     _destination.value = StartDestination.Loading
     val user = auth.currentUser()
     when {
       user == null -> _destination.value = StartDestination.Login
       !user.isEmailVerified -> _destination.value = StartDestination.VerifyEmail
-      else ->
-          viewModelScope.launch {
+      else -> profileRead = viewModelScope.launch {
             _destination.value =
                 when (profiles.getProfile(user.uid)) {
                   is ProfileResult.Found -> StartDestination.Main

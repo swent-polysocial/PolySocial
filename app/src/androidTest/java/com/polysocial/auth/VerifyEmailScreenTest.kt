@@ -7,6 +7,7 @@ package com.polysocial.auth
 import android.content.res.Configuration
 import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
@@ -53,6 +54,8 @@ import com.polysocial.ui.login.LoginViewModel
 import com.polysocial.ui.navigation.AppShell
 import com.polysocial.ui.navigation.Tab
 import com.polysocial.ui.navigation.TabRootScreen
+import com.polysocial.ui.profile.ProfileSetupTestTags
+import com.polysocial.ui.profile.ProfileSetupViewModel
 import com.polysocial.ui.start.AppStartViewModel
 import com.polysocial.ui.theme.PolySocialTheme
 import io.mockk.clearMocks
@@ -125,6 +128,7 @@ class VerifyEmailScreenTest {
             loginViewModel = login,
             verificationViewModel = vm,
             startViewModel = start,
+            profileSetupViewModel = remember { ProfileSetupViewModel(repository, profiles) },
             signedInContent = { AppShell(eventsContent = { TabRootScreen(Tab.EVENTS) }) },
         )
       }
@@ -172,7 +176,7 @@ class VerifyEmailScreenTest {
         }
     compose.activityRule.scenario.moveToState(Lifecycle.State.CREATED)
     compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
-    compose.onNodeWithTag("auth_profile_setup").assertIsDisplayed()
+    compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertIsDisplayed()
     compose.onNodeWithTag(WelcomeTags.Screen).assertDoesNotExist()
     coVerify(exactly = 0) { repository.logIn(any(), any()) }
     verify(exactly = 0) { repository.logOut() }
@@ -250,7 +254,7 @@ class VerifyEmailScreenTest {
           .isNotEmpty()
     }
     compose.onNodeWithTag(VerifyEmailTags.Banner).assertTextContains(unverifiedMessage)
-    compose.onNodeWithTag("auth_profile_setup").assertDoesNotExist()
+    compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertDoesNotExist()
     coEvery { repository.reloadAndCheckVerified() } answers
         {
           every { repository.currentUser() } returns user.copy(isEmailVerified = true)
@@ -265,9 +269,9 @@ class VerifyEmailScreenTest {
       it()
     }
     compose.waitUntil(timeoutMillis = 5_000) {
-      compose.onAllNodesWithTag("auth_profile_setup").fetchSemanticsNodes().isNotEmpty()
+      compose.onAllNodesWithTag(ProfileSetupTestTags.SCREEN).fetchSemanticsNodes().isNotEmpty()
     }
-    compose.onNodeWithTag("auth_profile_setup").assertIsDisplayed()
+    compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertIsDisplayed()
     coVerify(exactly = 0) { repository.logIn(any(), any()) }
   }
 

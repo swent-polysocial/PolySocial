@@ -1,5 +1,5 @@
 // Contributors: Claude Opus 5.5 (wrote these tests; refresh after Log in; full profile fixture,
-// #34).
+// #34); Claude (log out and the created profile; Verify Email opened in-session, #74).
 package com.polysocial.ui.start
 
 import com.polysocial.model.auth.AuthUser
@@ -195,5 +195,110 @@ class AppStartViewModelTest {
 
     assertEquals(StartDestination.Login, nextLaunch.destination.value)
     assertEquals(1, profiles.getProfileCalls)
+  }
+
+  @Test
+  fun logOut_signsOutAndRoutesToLogin() = runTest {
+    auth.user = verified
+    profiles.getProfileResult = found
+    val viewModel = AppStartViewModel(auth, profiles)
+    advanceUntilIdle()
+    assertEquals(StartDestination.Main, viewModel.destination.value)
+
+    viewModel.logOut()
+
+    assertEquals(StartDestination.Login, viewModel.destination.value)
+    assertEquals(1, auth.logOutCalls)
+    assertEquals(null, auth.currentUser())
+  }
+
+  @Test
+  fun logOutWhileTheProfileIsLoading_ignoresTheLateResult() = runTest {
+    auth.user = verified
+    profiles.getProfileResult = found
+    profiles.gate = CompletableDeferred()
+    val viewModel = AppStartViewModel(auth, profiles)
+    advanceUntilIdle()
+    assertEquals(StartDestination.Loading, viewModel.destination.value)
+
+    viewModel.logOut()
+    profiles.gate?.complete(Unit)
+    advanceUntilIdle()
+
+    // The read finished after the sign-out: it must not open the app for nobody.
+    assertEquals(StartDestination.Login, viewModel.destination.value)
+  }
+
+  @Test
+  fun refreshAfterLogOut_routesTheNextAccount() = runTest {
+    auth.user = verified
+    profiles.getProfileResult = found
+    val viewModel = AppStartViewModel(auth, profiles)
+    advanceUntilIdle()
+    viewModel.logOut()
+
+    auth.user = verified.copy(uid = "u2", email = "b@epfl.ch")
+    profiles.getProfileResult = ProfileResult.NotFound
+    viewModel.refresh()
+    advanceUntilIdle()
+
+    assertEquals(StartDestination.ProfileSetup, viewModel.destination.value)
+    assertEquals("u2", profiles.lastRequestedUid)
+  }
+
+  @Test
+  fun onProfileCreated_opensTheMainAppWithoutReadingTheProfileAgain() = runTest {
+    auth.user = verified
+    profiles.getProfileResult = ProfileResult.NotFound
+    val viewModel = AppStartViewModel(auth, profiles)
+    advanceUntilIdle()
+    assertEquals(StartDestination.ProfileSetup, viewModel.destination.value)
+
+    viewModel.onProfileCreated()
+    advanceUntilIdle()
+
+    assertEquals(StartDestination.Main, viewModel.destination.value)
+    assertEquals(1, profiles.getProfileCalls)
+  }
+
+  @Test
+  fun onProfileCreated_outsideTheProfileStep_changesNothing() = runTest {
+    val viewModel = AppStartViewModel(auth, profiles)
+    advanceUntilIdle()
+    assertEquals(StartDestination.Login, viewModel.destination.value)
+
+    viewModel.onProfileCreated()
+
+    // Only the profile step may open the app this way, never a signed-out user.
+    assertEquals(StartDestination.Login, viewModel.destination.value)
+  }
+
+  @Test
+  fun onVerificationNeeded_whenSignedOut_opensVerifyEmailAndLogOutReturnsToLogin() = runTest {
+    val viewModel = AppStartViewModel(auth, profiles)
+    advanceUntilIdle()
+    assertEquals(StartDestination.Login, viewModel.destination.value)
+
+    viewModel.onVerificationNeeded()
+    assertEquals(StartDestination.VerifyEmail, viewModel.destination.value)
+
+    // The move back to Login is what lets the signed-out start reset the forms.
+    viewModel.logOut()
+    assertEquals(StartDestination.Login, viewModel.destination.value)
+    assertEquals(0, profiles.getProfileCalls)
+  }
+
+  @Test
+  fun onVerificationNeeded_whenSignedIn_changesNothing() = runTest {
+    auth.user = verified
+    profiles.getProfileResult = found
+    val viewModel = AppStartViewModel(auth, profiles)
+    advanceUntilIdle()
+    assertEquals(StartDestination.Main, viewModel.destination.value)
+
+    viewModel.onVerificationNeeded()
+
+    // A verified session must never be sent back to Verify Email.
+    assertEquals(StartDestination.Main, viewModel.destination.value)
   }
 }

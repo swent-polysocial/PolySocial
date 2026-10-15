@@ -50,14 +50,19 @@ App-start routing (#32) decides between the authentication flow and the main app
 flowchart TB
   classDef s1 fill:#d3f9d8,stroke:#2b8a3e,color:#000
   start(["App starts"]) --> gate{"Routing, see 4.3"}:::s1
-  gate -- "not signed in" --> login["Log In"]:::s1
+  gate -- "not signed in" --> welcome["Welcome"]:::s1
+  welcome --> signup["Sign Up"]:::s1
+  welcome --> login["Log In"]:::s1
+  login <-- "Sign up / Log in instead" --> signup
   gate -- "unverified" --> verify["Verify Email"]:::s1
-  login <-- "Sign up / Log in instead" --> signup["Sign Up"]:::s1
   signup -- "created" --> verify
   login -- "unverified" --> verify
+  login -- "verified" --> gate
+  verify -- "Continue" --> gate
+  gate -- "no profile yet" --> profile["Profile step"]:::s1
+  profile -- "saved" --> main
+  profile -- "Back: sign out" --> welcome
   gate -- "ready" --> main(["Main app: 4 tabs"]):::s1
-  login -- "verified" --> main
-  verify -- "Continue" --> main
 ```
 
 ### 2.2 Main app (one back stack per tab)
@@ -253,19 +258,23 @@ sequenceDiagram
   end
 ```
 
-### 4.3 App start routing (#32)
+### 4.3 App start routing (#32, #74)
 
 ```mermaid
 flowchart TD
   classDef s1 fill:#d3f9d8,stroke:#2b8a3e,color:#000
   start(["App starts"]) --> q1{"Signed in?"}
-  q1 -- no --> login["Log In screen"]:::s1
+  q1 -- no --> welcome["Welcome screen"]:::s1
   q1 -- yes --> q2{"Email verified?"}
   q2 -- no --> verify["Verify Email screen"]:::s1
-  q2 -- yes --> q3{"Profile exists?"}
-  q3 -- no --> create["createProfile(), once"]:::s1 --> main["Main app, Events tab"]:::s1
+  q2 -- yes --> load["Loading your profile…<br/>(App start · loading)"]:::s1 --> q3{"Profile exists?"}
+  q3 -- no --> create["Profile step:<br/>createProfile(), once"]:::s1
+  main["Main app, Events tab"]:::s1
+  create -- "saved" --> main
+  create -- "Back: sign out" --> welcome
   q3 -- yes --> main
-  q3 -- "load failed" --> err["Error + Retry<br/>never a blank screen"]:::s1
+  q3 -- "load failed" --> err["Couldn't load your profile<br/>+ Retry, never a blank screen"]:::s1
+  err -- "Retry" --> load
 ```
 
 ### 4.4 Map: public events and distances (#49–#51)
