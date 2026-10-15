@@ -6,7 +6,6 @@
     <string name="app_start_error_title">Couldn\'t load your profile</string>
     <string name="app_start_error_message">Check your connection and try again.</string>
     <string name="retry">Retry</string>
-    <string name="profile_log_out">Log out</string>
     <string name="profile_log_out_title">Log out?</string>
     <string name="profile_log_out_question">Are you sure you want to log out?</string>
     <string name="profile_log_out_cancel">Cancel</string>

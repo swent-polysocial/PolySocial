@@ -51,6 +51,7 @@ class AuthFlowTest {
   private val profiles = FakeUserProfileRepository()
   private val signUp = SignUpViewModel(auth)
   private val login = LoginViewModel(auth)
+  private val profileSetup = ProfileSetupViewModel(auth, profiles)
   private val restoration = StateRestorationTester(compose)
 
   private var exits = 0
@@ -83,7 +84,10 @@ class AuthFlowTest {
     restoration.setContent {
       PolySocialTheme {
         AuthFlow(signUp, { exits++ }, login, start, verification, profileStep) {
-          AppShell(eventsContent = { TabRootScreen(Tab.EVENTS) }, profileContent = { TabRootScreen(Tab.PROFILE) })
+          AppShell(
+              eventsContent = { TabRootScreen(Tab.EVENTS) },
+              profileContent = { TabRootScreen(Tab.PROFILE) },
+          )
         }
       }
     }
@@ -100,8 +104,14 @@ class AuthFlowTest {
     val currentLogin = mutableStateOf(login)
     compose.setContent {
       PolySocialTheme {
-        AuthFlow(currentSignUp.value, { exits++ }, currentLogin.value, start, verification) { done
-          ->
+        AuthFlow(
+            currentSignUp.value,
+            { exits++ },
+            currentLogin.value,
+            start,
+            verification,
+            profileSetup,
+        ) { done ->
           TextButton(
               {
                 auth.logOut()
@@ -151,7 +161,14 @@ class AuthFlowTest {
     val currentStart = mutableStateOf(start)
     compose.setContent {
       PolySocialTheme {
-        AuthFlow(signUp, { exits++ }, login, currentStart.value, verification) {
+        AuthFlow(
+            signUp,
+            { exits++ },
+            login,
+            currentStart.value,
+            verification,
+            profileSetup,
+        ) {
           Text("Signed in", Modifier.testTag("signed_in"))
         }
       }
@@ -162,13 +179,13 @@ class AuthFlowTest {
       profiles.gate = pendingProfile
       start.refresh()
     }
-    compose.onNodeWithTag("auth_start_loading").assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.loading_state).assertIsDisplayed()
     compose.runOnIdle {
       auth.user = null
       currentStart.value = AppStartViewModel(auth, profiles)
     }
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
-    compose.onNodeWithTag("auth_start_loading").assertDoesNotExist()
+    compose.onNodeWithTag(C.Tag.loading_state).assertDoesNotExist()
     compose.runOnIdle { pendingProfile.complete(Unit) }
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
     compose.onNodeWithTag("signed_in").assertDoesNotExist()
@@ -187,7 +204,14 @@ class AuthFlowTest {
     val verification = verificationModel()
     compose.setContent {
       PolySocialTheme {
-        AuthFlow(signUp, { exits++ }, login, start, verification) {
+        AuthFlow(
+            signUp,
+            { exits++ },
+            login,
+            start,
+            verification,
+            profileSetup,
+        ) {
           AppShell(
               eventsContent = { TabRootScreen(Tab.EVENTS) },
               profileContent = { TabRootScreen(Tab.PROFILE) },
@@ -212,7 +236,16 @@ class AuthFlowTest {
     val start = AppStartViewModel(auth, profiles)
     val verification = verificationModel()
     compose.setContent {
-      PolySocialTheme { AuthFlow(signUp, { exits++ }, login, start, verification) {} }
+      PolySocialTheme {
+        AuthFlow(
+            signUp,
+            { exits++ },
+            login,
+            start,
+            verification,
+            profileSetup,
+        ) {}
+      }
     }
     compose.onNodeWithTag(WelcomeTags.SignUp).performScrollTo().performClick()
     compose.onNodeWithTag(SignUpTags.input(SignUpField.FullName)).performTextInput("Test Student")
@@ -694,7 +727,7 @@ class AuthFlowTest {
     compose.onNodeWithTag(LoginScreenTestTags.SCREEN).assertDoesNotExist()
     assertNull(auth.currentUser())
     pressSystemBack()
-    compose.runOnIdle { assertTrue(compose.activity.isFinishing) }
+    compose.runOnIdle { assertEquals(1, exits) }
   }
 
   @Test
@@ -771,10 +804,9 @@ class AuthFlowTest {
     profileNode(ProfileSetupTestTags.BACK).performClick()
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
     pressSystemBack()
-    // Nothing below Welcome: Back leaves the app instead of reopening Log in.
-    compose.runOnIdle { assertTrue(compose.activity.isFinishing) }
+    // Welcome now uses the host exit callback (MainActivity.finish) for every logout path.
+    compose.runOnIdle { assertEquals(1, exits) }
     compose.onNodeWithTag(LoginScreenTestTags.SCREEN).assertDoesNotExist()
-    assertEquals(0, exits)
   }
 
   @Test

@@ -96,8 +96,7 @@ fun ProfileScreen(
           ) {
             Text(
                 stringResource(
-                    if (state == LogoutState.Error) R.string.auth_start_retry
-                    else R.string.profile_log_out
+                    if (state == LogoutState.Error) R.string.retry else R.string.profile_log_out
                 )
             )
           }
