@@ -1,6 +1,7 @@
 // Contributors: Claude (end-to-end test of the M1 student flow with Hilt test bindings, #136).
 package com.polysocial.endtoend
 
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasAnyAncestor
@@ -14,6 +15,7 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.MainActivity
@@ -166,7 +168,11 @@ class M1EndToEndTest {
     assertEquals(1, fakeAuth.sendCalls)
     // The student opens the link from the email in the browser.
     fakeAuth.verificationResult = VerificationResult.Verified
-    node(VerifyEmailTags.Continue).performClick()
+    // A semantic click: the "email sent" Snackbar can cover Continue on small screens, where a
+    // touch
+    // would land on it instead (see CONTEXT.md, Traps).
+    awaitMatch(hasTestTag(VerifyEmailTags.Continue) and isEnabled())
+    node(VerifyEmailTags.Continue).performSemanticsAction(SemanticsActions.OnClick)
   }
 
   private fun setUpProfile() {
@@ -297,7 +303,8 @@ class M1EndToEndTest {
   }
 
   private companion object {
-    const val TIMEOUT_MS = 10_000L
+    // Generous for CI's freshly booted emulator; a passing run doesn't wait for it.
+    const val TIMEOUT_MS = 30_000L
     const val UID = "e2e-student"
     const val NAME = "Alex Example"
     const val EMAIL = "alex.example@epfl.ch"
