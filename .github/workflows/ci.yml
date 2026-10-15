@@ -3,7 +3,7 @@
 # instrumented test and SonarCloud jobs, system image download retries, and the APK install and
 # broadcast wait before the device tests, #192).
 
-# Contributors: OpenAI Codex (publish the tested main APK after the parallel CI jobs, #137).
+# Contributors: OpenAI Codex (publish the main APK after the parallel CI jobs, #137).
 
 name: CI - Test Runner
 
@@ -190,7 +190,8 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-      # Hand the exact debug APK to the final CI job. Coaches use polysocial-apk after all checks.
+      # Hand this job's debug APK to the final CI job. Device-test shards build their own APKs
+      # from the same commit. Coaches use polysocial-apk after all checks.
       - name: Preserve main debug APK for publication
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v7
@@ -503,7 +504,7 @@ jobs:
           done
 
       # The result check above must succeed before the coaches' artifact is published.
-      - name: Download tested main debug APK
+      - name: Download main debug APK from the tested commit
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/download-artifact@v8
         with:
