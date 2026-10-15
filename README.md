@@ -1,5 +1,6 @@
 <!-- Contributors: Claude (drafted the README structure, Setup, Running and testing, Tech stack and Project links sections; Firestore index deployment, #49; Firestore emulator tests, #117); OpenAI Codex (documented startup routing and rebase reconciliation); OpenAI Codex (Mapbox integration and setup, #50; one-off Map location privacy note, #51). -->
 <!-- Contributors: OpenAI Codex (verification startup integration and Back sign-out, #31). -->
+<!-- Contributors: Claude (Sprint 2 status in the Features table and the startup routing note). -->
 
 # PolySocial
 
@@ -23,12 +24,14 @@ The barrier to campus life is social rather than informational: PolySocial answe
 
 | Feature | Status |
 |---|---|
-| Sign up and log in with an EPFL email (verified email required), profile with section and year | Sprint 1 |
+| Sign up, log in and password recovery with an EPFL email (verified email required), profile with section and year | Sprints 1–2 |
 | App shell: Events, Map, Chats and Profile tabs, one back stack per tab | Sprint 1 |
-| Interactive map of upcoming public events, with straight-line distance when location is allowed | Sprint 1 |
-| Create events: private (off the map, people ask to join) or public; verified associations get a badge | Sprint 1 |
+| Events list with search and filters (category, date, distance), grouped by day | Sprint 2 |
+| Event detail screen | Sprint 2 |
+| Interactive map of upcoming public events, with straight-line distance when location is allowed | Sprint 2 |
+| Create events: private (off the map, people ask to join) or public, with a map location picker and place search; verified associations get a badge | Sprint 2 |
 | Sign in with Google (EPFL accounts only) | Planned |
-| Events list with filters, event details, "My events" available offline | Planned |
+| "My events" available offline | Planned |
 | **Find a group:** matching on interests, section, year and common friends; group proposals | Planned |
 | Group chat, with report and block | Planned |
 | One-off check-in at the venue (GPS read once, or an entrance QR code) and opt-in location sharing with your group until the event ends | Planned |
@@ -43,7 +46,7 @@ For Map distance badges, the app requests only approximate location. On first en
 
 **Offline:** events you've loaded, your registered events and their schedule, and reminders stay available offline. The map shows cached events on whatever map tiles are already cached.
 
-Signed-out users see Welcome on launch. Unverified sessions reopen Verify Email; verified sessions load their profile before opening the app or profile setup. The screen sends a verification email, supports resend with a persistent cooldown, and checks verification on Continue or browser return. After verification, shared startup routing loads the profile and opens the app or the profile-setup placeholder (#34); failed profile reads show Retry. Both the system Back action and the back icon sign out and reset the forms, so reopening shows Welcome. Change address also signs out and opens a fresh sign-up form. Verification uses Firebase’s browser action page, so no Hosting or App Links setup is needed.
+Signed-out users see Welcome on launch. Unverified sessions reopen Verify Email; verified sessions load their profile before opening the app or profile setup. The screen sends a verification email, supports resend with a persistent cooldown, and checks verification on Continue or browser return. After verification, shared startup routing loads the profile and opens the app or the profile step; failed profile reads show Retry. Both the system Back action and the back icon sign out and reset the forms, so reopening shows Welcome. Change address also signs out and opens a fresh sign-up form. Verification uses Firebase’s browser action page, so no Hosting or App Links setup is needed.
 
 ## Tech stack
 
