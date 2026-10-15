@@ -1,5 +1,6 @@
 // Contributors: Claude (wrote these tests; verified association badge, #45; the upcoming-events
-// listener, #49; unexpected failures and cancellation, #182; the single-event listener, #112).
+// listener, #49; unexpected failures and cancellation, #182; the single-event listener and its
+// failures, #112).
 package com.polysocial.model.event
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -668,6 +669,31 @@ class FirestoreEventRepositoryTest {
     val collecting = collectEvent(results)
 
     deny()
+    collecting.join()
+
+    assertEquals(listOf(EventResult.NotFound), results)
+    verify { registration.remove() }
+  }
+
+  @Test
+  fun getEvent_anUnexpectedExceptionWhileStartingToListen_isNotFoundAndEnds() = runTest {
+    // For example a Firestore client terminated at logout (#185) while a detail screen is alive.
+    every { collection.document("event-1") } returns eventDocument
+    every { eventDocument.addSnapshotListener(MetadataChanges.INCLUDE, any()) } throws terminated()
+
+    assertEquals(listOf(EventResult.NotFound), repository.getEvent("event-1").toList())
+  }
+
+  @Test
+  fun getEvent_aSnapshotThatCannotBeRead_isNotFoundAndEnds() = runTest {
+    stubEventDocument()
+    val results = mutableListOf<EventResult>()
+    val collecting = collectEvent(results)
+    val unreadable = mockk<DocumentSnapshot>()
+    every { unreadable.metadata } throws terminated()
+
+    // Thrown on Firestore's callback thread, this would crash the app.
+    eventListener.captured.onEvent(unreadable, null)
     collecting.join()
 
     assertEquals(listOf(EventResult.NotFound), results)
