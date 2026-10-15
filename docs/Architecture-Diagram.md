@@ -1,8 +1,6 @@
 <!-- Contributors: OpenAI Codex (Google authentication architecture, Firebase-managed linking clarification and review cleanup for #106; preserved contributor acknowledgments during rebase). -->
 <!-- Contributors: OpenAI Codex (removed obsolete Google collision UI, #107). -->
-<!-- Contributors: OpenAI Codex (Firebase-managed account linking clarification, #106). -->
 <!-- Contributors: OpenAI Codex (Google entry routing for #107). -->
-<!-- Contributors: OpenAI Codex (Google authentication architecture for #106; preserved contributor acknowledgments during rebase). -->
 <!-- Contributors: OpenAI Codex (Sprint 2 architecture, navigation, registration/reminder design and open questions, #139; documented Mapbox renderer/setup decisions and production/privacy open questions, #50); Claude (drafted this page and its diagrams from the README, the Scrum Board and the issue descriptions; association accounts without an EPFL email; Create Event design update, #44; ViewModel rule wording; Security Rules state after #35; the profile step's year question, #34; association badge from the profile, #45; synced the place-name and sign-in decisions with `CONTEXT.md`). -->
 
 How PolySocial is built, as we currently envision it. The page follows the [Android App Architecture guide](https://developer.android.com/topic/architecture/intro): a **UI layer** (Compose screens and ViewModels), a **domain layer** of pure Kotlin logic, and a **data layer** of repositories in front of Firebase, the map and geocoding services, and the device sensors.

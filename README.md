@@ -1,6 +1,5 @@
 <!-- Contributors: OpenAI Codex (Google sign-in setup and review clarifications for #106). -->
 <!-- Contributors: OpenAI Codex (Google entry behavior for #107). -->
-<!-- Contributors: OpenAI Codex (Google sign-in setup for #106). -->
 <!-- Contributors: Claude (drafted the README structure, Setup, Running and testing, Tech stack and Project links sections; Firestore index deployment, #49; Firestore emulator tests, #117); OpenAI Codex (documented startup routing and rebase reconciliation); OpenAI Codex (Mapbox integration and setup, #50; one-off Map location privacy note, #51). -->
 <!-- Contributors: OpenAI Codex (verification startup integration and Back sign-out, #31). -->
 <!-- Contributors: Claude (Sprint 2 status in the Features table and the startup routing note). -->

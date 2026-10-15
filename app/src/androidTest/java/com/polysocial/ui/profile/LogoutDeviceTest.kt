@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (inject Google entry state after #107 rebase).
 // Contributors: OpenAI Codex (device logout proof with fakes and verification wiring, #109).
 // Contributors: OpenAI Codex (Google sign-in contract compatibility during #106 rebase).
 package com.polysocial.ui.profile
@@ -87,6 +88,7 @@ class LogoutDeviceTest {
     val login = LoginViewModel(auth)
     val start = AppStartViewModel(auth, profiles)
     val profileSetup = ProfileSetupViewModel(auth, profiles)
+    val welcome = com.polysocial.ui.auth.WelcomeViewModel(auth)
     compose.setContent {
       PolySocialTheme {
         val verification: VerifyEmailViewModel = viewModel {
@@ -103,6 +105,7 @@ class LogoutDeviceTest {
             start,
             verification,
             profileSetup,
+            welcomeViewModel = welcome,
         ) { done ->
           AppShell(
               eventsContent = { TabRootScreen(Tab.EVENTS) },
