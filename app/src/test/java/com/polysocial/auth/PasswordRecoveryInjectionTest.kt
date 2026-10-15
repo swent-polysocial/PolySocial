@@ -23,6 +23,8 @@ import org.robolectric.annotation.Config
 class PasswordRecoveryInjectionTest {
   private val auth = FakeAuthRepository()
   @BindValue @JvmField val authBinding: AuthRepository = auth
+  @BindValue @JvmField val verificationStore: VerificationStore = MemoryVerificationStore()
+  @BindValue @JvmField val verificationClock: VerificationClock = VerificationClock { 1000 }
   @BindValue @JvmField val profiles: UserProfileRepository = FakeUserProfileRepository()
   @get:Rule(order = 0) val hilt = HiltAndroidRule(this)
   @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
