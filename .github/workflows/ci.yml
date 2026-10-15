@@ -1,6 +1,7 @@
 # Contributors: Claude (split the jobs, added docs-only detection and the CI summary job, #67;
 # Firebase emulators for the rules and emulator tests, #159; parallel checks, unit test,
-# instrumented test and SonarCloud jobs, system image download retries, #192).
+# instrumented test and SonarCloud jobs, system image download retries and the wait for the
+# emulator's startup broadcasts, #192).
 
 name: CI - Test Runner
 
@@ -298,11 +299,15 @@ jobs:
           pre-emulator-launch-script: |
             while [ ! -f "$RUNNER_TEMP/apk-build-status" ]; do sleep 1; done; cat "$RUNNER_TEMP/apk-build.log"
           # Each line runs in its own shell. The first stops here if the APK build failed (a failed
-          # pre-launch script doesn't stop the step). -Pemulator=all runs the @EmulatorTest tests
-          # together with the others, in one run, so the coverage report gets them all. The Firebase
-          # emulators stop when the run ends.
+          # pre-launch script doesn't stop the step). The second waits until the emulator has
+          # delivered its startup broadcasts: while they queue, Android can react to our APKs' install
+          # several seconds late, during the first test, and restart that test's activity, which then
+          # has no Compose content ("No compose hierarchies found"). -Pemulator=all runs the
+          # @EmulatorTest tests together with the others, in one run, so the coverage report gets them
+          # all. The Firebase emulators stop when the run ends.
           script: |
             exit "$(cat "$RUNNER_TEMP/apk-build-status")"
+            timeout 180 "$ANDROID_HOME/platform-tools/adb" shell am wait-for-broadcast-idle || echo "::warning::The emulator's broadcasts were still not idle after 180 s."
             firebase emulators:exec --project demo-polysocial --only firestore,auth "./gradlew connectedCheck -Pemulator=all -Pandroid.testInstrumentationRunnerArguments.numShards=2 -Pandroid.testInstrumentationRunnerArguments.shardIndex=${{ matrix.shard }}"
 
       # For the "Coverage and SonarCloud" job
