@@ -1,7 +1,9 @@
 // Contributors: Claude (isEpflUser helper, #33; own users/{uid} rule and no catch-all, #35;
 // fixed uid and accountType after review, #35; @epfl.ch associations aren't students and
 // accountType values on create, association profiles not deletable by the client, #161);
-// OpenAI Codex (public/private event read rules, #52).
+// OpenAI Codex (public/private event read rules, #52); Claude Opus 5.5 (event write rules, #47;
+// badge and locationName checks after review; isStudent for writes after #161; organizers
+// stay allowed readers after review).
 rules_version = '2';
 
 service cloud.firestore {
@@ -55,9 +57,9 @@ service cloud.firestore {
               .hasAny(['uid', 'accountType', 'isAssociationVerified']);
     }
 
-    // Read access only: event writes arrive with #47. No recursive match grants access to
-    // event subcollections. Private queries also need isPrivate == true and allowedUids
-    // array-contains auth.uid; public queries need isPrivate == false.
+    // No recursive match grants access to event subcollections. Private queries also need
+    // isPrivate == true and allowedUids array-contains auth.uid; public queries need
+    // isPrivate == false.
     match /events/{eventId} {
       function isVerifiedAssociationOwner() {
         let profile = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
@@ -73,6 +75,71 @@ service cloud.firestore {
               || (resource.data.isPrivate == true
                   && resource.data.allowedUids.hasAny([request.auth.uid]))))
           || (hasVerifiedEmail() && isVerifiedAssociationOwner());
+
+      function callerProfile() {
+        return /databases/$(database)/documents/users/$(request.auth.uid);
+      }
+
+      // Read from the protected users/{uid}, never from token claims. A student without a
+      // profile yet, or whose profile has no accountType, is not an association.
+      function isAssociationAccount() {
+        return exists(callerProfile())
+            && get(callerProfile()).data.get('accountType', null) == 'association';
+      }
+
+      function isVerifiedAssociation() {
+        return isAssociationAccount()
+            && get(callerProfile()).data.get('isAssociationVerified', false) == true;
+      }
+
+      // Who may create and manage events: a student (isStudent, the same check as reads), or an
+      // association a PolySocial admin has verified. An association account with an @epfl.ch
+      // email still needs that verification.
+      function canWriteEvents() {
+        return hasVerifiedEmail() && (isVerifiedAssociation() || isStudent());
+      }
+
+      // The limits of validateNewEvent (title, description), MAX_LOCATION_NAME_LENGTH and the
+      // EventCategory names. Events saved before locationName existed don't have it. The
+      // creator always stays an organizer, and every organizer is an allowed reader, so no
+      // organizer can manage a private event they can't read.
+      function isValidEvent(data) {
+        return data.title is string
+            && data.title.trim().size() > 0
+            && data.title.size() <= 80
+            && data.description is string
+            && data.description.size() <= 5000
+            && (!('locationName' in data)
+                || (data.locationName is string && data.locationName.size() <= 100))
+            && data.category in ['STUDY', 'SPORTS', 'CULTURE', 'PARTY', 'OTHER']
+            && data.isPrivate is bool
+            && data.isAssociationEvent is bool
+            && data.organizerIds is list
+            && data.organizerIds.hasAny([data.createdBy])
+            && data.allowedUids is list
+            && data.allowedUids.hasAll(data.organizerIds);
+      }
+
+      function isOrganizer() {
+        return resource.data.organizerIds.hasAny([request.auth.uid]);
+      }
+
+      // Only a verified association may publish under its name (the verified badge), and it
+      // always does: it can read only its own association events, so an event without the
+      // badge would be unreadable to its own creator.
+      allow create: if canWriteEvents()
+          && request.resource.data.createdBy == request.auth.uid
+          && isValidEvent(request.resource.data)
+          && request.resource.data.isAssociationEvent == isVerifiedAssociation();
+
+      // Any organizer manages the event. The creator and the badge are fixed once created.
+      allow update: if canWriteEvents()
+          && isOrganizer()
+          && isValidEvent(request.resource.data)
+          && !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['createdBy', 'isAssociationEvent']);
+
+      allow delete: if canWriteEvents() && isOrganizer();
     }
   }
 }

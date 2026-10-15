@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (refresh Firestore and handle blocked cache access, #156).
 // Contributors: Claude (drafted the Firestore event repository; verified association badge, #45;
 // the public upcoming-events listener, #49; unexpected failures reported as errors, #182; the
 // single-event listener and its failures, #112).
@@ -21,6 +22,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.tasks.await
 
@@ -42,12 +44,22 @@ const val EVENTS_COLLECTION = "events"
  *   upcoming-events window.
  */
 class FirestoreEventRepository(
-    private val db: FirebaseFirestore,
+    private val database: () -> FirebaseFirestore,
     private val auth: AuthRepository,
     private val profiles: UserProfileRepository,
     private val network: NetworkMonitor,
     private val clock: Clock,
 ) : EventRepository {
+  constructor(
+      db: FirebaseFirestore,
+      auth: AuthRepository,
+      profiles: UserProfileRepository,
+      network: NetworkMonitor,
+      clock: Clock,
+  ) : this({ db }, auth, profiles, network, clock)
+
+  private val db: FirebaseFirestore
+    get() = database()
 
   override suspend fun createEvent(event: Event): CreateEventResult {
     val errors = validateNewEvent(event, clock.instant())
@@ -132,6 +144,10 @@ class FirestoreEventRepository(
           awaitClose { registration?.remove() }
         }
         .buffer(Channel.CONFLATED)
+        .catch { error ->
+          if (error is CancellationException) throw error
+          emit(PublicEventsResult.Error)
+        }
   }
 
   /**
