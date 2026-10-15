@@ -1,5 +1,5 @@
 // Contributors: Claude (profile step state for #34; unverified accounts refused after review;
-// reset on sign-out, #74).
+// reset on sign-out, #74; generic save error, #142).
 package com.polysocial.ui.profile
 
 import androidx.lifecycle.ViewModel
@@ -25,8 +25,15 @@ enum class ProfileSetupStatus {
   /** Continue was tapped and the profile is being written. */
   Saving,
 
-  /** The profile couldn't be written (offline or another failure); Continue retries. */
+  /** The profile couldn't be written because the device is offline; Continue retries. */
   CouldNotSave,
+
+  /**
+   * The profile couldn't be written for another reason (an unexpected failure, or an account that
+   * is signed out or not verified, for example a rules denial with a sign-in token from before the
+   * verification), where retrying doesn't help: the student is offered to log out and in again.
+   */
+  CouldNotSaveGeneric,
 
   /** The profile exists: the app continues to the main screen. */
   Saved,
@@ -89,7 +96,8 @@ constructor(
   /**
    * Creates the profile once. Does nothing unless [ProfileSetupUiState.canContinue]. An existing
    * profile counts as saved, so the user is never stuck on this step. A signed-out or unverified
-   * account never reaches the repository: it gets [ProfileSetupStatus.CouldNotSave].
+   * account never reaches the repository: it gets [ProfileSetupStatus.CouldNotSaveGeneric]. Only a
+   * network error gets [ProfileSetupStatus.CouldNotSave], whose Continue retries.
    */
   fun onContinue() {
     val state = _uiState.value
@@ -98,7 +106,7 @@ constructor(
     // too, but the step must not rely on them.
     val user = auth.currentUser()
     if (user == null || !user.isEmailVerified) {
-      _uiState.update { it.copy(status = ProfileSetupStatus.CouldNotSave) }
+      _uiState.update { it.copy(status = ProfileSetupStatus.CouldNotSaveGeneric) }
       return
     }
     _uiState.update { it.copy(status = ProfileSetupStatus.Saving) }
@@ -115,8 +123,8 @@ constructor(
           when (profiles.createProfile(profile)) {
             CreateProfileResult.Created,
             CreateProfileResult.AlreadyExists -> ProfileSetupStatus.Saved
-            CreateProfileResult.NetworkError,
-            CreateProfileResult.UnexpectedError -> ProfileSetupStatus.CouldNotSave
+            CreateProfileResult.NetworkError -> ProfileSetupStatus.CouldNotSave
+            CreateProfileResult.UnexpectedError -> ProfileSetupStatus.CouldNotSaveGeneric
           }
       _uiState.update { it.copy(status = status) }
     }

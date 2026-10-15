@@ -1,7 +1,8 @@
 // Contributors: OpenAI Codex (tested startup/session routing, profile failure recovery and system
 // Back handoffs and verification/profile integration); Claude (signed-in shell without Hilt, #105;
 // signed-out back stack, profile step, sign-out and Figma start states, #74; sign-out from
-// anywhere, form resets and rotation cases after review).
+// anywhere and from Verify Email, form resets and rotation cases after review); Claude Opus 5.5
+// (testing agent: generic save error tests, #142).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -708,6 +709,35 @@ class AuthFlowTest {
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
     assertEquals(1, auth.logOutCalls)
     assertEquals(0, exits)
+  }
+
+  @Test
+  fun genericSaveErrorLogOutSignsOutToWelcome() {
+    auth.user = user
+    profiles.createProfileResult = CreateProfileResult.UnexpectedError
+    launch()
+    completeProfileStep()
+    profileNode(ProfileSetupTestTags.ERROR)
+        .assert(hasAnyDescendant(hasText(string(R.string.profile_could_not_save_generic))))
+    profileNode(ProfileSetupTestTags.LOG_OUT).performScrollTo().performClick()
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertDoesNotExist()
+    assertEquals(1, auth.logOutCalls)
+    assertNull(auth.currentUser())
+    assertEquals(0, exits)
+    assertEquals(1, profiles.createdProfiles.size)
+  }
+
+  @Test
+  fun offlineSaveErrorShowsTheConnectionMessageWithoutLogOut() {
+    auth.user = user
+    profiles.createProfileResult = CreateProfileResult.NetworkError
+    launch()
+    completeProfileStep()
+    profileNode(ProfileSetupTestTags.ERROR)
+        .assert(hasAnyDescendant(hasText(string(R.string.profile_could_not_save))))
+    profileNode(ProfileSetupTestTags.LOG_OUT).assertDoesNotExist()
+    assertEquals(0, auth.logOutCalls)
   }
 
   @Test

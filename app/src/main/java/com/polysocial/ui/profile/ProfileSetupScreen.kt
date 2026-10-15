@@ -1,7 +1,7 @@
 // Contributors: Claude (profile step screen for #34, built from the Figma "First proposal
 // revamped" Profile frames; layout that grows with large text, one save report and picker
 // accessibility after review; plain Column layout after review; exact text from the theme, and
-// Back locked while saving, #74).
+// Back locked while saving, #74; generic save error with Log out, #142).
 package com.polysocial.ui.profile
 
 import androidx.activity.compose.BackHandler
@@ -58,6 +58,7 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -81,6 +82,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.offset
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
@@ -111,6 +113,7 @@ object ProfileSetupTestTags {
   const val SECTION = "profile_setup_section"
   const val YEAR = "profile_setup_year"
   const val ERROR = "profile_setup_error"
+  const val LOG_OUT = "profile_setup_log_out"
   const val CONTINUE = "profile_setup_continue"
 
   fun sectionOption(code: String) = "profile_setup_section_$code"
@@ -124,7 +127,8 @@ object ProfileSetupTestTags {
  * the profile exists: the caller must then leave this step and remove it from the back stack, or
  * the user could come back to a finished, locked form. Back (the arrow and the system button) does
  * nothing while the profile is being saved or is saved, so the step stays on screen until
- * [onProfileSaved] has run.
+ * [onProfileSaved] has run. "Log out" on the generic save error (#142) also calls [onBack], since
+ * it is the same sign-out.
  */
 @Composable
 fun ProfileSetupScreen(
@@ -149,6 +153,8 @@ fun ProfileSetupScreen(
       onSectionChange = viewModel::onSectionChange,
       onYearChange = viewModel::onYearChange,
       onContinue = viewModel::onContinue,
+      // Logging out is what Back does: it signs out, and logging in again gets a fresh token.
+      onLogOut = onBack,
   )
 }
 
@@ -165,6 +171,7 @@ fun ProfileSetupContent(
     onSectionChange: (String) -> Unit,
     onYearChange: (String) -> Unit,
     onContinue: () -> Unit,
+    onLogOut: () -> Unit,
 ) {
   val typography = MaterialTheme.typography
   val saving = state.status == ProfileSetupStatus.Saving
@@ -247,8 +254,17 @@ fun ProfileSetupContent(
           PrivacyNote()
           if (state.status == ProfileSetupStatus.CouldNotSave) {
             Spacer(Modifier.height(6.dp))
-            ErrorMessage()
+            ErrorMessage(R.string.profile_could_not_save)
             Spacer(Modifier.height(50.dp))
+          } else if (state.status == ProfileSetupStatus.CouldNotSaveGeneric) {
+            // Figma "Profile · couldn't save · generic": Log out 4 dp under the message, Continue
+            // where it is on the offline frame.
+            Spacer(Modifier.height(6.dp))
+            ErrorMessage(R.string.profile_could_not_save_generic)
+            Spacer(Modifier.height(4.dp))
+            LogOutAction(onLogOut)
+            // The offline frame's 50 dp, minus the 4 dp gap and Log out's 15 dp line.
+            Spacer(Modifier.height(31.dp))
           } else {
             Spacer(Modifier.height(11.dp))
           }
@@ -628,7 +644,7 @@ private fun PrivacyNote() {
 }
 
 @Composable
-private fun ErrorMessage() {
+private fun ErrorMessage(@StringRes message: Int) {
   Row(
       Modifier.testTag(ProfileSetupTestTags.ERROR),
       horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -639,13 +655,44 @@ private fun ErrorMessage() {
         modifier = Modifier.padding(top = 1.dp),
     )
     Text(
-        stringResource(R.string.profile_could_not_save),
+        stringResource(message),
         style = MaterialTheme.typography.bodySmall.exact(),
         color = AccentText,
         modifier = Modifier.heightIn(min = 30.dp),
     )
   }
 }
+
+/**
+ * The generic error's action, in the error's red. It starts at the message's text: 20 dp is the
+ * error icon's 14 dp plus the 6 dp gap after it. Figma draws a 15 dp line of text; the touch area
+ * extends [LOG_OUT_TOUCH_EXTRA] above and below it (49 dp in all, near Android's 48 dp minimum)
+ * without changing the layout, so nothing moves.
+ */
+@Composable
+private fun LogOutAction(onClick: () -> Unit) {
+  Text(
+      stringResource(R.string.profile_log_out),
+      style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold).exact(),
+      color = AccentText,
+      modifier =
+          Modifier.padding(start = 20.dp)
+              .layout { measurable, constraints ->
+                // Measured with the extra touch area, but laid out at the text's own height.
+                val extra = LOG_OUT_TOUCH_EXTRA.roundToPx()
+                val placeable = measurable.measure(constraints.offset(vertical = 2 * extra))
+                layout(placeable.width, placeable.height - 2 * extra) { placeable.place(0, -extra) }
+              }
+              .clickable(role = Role.Button, onClick = onClick)
+              .padding(vertical = LOG_OUT_TOUCH_EXTRA)
+              .testTag(ProfileSetupTestTags.LOG_OUT),
+  )
+}
+
+/**
+ * Touch area added above and below Log out: 17 + 15 + 17 = 49 dp. Tests measure the text with it.
+ */
+internal val LOG_OUT_TOUCH_EXTRA = 17.dp
 
 @Composable
 private fun ContinueButton(state: ProfileSetupUiState, onClick: () -> Unit) {

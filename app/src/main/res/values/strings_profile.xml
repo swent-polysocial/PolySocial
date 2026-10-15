@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Contributors: Claude (profile step texts from the Figma "First proposal revamped" frames, #34). -->
+<!-- Contributors: Claude (profile step texts from the Figma "First proposal revamped" frames, #34; generic save error, #142). -->
 <resources>
     <string name="profile_back">Back</string>
     <string name="profile_step">Step 1 of 2</string>
@@ -15,4 +15,6 @@
     <string name="profile_continue">Continue</string>
     <string name="profile_saving">Saving…</string>
     <string name="profile_could_not_save">Couldn\'t save your profile. Check your connection and try again.</string>
+    <string name="profile_could_not_save_generic">Couldn\'t save your profile. Log out and log in again, then try once more.</string>
+    <string name="profile_log_out">Log out</string>
 </resources>
