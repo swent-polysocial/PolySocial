@@ -1,12 +1,16 @@
 // Contributors: Claude (event repository read and createEvent tests against the Firestore
 // emulator, #118). OpenAI Codex (adapted the event-test auth fixture to the verification
 // contract, #31); OpenAI Codex (password-reset contract in the event-test fixture, #164).
+// OpenAI Codex (adapted the event-test auth fixture to the Google sign-in contract, #106; preserved
+// contributor acknowledgments during rebase).
 package com.polysocial.emulator
 
+import android.content.Context
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.firebase.firestore.Source
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.auth.AuthUser
+import com.polysocial.model.auth.GoogleSignInResult
 import com.polysocial.model.auth.LogInResult
 import com.polysocial.model.auth.PasswordResetResult
 import com.polysocial.model.auth.SendVerificationResult
@@ -296,6 +300,9 @@ class FirestoreEventRepositoryEmulatorTest {
    * `createEvent`); the tests sign in through the emulator, never through this class.
    */
   private inner class SignedInUser : AuthRepository {
+    override suspend fun signInWithGoogle(context: Context): GoogleSignInResult =
+        throw UnsupportedOperationException("Sign in with FirebaseEmulator.signInVerifiedUser")
+
     override suspend fun signUp(fullName: String, email: String, password: String): SignUpResult =
         throw UnsupportedOperationException("Sign in with FirebaseEmulator.signInVerifiedUser")
 
