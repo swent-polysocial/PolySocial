@@ -1,10 +1,11 @@
-// Contributors: OpenAI Codex (real activity and Hilt logout wiring with offline fakes, #109).
+// Contributors: OpenAI Codex (Hilt logout and verification wiring with offline fakes, #109).
 package com.polysocial.ui.profile
 
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.MainActivity
+import com.polysocial.auth.MemoryVerificationStore
 import com.polysocial.model.auth.*
 import com.polysocial.model.event.*
 import com.polysocial.model.firebase.*
@@ -33,6 +34,8 @@ class LogoutInjectionTest {
   private val fakeAuth = FakeAuthRepository(student)
   private var cleanup = CacheClearResult.UnexpectedError
   private var clears = 0
+  @BindValue @JvmField val verificationStore: VerificationStore = MemoryVerificationStore()
+  @BindValue @JvmField val verificationClock: VerificationClock = VerificationClock { 1000 }
   @BindValue @JvmField val auth: AuthRepository = fakeAuth
   @BindValue @JvmField val events: EventRepository = FakeEventRepository()
   @BindValue
