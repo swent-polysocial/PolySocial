@@ -26,6 +26,7 @@ import com.polysocial.ui.auth.VerifyEmailTags
 import com.polysocial.ui.auth.VerifyEmailViewModel
 import com.polysocial.ui.auth.WelcomeTags
 import com.polysocial.ui.login.LoginViewModel
+import com.polysocial.ui.profile.ProfileSetupViewModel
 import com.polysocial.ui.start.AppStartViewModel
 import com.polysocial.ui.theme.PolySocialTheme
 import org.junit.After
@@ -62,10 +63,24 @@ class VerificationNavigationTest {
     }
   }
 
-  private fun launch(): StateRestorationTester =
-      StateRestorationTester(compose).apply {
-        setContent { PolySocialTheme { AuthFlow(signup, {}, login, start, verification) } }
+  private fun launch(): StateRestorationTester {
+    // Built outside the composition, like the app's: it outlives its screen.
+    val profileStep = ProfileSetupViewModel(repository, FakeUserProfileRepository())
+    return StateRestorationTester(compose).apply {
+      setContent {
+        PolySocialTheme {
+          AuthFlow(
+              signup,
+              {},
+              login,
+              start,
+              verification,
+              profileStep,
+          )
+        }
       }
+    }
+  }
 
   @Test
   fun backSignsOutAndColdRestartStaysAtWelcome() {

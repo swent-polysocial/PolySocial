@@ -190,7 +190,7 @@ class AuthFlowTest {
     compose.onNodeWithTag(VerifyEmailTags.Screen).assertIsDisplayed()
     completeVerification()
     compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
-    compose.onNodeWithTag("auth_profile_setup").assertDoesNotExist()
+    compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertDoesNotExist()
     assertEquals(1, profiles.getProfileCalls)
     assertEquals(user.uid, profiles.lastRequestedUid)
     assertEquals(0, auth.logInCalls)
@@ -201,7 +201,7 @@ class AuthFlowTest {
     auth.user = user.copy(isEmailVerified = false)
     launch()
     completeVerification()
-    compose.onNodeWithTag("auth_profile_setup").assertIsDisplayed()
+    compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.app_shell).assertDoesNotExist()
     assertEquals(1, profiles.getProfileCalls)
     assertEquals(0, auth.logInCalls)
@@ -214,13 +214,13 @@ class AuthFlowTest {
     profiles.getProfileResult = ProfileResult.NetworkError
     launch()
     completeVerification()
-    compose.onNodeWithTag("auth_start_loading").assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.loading_state).assertIsDisplayed()
     compose.runOnIdle { profiles.gate!!.complete(Unit) }
-    compose.onNodeWithTag("auth_start_error").assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.error_state).assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.app_shell).assertDoesNotExist()
     profiles.getProfileResult =
         ProfileResult.Found(UserProfile(user.uid, user.email, "Test Student", "IN", "BA1"))
-    compose.onNodeWithTag("auth_start_retry").performClick()
+    compose.onNodeWithTag(C.Tag.error_retry).performClick()
     compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
     assertEquals(2, profiles.getProfileCalls)
     assertEquals(0, auth.logInCalls)
@@ -539,10 +539,13 @@ class AuthFlowTest {
       compose.mainClock.autoAdvance = true
     }
     pressSystemBack()
-    // Log in left the stack: Back leaves the app instead of reopening Log in, which would
-    // redirect to Verify Email again.
-    assertEquals(1, exits)
+    // Back on Verify Email signs out to Welcome (#31). Log in left the stack, so Back from there
+    // leaves the app instead of reopening Log in, which would redirect to Verify Email again.
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
     compose.onNodeWithTag(LoginScreenTestTags.SCREEN).assertDoesNotExist()
+    assertNull(auth.currentUser())
+    pressSystemBack()
+    compose.runOnIdle { assertTrue(compose.activity.isFinishing) }
   }
 
   @Test
