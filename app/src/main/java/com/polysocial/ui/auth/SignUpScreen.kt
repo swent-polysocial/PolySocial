@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (fresh signed-out forms and Welcome after logout, #109).
+// Contributors: OpenAI Codex (fresh signed-out forms, shared reset action and Welcome after
+// logout, #109).
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; translated the Figma sign-up form to Compose
 // Foundation, reusing the shared app theme; connected login and added the official Google
 // placeholder button; connected the welcome entry screen and app-start/profile routing;
@@ -176,11 +177,16 @@ fun AuthFlow(
   // Whether the start destination last applied was Login (null before the first), to tell a
   // sign-out (a move to Login) from a recreation, which applies the current one again.
   var lastStartWasLogin by rememberSaveable { mutableStateOf<Boolean?>(null) }
+  // Retained navigation callbacks must reset the current models after a model is replaced.
+  val latestSignUpViewModel by rememberUpdatedState(viewModel)
+  val latestLoginViewModel by rememberUpdatedState(loginViewModel)
+  val latestVerificationViewModel by rememberUpdatedState(verificationViewModel)
+  val latestProfileSetupViewModel by rememberUpdatedState(profileSetupViewModel)
   fun resetSessionState() {
-    viewModel.reset()
-    loginViewModel.reset()
-    verificationViewModel.reset()
-    profileSetupViewModel.reset()
+    latestSignUpViewModel.reset()
+    latestLoginViewModel.reset()
+    latestVerificationViewModel.reset()
+    latestProfileSetupViewModel.reset()
     backStack = emptyList()
   }
   val startDestination by startViewModel.destination.collectAsStateWithLifecycle()
@@ -221,7 +227,6 @@ fun AuthFlow(
     }
   }
   val verificationState by verificationViewModel.uiState.collectAsStateWithLifecycle()
-  val latestVerificationViewModel by rememberUpdatedState(verificationViewModel)
   LaunchedEffect(verificationViewModel) {
     if (latestVerificationViewModel.takeStartupVerification())
         destination = AuthDestination.VerifyEmail
