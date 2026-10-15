@@ -1,6 +1,7 @@
 // Contributors: Claude (wrote these tests; verified association badge, #45; the upcoming-events
 // listener, #49; unexpected failures and cancellation, #182; the single-event listener and its
 // failures, #112).
+// Contributors: OpenAI Codex (listener disposal failure and cancellation tests, #156).
 package com.polysocial.model.event
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -37,6 +38,7 @@ import java.time.Duration
 import java.time.ZoneOffset
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
@@ -45,6 +47,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -52,6 +55,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 @RunWith(AndroidJUnit4::class)
+@OptIn(ExperimentalCoroutinesApi::class)
 class FirestoreEventRepositoryTest {
   private val db = mockk<FirebaseFirestore>()
   private val collection = mockk<CollectionReference>()
@@ -512,6 +516,57 @@ class FirestoreEventRepositoryTest {
 
     assertTrue(collecting.isCancelled)
     assertEquals(emptyList<PublicEventsResult>(), results)
+  }
+
+  @Test
+  fun upcomingEvents_listenerDisposalFailure_reportsAnErrorAndCompletes() = runTest {
+    stubPublicEventsQuery()
+    every { registration.remove() } throws terminated()
+    val results = mutableListOf<PublicEventsResult>()
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) {
+          repository.getUpcomingPublicEvents().toList(results)
+        }
+
+    listener.captured.onEvent(snapshot(document("event-1", stored.toFirestoreMap())), null)
+    listener.captured.onEvent(
+        null,
+        FirebaseFirestoreException("denied", FirebaseFirestoreException.Code.PERMISSION_DENIED),
+    )
+    collecting.join()
+
+    assertTrue(collecting.isCompleted)
+    assertFalse(collecting.isCancelled)
+    assertEquals(
+        PublicEventsResult.Events(listOf(stored.copy(id = "event-1")), fromCache = false),
+        results.first(),
+    )
+    // Both the query and disposal fail. Screens must still receive an error and finish collecting;
+    // they do not depend on how many times the same terminal error is reported.
+    assertEquals(setOf(PublicEventsResult.Error), results.drop(1).toSet())
+    verify(exactly = 1) { registration.remove() }
+  }
+
+  @Test
+  fun upcomingEvents_cancellingAfterASnapshot_removesTheListenerWithoutAnError() = runTest {
+    stubPublicEventsQuery()
+    val results = mutableListOf<PublicEventsResult>()
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) {
+          repository.getUpcomingPublicEvents().toList(results)
+        }
+    val expected = PublicEventsResult.Events(listOf(stored.copy(id = "event-1")), fromCache = true)
+    listener.captured.onEvent(
+        snapshot(document("event-1", stored.toFirestoreMap()), fromCache = true),
+        null,
+    )
+
+    collecting.cancel()
+    collecting.join()
+
+    assertTrue(collecting.isCancelled)
+    assertEquals(listOf(expected), results)
+    verify(exactly = 1) { registration.remove() }
   }
 
   @Test
