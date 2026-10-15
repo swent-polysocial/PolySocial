@@ -202,7 +202,12 @@ class FirestoreEventRepositoryEmulatorTest {
     // The form's creator fields are replaced by the signed-in student's (withCreator).
     val event =
         publicEvent(startsIn = Duration.ofHours(2))
-            .copy(isPrivate = true, endTime = NOW.plus(Duration.ofHours(5)), capacity = 40)
+            .copy(
+                isPrivate = true,
+                endTime = NOW.plus(Duration.ofHours(5)),
+                capacity = 40,
+                locationName = "Test venue",
+            )
 
     val result = withTimeout(TIMEOUT_MS) { repository.createEvent(event) }
 
@@ -333,6 +338,7 @@ class FirestoreEventRepositoryEmulatorTest {
             "description",
             "category",
             "location",
+            "locationName",
             "startTime",
             "endTime",
             "capacity",
