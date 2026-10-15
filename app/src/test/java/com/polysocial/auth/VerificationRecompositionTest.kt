@@ -4,6 +4,7 @@ package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -31,6 +32,7 @@ import com.polysocial.ui.auth.VerifyEmailTags
 import com.polysocial.ui.auth.VerifyEmailViewModel
 import com.polysocial.ui.auth.WelcomeTags
 import com.polysocial.ui.login.LoginViewModel
+import com.polysocial.ui.profile.ProfileSetupViewModel
 import com.polysocial.ui.start.AppStartViewModel
 import com.polysocial.ui.theme.PolySocialTheme
 import org.junit.After
@@ -86,7 +88,14 @@ class VerificationRecompositionTest {
     compose.setContent {
       val current = active.value
       PolySocialTheme {
-        AuthFlow(current.signup, {}, current.login, current.start, current.verification)
+        AuthFlow(
+            current.signup,
+            {},
+            current.login,
+            current.start,
+            current.verification,
+            remember(current) { ProfileSetupViewModel(current.auth, FakeUserProfileRepository()) },
+        )
       }
     }
     compose.onNodeWithTag(VerifyEmailTags.Email).assertTextEquals("original.test@epfl.ch")
