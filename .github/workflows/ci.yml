@@ -1,6 +1,6 @@
 # Contributors: Claude (split the jobs, added docs-only detection and the CI summary job, #67;
 # Firebase emulators for the rules and emulator tests, #159; parallel checks, unit test,
-# instrumented test and SonarCloud jobs, #192).
+# instrumented test and SonarCloud jobs, system image download retries, #192).
 
 name: CI - Test Runner
 
@@ -263,6 +263,25 @@ jobs:
       - name: Install Firebase CLI
         run: |
           npm install -g firebase-tools@15.33.0
+
+      # The next step installs this system image too, but about 1 run in 50 its download arrives
+      # corrupted ("Error on ZipFile unknown archive") and the job fails before the emulator starts.
+      # Installing it here first, with retries, lets that step find it installed. Keep it in line with
+      # the next step's api-level, target and arch.
+      - name: Install the emulator system image
+        run: |
+          sdkmanager="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$sdkmanager" --licenses > /dev/null
+          for attempt in 1 2 3; do
+            if "$sdkmanager" --install 'system-images;android-34;google_apis;x86_64' --channel=0 > /dev/null; then
+              exit 0
+            fi
+            echo "::warning::The system image download failed (attempt $attempt of 3)."
+            # sdkmanager's partial downloads, so the next attempt starts again from scratch
+            rm -rf "$ANDROID_HOME/.temp" "$ANDROID_HOME/.downloadIntermediates"
+            sleep 10
+          done
+          exit 1
 
       # The emulator boots from scratch (~30 s). A cached snapshot is rejected as soon as the
       # runner installs a newer emulator, and restoring the 1.9 GB cache took as long as a cold boot.
