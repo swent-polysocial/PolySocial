@@ -3,12 +3,15 @@
 // contract, #31); OpenAI Codex (password-reset contract in the event-test fixture, #164); Claude
 // (updateEvent and deleteEvent against the rules, #130; an association's own events against the
 // rules, #132); Franciszek Najda (reviewed #130).
+// OpenAI Codex (Google sign-in contract in the event-test fixture, #106).
 package com.polysocial.emulator
 
+import android.content.Context
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.firebase.firestore.Source
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.auth.AuthUser
+import com.polysocial.model.auth.GoogleSignInResult
 import com.polysocial.model.auth.LogInResult
 import com.polysocial.model.auth.PasswordResetResult
 import com.polysocial.model.auth.SendVerificationResult
@@ -493,6 +496,9 @@ class FirestoreEventRepositoryEmulatorTest {
    * `createEvent`); the tests sign in through the emulator, never through this class.
    */
   private inner class SignedInUser : AuthRepository {
+    override suspend fun signInWithGoogle(context: Context): GoogleSignInResult =
+        throw UnsupportedOperationException("Sign in with FirebaseEmulator.signInVerifiedUser")
+
     override suspend fun signUp(fullName: String, email: String, password: String): SignUpResult =
         throw UnsupportedOperationException("Sign in with FirebaseEmulator.signInVerifiedUser")
 
