@@ -60,12 +60,14 @@ class PrivacyViewModelTest {
 
   @Test
   fun noticeStartsWithoutAnUnavailableMessage() {
-    assertFalse(PrivacyViewModel().uiState.value.showUnavailable)
+    assertFalse(
+        PrivacyViewModel("", PrivacyContactLauncher { _, _ -> false }).uiState.value.showUnavailable
+    )
   }
 
   @Test
   fun unbuiltActionCanBeExplainedAgainAfterDismissal() {
-    val viewModel = PrivacyViewModel()
+    val viewModel = PrivacyViewModel("", PrivacyContactLauncher { _, _ -> false })
     viewModel.onUnavailableAction()
     assertTrue(viewModel.uiState.value.showUnavailable)
     viewModel.onMessageDismissed()
@@ -76,7 +78,7 @@ class PrivacyViewModelTest {
 
   @Test
   fun repeatedUnavailableActionsKeepTheSameMessageAndDismissCleanly() {
-    val viewModel = PrivacyViewModel()
+    val viewModel = PrivacyViewModel("", PrivacyContactLauncher { _, _ -> false })
     repeat(3) { viewModel.onUnavailableAction() }
     assertTrue(viewModel.uiState.value.showUnavailable)
     viewModel.onMessageDismissed()

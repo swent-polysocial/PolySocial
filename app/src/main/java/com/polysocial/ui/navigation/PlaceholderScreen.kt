@@ -27,7 +27,7 @@ import com.polysocial.R
 fun PlaceholderScreen(
     tab: Tab,
     modifier: Modifier = Modifier,
-    additionalContent: @Composable () -> Unit,
+    additionalContent: @Composable () -> Unit = {},
 ) {
   Column(
       modifier = modifier.fillMaxSize().testTag(tab.screenTag),

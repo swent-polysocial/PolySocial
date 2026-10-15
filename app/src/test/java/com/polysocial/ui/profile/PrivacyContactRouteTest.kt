@@ -6,9 +6,6 @@ import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
 import android.content.res.Resources
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -18,6 +15,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
+import com.polysocial.model.privacy.PrivacyModule
 import com.polysocial.resources.C
 import com.polysocial.ui.theme.PolySocialTheme
 import io.mockk.every
@@ -30,7 +28,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Exercises resource configuration, the route factory and Android launcher without opening an app.
+ * Exercises the production module's resource configuration and Android launcher without opening an
+ * app.
  */
 @RunWith(AndroidJUnit4::class)
 class PrivacyContactRouteTest {
@@ -38,10 +37,16 @@ class PrivacyContactRouteTest {
 
   private class EmailContext :
       ContextWrapper(ApplicationProvider.getApplicationContext<Context>()) {
+    private val configuredResources: Resources =
+        spyk(super.getResources()).also {
+          every { it.getString(R.string.privacy_contact_email) } returns "team@example.invalid"
+        }
     var missingClient = false
     val drafts = mutableListOf<Intent>()
 
     override fun getApplicationContext(): Context = this
+
+    override fun getResources(): Resources = configuredResources
 
     override fun startActivity(intent: Intent) {
       if (missingClient) throw ActivityNotFoundException()
@@ -50,13 +55,12 @@ class PrivacyContactRouteTest {
   }
 
   private fun showConfiguredNotice(context: EmailContext) {
-    val resources: Resources = spyk(context.resources)
-    every { resources.getString(R.string.privacy_contact_email) } returns "team@example.invalid"
-    rule.setContent {
-      CompositionLocalProvider(LocalContext provides context, LocalResources provides resources) {
-        PolySocialTheme { FullPrivacyNoticeRoute(onBack = {}) }
-      }
-    }
+    val model =
+        PrivacyViewModel(
+            PrivacyModule.contactEmail(context),
+            PrivacyModule.contactLauncher(context),
+        )
+    rule.setContent { PolySocialTheme { FullPrivacyNoticeRoute(onBack = {}, viewModel = model) } }
   }
 
   @Test

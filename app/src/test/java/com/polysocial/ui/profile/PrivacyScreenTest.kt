@@ -4,6 +4,7 @@ package com.polysocial.ui.profile
 
 import android.content.Context
 import android.graphics.Bitmap
+import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.material3.Text
@@ -19,7 +20,7 @@ import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
-import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -30,6 +31,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.MainActivity
 import com.polysocial.R
 import com.polysocial.model.privacy.PrivacyContactLauncher
 import com.polysocial.resources.C
@@ -37,6 +39,10 @@ import com.polysocial.ui.navigation.AppShell
 import com.polysocial.ui.navigation.Tab
 import com.polysocial.ui.navigation.TabAction
 import com.polysocial.ui.theme.PolySocialTheme
+import com.polysocial.utils.FirebaseStartupRule
+import dagger.hilt.android.testing.HiltAndroidRule
+import dagger.hilt.android.testing.HiltAndroidTest
+import dagger.hilt.android.testing.HiltTestApplication
 import java.io.File
 import org.junit.Rule
 import org.junit.Test
@@ -45,15 +51,19 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
 @RunWith(AndroidJUnit4::class)
+@HiltAndroidTest
+@Config(application = HiltTestApplication::class)
 class PrivacyScreenTest {
-  @get:Rule val rule = createComposeRule()
+  @get:Rule(order = 0) val hiltRule = HiltAndroidRule(this)
+  @get:Rule(order = 1) val firebaseStartupRule = FirebaseStartupRule()
+  @get:Rule(order = 2) val rule = createAndroidComposeRule<MainActivity>()
   private val context = ApplicationProvider.getApplicationContext<Context>()
   private lateinit var navController: NavHostController
 
   private fun text(id: Int) = context.getString(id)
 
   private fun openFromProfile() {
-    rule.setContent {
+    rule.activity.setContent {
       PolySocialTheme {
         navController = rememberNavController()
         AppShell(
@@ -137,7 +147,7 @@ class PrivacyScreenTest {
 
   @Test
   fun emailAppFailureIsExplainedInTheFullNotice() {
-    rule.setContent {
+    rule.activity.setContent {
       PolySocialTheme {
         FullPrivacyNoticeScreen(
             {},
@@ -185,7 +195,7 @@ class PrivacyScreenTest {
               true
             },
         )
-    rule.setContent { PolySocialTheme { FullPrivacyNoticeRoute({}, model) } }
+    rule.activity.setContent { PolySocialTheme { FullPrivacyNoticeRoute({}, model) } }
     rule.onNodeWithTag(C.Tag.privacy_contact).performScrollTo().performClick()
     org.junit.Assert.assertEquals(
         "team@example.invalid" to text(R.string.privacy_contact_subject),
@@ -208,7 +218,7 @@ class PrivacyScreenTest {
               canOpen
             },
         )
-    rule.setContent { PolySocialTheme { FullPrivacyNoticeRoute({}, model) } }
+    rule.activity.setContent { PolySocialTheme { FullPrivacyNoticeRoute({}, model) } }
     rule.onNodeWithTag(C.Tag.privacy_contact).performScrollTo().performClick()
     rule.onNodeWithText(text(R.string.privacy_contact_no_app)).assertIsDisplayed()
     rule.onNodeWithText(text(R.string.privacy_dismiss)).performClick()
@@ -232,7 +242,7 @@ class PrivacyScreenTest {
               false
             },
         )
-    rule.setContent {
+    rule.activity.setContent {
       PolySocialTheme {
         if (showNotice.value) FullPrivacyNoticeRoute({ showNotice.value = false }, model)
         else Text("Returned")
@@ -248,12 +258,12 @@ class PrivacyScreenTest {
 
   @Test
   fun replacingTheViewModelClearsOldFeedbackAndUsesTheNewActions() {
-    val first = PrivacyViewModel()
-    val second = PrivacyViewModel()
+    val first = PrivacyViewModel("", PrivacyContactLauncher { _, _ -> false })
+    val second = PrivacyViewModel("", PrivacyContactLauncher { _, _ -> false })
     first.onUnavailableAction()
     second.onUnavailableAction()
     val current = mutableStateOf(first)
-    rule.setContent { PolySocialTheme { PrivacyRoute({}, {}, viewModel = current.value) } }
+    rule.activity.setContent { PolySocialTheme { PrivacyRoute({}, {}, viewModel = current.value) } }
     rule.onNodeWithText(text(R.string.privacy_unavailable)).assertIsDisplayed()
     rule.runOnIdle { current.value = second }
     rule.onNodeWithText(text(R.string.privacy_unavailable)).assertIsDisplayed()
@@ -282,7 +292,7 @@ class PrivacyScreenTest {
   fun largeFontsKeepPrivacyActionsReachable() {
     var backCalls = 0
     var noticeCalls = 0
-    rule.setContent {
+    rule.activity.setContent {
       CompositionLocalProvider(LocalDensity provides Density(1f, 1.8f)) {
         PolySocialTheme {
           PrivacyScreen(
@@ -307,7 +317,7 @@ class PrivacyScreenTest {
   @Config(sdk = [35], qualifiers = "w360dp-h800dp-mdpi")
   @GraphicsMode(GraphicsMode.Mode.NATIVE)
   fun summaryRenderContainsItsCurrentDataAndAvailableNotice() {
-    rule.setContent {
+    rule.activity.setContent {
       PolySocialTheme {
         Box(Modifier.requiredSize(360.dp, 800.dp)) {
           PrivacyScreen(PrivacyUiState(), {}, {}, {}, {})
