@@ -1,7 +1,7 @@
-// Contributors: OpenAI Codex (enabled recovery action regression for #164).
 // Contributors: Claude Opus 5.5 (wrote these tests; eye icon label, exact redirect delay,
 // compact-height scrolling and locked fields while redirecting after review); OpenAI Codex
-// (GPT-6.1 Sol, medium; checked the official Google button label and placeholder behavior).
+// (GPT-6.1 Sol, medium; checked the official Google button label and placeholder behavior);
+// OpenAI Codex (enabled recovery action regression for #164).
 package com.polysocial.ui.login
 
 import android.app.Application

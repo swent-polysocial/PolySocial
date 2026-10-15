@@ -1,8 +1,8 @@
-// Contributors: OpenAI Codex (recovery navigation and shared email field for #164).
 // Contributors: Claude (Log in screen for #32, built from the Figma "First proposal revamped"
 // frames); Claude Opus 5.5 (eye icon label, scrolling on short screens and locked fields while
 // redirecting, after review); OpenAI Codex (GPT-6.1 Sol, medium; official Google button artwork;
-// lock navigation actions during login and verification handoffs).
+// lock navigation actions during login and verification handoffs);
+// OpenAI Codex (recovery navigation and shared email field for #164).
 package com.polysocial.ui.login
 
 import androidx.activity.compose.BackHandler

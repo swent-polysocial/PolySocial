@@ -135,14 +135,14 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 ## Decision log
 
-- 2026-10-13 · [#164](https://github.com/swent-polysocial/PolySocial/issues/164): owner re-enabled enumeration protection and authorized completing account-neutral recovery; conditional Figma confirmation replaces provider lookup, superseding the cancelled prototype.
-
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 
 - 2026-10-14 · CI runs checks, build and unit tests, instrumented tests and the release build in parallel, with the instrumented tests in two shards, then coverage and Sonar from the files the test jobs upload; Gradle caches builds and configuration and runs unit tests in parallel forks. ([#193](https://github.com/swent-polysocial/PolySocial/pull/193))
 - 2026-10-14 · Events tab search and filters apply right away on the loaded events and survive rotation; the distance filter reads the location once, only after a distance is picked, and is disabled without it. ([#178](https://github.com/swent-polysocial/PolySocial/pull/178), [#179](https://github.com/swent-polysocial/PolySocial/pull/179))
 - 2026-10-14 · `AGENTS.md` and `CONTEXT.md` keep a fixed AI header that nobody edits, so it stops causing rebase conflicts; each PR says what AI contributed. ([#187](https://github.com/swent-polysocial/PolySocial/pull/187))
 - 2026-10-14 · Split #31 into verification foundation (repository, cooldown and ViewModel) and screen/navigation in #99; merge the foundation first. ([#99](https://github.com/swent-polysocial/PolySocial/pull/99))
+
+- 2026-10-13 · [#164](https://github.com/swent-polysocial/PolySocial/issues/164): owner re-enabled enumeration protection and authorized completing account-neutral recovery; conditional Figma confirmation replaces provider lookup, superseding the cancelled prototype.
 
 - 2026-10-13 · App bar actions: one `TabAction` per tab (none on Map), shown only at the tab root, opening a placeholder route inside the tab. ([#166](https://github.com/swent-polysocial/PolySocial/pull/166))
 - 2026-10-13 · Events are filtered on the device over the loaded events (title search ignoring case and accents, categories OR, criteria AND, end-exclusive dates); a distance without a user location is ignored. ([#169](https://github.com/swent-polysocial/PolySocial/pull/169))

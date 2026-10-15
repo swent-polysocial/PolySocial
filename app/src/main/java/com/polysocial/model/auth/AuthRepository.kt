@@ -1,7 +1,7 @@
-// Contributors: OpenAI Codex (password recovery contract for #164).
 // Contributors: Claude (auth contract for #32; Sign up and Verify Email methods left to #30 and
 // #31 after review); OpenAI Codex (GPT-6.1 Sol, medium; integrated sign-up results and display
-// name; implemented verification result contracts for #31).
+// name; implemented verification result contracts for #31);
+// OpenAI Codex (password recovery contract for #164).
 package com.polysocial.model.auth
 
 /** The signed-in Firebase user, reduced to what the app needs. */

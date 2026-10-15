@@ -1,6 +1,6 @@
-// Contributors: OpenAI Codex (enumeration-protected reset failures and session preservation, #164).
 // Contributors: Claude Opus 5.5 (wrote these tests); OpenAI Codex
-// (GPT-6.1 Sol, medium; adapted display-name fixtures and consolidated sign-up adapter tests).
+// (GPT-6.1 Sol, medium; adapted display-name fixtures and consolidated sign-up adapter tests);
+// OpenAI Codex (enumeration-protected reset failures and session preservation, #164).
 package com.polysocial.model.auth
 
 import android.app.Application
