@@ -1,6 +1,7 @@
 // Contributors: Claude (auth contract for #32; Sign up and Verify Email methods left to #30 and
 // #31 after review); OpenAI Codex (GPT-6.1 Sol, medium; integrated sign-up results and display
-// name; implemented verification result contracts for #31).
+// name; implemented verification result contracts for #31);
+// OpenAI Codex (password recovery contract for #164).
 package com.polysocial.model.auth
 
 /** The signed-in Firebase user, reduced to what the app needs. */
@@ -54,6 +55,12 @@ interface AuthRepository {
    * Creates an account and saves its display name without verification or a Firestore write (#30).
    */
   suspend fun signUp(fullName: String, email: String, password: String): SignUpResult
+
+  /**
+   * Requests an account-neutral reset with enumeration protection enabled; never changes the
+   * session.
+   */
+  suspend fun sendPasswordResetEmail(email: String): PasswordResetResult
 
   /** Signs in with email and password (#32). */
   suspend fun logIn(email: String, password: String): LogInResult

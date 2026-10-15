@@ -1,6 +1,7 @@
 // Contributors: Claude (test fake for #32); Claude Opus 5.5 (recorded the logIn arguments,
 // added the logIn gate); OpenAI Codex (GPT-6.1 Sol, medium; extended the existing fake to
-// the sign-up contract with submission controls and added verification controls for #31).
+// the sign-up contract with submission controls and added verification controls for #31);
+// OpenAI Codex (account-neutral recovery fake for #164).
 package com.polysocial.model.auth
 
 import kotlinx.coroutines.CompletableDeferred
@@ -65,6 +66,23 @@ class FakeAuthRepository(var user: AuthUser? = null) : AuthRepository {
     lastLogInPassword = password
     logInGate?.await()
     return logInResult.also { if (it is LogInResult.Success) user = it.user }
+  }
+
+  var resetResult: PasswordResetResult = PasswordResetResult.Sent
+  var resetGate: CompletableDeferred<Unit>? = null
+  var resetException: Exception? = null
+  var resetCalls = 0
+    private set
+
+  var lastResetEmail: String? = null
+    private set
+
+  override suspend fun sendPasswordResetEmail(email: String): PasswordResetResult {
+    resetCalls++
+    lastResetEmail = email
+    resetGate?.await()
+    resetException?.let { throw it }
+    return resetResult
   }
 
   override fun logOut() {

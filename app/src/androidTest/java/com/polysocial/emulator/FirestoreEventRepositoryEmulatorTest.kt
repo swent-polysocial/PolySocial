@@ -1,11 +1,13 @@
 // Contributors: Claude (event repository read tests against the Firestore emulator, #118).
-// OpenAI Codex (adapted the event-test auth fixture to the verification contract, #31).
+// OpenAI Codex (adapted the event-test auth fixture to the verification contract, #31);
+// OpenAI Codex (password-reset contract in the event-test fixture, #164).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.LogInResult
+import com.polysocial.model.auth.PasswordResetResult
 import com.polysocial.model.auth.SendVerificationResult
 import com.polysocial.model.auth.SignUpResult
 import com.polysocial.model.auth.VerificationResult
@@ -223,6 +225,9 @@ class FirestoreEventRepositoryEmulatorTest {
 
     override suspend fun logIn(email: String, password: String): LogInResult =
         throw UnsupportedOperationException("Sign in with FirebaseEmulator.signInVerifiedUser")
+
+    override suspend fun sendPasswordResetEmail(email: String): PasswordResetResult =
+        throw UnsupportedOperationException("Password recovery is outside this event-test fixture")
 
     override suspend fun sendVerificationEmail(): SendVerificationResult =
         throw UnsupportedOperationException("Verification is outside this event-test fixture")

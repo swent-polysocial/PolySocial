@@ -1,6 +1,7 @@
 // Contributors: Claude (logIn, logOut and currentUser for #32); OpenAI Codex
 // (GPT-6.1 Sol, medium; sign-up and display-name integration; verification delivery and
-// token refresh for #31).
+// token refresh for #31);
+// OpenAI Codex (enumeration-protected password recovery and failure handling for #164).
 package com.polysocial.model.auth
 
 import com.google.firebase.FirebaseException
@@ -14,6 +15,8 @@ import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.UserProfileChangeRequest
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -113,6 +116,31 @@ class FirebaseAuthRepository private constructor(authProvider: () -> FirebaseAut
       VerificationResult.NetworkError
     } catch (_: Exception) {
       VerificationResult.UnexpectedError
+    }
+  }
+
+  override suspend fun sendPasswordResetEmail(email: String): PasswordResetResult {
+    if (!isRecoveryEmail(email)) return PasswordResetResult.InvalidEmail
+    return try {
+      // Do not query providers: enumeration protection hides both account and provider existence.
+      auth.sendPasswordResetEmail(email.trim()).await()
+      PasswordResetResult.Sent
+    } catch (_: FirebaseNetworkException) {
+      PasswordResetResult.NetworkError
+    } catch (_: FirebaseTooManyRequestsException) {
+      PasswordResetResult.TooManyRequests
+    } catch (error: FirebaseAuthInvalidUserException) {
+      if (error.errorCode == "ERROR_USER_NOT_FOUND") PasswordResetResult.Sent
+      else PasswordResetResult.UnexpectedError
+    } catch (error: FirebaseAuthInvalidCredentialsException) {
+      if (error.errorCode == "ERROR_INVALID_EMAIL") PasswordResetResult.InvalidEmail
+      else PasswordResetResult.UnexpectedError
+    } catch (_: FirebaseException) {
+      PasswordResetResult.UnexpectedError
+    } catch (_: Exception) {
+      // A cancelled SDK task is a failure, but cancellation of the caller must propagate.
+      currentCoroutineContext().ensureActive()
+      PasswordResetResult.UnexpectedError
     }
   }
 
