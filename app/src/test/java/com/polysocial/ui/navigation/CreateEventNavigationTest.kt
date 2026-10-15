@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (inject Profile placeholder after logout rebase, #109).
 // Contributors: Claude (UI tests for opening and leaving Create Event from the Events and Map
 // tabs, and the created event's id reaching the Map's detail route, #110).
 package com.polysocial.ui.navigation
@@ -68,6 +69,7 @@ class CreateEventNavigationTest {
         AppShell(
             navController = navController,
             eventsContent = { TabRootScreen(Tab.EVENTS) },
+            profileContent = { TabRootScreen(Tab.PROFILE) },
             mapContent = { onViewDetails, onCreateEvent ->
               MapScreen(
                   state =
