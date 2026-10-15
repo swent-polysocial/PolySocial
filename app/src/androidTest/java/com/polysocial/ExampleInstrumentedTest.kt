@@ -1,6 +1,6 @@
 // Contributors: Claude (app-shell smoke test, #41); OpenAI Codex
 // (GPT-6.1 Sol, medium; welcome entry/navigation test and preserved shell smoke test); Claude
-// (placeholder Events root, #105).
+// (placeholder Events root, #105; Hilt test rule, #136).
 package com.polysocial
 
 import androidx.activity.compose.setContent
@@ -20,15 +20,21 @@ import com.polysocial.ui.navigation.AppShell
 import com.polysocial.ui.navigation.Tab
 import com.polysocial.ui.navigation.TabRootScreen
 import com.polysocial.ui.theme.PolySocialTheme
+import dagger.hilt.android.testing.HiltAndroidRule
+import dagger.hilt.android.testing.HiltAndroidTest
 import io.github.kakaocup.compose.node.element.ComposeScreen
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /** Checks the authentication entry and the signed-in shell independently of future routing. */
+@HiltAndroidTest
 @RunWith(AndroidJUnit4::class)
 class MainActivityTest : TestCase() {
-  @get:Rule val composeTestRule = createAndroidComposeRule<MainActivity>()
+  // The instrumented tests run in HiltTestApplication (see HiltTestRunner), so Hilt must be set up
+  // before MainActivity starts.
+  @get:Rule(order = 0) val hiltRule = HiltAndroidRule(this)
+  @get:Rule(order = 1) val composeTestRule = createAndroidComposeRule<MainActivity>()
 
   @Test
   fun appStartsOnWelcomeAndEmailActionOpensSignUp() {
