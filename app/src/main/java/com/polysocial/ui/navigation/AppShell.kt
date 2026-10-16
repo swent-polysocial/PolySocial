@@ -2,7 +2,7 @@
 // Contributors: Claude (app shell with bottom navigation and app bar, #41; theme title style after
 // review; bottom bar matched to the Figma; loading state, #43; per-tab back stacks, #42; Events
 // list, #105; "+" button and Create Event navigation from the Events and Map tabs, #110; app bar
-// actions, #84; event detail route, #112).
+// actions, #84; event detail route, #112; "View event" opens the event detail, #211).
 // Contributors: OpenAI Codex (map route and detail placeholder, #50).
 // Contributors: OpenAI Codex (Profile privacy navigation and full-screen notices, #103).
 package com.polysocial.ui.navigation
@@ -290,13 +290,11 @@ fun AppShell(
 }
 
 /**
- * Replaces Create Event with the new event's screen, so Back from it returns to [tab] and never to
- * the confirmation or the filled form.
+ * Replaces Create Event with the new event's detail screen, so Back from it returns to [tab] and
+ * never to the confirmation or the filled form.
  */
 private fun NavHostController.openCreatedEvent(tab: Tab, eventId: String) {
-  // TODO(#112): open the new event's detail screen instead of the placeholder.
-  val route = if (tab == Tab.MAP) mapDetailRoute(eventId) else tab.detailRoute
-  navigate(route) { popUpTo(tab.createEventRoute) { inclusive = true } }
+  navigate(tab.eventDetailRoute(eventId)) { popUpTo(tab.createEventRoute) { inclusive = true } }
 }
 
 /** The Map tab's placeholder detail for [eventId] (its route takes the id, unlike the others). */

@@ -1,5 +1,6 @@
 // Contributors: Claude (tab definitions for the bottom navigation, #41; loading messages, #43;
-// per-tab routes, #42; Create Event route, #110; app bar actions, #84; event detail route, #112).
+// per-tab routes, #42; Create Event route, #110; app bar actions, #84; event detail route, #112;
+// placeholder detail doc after "View event" moved to the event detail, #211).
 // Contributors: OpenAI Codex (Profile privacy and full-notice routes, #103).
 package com.polysocial.ui.navigation
 
@@ -73,8 +74,8 @@ enum class Tab(
 
   /**
    * Route of the tab's placeholder detail screen, one level below its root (the Map's takes the
-   * event id: `$detailRoute/{eventId}`). Create Event's "View event" opens it until the event
-   * detail screen exists (#112), which replaces it.
+   * event id: `$detailRoute/{eventId}`). The map preview's "Details" still opens the Map's; events
+   * otherwise open [eventDetailRoute].
    */
   val detailRoute: String
     get() = "$route/detail"
