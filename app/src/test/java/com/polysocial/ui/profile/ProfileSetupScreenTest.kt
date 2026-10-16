@@ -2,7 +2,8 @@
 // size, one save report after rotation, picker accessibility); Claude Opus 5.5 (testing agent:
 // double tap, blocked Continue, existing profile, error retry and picker menu behaviour); Claude
 // (Back locked while saving, #74); Claude Opus 5.5 (testing agent: generic save error tests,
-// #142); Claude (Log out touch area and test tidying after review, #142).
+// #142); Claude (Log out touch area and test tidying after review, #142; the full name's limit,
+// written test-first, #143).
 package com.polysocial.ui.profile
 
 import android.app.Application
@@ -14,6 +15,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
@@ -30,6 +32,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.click
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasParent
@@ -39,10 +42,12 @@ import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontWeight
@@ -57,10 +62,12 @@ import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.user.CreateProfileResult
 import com.polysocial.model.user.FakeUserProfileRepository
+import com.polysocial.model.user.MAX_DISPLAY_NAME_LENGTH
 import com.polysocial.model.user.SECTIONS
 import com.polysocial.model.user.YEARS
 import com.polysocial.ui.theme.AccentText
 import com.polysocial.ui.theme.PolySocialTheme
+import kotlin.math.abs
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -892,5 +899,113 @@ class ProfileSetupScreenTest {
 
     node(ProfileSetupTestTags.sectionOption("SC")).assertIsSelected()
     node(ProfileSetupTestTags.sectionOption("IN")).assertIsNotSelected()
+  }
+
+  // ---- The full name's limit (#143), Figma "Profile · name too long" ----
+
+  private val tooLong = "a".repeat(MAX_DISPLAY_NAME_LENGTH + 1)
+
+  @Test
+  fun aNameOverTheLimit_showsTheErrorUnderTheNameAndDisablesContinue() {
+    setContent(filled.copy(displayName = tooLong))
+
+    node(ProfileSetupTestTags.NAME_ERROR).assert(shows("Use at most 50 characters"))
+    node(ProfileSetupTestTags.FULL_NAME)
+        .assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.Error))
+    node(ProfileSetupTestTags.CONTINUE).assertIsNotEnabled()
+  }
+
+  @Test
+  fun aNameAtTheLimit_showsNoError() {
+    setContent(filled.copy(displayName = "a".repeat(MAX_DISPLAY_NAME_LENGTH)))
+
+    node(ProfileSetupTestTags.NAME_ERROR).assertDoesNotExist()
+    node(ProfileSetupTestTags.FULL_NAME)
+        .assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.Error))
+    node(ProfileSetupTestTags.CONTINUE).assertIsEnabled()
+  }
+
+  @Test
+  fun typingPastTheLimit_showsTheError_andShorteningHidesIt() {
+    setScreen()
+    pickSectionAndYear()
+
+    node(ProfileSetupTestTags.FULL_NAME).performTextReplacement(tooLong)
+    node(ProfileSetupTestTags.NAME_ERROR).assertExists()
+    node(ProfileSetupTestTags.CONTINUE).assertIsNotEnabled()
+
+    node(ProfileSetupTestTags.FULL_NAME).performTextReplacement("a".repeat(MAX_DISPLAY_NAME_LENGTH))
+    node(ProfileSetupTestTags.NAME_ERROR).assertDoesNotExist()
+    node(ProfileSetupTestTags.CONTINUE).assertIsEnabled()
+  }
+
+  @Test
+  @Config(qualifiers = "w360dp-h800dp")
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  fun aNameOverTheLimit_matchesTheFigmaFrame() {
+    setContent(filled.copy(displayName = tooLong))
+    val density = composeTestRule.density.density
+    val screenTop = node(ProfileSetupTestTags.SCREEN).node().top() / density
+    fun SemanticsNode.yDp() = top() / density - screenTop
+
+    val field = node(ProfileSetupTestTags.FULL_NAME).node()
+    val error = node(ProfileSetupTestTags.NAME_ERROR).node()
+    val message = textNode("Use at most 50 characters", ProfileSetupTestTags.NAME_ERROR)
+    val emailLabel = textNode(string(R.string.profile_email))
+    // Figma: the error line 7 dp under the name field (icon at x 20, text at x 40), the next
+    // label 35.5 dp under the field instead of 13.5 (22 dp lower), and Continue still at y 720.
+    // Measured from the field, because the whole form already sits 3 dp lower than Figma.
+    val fieldBottom = field.bottom() / density - screenTop
+    assertEquals(7f, error.yDp() - fieldBottom, 1f)
+    assertEquals(20f, error.positionInRoot.x / density, 0.5f)
+    assertEquals(40f, message.positionInRoot.x / density, 0.5f)
+    assertEquals(35.5f, emailLabel.yDp() - fieldBottom, 1f)
+    assertEquals(720f, node(ProfileSetupTestTags.CONTINUE).node().yDp(), 1f)
+    assertFalse("the message is clipped", message.textOverflows())
+  }
+
+  @Test
+  @Config(qualifiers = "w360dp-h800dp-xhdpi")
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  fun aNameOverTheLimit_drawsTheFieldBorderInTheErrorRedTwoDpWide() {
+    setContent(filled.copy(displayName = tooLong))
+    val image = composeTestRule.onRoot().captureToImage().toPixelMap()
+    val density = composeTestRule.density.density
+    val field = node(ProfileSetupTestTags.FULL_NAME).node()
+    val y = ((field.top() + field.bottom()) / 2).toInt()
+    val left = field.positionInRoot.x.toInt()
+    fun isAccent(x: Int) =
+        image[x, y].let {
+          abs(it.red - 0xD6 / 255f) < 0.06f &&
+              abs(it.green - 0x30 / 255f) < 0.06f &&
+              abs(it.blue - 0x3A / 255f) < 0.06f
+        }
+
+    // Figma: a 2 dp border in Accent (#D6303A), where "Profile · ready" has a 1 dp grey one.
+    assertTrue(
+        "1st dp of the border isn't the error red",
+        isAccent(left + (0.5f * density).toInt()),
+    )
+    assertTrue(
+        "2nd dp of the border isn't the error red",
+        isAccent(left + (1.5f * density).toInt()),
+    )
+    assertFalse("the border is wider than 2 dp", isAccent(left + (3f * density).toInt()))
+  }
+
+  @Test
+  @Config(qualifiers = "w360dp-h800dp-xhdpi")
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  fun aNameAtTheLimit_keepsTheGreyBorder() {
+    setContent(filled.copy(displayName = "a".repeat(MAX_DISPLAY_NAME_LENGTH)))
+    val image = composeTestRule.onRoot().captureToImage().toPixelMap()
+    val density = composeTestRule.density.density
+    val field = node(ProfileSetupTestTags.FULL_NAME).node()
+    val color =
+        image[
+            field.positionInRoot.x.toInt() + (0.5f * density).toInt(),
+            ((field.top() + field.bottom()) / 2).toInt()]
+
+    assertTrue("the border is red without an error", color.red - color.green < 0.1f)
   }
 }
