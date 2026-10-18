@@ -1,5 +1,6 @@
 // Contributors: Claude (drafted the EventRepository interface; the creator's profile, #45; the
-// public upcoming-events query, #49; reading one event, #112); Mohamed Khellaf (reviewed).
+// public upcoming-events query, #49; reading one event, #112; updating and deleting, #130); Mohamed
+// Khellaf (reviewed).
 package com.polysocial.model.event
 
 import kotlinx.coroutines.flow.Flow
@@ -23,6 +24,51 @@ sealed interface CreateEventResult {
 
   /** Any other failure, for example a write the Security Rules deny. */
   data object UnexpectedError : CreateEventResult
+}
+
+/** Outcome of [EventRepository.updateEvent]. */
+sealed interface UpdateEventResult {
+  /** The event was saved with the new values. */
+  data object Updated : UpdateEventResult
+
+  /** The new values break the rules in [errors] (see [validateNewEvent]). Nothing was written. */
+  data class Invalid(val errors: List<EventValidationError>) : UpdateEventResult
+
+  /**
+   * The user may not manage this event: they aren't one of its organizers, nobody is signed in, or
+   * the Security Rules denied the write. Nothing was written.
+   */
+  data object NotOrganizer : UpdateEventResult
+
+  /**
+   * There is no event the user can read under this ID (see [EventResult.NotFound]), for example
+   * because another organizer deleted it. Nothing was written.
+   */
+  data object NotFound : UpdateEventResult
+
+  /** The device is offline. Nothing was written or queued, so the form keeps its input. */
+  data object NetworkError : UpdateEventResult
+
+  /** Any other failure. Nothing was written. */
+  data object UnexpectedError : UpdateEventResult
+}
+
+/** Outcome of [EventRepository.deleteEvent]. */
+sealed interface DeleteEventResult {
+  /** The event was deleted. */
+  data object Deleted : DeleteEventResult
+
+  /** The user may not manage this event (see [UpdateEventResult.NotOrganizer]). Nothing changed. */
+  data object NotOrganizer : DeleteEventResult
+
+  /** There is no event the user can read under this ID (see [EventResult.NotFound]). */
+  data object NotFound : DeleteEventResult
+
+  /** The device is offline. Nothing was deleted or queued. */
+  data object NetworkError : DeleteEventResult
+
+  /** Any other failure. Nothing was deleted. */
+  data object UnexpectedError : DeleteEventResult
 }
 
 /** How many days ahead [EventRepository.getUpcomingPublicEvents] looks by default. */
@@ -93,6 +139,32 @@ interface EventRepository {
    * association never publishes without its badge. A user without a profile gets no badge.
    */
   suspend fun createEvent(event: Event): CreateEventResult
+
+  /**
+   * Saves [event]'s new values over the stored `events/[Event.id]`, if the signed-in user is one of
+   * its organizers. The stored [Event.createdBy], [Event.organizerIds], [Event.allowedUids] and
+   * [Event.isAssociationEvent] are kept, ignoring the caller's values (see [withOwnershipOf]).
+   *
+   * The checks run in this order, and each one stops before anything is written: new values that
+   * [validateNewEvent] rejects return [UpdateEventResult.Invalid] (so an event can't be moved to
+   * the past), an ID that can't be a document ID (see [isReadableEventId]) returns
+   * [UpdateEventResult.NotFound], a missing user returns [UpdateEventResult.NotOrganizer], and an
+   * offline device returns [UpdateEventResult.NetworkError] without starting a write, like
+   * [createEvent]. Then the stored event is read and written in one step, so the organizers checked
+   * are the ones the update keeps.
+   */
+  suspend fun updateEvent(event: Event): UpdateEventResult
+
+  /**
+   * Deletes `events/[id]`, if the signed-in user is one of its organizers. In Sprint 2, cancelling
+   * an event deletes it (there is no "cancelled" status).
+   *
+   * Like [updateEvent], an ID that can't be a document ID returns [DeleteEventResult.NotFound], a
+   * missing user [DeleteEventResult.NotOrganizer] and an offline device
+   * [DeleteEventResult.NetworkError], each before anything is deleted. An event that no longer
+   * exists is [DeleteEventResult.NotFound], not a success.
+   */
+  suspend fun deleteEvent(id: String): DeleteEventResult
 
   /**
    * Observes the public events that start within the next [windowDays] days (see

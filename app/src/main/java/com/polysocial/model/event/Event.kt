@@ -1,5 +1,5 @@
-// Contributors: Claude (drafted the Event model and withCreator; the place name, #112); Mohamed
-// Khellaf (reviewed).
+// Contributors: Claude (drafted the Event model and withCreator; the place name, #112; keeping
+// the stored organizers on update, #130); Mohamed Khellaf (reviewed).
 package com.polysocial.model.event
 
 import java.time.Instant
@@ -68,4 +68,20 @@ fun Event.withCreator(uid: String, isVerifiedAssociation: Boolean): Event =
         organizerIds = listOf(uid),
         allowedUids = listOf(uid),
         isAssociationEvent = isVerifiedAssociation,
+    )
+
+/**
+ * Returns this event as an update of [stored]: it keeps [stored]'s [Event.id], [Event.createdBy],
+ * [Event.organizerIds], [Event.allowedUids] and [Event.isAssociationEvent], replacing the caller's
+ * values, so editing an event can't change who manages or reads it, or its verified badge.
+ *
+ * Repositories call this with the event as it is stored now.
+ */
+fun Event.withOwnershipOf(stored: Event): Event =
+    copy(
+        id = stored.id,
+        createdBy = stored.createdBy,
+        organizerIds = stored.organizerIds,
+        allowedUids = stored.allowedUids,
+        isAssociationEvent = stored.isAssociationEvent,
     )
