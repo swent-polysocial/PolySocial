@@ -1,14 +1,16 @@
 // Contributors: OpenAI Codex (repository-to-map stream tests for #50; location fakes for #51);
-// Claude (getEvent stub, #112).
+// Claude (getEvent stub, #112; update and delete stubs, #130).
 package com.polysocial.model.map
 
 import com.polysocial.model.event.CreateEventResult
+import com.polysocial.model.event.DeleteEventResult
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.EventResult
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.PublicEventsResult
 import com.polysocial.model.event.TEST_NOW
+import com.polysocial.model.event.UpdateEventResult
 import com.polysocial.model.event.validEvent
 import com.polysocial.model.location.FakeLocationService
 import com.polysocial.ui.map.MAP_TEST_CLOCK
@@ -116,6 +118,12 @@ class RepositoryMapEventSourceTest {
     val repository =
         object : EventRepository {
           override suspend fun createEvent(event: Event): CreateEventResult =
+              error("This test only observes events")
+
+          override suspend fun updateEvent(event: Event): UpdateEventResult =
+              error("This test only observes events")
+
+          override suspend fun deleteEvent(id: String): DeleteEventResult =
               error("This test only observes events")
 
           override fun getEvent(id: String): Flow<EventResult> =
