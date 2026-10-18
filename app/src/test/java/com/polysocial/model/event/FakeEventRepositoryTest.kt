@@ -1,4 +1,5 @@
-// Contributors: Claude (wrote these tests of the fake's getEvent contract, #112).
+// Contributors: Claude (wrote these tests of the fake's getEvent contract, #112; updateEvent and
+// deleteEvent, #130).
 package com.polysocial.model.event
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -11,8 +12,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 /**
- * Checks that [FakeEventRepository.getEvent] follows the [EventRepository.getEvent] contract, since
- * the event detail ViewModel tests rely on it.
+ * Checks that [FakeEventRepository] follows the [EventRepository] contracts of
+ * [EventRepository.getEvent], [EventRepository.updateEvent] and [EventRepository.deleteEvent],
+ * since the ViewModel tests rely on them.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class FakeEventRepositoryTest {
@@ -59,5 +61,67 @@ class FakeEventRepositoryTest {
     for (id in listOf("", " ", "a/b")) {
       assertEquals(id, EventResult.NotFound, repository.getEvent(id).first())
     }
+  }
+
+  private val organized = event.withCreator("test-creator", isVerifiedAssociation = false)
+
+  @Test
+  fun updateEvent_byAnOrganizer_savesTheNewValuesAndKeepsWhoManagesTheEvent() = runTest {
+    repository.seed(organized)
+    val edit = organized.copy(title = "Exam review", organizerIds = listOf("intruder"))
+
+    assertEquals(UpdateEventResult.Updated, repository.updateEvent(edit))
+
+    val saved = repository.getEvent("event-1").first() as EventResult.Found
+    assertEquals("Exam review", saved.event.title)
+    assertEquals(listOf("test-creator"), saved.event.organizerIds)
+    assertEquals(listOf(edit), repository.updateRequests)
+  }
+
+  @Test
+  fun updateEvent_refusesWhatTheRealRepositoryRefuses() = runTest {
+    repository.seed(organized, event.copy(id = "event-2"))
+    repository.deniedIds += "event-3"
+
+    assertEquals(
+        UpdateEventResult.Invalid(listOf(EventValidationError.BLANK_TITLE)),
+        repository.updateEvent(organized.copy(title = " ")),
+    )
+    assertEquals(UpdateEventResult.NotFound, repository.updateEvent(organized.copy(id = "a/b")))
+    assertEquals(UpdateEventResult.NotFound, repository.updateEvent(organized.copy(id = "event-3")))
+    assertEquals(
+        UpdateEventResult.NotOrganizer,
+        repository.updateEvent(organized.copy(id = "event-2")),
+    )
+    repository.updateFailure = UpdateEventResult.NetworkError
+    assertEquals(UpdateEventResult.NetworkError, repository.updateEvent(organized))
+    repository.currentUid = null
+    assertEquals(UpdateEventResult.NotOrganizer, repository.updateEvent(organized))
+
+    assertEquals(listOf(organized, event.copy(id = "event-2")), repository.events)
+  }
+
+  @Test
+  fun deleteEvent_byAnOrganizer_removesTheEvent() = runTest {
+    repository.seed(organized)
+
+    assertEquals(DeleteEventResult.Deleted, repository.deleteEvent("event-1"))
+
+    assertEquals(EventResult.NotFound, repository.getEvent("event-1").first())
+    assertEquals(listOf("event-1"), repository.deleteRequests)
+  }
+
+  @Test
+  fun deleteEvent_refusesWhatTheRealRepositoryRefuses() = runTest {
+    repository.seed(organized, event.copy(id = "event-2"))
+
+    assertEquals(DeleteEventResult.NotFound, repository.deleteEvent("missing"))
+    assertEquals(DeleteEventResult.NotOrganizer, repository.deleteEvent("event-2"))
+    repository.deleteFailure = DeleteEventResult.NetworkError
+    assertEquals(DeleteEventResult.NetworkError, repository.deleteEvent("event-1"))
+    repository.currentUid = null
+    assertEquals(DeleteEventResult.NotOrganizer, repository.deleteEvent("event-1"))
+
+    assertEquals(listOf(organized, event.copy(id = "event-2")), repository.events)
   }
 }
