@@ -1,6 +1,6 @@
 // Contributors: Claude (wrote these tests; verified association badge, #45; the upcoming-events
 // listener, #49; unexpected failures and cancellation, #182; the single-event listener and its
-// failures, #112).
+// failures, #112; updating and deleting as an organizer, #130).
 // Contributors: OpenAI Codex (listener disposal failure and cancellation tests, #156).
 package com.polysocial.model.event
 
@@ -826,5 +826,244 @@ class FirestoreEventRepositoryTest {
         results,
     )
     verify { registration.remove() }
+  }
+
+  // Updating and deleting as an organizer (#130)
+
+  private val storedDocument = mockk<DocumentReference>()
+  private val updated = slot<Any>()
+
+  /** An event "creator" made, now managed with "co-organizer" and readable by a member too. */
+  private val managed =
+      stored.copy(
+          id = "event-1",
+          organizerIds = listOf("creator", "co-organizer"),
+          allowedUids = listOf("creator", "co-organizer", "member"),
+          isAssociationEvent = true,
+      )
+
+  /** New values from the form, which also tries to take over the event. */
+  private val edit =
+      validEvent(title = "Exam review")
+          .copy(
+              id = "event-1",
+              createdBy = "intruder",
+              organizerIds = listOf("intruder"),
+              allowedUids = emptyList(),
+              isAssociationEvent = false,
+          )
+
+  /**
+   * Stubs `events/event-1` as stored with [data] (missing when null), read and written through the
+   * transaction the repository runs.
+   */
+  private fun stubStoredEvent(data: Map<String, Any?>? = managed.toFirestoreMap()) {
+    every { collection.document("event-1") } returns storedDocument
+    every { transaction.get(storedDocument) } returns eventSnapshot(data)
+    every { transaction.set(storedDocument, capture(updated)) } returns transaction
+    every { transaction.delete(storedDocument) } returns transaction
+    every { db.runTransaction(capture(options), any<Transaction.Function<Any>>()) } answers
+        {
+          Tasks.forResult(secondArg<Transaction.Function<Any>>().apply(transaction))
+        }
+  }
+
+  private fun denied() =
+      FirebaseFirestoreException("denied", FirebaseFirestoreException.Code.PERMISSION_DENIED)
+
+  /**
+   * Runs the transaction's reads, then fails its commit with [code], like a write the server
+   * refuses.
+   */
+  private fun failTheCommitWith(code: FirebaseFirestoreException.Code) {
+    every { db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Any>>()) } answers
+        {
+          secondArg<Transaction.Function<Any>>().apply(transaction)
+          Tasks.forException(FirebaseFirestoreException("failed", code))
+        }
+  }
+
+  private fun updatedFields() = updated.captured as Map<*, *>
+
+  @Test
+  fun update_byAnOrganizer_writesTheNewValuesAndKeepsWhoManagesAndReadsTheEvent() = runTest {
+    stubStoredEvent()
+
+    assertEquals(UpdateEventResult.Updated, repository.updateEvent(edit))
+
+    assertEquals(edit.withOwnershipOf(managed).toFirestoreMap(), updatedFields())
+    assertEquals("Exam review", updatedFields()["title"])
+    assertEquals("creator", updatedFields()["createdBy"])
+    assertEquals(listOf("creator", "co-organizer"), updatedFields()["organizerIds"])
+    assertEquals(listOf("creator", "co-organizer", "member"), updatedFields()["allowedUids"])
+    assertEquals(true, updatedFields()["isAssociationEvent"])
+    assertEquals(1, options.captured.maxAttempts)
+  }
+
+  @Test
+  fun update_byAnOrganizerWhoIsNotTheCreator_isSaved() = runTest {
+    stubStoredEvent()
+    auth.user = AuthUser("co-organizer", "co@epfl.ch", true)
+
+    assertEquals(UpdateEventResult.Updated, repository.updateEvent(edit))
+  }
+
+  @Test
+  fun update_bySomeoneWhoIsNotAnOrganizer_writesNothing() = runTest {
+    stubStoredEvent()
+    auth.user = AuthUser("member", "member@epfl.ch", true)
+
+    assertEquals(UpdateEventResult.NotOrganizer, repository.updateEvent(edit))
+    verify(exactly = 0) { transaction.set(any<DocumentReference>(), any()) }
+  }
+
+  @Test
+  fun update_withInvalidValues_isRejectedBeforeFirestore() = runTest {
+    val result =
+        repository.updateEvent(edit.copy(title = " ", startTime = TEST_NOW.minusSeconds(60)))
+
+    assertEquals(
+        UpdateEventResult.Invalid(
+            listOf(EventValidationError.BLANK_TITLE, EventValidationError.START_IN_PAST)
+        ),
+        result,
+    )
+    verify { db wasNot Called }
+  }
+
+  @Test
+  fun update_offline_returnsANetworkErrorWithoutStartingAWrite() = runTest {
+    online = false
+
+    assertEquals(UpdateEventResult.NetworkError, repository.updateEvent(edit))
+    verify { db wasNot Called }
+  }
+
+  @Test
+  fun update_withNobodySignedIn_isNotAnOrganizerAndReadsNothing() = runTest {
+    auth.user = null
+
+    assertEquals(UpdateEventResult.NotOrganizer, repository.updateEvent(edit))
+    verify { db wasNot Called }
+  }
+
+  @Test
+  fun update_anIdThatCannotBeADocumentId_isNotFoundWithoutReading() = runTest {
+    assertEquals(UpdateEventResult.NotFound, repository.updateEvent(edit.copy(id = "a/b")))
+    verify { db wasNot Called }
+  }
+
+  @Test
+  fun update_aMissingOrMalformedEvent_isNotFoundAndWritesNothing() = runTest {
+    stubStoredEvent(data = null)
+    assertEquals(UpdateEventResult.NotFound, repository.updateEvent(edit))
+
+    stubStoredEvent(data = managed.toFirestoreMap() - "title")
+    assertEquals(UpdateEventResult.NotFound, repository.updateEvent(edit))
+
+    verify(exactly = 0) { transaction.set(any<DocumentReference>(), any()) }
+  }
+
+  @Test
+  fun update_aReadTheRulesDeny_isNotFound() = runTest {
+    stubStoredEvent()
+    every { transaction.get(storedDocument) } throws denied()
+
+    assertEquals(UpdateEventResult.NotFound, repository.updateEvent(edit))
+  }
+
+  @Test
+  fun update_aWriteTheRulesDeny_isNotAnOrganizer() = runTest {
+    stubStoredEvent()
+    failTheCommitWith(FirebaseFirestoreException.Code.PERMISSION_DENIED)
+
+    assertEquals(UpdateEventResult.NotOrganizer, repository.updateEvent(edit))
+  }
+
+  @Test
+  fun update_losingTheConnectionDuringTheWrite_isANetworkError() = runTest {
+    stubStoredEvent()
+    failTheCommitWith(FirebaseFirestoreException.Code.UNAVAILABLE)
+
+    assertEquals(UpdateEventResult.NetworkError, repository.updateEvent(edit))
+  }
+
+  @Test
+  fun update_anyOtherFailure_isAnUnexpectedError() = runTest {
+    stubStoredEvent()
+    failTheCommitWith(FirebaseFirestoreException.Code.ABORTED)
+    assertEquals(UpdateEventResult.UnexpectedError, repository.updateEvent(edit))
+
+    every { collection.document("event-1") } throws terminated()
+    assertEquals(UpdateEventResult.UnexpectedError, repository.updateEvent(edit))
+  }
+
+  @Test
+  fun update_aWriteTaskCancelledWhileTheCallerRuns_isAnUnexpectedError() = runTest {
+    stubStoredEvent()
+    every { db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Any>>()) } returns
+        Tasks.forCanceled()
+
+    assertEquals(UpdateEventResult.UnexpectedError, repository.updateEvent(edit))
+  }
+
+  @Test
+  fun delete_byAnOrganizer_deletesTheEventInOneAttempt() = runTest {
+    stubStoredEvent()
+    auth.user = AuthUser("co-organizer", "co@epfl.ch", true)
+
+    assertEquals(DeleteEventResult.Deleted, repository.deleteEvent("event-1"))
+
+    verify { transaction.delete(storedDocument) }
+    assertEquals(1, options.captured.maxAttempts)
+  }
+
+  @Test
+  fun delete_bySomeoneWhoIsNotAnOrganizer_deletesNothing() = runTest {
+    stubStoredEvent()
+    auth.user = AuthUser("member", "member@epfl.ch", true)
+
+    assertEquals(DeleteEventResult.NotOrganizer, repository.deleteEvent("event-1"))
+    verify(exactly = 0) { transaction.delete(any<DocumentReference>()) }
+  }
+
+  @Test
+  fun delete_anEventThatNoLongerExists_isNotFound() = runTest {
+    stubStoredEvent(data = null)
+
+    assertEquals(DeleteEventResult.NotFound, repository.deleteEvent("event-1"))
+    verify(exactly = 0) { transaction.delete(any<DocumentReference>()) }
+  }
+
+  @Test
+  fun delete_offlineOrSignedOutOrWithABadId_readsNothing() = runTest {
+    assertEquals(DeleteEventResult.NotFound, repository.deleteEvent(" "))
+
+    auth.user = null
+    assertEquals(DeleteEventResult.NotOrganizer, repository.deleteEvent("event-1"))
+
+    auth.user = AuthUser("creator", "creator@epfl.ch", true)
+    online = false
+    assertEquals(DeleteEventResult.NetworkError, repository.deleteEvent("event-1"))
+
+    verify { db wasNot Called }
+  }
+
+  @Test
+  fun delete_aWriteTheRulesDeny_isNotAnOrganizer() = runTest {
+    stubStoredEvent()
+    failTheCommitWith(FirebaseFirestoreException.Code.PERMISSION_DENIED)
+
+    assertEquals(DeleteEventResult.NotOrganizer, repository.deleteEvent("event-1"))
+  }
+
+  @Test
+  fun delete_losingTheConnectionOrAnyOtherFailure_isReported() = runTest {
+    stubStoredEvent()
+    failTheCommitWith(FirebaseFirestoreException.Code.UNAVAILABLE)
+    assertEquals(DeleteEventResult.NetworkError, repository.deleteEvent("event-1"))
+
+    failTheCommitWith(FirebaseFirestoreException.Code.ABORTED)
+    assertEquals(DeleteEventResult.UnexpectedError, repository.deleteEvent("event-1"))
   }
 }
