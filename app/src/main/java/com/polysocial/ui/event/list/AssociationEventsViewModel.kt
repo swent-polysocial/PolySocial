@@ -1,4 +1,5 @@
-// Contributors: Claude (an association's own events on its Events tab, #132).
+// Contributors: Claude (an association's own events on its Events tab, #132; keeping the split
+// current, #132 review).
 package com.polysocial.ui.event.list
 
 import androidx.lifecycle.ViewModel
@@ -14,7 +15,10 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import javax.inject.Inject
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -43,10 +47,11 @@ sealed interface AssociationEventsState {
 
 /**
  * Observes the signed-in association's own events ([EventRepository.getOwnAssociationEvents]) and
- * splits them into upcoming and past ones each time they change. Like the students' Events tab,
- * `isOffline` needs both the cache and [network] saying offline, since Firestore's first snapshot
- * comes from the cache even online. After an error the repository stops emitting, so the state
- * stays [AssociationEventsState.Error] until [retry].
+ * splits them into upcoming and past ones each time they change, and again every [REFRESH_INTERVAL]
+ * while [keepSplitCurrent] runs, so an event that has ended moves to Past and loses its "Live" chip
+ * without new data. Like the students' Events tab, `isOffline` needs both the cache and [network]
+ * saying offline, since Firestore's first snapshot comes from the cache even online. After an error
+ * the repository stops emitting, so the state stays [AssociationEventsState.Error] until [retry].
  *
  * @param clock gives the current time for the split and the time zone of the cards.
  */
@@ -71,6 +76,9 @@ constructor(
 
   private var observation: Job? = null
 
+  /** The last events the repository sent, split again by [refresh]. */
+  private var lastEvents: OwnEventsResult.Events? = null
+
   init {
     observe()
   }
@@ -82,25 +90,51 @@ constructor(
     observe()
   }
 
+  /** Splits the last events again at the current time. Does nothing before they arrive. */
+  fun refresh() {
+    if (_state.value is AssociationEventsState.Events) lastEvents?.let(::show)
+  }
+
+  /**
+   * Refreshes the split now and then every [REFRESH_INTERVAL] until cancelled. The screen runs it
+   * while it is shown, so it also catches up when the app comes back to the foreground.
+   */
+  suspend fun keepSplitCurrent() {
+    while (true) {
+      refresh()
+      delay(REFRESH_INTERVAL)
+    }
+  }
+
+  private fun show(result: OwnEventsResult.Events) {
+    val now = clock.instant()
+    val split = splitUpcomingAndPast(result.events, now)
+    _state.value =
+        AssociationEventsState.Events(
+            split.upcoming,
+            split.past,
+            now,
+            isOffline = result.fromCache && !network.isOnline(),
+        )
+  }
+
   private fun observe() {
     observation?.cancel()
     observation = viewModelScope.launch {
       repository.getOwnAssociationEvents().collect { result ->
-        _state.value =
-            when (result) {
-              OwnEventsResult.Error -> AssociationEventsState.Error
-              is OwnEventsResult.Events -> {
-                val now = clock.instant()
-                val split = splitUpcomingAndPast(result.events, now)
-                AssociationEventsState.Events(
-                    split.upcoming,
-                    split.past,
-                    now,
-                    isOffline = result.fromCache && !network.isOnline(),
-                )
-              }
-            }
+        when (result) {
+          OwnEventsResult.Error -> _state.value = AssociationEventsState.Error
+          is OwnEventsResult.Events -> {
+            lastEvents = result
+            show(result)
+          }
+        }
       }
     }
+  }
+
+  companion object {
+    /** How often [keepSplitCurrent] splits the events again: the cards show times to the minute. */
+    val REFRESH_INTERVAL: Duration = 1.minutes
   }
 }

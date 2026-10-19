@@ -1,5 +1,5 @@
 // Contributors: Claude (the association's Events tab from the Figma "Association · events tab"
-// frame, #132).
+// frame, #132; keeping the split current, #132 review).
 package com.polysocial.ui.event.list
 
 import androidx.compose.foundation.background
@@ -24,6 +24,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,7 +46,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.polysocial.R
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.isLive
@@ -96,6 +100,10 @@ fun AssociationEventsRoute(
     viewModel: AssociationEventsViewModel = hiltViewModel(),
 ) {
   val state by viewModel.state.collectAsStateWithLifecycle()
+  val lifecycleOwner = LocalLifecycleOwner.current
+  LaunchedEffect(viewModel, lifecycleOwner) {
+    lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) { viewModel.keepSplitCurrent() }
+  }
   AssociationEventsScreen(
       state,
       zone = viewModel.zone,
