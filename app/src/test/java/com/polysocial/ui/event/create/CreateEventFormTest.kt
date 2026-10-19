@@ -1,5 +1,5 @@
 // Contributors: Claude (wrote these tests; the place name tests, #112); Mohamed Khellaf
-// (reviewed).
+// (reviewed). Claude (filling the form from an event to edit it, #131).
 package com.polysocial.ui.event.create
 
 import com.polysocial.model.event.Coordinates
@@ -252,5 +252,44 @@ class CreateEventFormTest {
     val form = completeForm().copy(location = ROLEX.copy(name = name))
 
     assertEquals("a".repeat(99), form.toEvent(ZURICH)!!.locationName)
+  }
+
+  @Test
+  fun toForm_thenToEvent_givesBackTheSameEvent() {
+    val nextDayEnd =
+        completeForm().copy(startTime = LocalTime.of(22, 0), endTime = LocalTime.of(1, 0))
+    val noLimitPublic = completeForm().copy(endTime = null, capacityText = "", isPrivate = false)
+
+    for (form in listOf(completeForm(), nextDayEnd, noLimitPublic)) {
+      val event = form.toEvent(ZURICH)!!
+
+      assertEquals(form, event.toForm(ZURICH))
+      assertEquals(event, event.toForm(ZURICH).toEvent(ZURICH))
+    }
+  }
+
+  @Test
+  fun toForm_ofAnEventSavedWithoutAPlaceName_asksThePickerToLookItUpAgain() {
+    val event = completeForm().toEvent(ZURICH)!!.copy(locationName = "")
+
+    val location = event.toForm(ZURICH).location!!
+
+    assertEquals(ROLEX.coordinates, location.coordinates)
+    assertFalse(location.isNamed)
+  }
+
+  @Test
+  fun errors_whenEditing_acceptOnlyTheKeptStartInThePast() {
+    // Wednesday 7 October, 11:00 in Lausanne: an hour before FORM_NOW.
+    val started =
+        completeForm().copy(date = LocalDate.of(2026, 10, 7), startTime = LocalTime.of(11, 0))
+    val keptStart = started.toEvent(ZURICH)!!.startTime
+
+    assertTrue(CreateEventFormError.START_IN_PAST in started.errors(FORM_NOW, ZURICH))
+    assertEquals(emptySet<CreateEventFormError>(), started.errors(FORM_NOW, ZURICH, keptStart))
+    assertEquals(
+        setOf(CreateEventFormError.START_IN_PAST),
+        started.copy(startTime = LocalTime.of(10, 0)).errors(FORM_NOW, ZURICH, keptStart),
+    )
   }
 }
