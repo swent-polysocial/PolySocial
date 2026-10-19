@@ -1,9 +1,9 @@
 // Contributors: Claude (shared error state from the Figma "Tab · couldn't load" and "App start ·
-// couldn't load profile" frames, #74; scrolling and heading after review).
+// couldn't load profile" frames, #74; scrolling and heading after review; its Retry button moved to
+// the shared StateButton, #194).
 package com.polysocial.ui.common
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -16,7 +16,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -24,11 +23,9 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -37,7 +34,6 @@ import androidx.compose.ui.unit.dp
 import com.polysocial.R
 import com.polysocial.resources.C
 import com.polysocial.ui.theme.AccentText
-import com.polysocial.ui.theme.Bg
 import com.polysocial.ui.theme.Ink
 import com.polysocial.ui.theme.Ink2
 import com.polysocial.ui.theme.Surface
@@ -89,16 +85,11 @@ fun ErrorState(title: String, message: String, onRetry: () -> Unit, modifier: Mo
           textAlign = TextAlign.Center,
           modifier = Modifier.widthIn(max = MAX_TEXT_WIDTH),
       )
-      Box(
-          Modifier.size(width = 160.dp, height = 48.dp)
-              .clip(RoundedCornerShape(24.dp))
-              .background(Ink)
-              .clickable(role = Role.Button, onClick = onRetry)
-              .testTag(C.Tag.error_retry),
-          contentAlignment = Alignment.Center,
-      ) {
-        Text(stringResource(R.string.retry), style = typography.titleSmall.exact(), color = Bg)
-      }
+      StateButton(
+          stringResource(R.string.retry),
+          onRetry,
+          Modifier.testTag(C.Tag.error_retry),
+      )
     }
   }
 }
