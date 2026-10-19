@@ -1,6 +1,6 @@
 // Contributors: Claude (drafted the EventRepository interface; the creator's profile, #45; the
 // public upcoming-events query, #49; reading one event, #112); Mohamed Khellaf (reviewed). Claude
-// (updating and deleting, #130); Franciszek Najda (reviewed).
+// (updating and deleting, #130; an association's own events, #132); Franciszek Najda (reviewed).
 package com.polysocial.model.event
 
 import kotlinx.coroutines.flow.Flow
@@ -86,6 +86,23 @@ sealed interface PublicEventsResult {
 
   /** The events couldn't be read, for example because the Security Rules denied the query. */
   data object Error : PublicEventsResult
+}
+
+/** What [EventRepository.getOwnAssociationEvents] emits. */
+sealed interface OwnEventsResult {
+  /**
+   * Every event the signed-in association published, past and upcoming, sorted by start time.
+   *
+   * @property fromCache true when the list comes from Firestore's offline cache, like
+   *   [PublicEventsResult.Events].
+   */
+  data class Events(val events: List<Event>, val fromCache: Boolean) : OwnEventsResult
+
+  /**
+   * The events couldn't be read: nobody is signed in, or the Security Rules denied the query (only
+   * a verified association may read its own association events).
+   */
+  data object Error : OwnEventsResult
 }
 
 /** What [EventRepository.getEvent] emits. */
@@ -183,6 +200,17 @@ interface EventRepository {
   fun getUpcomingPublicEvents(
       windowDays: Int = DEFAULT_UPCOMING_WINDOW_DAYS
   ): Flow<PublicEventsResult>
+
+  /**
+   * Observes the events the signed-in user published as a verified association (`createdBy` is its
+   * UID and `isAssociationEvent` is true, the shape #52's read rule requires), for the
+   * association's Events tab. Private ones are included: the association organizes them.
+   *
+   * Like [getUpcomingPublicEvents], the flow emits on every change, including from the offline
+   * cache, is conflated, and ends after an [OwnEventsResult.Error], which is always delivered
+   * first. The user is read when collection starts.
+   */
+  fun getOwnAssociationEvents(): Flow<OwnEventsResult>
 
   /**
    * Observes the event `events/[id]`, for its detail screen.

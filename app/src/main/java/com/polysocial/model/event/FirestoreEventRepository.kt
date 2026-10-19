@@ -1,8 +1,8 @@
 // Contributors: OpenAI Codex (refresh Firestore and handle blocked cache access, #156).
 // Contributors: Claude (drafted the Firestore event repository; verified association badge, #45;
 // the public upcoming-events listener, #49; unexpected failures reported as errors, #182; the
-// single-event listener and its failures, #112; updating and deleting as an organizer, #130);
-// Franciszek Najda (reviewed #130).
+// single-event listener and its failures, #112; updating and deleting as an organizer, #130; an
+// association's own events, #132); Franciszek Najda (reviewed #130).
 package com.polysocial.model.event
 
 import com.google.firebase.FirebaseException
@@ -10,6 +10,7 @@ import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.MetadataChanges
+import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.Transaction
 import com.google.firebase.firestore.TransactionOptions
 import com.polysocial.model.auth.AuthRepository
@@ -208,61 +209,94 @@ class FirestoreEventRepository(
    * Listens to the query Firestore needs for [isUpcomingPublicEvent]: `isPrivate == false` (the
    * Security Rules reject a query that could return a private event) and a `startTime` range. This
    * equality plus range needs the composite index in `firebase/firestore/firestore.indexes.json`.
-   *
-   * Metadata changes are included, so the flow also emits when only [PublicEventsResult.Events]'s
-   * `fromCache` changes, for example when the device comes back online.
-   *
-   * The flow is conflated: a slow collector gets only the latest result, never a backlog of
-   * outdated snapshots. Sending never fails or blocks the listener's callback, so the terminal
-   * [PublicEventsResult.Error] replaces any result still waiting and always reaches the collector
-   * before the flow ends. Any failure, including an unexpected exception while building the query
-   * or reading a snapshot, ends the flow with that error instead of throwing.
+   * The window is fixed when collection starts. See [listenToEvents] for how it emits and fails.
    */
   override fun getUpcomingPublicEvents(windowDays: Int): Flow<PublicEventsResult> {
     require(windowDays > 0) { "windowDays must be positive, was $windowDays" }
-    return callbackFlow {
-          fun fail() {
-            trySend(PublicEventsResult.Error)
-            close()
-          }
-          // Nothing in this try suspends, so it can't catch the collector's cancellation, and
-          // awaitClose still ends a cancelled collection.
-          val registration =
-              try {
-                val now = clock.instant()
-                db.collection(EVENTS_COLLECTION)
-                    .whereEqualTo("isPrivate", false)
-                    .whereGreaterThanOrEqualTo("startTime", now.toTimestamp())
-                    .whereLessThan("startTime", upcomingWindowEnd(now, windowDays).toTimestamp())
-                    .orderBy("startTime")
-                    .addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
-                      if (error != null || snapshot == null) fail()
-                      else
-                          try {
-                            val events =
-                                snapshot.documents.mapNotNull {
-                                  eventFromFirestore(it.id, it.data.orEmpty())
-                                }
-                            trySend(
-                                PublicEventsResult.Events(events, snapshot.metadata.isFromCache)
-                            )
-                          } catch (e: Exception) {
-                            // Thrown here, it would crash the app on Firestore's callback thread.
-                            fail()
-                          }
-                    }
-              } catch (e: Exception) {
-                fail()
-                null
-              }
-          awaitClose { registration?.remove() }
-        }
-        .buffer(Channel.CONFLATED)
-        .catch { error ->
-          if (error is CancellationException) throw error
-          emit(PublicEventsResult.Error)
-        }
+    return listenToEvents(
+        query = {
+          val now = clock.instant()
+          db.collection(EVENTS_COLLECTION)
+              .whereEqualTo("isPrivate", false)
+              .whereGreaterThanOrEqualTo("startTime", now.toTimestamp())
+              .whereLessThan("startTime", upcomingWindowEnd(now, windowDays).toTimestamp())
+              .orderBy("startTime")
+        },
+        events = PublicEventsResult::Events,
+        error = PublicEventsResult.Error,
+    )
   }
+
+  /**
+   * Listens to `createdBy == uid` and `isAssociationEvent == true`, sorted by `startTime`: the
+   * owner-constrained shape #52's read rule requires of an association, which needs the second
+   * composite index in `firebase/firestore/firestore.indexes.json`. Nobody signed in is an
+   * [OwnEventsResult.Error] without a query. See [listenToEvents] for how it emits and fails.
+   */
+  override fun getOwnAssociationEvents(): Flow<OwnEventsResult> =
+      listenToEvents(
+          query = {
+            auth.currentUser()?.let { user ->
+              db.collection(EVENTS_COLLECTION)
+                  .whereEqualTo("createdBy", user.uid)
+                  .whereEqualTo("isAssociationEvent", true)
+                  .orderBy("startTime")
+            }
+          },
+          events = OwnEventsResult::Events,
+          error = OwnEventsResult.Error,
+      )
+
+  /**
+   * Listens to the events [query] returns, built when collection starts, and emits them through
+   * [events] with whether they come from the offline cache. Metadata changes are included, so the
+   * flow also emits when only `fromCache` changes, for example when the device comes back online. A
+   * document that can't be read as an [Event] is skipped.
+   *
+   * The flow is conflated: a slow collector gets only the latest result, never a backlog of
+   * outdated snapshots. Sending never fails or blocks the listener's callback, so the terminal
+   * [error] replaces any result still waiting and always reaches the collector before the flow
+   * ends. Any failure, including a null [query] (nobody signed in) or an unexpected exception while
+   * building the query or reading a snapshot, ends the flow with [error] instead of throwing.
+   */
+  private fun <R : Any> listenToEvents(
+      query: () -> Query?,
+      events: (List<Event>, Boolean) -> R,
+      error: R,
+  ): Flow<R> = callbackFlow {
+    fun fail() {
+      trySend(error)
+      close()
+    }
+    // Nothing in this try suspends, so it can't catch the collector's cancellation, and
+    // awaitClose still ends a cancelled collection.
+    val registration =
+        try {
+          val listened = query()
+          if (listened == null) fail()
+          listened?.addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, failure ->
+            if (failure != null || snapshot == null) fail()
+            else
+                try {
+                  val read =
+                      snapshot.documents.mapNotNull { eventFromFirestore(it.id, it.data.orEmpty()) }
+                  trySend(events(read, snapshot.metadata.isFromCache))
+                } catch (e: Exception) {
+                  // Thrown here, it would crash the app on Firestore's callback thread.
+                  fail()
+                }
+          }
+        } catch (e: Exception) {
+          fail()
+          null
+        }
+    awaitClose { registration?.remove() }
+  }
+      .buffer(Channel.CONFLATED)
+      .catch { failure ->
+        if (failure is CancellationException) throw failure
+        emit(error)
+      }
 
   /**
    * Listens to `events/[id]`. Metadata changes are included, so the flow also emits when only
