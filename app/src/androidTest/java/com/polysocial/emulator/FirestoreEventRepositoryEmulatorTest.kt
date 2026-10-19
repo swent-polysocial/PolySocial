@@ -1,7 +1,8 @@
 // Contributors: Claude (event repository read and createEvent tests against the Firestore
 // emulator, #118). OpenAI Codex (adapted the event-test auth fixture to the verification
 // contract, #31); OpenAI Codex (password-reset contract in the event-test fixture, #164); Claude
-// (updateEvent and deleteEvent against the rules, #130); Franciszek Najda (reviewed #130).
+// (updateEvent and deleteEvent against the rules, #130; an association's own events against the
+// rules, #132); Franciszek Najda (reviewed #130).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -20,6 +21,7 @@ import com.polysocial.model.event.EVENTS_COLLECTION
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.FirestoreEventRepository
+import com.polysocial.model.event.OwnEventsResult
 import com.polysocial.model.event.PublicEventsResult
 import com.polysocial.model.event.UpdateEventResult
 import com.polysocial.model.event.eventFromFirestore
@@ -27,6 +29,7 @@ import com.polysocial.model.event.toFirestoreMap
 import com.polysocial.model.event.withCreator
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.user.FirestoreUserProfileRepository
+import com.polysocial.model.user.USERS_COLLECTION
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -400,6 +403,65 @@ class FirestoreEventRepositoryEmulatorTest {
     val result = withTimeout(TIMEOUT_MS) { repository.deleteEvent("missing") }
 
     assertEquals(DeleteEventResult.NotFound, result)
+  }
+
+  /** Signs in [ASSOCIATION_EMAIL] with a profile a PolySocial admin has verified. */
+  private suspend fun signInVerifiedAssociation(): String {
+    val uid = emulator.signInVerifiedUser(ASSOCIATION_EMAIL).uid
+    emulator.createAsAdmin(
+        USERS_COLLECTION,
+        uid,
+        mapOf(
+            "uid" to uid,
+            "email" to ASSOCIATION_EMAIL,
+            "displayName" to "Test Association",
+            "accountType" to "association",
+            "isAssociationVerified" to true,
+        ),
+    )
+    return uid
+  }
+
+  /**
+   * The first result of [FirestoreEventRepository.getOwnAssociationEvents] read from the server.
+   */
+  private suspend fun firstOwnEvents(): OwnEventsResult =
+      withTimeout(TIMEOUT_MS) {
+        repository.getOwnAssociationEvents().first {
+          it !is OwnEventsResult.Events || !it.fromCache
+        }
+      }
+
+  @Test
+  fun ownEvents_aVerifiedAssociationReadsAllItsOwnEventsAndNoOthers() = runBlocking {
+    val uid = signInVerifiedAssociation()
+    val own =
+        publicEvent(startsIn = Duration.ofDays(2))
+            .copy(
+                createdBy = uid,
+                organizerIds = listOf(uid),
+                allowedUids = listOf(uid),
+                isAssociationEvent = true,
+            )
+    seed("later", own)
+    seed("privateAndPast", own.copy(isPrivate = true, startTime = NOW.minus(Duration.ofDays(3))))
+    seed("someoneElses", publicEvent(startsIn = Duration.ofDays(1)).copy(isAssociationEvent = true))
+
+    val result = firstOwnEvents()
+
+    assertTrue("Expected events, got $result", result is OwnEventsResult.Events)
+    assertEquals(
+        listOf("privateAndPast", "later"),
+        (result as OwnEventsResult.Events).events.map { it.id },
+    )
+  }
+
+  @Test
+  fun ownEvents_aStudentIsDeniedAndGetsAnError() = runBlocking {
+    signInStudent()
+    seed("public", publicEvent(startsIn = Duration.ofDays(1)))
+
+    assertEquals(OwnEventsResult.Error, firstOwnEvents())
   }
 
   private suspend fun collectAll(): List<PublicEventsResult> {

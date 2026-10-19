@@ -1,5 +1,5 @@
 // Contributors: Claude (wrote these tests of the fake's getEvent contract, #112; updateEvent and
-// deleteEvent, #130); Franciszek Najda (reviewed #130).
+// deleteEvent, #130; its own association events, #132); Franciszek Najda (reviewed #130).
 package com.polysocial.model.event
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -13,8 +13,8 @@ import org.junit.Test
 
 /**
  * Checks that [FakeEventRepository] follows the [EventRepository] contracts of
- * [EventRepository.getEvent], [EventRepository.updateEvent] and [EventRepository.deleteEvent],
- * since the ViewModel tests rely on them.
+ * [EventRepository.getEvent], [EventRepository.updateEvent], [EventRepository.deleteEvent] and
+ * [EventRepository.getOwnAssociationEvents], since the ViewModel tests rely on them.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class FakeEventRepositoryTest {
@@ -137,5 +137,33 @@ class FakeEventRepositoryTest {
     assertEquals(DeleteEventResult.NotOrganizer, repository.deleteEvent("event-1"))
 
     assertEquals(listOf(organized, event.copy(id = "event-2")), repository.events)
+  }
+
+  @Test
+  fun getOwnAssociationEvents_emitsOnlyTheSignedInAssociationsEventsSortedByStart() = runTest {
+    val later = validEvent(startTime = TEST_NOW.plusSeconds(7200)).copy(id = "later")
+    val sooner = validEvent(startTime = TEST_NOW.plusSeconds(3600)).copy(id = "sooner")
+    val own = { e: Event -> e.withCreator("test-creator", isVerifiedAssociation = true) }
+    repository.seed(
+        own(later),
+        own(sooner),
+        event.withCreator("test-creator", isVerifiedAssociation = false),
+        own(event).copy(id = "other", createdBy = "other"),
+    )
+
+    assertEquals(
+        OwnEventsResult.Events(listOf(own(sooner), own(later)), fromCache = false),
+        repository.getOwnAssociationEvents().first(),
+    )
+  }
+
+  @Test
+  fun getOwnAssociationEvents_signedOutOrFailing_isAnErrorThatEnds() = runTest {
+    repository.ownEventsFailure = true
+    assertEquals(listOf(OwnEventsResult.Error), repository.getOwnAssociationEvents().toList())
+
+    repository.ownEventsFailure = false
+    repository.currentUid = null
+    assertEquals(listOf(OwnEventsResult.Error), repository.getOwnAssociationEvents().toList())
   }
 }

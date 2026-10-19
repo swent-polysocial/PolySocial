@@ -1,7 +1,8 @@
 // Contributors: Claude (wrote these tests; verified association badge, #45; the upcoming-events
 // listener, #49; unexpected failures and cancellation, #182; the single-event listener and its
 // failures, #112; updating and deleting as an organizer, #130; editing a started event and keeping
-// unknown fields, #130 review); Franciszek Najda (reviewed #130).
+// unknown fields, #130 review; an association's own events, #132); Franciszek Najda (reviewed
+// #130).
 // Contributors: OpenAI Codex (listener disposal failure and cancellation tests, #156).
 package com.polysocial.model.event
 
@@ -1092,5 +1093,80 @@ class FirestoreEventRepositoryTest {
 
     failTheCommitWith(FirebaseFirestoreException.Code.ABORTED)
     assertEquals(DeleteEventResult.UnexpectedError, repository.deleteEvent("event-1"))
+  }
+
+  // An association's own events (#132)
+
+  private val byCreator = mockk<Query>()
+  private val associationEvents = mockk<Query>()
+  private val ownSorted = mockk<Query>()
+
+  /** Stubs exactly the query #52's read rule allows an association, so any other fails the test. */
+  private fun stubOwnEventsQuery() {
+    every { collection.whereEqualTo("createdBy", "creator") } returns byCreator
+    every { byCreator.whereEqualTo("isAssociationEvent", true) } returns associationEvents
+    every { associationEvents.orderBy("startTime") } returns ownSorted
+    every { ownSorted.addSnapshotListener(MetadataChanges.INCLUDE, capture(listener)) } returns
+        registration
+  }
+
+  private fun TestScope.collectOwnEvents(results: MutableList<OwnEventsResult>) =
+      launch(UnconfinedTestDispatcher(testScheduler)) {
+        repository.getOwnAssociationEvents().toList(results)
+      }
+
+  @Test
+  fun ownEvents_queriesTheSignedInAssociationsEventsAndEmitsThemOnEveryChange() = runTest {
+    stubOwnEventsQuery()
+    val own = stored.copy(isAssociationEvent = true)
+    val results = mutableListOf<OwnEventsResult>()
+    val collecting = collectOwnEvents(results)
+
+    listener.captured.onEvent(snapshot(fromCache = true), null)
+    listener.captured.onEvent(
+        snapshot(
+            document("own", own.toFirestoreMap()),
+            document("malformed", own.toFirestoreMap() - "title"),
+        ),
+        null,
+    )
+    collecting.cancel()
+
+    assertEquals(
+        listOf(
+            OwnEventsResult.Events(emptyList(), fromCache = true),
+            OwnEventsResult.Events(listOf(own.copy(id = "own")), fromCache = false),
+        ),
+        results,
+    )
+    verify { registration.remove() }
+  }
+
+  @Test
+  fun ownEvents_aQueryTheRulesDeny_emitsAnErrorAndEnds() = runTest {
+    stubOwnEventsQuery()
+    val results = mutableListOf<OwnEventsResult>()
+    val collecting = collectOwnEvents(results)
+
+    listener.captured.onEvent(null, denied())
+    collecting.join()
+
+    assertEquals(listOf(OwnEventsResult.Error), results)
+    verify { registration.remove() }
+  }
+
+  @Test
+  fun ownEvents_withNobodySignedIn_emitsAnErrorWithoutQuerying() = runTest {
+    auth.user = null
+
+    assertEquals(listOf(OwnEventsResult.Error), repository.getOwnAssociationEvents().toList())
+    verify { db wasNot Called }
+  }
+
+  @Test
+  fun ownEvents_anUnexpectedExceptionWhileStartingToListen_emitsAnErrorAndEnds() = runTest {
+    every { collection.whereEqualTo("createdBy", "creator") } throws terminated()
+
+    assertEquals(listOf(OwnEventsResult.Error), repository.getOwnAssociationEvents().toList())
   }
 }
