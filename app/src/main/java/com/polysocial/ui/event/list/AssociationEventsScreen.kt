@@ -1,5 +1,5 @@
 // Contributors: Claude (the association's Events tab from the Figma "Association · events tab"
-// frame, #132; keeping the split current, #132 review).
+// frame, #132; keeping the split current and the year on other years' dates, #132 review).
 package com.polysocial.ui.event.list
 
 import androidx.compose.foundation.background
@@ -270,6 +270,7 @@ private fun OwnEventList(
 
 private val timeFormat = DateTimeFormatter.ofPattern("HH:mm")
 private val dateFormat = DateTimeFormatter.ofPattern("EEE d MMM")
+private val dateWithYearFormat = DateTimeFormatter.ofPattern("EEE d MMM yyyy")
 
 /**
  * An event as a Figma card: the category tile, the title, then the day, start time and place, and a
@@ -289,7 +290,7 @@ private fun OwnEventCard(
       when (start.toLocalDate()) {
         today -> stringResource(R.string.events_today)
         today.plusDays(1) -> stringResource(R.string.events_tomorrow)
-        else -> start.format(dateFormat)
+        else -> start.format(if (start.year == today.year) dateFormat else dateWithYearFormat)
       }
   val time = start.format(timeFormat)
   val details =
