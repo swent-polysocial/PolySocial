@@ -16,12 +16,16 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
+import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.UpdateEventResult
 import com.polysocial.model.event.withCreator
 import com.polysocial.resources.C
 import com.polysocial.ui.event.detail.EventDetailViewModel
 import java.time.Clock
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.flow
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -46,10 +50,10 @@ class EditEventScreenTest {
 
   private fun string(id: Int) = context.getString(id)
 
-  private fun show(id: String = "event-1") {
+  private fun show(id: String = "event-1", events: EventRepository = repository) {
     val viewModel =
         CreateEventViewModel(
-            repository,
+            events,
             Clock.fixed(FORM_NOW, ZURICH),
             SavedStateHandle(mapOf(EventDetailViewModel.EVENT_ID_ARG to id)),
         )
@@ -116,5 +120,31 @@ class EditEventScreenTest {
     show(id = "missing")
 
     assertEquals(1, closes)
+  }
+
+  @Test
+  fun whileTheEventIsRead_showsTheLoadingState() {
+    // A read that hasn't answered yet.
+    val reading =
+        object : EventRepository by repository {
+          override fun getEvent(id: String) = flow<Nothing> { awaitCancellation() }
+        }
+
+    show(events = reading)
+
+    node(C.Tag.loading_state).assertIsDisplayed()
+    composeTestRule.onNodeWithText(string(R.string.edit_event_loading)).assertIsDisplayed()
+  }
+
+  @Test
+  fun whileSaving_theButtonSaysSavingChanges() {
+    repository.seed(stored)
+    repository.pending = CompletableDeferred()
+    show()
+
+    save()
+
+    node(C.Tag.create_event_submit).assertTextEquals(string(R.string.edit_event_saving))
+    assertEquals(0, closes)
   }
 }

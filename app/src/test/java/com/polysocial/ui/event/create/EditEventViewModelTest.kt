@@ -84,6 +84,11 @@ class EditEventViewModelTest {
     runPending()
 
     assertEquals(CreateEventStatus.Saved, viewModel.state().status)
+    // Once saved, the form is closing: nothing changes or is sent again.
+    viewModel.onTitleChange("Too late")
+    viewModel.onSubmit()
+    runPending()
+    assertEquals("Exam review", viewModel.state().form.title)
     assertEquals("event-1", repository.updateRequests.single().id)
     assertEquals("Exam review", repository.events.single().title)
     assertEquals(stored.startTime, repository.events.single().startTime)
