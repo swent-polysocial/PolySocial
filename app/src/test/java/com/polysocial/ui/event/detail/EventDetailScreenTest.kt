@@ -1,4 +1,4 @@
-// Contributors: Claude (wrote these tests of the event detail screen, #112).
+// Contributors: Claude (wrote these tests of the event detail screen, #112; Retry, #194).
 package com.polysocial.ui.event.detail
 
 import android.content.Context
@@ -49,6 +49,8 @@ class EventDetailScreenTest {
 
   private var backs = 0
 
+  private var retries = 0
+
   /** A student's party, with every optional field filled in. */
   private val party =
       validEvent(title = "Balélec warm-up", capacity = 200)
@@ -75,7 +77,7 @@ class EventDetailScreenTest {
 
   private fun show(state: EventDetailUiState) {
     composeTestRule.setContent {
-      PolySocialTheme { EventDetailScreen(state, onBack = { backs++ }) }
+      PolySocialTheme { EventDetailScreen(state, onBack = { backs++ }, onRetry = { retries++ }) }
     }
   }
 
@@ -291,6 +293,60 @@ class EventDetailScreenTest {
     composeTestRule.onNodeWithTag(EventDetailTags.BACK).performClick()
 
     assertEquals(1, backs)
+  }
+
+  @Test
+  fun offlineNotSaved_retryCallsOnRetry() {
+    show(EventDetailUiState.OfflineNotSaved)
+
+    composeTestRule
+        .onNodeWithTag(EventDetailTags.RETRY)
+        .assertIsDisplayed()
+        .assertTextEquals(string(R.string.retry))
+        .performClick()
+
+    assertEquals(1, retries)
+    assertEquals(0, backs)
+  }
+
+  @Test
+  fun notFound_hasNoRetry() {
+    show(EventDetailUiState.NotFound)
+
+    assertAbsent(EventDetailTags.RETRY)
+  }
+
+  @Test
+  fun theRoute_whenTheServerDoesntAnswer_showsRetry_whichLoadsTheEvent() {
+    val repository = FakeEventRepository()
+    // Online, but the event isn't cached and the server never answers this read.
+    repository.readFromCache = true
+    val network =
+        object : NetworkMonitor {
+          override fun isOnline() = true
+        }
+    val clock = Clock.fixed(Instant.parse("2026-09-30T10:00:00Z"), ZoneId.of("Europe/Zurich"))
+    val viewModel =
+        EventDetailViewModel(
+            SavedStateHandle(mapOf(EventDetailViewModel.EVENT_ID_ARG to "party")),
+            repository,
+            network,
+            clock,
+        )
+    composeTestRule.setContent {
+      PolySocialTheme { EventDetailRoute(onBack = { backs++ }, viewModel = viewModel) }
+    }
+    // Lets the server timeout pass in virtual time.
+    settle()
+    composeTestRule.onNodeWithTag(EventDetailTags.OFFLINE_NOT_SAVED).assertIsDisplayed()
+
+    // The server is reachable again: a new read gets the event.
+    repository.readFromCache = false
+    repository.events += party
+    composeTestRule.onNodeWithTag(EventDetailTags.RETRY).performClick()
+    settle()
+
+    composeTestRule.onNodeWithTag(EventDetailTags.TITLE).assertTextEquals("Balélec warm-up")
   }
 
   @Test

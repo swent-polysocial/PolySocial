@@ -1,4 +1,5 @@
-// Contributors: Claude (event detail screen from the Figma "Event detail" Sprint 2 frames, #112).
+// Contributors: Claude (event detail screen from the Figma "Event detail" Sprint 2 frames, #112;
+// Retry in the offline "not saved" state, #194).
 package com.polysocial.ui.event.detail
 
 import androidx.annotation.DrawableRes
@@ -59,6 +60,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
 import com.polysocial.model.event.EventCategory
 import com.polysocial.ui.common.LoadingState
+import com.polysocial.ui.common.StateButton
 import com.polysocial.ui.event.style
 import com.polysocial.ui.theme.Accent
 import com.polysocial.ui.theme.AccentText
@@ -93,6 +95,7 @@ object EventDetailTags {
   const val NOT_FOUND = "event_detail_not_found"
   const val NOT_FOUND_BACK = "event_detail_not_found_back"
   const val OFFLINE_NOT_SAVED = "event_detail_offline_not_saved"
+  const val RETRY = "event_detail_retry"
 }
 
 /**
@@ -105,18 +108,20 @@ fun EventDetailRoute(
     viewModel: EventDetailViewModel = hiltViewModel(),
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
-  EventDetailScreen(state, onBack, modifier)
+  EventDetailScreen(state, onBack, viewModel::retry, modifier)
 }
 
 /**
  * Draws [state] as in the Figma "Event detail" Sprint 2 frames (section 03): the event, or its
- * loading, not-found and offline states. Every state keeps the Back button. "Find a group" isn't
- * built yet (matching comes later), so it shows a "not available yet" Snackbar.
+ * loading, not-found and offline states. Every state keeps the Back button, and the offline "not
+ * saved" state has Retry, which calls [onRetry]. "Find a group" isn't built yet (matching comes
+ * later), so it shows a "not available yet" Snackbar.
  */
 @Composable
 fun EventDetailScreen(
     state: EventDetailUiState,
     onBack: () -> Unit,
+    onRetry: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
   val snackbarHostState = remember { SnackbarHostState() }
@@ -147,9 +152,14 @@ fun EventDetailScreen(
               title = stringResource(R.string.event_detail_not_found_title),
               body = stringResource(R.string.event_detail_not_found_body),
               onBack = onBack,
-              showBackButton = true,
               tag = EventDetailTags.NOT_FOUND,
-          )
+          ) {
+            StateButton(
+                stringResource(R.string.event_detail_navigate_back),
+                onBack,
+                Modifier.testTag(EventDetailTags.NOT_FOUND_BACK),
+            )
+          }
       EventDetailUiState.OfflineNotSaved ->
           MessageState(
               icon = R.drawable.ic_offline,
@@ -157,9 +167,14 @@ fun EventDetailScreen(
               title = stringResource(R.string.event_detail_offline_not_saved_title),
               body = stringResource(R.string.event_detail_offline_not_saved_body),
               onBack = onBack,
-              showBackButton = false,
               tag = EventDetailTags.OFFLINE_NOT_SAVED,
-          )
+          ) {
+            StateButton(
+                stringResource(R.string.retry),
+                onRetry,
+                Modifier.testTag(EventDetailTags.RETRY),
+            )
+          }
     }
   }
 }
@@ -454,7 +469,7 @@ private fun ActionBar(onFindGroup: () -> Unit) {
 /**
  * A full-screen message centred on the screen, with a neutral header, as in the Figma "Event detail
  * · not found" and "· offline, not saved" frames: an icon in a round tile, a title, a short text,
- * and optionally a Back button.
+ * and a [button] below it (Back when not found, Retry when offline and not saved).
  */
 @Composable
 private fun MessageState(
@@ -463,8 +478,8 @@ private fun MessageState(
     title: String,
     body: String,
     onBack: () -> Unit,
-    showBackButton: Boolean,
     tag: String,
+    button: @Composable () -> Unit,
 ) {
   Box(Modifier.fillMaxSize().testTag(tag)) {
     // Centred on the whole screen like the app's other full-screen states. The same padding above
@@ -509,23 +524,7 @@ private fun MessageState(
           textAlign = TextAlign.Center,
           modifier = Modifier.widthIn(max = 280.dp),
       )
-      if (showBackButton) {
-        Box(
-            modifier =
-                Modifier.size(width = 160.dp, height = 48.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(Ink)
-                    .clickable(role = Role.Button, onClick = onBack)
-                    .testTag(EventDetailTags.NOT_FOUND_BACK),
-            contentAlignment = Alignment.Center,
-        ) {
-          Text(
-              stringResource(R.string.event_detail_navigate_back),
-              style = MaterialTheme.typography.titleSmall,
-              color = Bg,
-          )
-        }
-      }
+      button()
     }
     Header(Surface, onBack)
   }
