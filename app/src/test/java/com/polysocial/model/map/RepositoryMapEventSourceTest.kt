@@ -1,5 +1,5 @@
 // Contributors: OpenAI Codex (repository-to-map stream tests for #50; location fakes for #51);
-// Claude (getEvent stub, #112; update and delete stubs, #130).
+// Claude (getEvent stub, #112; update and delete stubs, #130; own association events stub, #132).
 package com.polysocial.model.map
 
 import com.polysocial.model.event.CreateEventResult
@@ -8,6 +8,7 @@ import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.EventResult
 import com.polysocial.model.event.FakeEventRepository
+import com.polysocial.model.event.OwnEventsResult
 import com.polysocial.model.event.PublicEventsResult
 import com.polysocial.model.event.TEST_NOW
 import com.polysocial.model.event.UpdateEventResult
@@ -128,6 +129,9 @@ class RepositoryMapEventSourceTest {
 
           override fun getEvent(id: String): Flow<EventResult> =
               error("This test only observes events")
+
+          override fun getOwnAssociationEvents(): Flow<OwnEventsResult> =
+              error("This test only observes public events")
 
           override fun getUpcomingPublicEvents(windowDays: Int): Flow<PublicEventsResult> = flow {
             listening = true

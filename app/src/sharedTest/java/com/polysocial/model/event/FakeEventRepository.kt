@@ -1,6 +1,7 @@
 // Contributors: Claude (wrote this fake for tests, including the upcoming-events query, #49, the
 // pending save, #46, and reading one event, #112; the ID guard, #112); Mohamed Khellaf
-// (reviewed). Claude (updating and deleting, #130); Franciszek Najda (reviewed).
+// (reviewed). Claude (updating and deleting, #130; an association's own events, #132); Franciszek
+// Najda (reviewed).
 package com.polysocial.model.event
 
 import java.time.Instant
@@ -56,7 +57,13 @@ class FakeEventRepository(
   /** When true, [getUpcomingPublicEvents] emits [PublicEventsResult.Error], like a denied query. */
   var readFailure = false
 
-  /** The `fromCache` flag [getUpcomingPublicEvents] reports, to simulate being offline. */
+  /**
+   * When true, [getOwnAssociationEvents] emits [OwnEventsResult.Error], like a query the rules
+   * deny.
+   */
+  var ownEventsFailure = false
+
+  /** The `fromCache` flag the event flows report, to simulate being offline. */
   var readFromCache = false
 
   /** Bumped on every change to [events], so [getUpcomingPublicEvents] emits again. */
@@ -141,6 +148,24 @@ class FakeEventRepository(
     return changes.map {
       PublicEventsResult.Events(
           events.filter { it.isUpcomingPublicEvent(start, windowDays) }.sortedBy { it.startTime },
+          readFromCache,
+      )
+    }
+  }
+
+  /**
+   * Emits the stored association events of [currentUid], sorted by start time, and again on
+   * changes. Nobody signed in, or [ownEventsFailure], is [OwnEventsResult.Error], like the real
+   * repository.
+   */
+  override fun getOwnAssociationEvents(): Flow<OwnEventsResult> {
+    val uid = currentUid
+    if (uid == null || ownEventsFailure) return flowOf(OwnEventsResult.Error)
+    return changes.map {
+      OwnEventsResult.Events(
+          events
+              .filter { it.createdBy == uid && it.isAssociationEvent }
+              .sortedBy { it.startTime },
           readFromCache,
       )
     }
