@@ -1,6 +1,6 @@
 // Contributors: Claude (drafted the EventRepository interface; the creator's profile, #45; the
-// public upcoming-events query, #49; reading one event, #112; updating and deleting, #130); Mohamed
-// Khellaf (reviewed).
+// public upcoming-events query, #49; reading one event, #112); Mohamed Khellaf (reviewed). Claude
+// (updating and deleting, #130); Franciszek Najda (reviewed).
 package com.polysocial.model.event
 
 import kotlinx.coroutines.flow.Flow
@@ -146,12 +146,15 @@ interface EventRepository {
    * [Event.isAssociationEvent] are kept, ignoring the caller's values (see [withOwnershipOf]).
    *
    * The checks run in this order, and each one stops before anything is written: new values that
-   * [validateNewEvent] rejects return [UpdateEventResult.Invalid] (so an event can't be moved to
-   * the past), an ID that can't be a document ID (see [isReadableEventId]) returns
-   * [UpdateEventResult.NotFound], a missing user returns [UpdateEventResult.NotOrganizer], and an
-   * offline device returns [UpdateEventResult.NetworkError] without starting a write, like
+   * [validateNewEvent] rejects for another reason than a start in the past return
+   * [UpdateEventResult.Invalid], an ID that can't be a document ID (see [isReadableEventId])
+   * returns [UpdateEventResult.NotFound], a missing user returns [UpdateEventResult.NotOrganizer],
+   * and an offline device returns [UpdateEventResult.NetworkError] without starting a write, like
    * [createEvent]. Then the stored event is read and written in one step, so the organizers checked
-   * are the ones the update keeps.
+   * are the ones the update keeps. A start in the past is refused there with
+   * [EventValidationError.START_IN_PAST] only if it differs from the stored start (see
+   * [validateEventUpdate]): an event that has started can still be edited, but no event can be
+   * moved into the past. Only the fields [Event] holds are written; other stored fields are kept.
    */
   suspend fun updateEvent(event: Event): UpdateEventResult
 

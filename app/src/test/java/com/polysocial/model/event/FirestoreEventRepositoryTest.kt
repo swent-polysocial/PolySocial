@@ -1,6 +1,7 @@
 // Contributors: Claude (wrote these tests; verified association badge, #45; the upcoming-events
 // listener, #49; unexpected failures and cancellation, #182; the single-event listener and its
-// failures, #112; updating and deleting as an organizer, #130).
+// failures, #112; updating and deleting as an organizer, #130; editing a started event and keeping
+// unknown fields, #130 review); Franciszek Najda (reviewed #130).
 // Contributors: OpenAI Codex (listener disposal failure and cancellation tests, #156).
 package com.polysocial.model.event
 
@@ -831,7 +832,7 @@ class FirestoreEventRepositoryTest {
   // Updating and deleting as an organizer (#130)
 
   private val storedDocument = mockk<DocumentReference>()
-  private val updated = slot<Any>()
+  private val updated = slot<Map<String, Any>>()
 
   /** An event "creator" made, now managed with "co-organizer" and readable by a member too. */
   private val managed =
@@ -860,7 +861,7 @@ class FirestoreEventRepositoryTest {
   private fun stubStoredEvent(data: Map<String, Any?>? = managed.toFirestoreMap()) {
     every { collection.document("event-1") } returns storedDocument
     every { transaction.get(storedDocument) } returns eventSnapshot(data)
-    every { transaction.set(storedDocument, capture(updated)) } returns transaction
+    every { transaction.update(storedDocument, capture(updated)) } returns transaction
     every { transaction.delete(storedDocument) } returns transaction
     every { db.runTransaction(capture(options), any<Transaction.Function<Any>>()) } answers
         {
@@ -883,7 +884,7 @@ class FirestoreEventRepositoryTest {
         }
   }
 
-  private fun updatedFields() = updated.captured as Map<*, *>
+  private fun updatedFields() = updated.captured
 
   @Test
   fun update_byAnOrganizer_writesTheNewValuesAndKeepsWhoManagesAndReadsTheEvent() = runTest {
@@ -914,7 +915,7 @@ class FirestoreEventRepositoryTest {
     auth.user = AuthUser("member", "member@epfl.ch", true)
 
     assertEquals(UpdateEventResult.NotOrganizer, repository.updateEvent(edit))
-    verify(exactly = 0) { transaction.set(any<DocumentReference>(), any()) }
+    verify(exactly = 0) { transaction.update(any<DocumentReference>(), any<Map<String, Any>>()) }
   }
 
   @Test
@@ -922,13 +923,39 @@ class FirestoreEventRepositoryTest {
     val result =
         repository.updateEvent(edit.copy(title = " ", startTime = TEST_NOW.minusSeconds(60)))
 
-    assertEquals(
-        UpdateEventResult.Invalid(
-            listOf(EventValidationError.BLANK_TITLE, EventValidationError.START_IN_PAST)
-        ),
-        result,
-    )
+    // The start is checked against the stored one, so only after the read.
+    assertEquals(UpdateEventResult.Invalid(listOf(EventValidationError.BLANK_TITLE)), result)
     verify { db wasNot Called }
+  }
+
+  @Test
+  fun update_aStartedEventWithItsStartUnchanged_isSaved() = runTest {
+    val started = managed.copy(startTime = TEST_NOW.minusSeconds(3600))
+    stubStoredEvent(started.toFirestoreMap())
+
+    val result = repository.updateEvent(started.copy(title = "Exam review, room CE 1"))
+
+    assertEquals(UpdateEventResult.Updated, result)
+    assertEquals("Exam review, room CE 1", updatedFields()["title"])
+  }
+
+  @Test
+  fun update_movingTheStartIntoThePast_isInvalidAndWritesNothing() = runTest {
+    stubStoredEvent()
+
+    val result = repository.updateEvent(edit.copy(startTime = TEST_NOW.minusSeconds(60)))
+
+    assertEquals(UpdateEventResult.Invalid(listOf(EventValidationError.START_IN_PAST)), result)
+    verify(exactly = 0) { transaction.update(any<DocumentReference>(), any<Map<String, Any>>()) }
+  }
+
+  @Test
+  fun update_aStartedEventMovedToAnotherPastStart_isInvalid() = runTest {
+    stubStoredEvent(managed.copy(startTime = TEST_NOW.minusSeconds(3600)).toFirestoreMap())
+
+    val result = repository.updateEvent(edit.copy(startTime = TEST_NOW.minusSeconds(60)))
+
+    assertEquals(UpdateEventResult.Invalid(listOf(EventValidationError.START_IN_PAST)), result)
   }
 
   @Test
@@ -961,7 +988,7 @@ class FirestoreEventRepositoryTest {
     stubStoredEvent(data = managed.toFirestoreMap() - "title")
     assertEquals(UpdateEventResult.NotFound, repository.updateEvent(edit))
 
-    verify(exactly = 0) { transaction.set(any<DocumentReference>(), any()) }
+    verify(exactly = 0) { transaction.update(any<DocumentReference>(), any<Map<String, Any>>()) }
   }
 
   @Test
