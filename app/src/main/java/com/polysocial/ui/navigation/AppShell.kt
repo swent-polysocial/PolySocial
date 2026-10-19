@@ -2,7 +2,8 @@
 // Contributors: Claude (app shell with bottom navigation and app bar, #41; theme title style after
 // review; bottom bar matched to the Figma; loading state, #43; per-tab back stacks, #42; Events
 // list, #105; "+" button and Create Event navigation from the Events and Map tabs, #110; app bar
-// actions, #84; event detail route, #112; "View event" opens the event detail, #211).
+// actions, #84; event detail route, #112; "View event" opens the event detail, #211; the
+// association's Events tab, #132).
 // Contributors: OpenAI Codex (map route and detail placeholder, #50).
 // Contributors: OpenAI Codex (Profile privacy navigation and full-screen notices, #103).
 package com.polysocial.ui.navigation
@@ -58,7 +59,7 @@ import com.polysocial.ui.event.create.CreateEventButton
 import com.polysocial.ui.event.create.CreateEventScreen
 import com.polysocial.ui.event.detail.EventDetailRoute
 import com.polysocial.ui.event.detail.EventDetailViewModel
-import com.polysocial.ui.event.list.EventsRoute
+import com.polysocial.ui.event.list.EventsTabRoute
 import com.polysocial.ui.map.MapRoute
 import com.polysocial.ui.profile.FullPrivacyNoticeRoute
 import com.polysocial.ui.profile.PrivacyRoute
@@ -85,10 +86,10 @@ data class CreateEventNavigation(
 /**
  * Root of the signed-in app: an app bar with the current tab's title and, at the tab's root, its
  * action (see [TabAction]), the current tab's screen, and the bottom navigation bar. The Events tab
- * shows the upcoming events and the Map tab the event map, both with the "+" button that opens
- * Create Event inside the tab, full screen; the Profile provides logout and Chats shows a loading
- * state, then a placeholder until their feature is built. The map uses floating overlays instead of
- * the app bar.
+ * shows the upcoming events (a verified association's own events instead, #132) and the Map tab the
+ * event map, both with the "+" button that opens Create Event inside the tab, full screen; the
+ * Profile provides logout and Chats shows a loading state, then a placeholder until their feature
+ * is built. The map uses floating overlays instead of the app bar.
  *
  * Each tab's graph also holds the event detail ([Tab.eventDetailRoute]), so an event opened from a
  * tab keeps that tab selected and Back returns to it. The detail has its own header and action bar
@@ -107,7 +108,7 @@ fun AppShell(
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
     eventsContent: @Composable (onEventClick: (String) -> Unit) -> Unit = { onEventClick ->
-      EventsRoute(onEventClick = onEventClick)
+      EventsTabRoute(onEventClick = onEventClick)
     },
     mapContent: @Composable (onViewDetails: (String) -> Unit, onCreateEvent: () -> Unit) -> Unit =
         { onDetails, onCreateEvent ->
