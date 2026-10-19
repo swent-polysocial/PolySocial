@@ -1,5 +1,5 @@
 // Contributors: Claude (wrote these tests of opening an event's detail from a tab, #112; double
-// taps during the transition, after review).
+// taps during the transition, after review; Edit event above the detail, #131).
 package com.polysocial.ui.navigation
 
 import androidx.activity.ComponentActivity
@@ -104,6 +104,15 @@ class EventDetailNavigationTest {
                       ?.getString(EventDetailViewModel.EVENT_ID_ARG)
               Button(onClick = onBack, modifier = Modifier.testTag(DETAIL)) {
                 Text(id.orEmpty(), Modifier.testTag(DETAIL_ID))
+              }
+            },
+            editEventContent = { onClose ->
+              val id =
+                  navController.currentBackStackEntry
+                      ?.arguments
+                      ?.getString(EventDetailViewModel.EVENT_ID_ARG)
+              Button(onClick = onClose, modifier = Modifier.testTag(EDIT)) {
+                Text(id.orEmpty(), Modifier.testTag(EDIT_ID))
               }
             },
         )
@@ -247,9 +256,31 @@ class EventDetailNavigationTest {
     assertOnRootOf(Tab.EVENTS)
   }
 
+  @Test
+  fun editEvent_opensAboveTheDetail_fullScreen_andClosingReturnsToTheDetail() {
+    composeTestRule.onNodeWithTag(EventsTags.card(trickyId)).performClick()
+    composeTestRule.onNodeWithTag(DETAIL).assertIsDisplayed()
+
+    composeTestRule.runOnIdle { navController.navigate(Tab.EVENTS.editEventRoute(trickyId)) }
+
+    composeTestRule.onNodeWithTag(EDIT_ID, useUnmergedTree = true).assertTextEquals(trickyId)
+    assertBarsHidden()
+    composeTestRule.runOnIdle {
+      assertEquals(Tab.EVENTS.editEventRoute, navController.currentDestination?.route)
+    }
+
+    composeTestRule.onNodeWithTag(EDIT).performClick()
+
+    composeTestRule.onNodeWithTag(DETAIL_ID, useUnmergedTree = true).assertTextEquals(trickyId)
+    pressBack()
+    assertOnRootOf(Tab.EVENTS)
+  }
+
   private companion object {
     const val DETAIL = "fake_event_detail"
     const val DETAIL_ID = "fake_event_detail_id"
+    const val EDIT = "fake_edit_event"
+    const val EDIT_ID = "fake_edit_event_id"
   }
 }
 
