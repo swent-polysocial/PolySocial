@@ -1,4 +1,5 @@
-// Contributors: Claude (wrote these screen tests for the association's Events tab, #132).
+// Contributors: Claude (wrote these screen tests for the association's Events tab, #132; the year
+// on other years' dates, #132 review).
 package com.polysocial.ui.event.list
 
 import android.content.Context
@@ -110,6 +111,15 @@ class AssociationEventsScreenTest {
     show(loaded(upcoming = listOf(cineClub.copy(locationName = ""))))
 
     composeTestRule.onNodeWithText("Tomorrow · 13:00").assertIsDisplayed()
+  }
+
+  @Test
+  fun aDate_showsTheYearOnlyWhenItIsNotThisYear() {
+    show(loaded())
+
+    composeTestRule.onNodeWithText("Sun 4 Jan · 13:00 · Satellite").assertIsDisplayed()
+    composeTestRule.onNodeWithTag(AssociationEventsTags.PAST_TAB).performClick()
+    composeTestRule.onNodeWithText("Thu 25 Dec 2025 · 13:00 · Satellite").assertIsDisplayed()
   }
 
   @Test
