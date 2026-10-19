@@ -1,7 +1,9 @@
 // Contributors: Claude (wrote these tests; the location picker's selection, #111; saving the
-// place name, #112); Mohamed Khellaf (reviewed).
+// place name, #112); Mohamed Khellaf (reviewed). Claude (the ViewModel's navigation arguments,
+// #131).
 package com.polysocial.ui.event.create
 
+import androidx.lifecycle.SavedStateHandle
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.CreateEventResult
 import com.polysocial.model.event.EventCategory
@@ -31,7 +33,8 @@ class CreateEventViewModelTest {
   @get:Rule val mainDispatcherRule = MainDispatcherRule()
 
   private val repository = FakeEventRepository(now = FORM_NOW)
-  private val viewModel = CreateEventViewModel(repository, Clock.fixed(FORM_NOW, ZURICH))
+  private val viewModel =
+      CreateEventViewModel(repository, Clock.fixed(FORM_NOW, ZURICH), SavedStateHandle())
 
   private fun state() = viewModel.uiState.value
 

@@ -3,7 +3,7 @@
 // review; bottom bar matched to the Figma; loading state, #43; per-tab back stacks, #42; Events
 // list, #105; "+" button and Create Event navigation from the Events and Map tabs, #110; app bar
 // actions, #84; event detail route, #112; "View event" opens the event detail, #211; the
-// association's Events tab, #132).
+// association's Events tab, #132; Edit event route, #131).
 // Contributors: OpenAI Codex (map route and detail placeholder, #50).
 // Contributors: OpenAI Codex (Profile privacy navigation and full-screen notices, #103).
 package com.polysocial.ui.navigation
@@ -57,6 +57,7 @@ import com.polysocial.R
 import com.polysocial.resources.C
 import com.polysocial.ui.event.create.CreateEventButton
 import com.polysocial.ui.event.create.CreateEventScreen
+import com.polysocial.ui.event.create.EditEventScreen
 import com.polysocial.ui.event.detail.EventDetailRoute
 import com.polysocial.ui.event.detail.EventDetailViewModel
 import com.polysocial.ui.event.list.EventsTabRoute
@@ -93,7 +94,8 @@ data class CreateEventNavigation(
  *
  * Each tab's graph also holds the event detail ([Tab.eventDetailRoute]), so an event opened from a
  * tab keeps that tab selected and Back returns to it. The detail has its own header and action bar
- * (Figma "Event detail"), so the app bar and the bottom bar are hidden there.
+ * (Figma "Event detail"), so the app bar and the bottom bar are hidden there. Edit event
+ * ([Tab.editEventRoute], #131) opens one level below the detail, full screen like Create Event.
  *
  * @param eventsContent the Events tab's root screen; it opens an event's detail with the callback
  *   it gets. Tests replace it, because the real one needs Hilt.
@@ -102,6 +104,8 @@ data class CreateEventNavigation(
  * @param createEventContent the Create Event screen. Tests replace it, because the real one needs
  *   Hilt.
  * @param eventDetailContent the event detail screen, given the Back action. Tests replace it too.
+ * @param editEventContent the Edit event screen, given what leaves it (back to the detail). Tests
+ *   replace it, because the real one needs Hilt.
  */
 @Composable
 fun AppShell(
@@ -124,6 +128,9 @@ fun AppShell(
     eventDetailContent: @Composable (onBack: () -> Unit) -> Unit = { onBack ->
       EventDetailRoute(onBack = onBack)
     },
+    editEventContent: @Composable (onClose: () -> Unit) -> Unit = { onClose ->
+      EditEventScreen(onClose = onClose)
+    },
     onLoggedOut: () -> Unit = {},
     profileContent: @Composable (() -> Unit) -> Unit = { done ->
       ProfileRoute(
@@ -142,7 +149,10 @@ fun AppShell(
   val privacyScreen =
       destination?.route == Tab.PROFILE.privacyRoute ||
           destination?.route == Tab.PROFILE.privacyNoticeRoute
-  val showBars = destination?.route != currentTab.createEventRoute && !privacyScreen
+  val showBars =
+      destination?.route != currentTab.createEventRoute &&
+          destination?.route != currentTab.editEventRoute &&
+          !privacyScreen
   // The app bar action (TabAction, set per tab in Tab.action) shows only on the current tab's root
   // screen: it is hidden on the screens opened from there, including the one the action opens.
   val action = currentTab.action.takeIf { destination?.route == currentTab.rootRoute }
@@ -283,6 +293,15 @@ fun AppShell(
                   ),
           ) { entry ->
             eventDetailContent { if (entry.isResumed) navController.popBackStack() }
+          }
+          composable(
+              tab.editEventRoute,
+              arguments =
+                  listOf(
+                      navArgument(EventDetailViewModel.EVENT_ID_ARG) { type = NavType.StringType }
+                  ),
+          ) { entry ->
+            editEventContent { if (entry.isResumed) navController.popBackStack() }
           }
         }
       }

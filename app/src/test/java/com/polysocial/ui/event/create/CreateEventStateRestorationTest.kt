@@ -1,4 +1,5 @@
-// Contributors: Claude (wrote these tests; the location picker stays open, #111).
+// Contributors: Claude (wrote these tests; the location picker stays open, #111; the ViewModel's
+// navigation arguments, #131).
 package com.polysocial.ui.event.create
 
 import android.app.Application
@@ -10,6 +11,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.lifecycle.SavedStateHandle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.resources.C
@@ -29,7 +31,11 @@ class CreateEventStateRestorationTest {
   @Test
   fun anOpenLocationPicker_staysOpenAfterRecreation() {
     val viewModel =
-        CreateEventViewModel(FakeEventRepository(now = FORM_NOW), Clock.fixed(FORM_NOW, ZURICH))
+        CreateEventViewModel(
+            FakeEventRepository(now = FORM_NOW),
+            Clock.fixed(FORM_NOW, ZURICH),
+            SavedStateHandle(),
+        )
     val restorationTester = StateRestorationTester(composeTestRule)
     restorationTester.setContent {
       CreateEventScreen(
@@ -51,7 +57,11 @@ class CreateEventStateRestorationTest {
   @Test
   fun anOpenPicker_staysOpenAfterRecreation() {
     val viewModel =
-        CreateEventViewModel(FakeEventRepository(now = FORM_NOW), Clock.fixed(FORM_NOW, ZURICH))
+        CreateEventViewModel(
+            FakeEventRepository(now = FORM_NOW),
+            Clock.fixed(FORM_NOW, ZURICH),
+            SavedStateHandle(),
+        )
     val restorationTester = StateRestorationTester(composeTestRule)
     restorationTester.setContent {
       CreateEventScreen(

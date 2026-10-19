@@ -1,7 +1,7 @@
 // Contributors: OpenAI Codex (inject Profile placeholder after logout rebase, #109).
 // Contributors: Claude (UI tests for opening and leaving Create Event from the Events and Map
 // tabs, and the created event's id reaching the Map's detail route, #110; "View event" opening the
-// event detail, #211).
+// event detail, #211; the ViewModel's navigation arguments, #131).
 package com.polysocial.ui.navigation
 
 import android.app.Application
@@ -19,6 +19,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
@@ -96,7 +97,7 @@ class CreateEventNavigationTest {
             },
             createEventContent = { navigation ->
               val viewModel = viewModel {
-                CreateEventViewModel(repository, Clock.fixed(FORM_NOW, ZURICH))
+                CreateEventViewModel(repository, Clock.fixed(FORM_NOW, ZURICH), SavedStateHandle())
               }
               createEventViewModel = viewModel
               CreateEventScreen(

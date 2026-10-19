@@ -1,4 +1,4 @@
-<!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42; Create Event texts, #46; "+" button, #110; app bar actions, #84); OpenAI Codex (Google and welcome copy). OpenAI Codex (sign-up form, startup integration, name hint and unused-title cleanup; Mapbox integration and setup, #50; location permission and distance text, #51). Claude (Retry, app-start loading and error texts, #74). -->
+<!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42; Create Event texts, #46; "+" button, #110; app bar actions, #84); OpenAI Codex (Google and welcome copy). OpenAI Codex (sign-up form, startup integration, name hint and unused-title cleanup; Mapbox integration and setup, #50; location permission and distance text, #51). Claude (Retry, app-start loading and error texts, #74; Edit event texts, #131). -->
 <!-- Contributors: OpenAI Codex (verification screen and failure messages for #31). -->
 <!-- Contributors: OpenAI Codex (current-build privacy summary and full notice, #103). -->
 <resources>
@@ -128,6 +128,14 @@
     <string name="create_event_failed_title">Couldn\'t create your event</string>
     <string name="create_event_offline_body">You\'re offline. Your details are kept, so try again once you\'re back online.</string>
     <string name="create_event_unexpected_body">Something went wrong. Your details are kept, so try again.</string>
+    <!-- Edit event (Figma section 10, #129/#131), on the Create Event form -->
+    <string name="edit_event_title">Edit event</string>
+    <string name="edit_event_loading">Loading the event…</string>
+    <string name="edit_event_submit">Save changes</string>
+    <string name="edit_event_saving">Saving changes…</string>
+    <string name="edit_event_failed_title">Couldn\'t save your changes</string>
+    <string name="edit_event_offline_body">You\'re offline. Your changes are kept, so try again once you\'re back online.</string>
+    <string name="edit_event_unexpected_body">Something went wrong. Your changes are kept, so try again.</string>
 
     <string name="event_created_title">Event created</string>
     <string name="event_created_private_message">%1$s is ready. As its organizer you can edit it and approve who joins.</string>
