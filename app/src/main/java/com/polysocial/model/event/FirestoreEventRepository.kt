@@ -1,7 +1,8 @@
 // Contributors: OpenAI Codex (refresh Firestore and handle blocked cache access, #156).
 // Contributors: Claude (drafted the Firestore event repository; verified association badge, #45;
 // the public upcoming-events listener, #49; unexpected failures reported as errors, #182; the
-// single-event listener and its failures, #112; updating and deleting as an organizer, #130).
+// single-event listener and its failures, #112; updating and deleting as an organizer, #130);
+// Franciszek Najda (reviewed #130).
 package com.polysocial.model.event
 
 import com.google.firebase.FirebaseException
@@ -97,17 +98,25 @@ class FirestoreEventRepository(
   }
 
   override suspend fun updateEvent(event: Event): UpdateEventResult {
-    val errors = validateNewEvent(event, clock.instant())
+    val now = clock.instant()
+    // A start in the past depends on the stored start, so it is checked after the read.
+    val errors = validateNewEvent(event, now) - EventValidationError.START_IN_PAST
     if (errors.isNotEmpty()) return UpdateEventResult.Invalid(errors)
     if (!isReadableEventId(event.id)) return UpdateEventResult.NotFound
     val user = auth.currentUser() ?: return UpdateEventResult.NotOrganizer
     if (!network.isOnline()) return UpdateEventResult.NetworkError
     val outcome =
         writeAsOrganizer(event.id, user.uid) { transaction, document, stored ->
-          transaction.set(document, event.withOwnershipOf(stored).toFirestoreMap())
+          val valid = validateEventUpdate(event, stored, now).isEmpty()
+          // `update`, not `set`, so fields this app version doesn't write are kept.
+          if (valid) transaction.update(document, event.withOwnershipOf(stored).toFirestoreMap())
+          valid
         }
     return when (outcome) {
       OrganizerWrite.DONE -> UpdateEventResult.Updated
+      // The start is the only rule left unchecked before the read.
+      OrganizerWrite.REFUSED ->
+          UpdateEventResult.Invalid(listOf(EventValidationError.START_IN_PAST))
       OrganizerWrite.NOT_FOUND -> UpdateEventResult.NotFound
       OrganizerWrite.NOT_ORGANIZER -> UpdateEventResult.NotOrganizer
       OrganizerWrite.NETWORK_ERROR -> UpdateEventResult.NetworkError
@@ -120,9 +129,14 @@ class FirestoreEventRepository(
     val user = auth.currentUser() ?: return DeleteEventResult.NotOrganizer
     if (!network.isOnline()) return DeleteEventResult.NetworkError
     val outcome =
-        writeAsOrganizer(id, user.uid) { transaction, document, _ -> transaction.delete(document) }
+        writeAsOrganizer(id, user.uid) { transaction, document, _ ->
+          transaction.delete(document)
+          true
+        }
     return when (outcome) {
       OrganizerWrite.DONE -> DeleteEventResult.Deleted
+      // Deleting never refuses the stored event.
+      OrganizerWrite.REFUSED -> DeleteEventResult.UnexpectedError
       OrganizerWrite.NOT_FOUND -> DeleteEventResult.NotFound
       OrganizerWrite.NOT_ORGANIZER -> DeleteEventResult.NotOrganizer
       OrganizerWrite.NETWORK_ERROR -> DeleteEventResult.NetworkError
@@ -133,6 +147,7 @@ class FirestoreEventRepository(
   /** How [writeAsOrganizer] ended. */
   private enum class OrganizerWrite {
     DONE,
+    REFUSED,
     NOT_FOUND,
     NOT_ORGANIZER,
     NETWORK_ERROR,
@@ -141,8 +156,9 @@ class FirestoreEventRepository(
 
   /**
    * In one transaction, reads `events/[id]` and, if [uid] is one of its organizers, runs [write]
-   * with the stored event. Like [createEvent]'s, the transaction runs only against the server and
-   * is tried once, so it fails offline instead of being queued.
+   * with the stored event. [write] returns false, without writing, to refuse the stored event
+   * ([OrganizerWrite.REFUSED]). Like [createEvent]'s, the transaction runs only against the server
+   * and is tried once, so it fails offline instead of being queued.
    *
    * A missing or malformed document is [OrganizerWrite.NOT_FOUND], like in [getEvent]. A read the
    * Security Rules deny is also [OrganizerWrite.NOT_FOUND]: #52's read rule checks the document's
@@ -153,7 +169,7 @@ class FirestoreEventRepository(
   private suspend fun writeAsOrganizer(
       id: String,
       uid: String,
-      write: (Transaction, DocumentReference, Event) -> Unit,
+      write: (Transaction, DocumentReference, Event) -> Boolean,
   ): OrganizerWrite {
     // Set on Firestore's transaction thread, read here once the transaction has ended.
     val wasRead = AtomicBoolean(false)
@@ -167,10 +183,8 @@ class FirestoreEventRepository(
             when {
               stored == null -> OrganizerWrite.NOT_FOUND
               uid !in stored.organizerIds -> OrganizerWrite.NOT_ORGANIZER
-              else -> {
-                write(transaction, document, stored)
-                OrganizerWrite.DONE
-              }
+              write(transaction, document, stored) -> OrganizerWrite.DONE
+              else -> OrganizerWrite.REFUSED
             }
           }
           .await()

@@ -1,4 +1,5 @@
-// Contributors: Claude (drafted the event validation rules); Mohamed Khellaf (reviewed).
+// Contributors: Claude (drafted the event validation rules); Mohamed Khellaf (reviewed). Claude
+// (validating an update, #130); Franciszek Najda (reviewed).
 package com.polysocial.model.event
 
 import java.time.Instant
@@ -53,5 +54,20 @@ fun validateNewEvent(event: Event, now: Instant): List<EventValidationError> = b
   }
   if (event.capacity != null && event.capacity < MIN_CAPACITY) {
     add(EventValidationError.CAPACITY_TOO_SMALL)
+  }
+}
+
+/**
+ * Returns every rule that [event], the new values of the stored event [stored], breaks, or an empty
+ * list if the update can be saved. The rules are [validateNewEvent]'s, except that a start time in
+ * the past is accepted when it is [stored]'s: an organizer can still fix a typo in an event that
+ * has already started, but can't move an event into the past.
+ */
+fun validateEventUpdate(event: Event, stored: Event, now: Instant): List<EventValidationError> {
+  val errors = validateNewEvent(event, now)
+  return if (event.startTime == stored.startTime) {
+    errors - EventValidationError.START_IN_PAST
+  } else {
+    errors
   }
 }

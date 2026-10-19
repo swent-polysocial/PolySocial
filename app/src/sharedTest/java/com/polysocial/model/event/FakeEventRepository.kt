@@ -1,6 +1,6 @@
 // Contributors: Claude (wrote this fake for tests, including the upcoming-events query, #49, the
-// pending save, #46, and reading one event, #112; the ID guard, #112; updating and deleting,
-// #130); Mohamed Khellaf (reviewed).
+// pending save, #46, and reading one event, #112; the ID guard, #112); Mohamed Khellaf
+// (reviewed). Claude (updating and deleting, #130); Franciszek Najda (reviewed).
 package com.polysocial.model.event
 
 import java.time.Instant
@@ -94,7 +94,7 @@ class FakeEventRepository(
 
   override suspend fun updateEvent(event: Event): UpdateEventResult {
     updateRequests += event
-    val errors = validateNewEvent(event, now)
+    val errors = validateNewEvent(event, now) - EventValidationError.START_IN_PAST
     if (errors.isNotEmpty()) return UpdateEventResult.Invalid(errors)
     if (!isReadableEventId(event.id)) return UpdateEventResult.NotFound
     val uid = currentUid ?: return UpdateEventResult.NotOrganizer
@@ -106,6 +106,8 @@ class FakeEventRepository(
     if (index < 0) return UpdateEventResult.NotFound
     val stored = events[index]
     if (uid !in stored.organizerIds) return UpdateEventResult.NotOrganizer
+    val startErrors = validateEventUpdate(event, stored, now)
+    if (startErrors.isNotEmpty()) return UpdateEventResult.Invalid(startErrors)
     events[index] = event.withOwnershipOf(stored)
     changes.value++
     return UpdateEventResult.Updated

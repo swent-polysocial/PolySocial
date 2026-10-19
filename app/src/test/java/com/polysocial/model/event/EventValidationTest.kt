@@ -1,4 +1,5 @@
-// Contributors: Claude (wrote these tests); Mohamed Khellaf (reviewed).
+// Contributors: Claude (wrote these tests); Mohamed Khellaf (reviewed). Claude (update tests,
+// #130); Franciszek Najda (reviewed).
 package com.polysocial.model.event
 
 import org.junit.Assert.assertEquals
@@ -131,6 +132,40 @@ class EventValidationTest {
             EventValidationError.CAPACITY_TOO_SMALL,
         ),
         errorsFor(event),
+    )
+  }
+
+  private val started =
+      validEvent(startTime = TEST_NOW.minusSeconds(3600), endTime = TEST_NOW.plusSeconds(3600))
+
+  @Test
+  fun update_ofAStartedEventKeepingItsStart_isAccepted() {
+    val edit = started.copy(title = "Study session, room CE 1")
+
+    assertEquals(emptyList<EventValidationError>(), validateEventUpdate(edit, started, TEST_NOW))
+  }
+
+  @Test
+  fun update_movingTheStartIntoThePast_isRejected() {
+    for (stored in listOf(validEvent(), started)) {
+      assertEquals(
+          listOf(EventValidationError.START_IN_PAST),
+          validateEventUpdate(
+              stored.copy(startTime = TEST_NOW.minusSeconds(60)),
+              stored,
+              TEST_NOW,
+          ),
+      )
+    }
+  }
+
+  @Test
+  fun update_ofAStartedEvent_stillChecksTheOtherRules() {
+    val edit = started.copy(title = " ", endTime = started.startTime)
+
+    assertEquals(
+        listOf(EventValidationError.BLANK_TITLE, EventValidationError.END_NOT_AFTER_START),
+        validateEventUpdate(edit, started, TEST_NOW),
     )
   }
 }

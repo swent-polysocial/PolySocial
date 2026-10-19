@@ -1,5 +1,5 @@
 // Contributors: Claude (wrote these tests of the fake's getEvent contract, #112; updateEvent and
-// deleteEvent, #130).
+// deleteEvent, #130); Franciszek Najda (reviewed #130).
 package com.polysocial.model.event
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -99,6 +99,20 @@ class FakeEventRepositoryTest {
     assertEquals(UpdateEventResult.NotOrganizer, repository.updateEvent(organized))
 
     assertEquals(listOf(organized, event.copy(id = "event-2")), repository.events)
+  }
+
+  @Test
+  fun updateEvent_checksAStartInThePastAgainstTheStoredStart() = runTest {
+    val started = organized.copy(startTime = TEST_NOW.minusSeconds(3600))
+    repository.seed(started)
+
+    assertEquals(
+        UpdateEventResult.Invalid(listOf(EventValidationError.START_IN_PAST)),
+        repository.updateEvent(started.copy(startTime = TEST_NOW.minusSeconds(60))),
+    )
+    assertEquals(listOf(started), repository.events)
+    assertEquals(UpdateEventResult.Updated, repository.updateEvent(started.copy(title = "Moved")))
+    assertEquals("Moved", repository.events.single().title)
   }
 
   @Test

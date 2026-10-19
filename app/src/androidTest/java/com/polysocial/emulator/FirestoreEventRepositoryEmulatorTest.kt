@@ -1,7 +1,7 @@
 // Contributors: Claude (event repository read and createEvent tests against the Firestore
 // emulator, #118). OpenAI Codex (adapted the event-test auth fixture to the verification
 // contract, #31); OpenAI Codex (password-reset contract in the event-test fixture, #164); Claude
-// (updateEvent and deleteEvent against the rules, #130).
+// (updateEvent and deleteEvent against the rules, #130); Franciszek Najda (reviewed #130).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -312,6 +312,33 @@ class FirestoreEventRepositoryEmulatorTest {
     assertEquals(listOf(uid, ORGANIZER_UID), stored?.organizerIds)
     assertEquals(uid, stored?.createdBy)
     assertEquals(listOf(uid, ORGANIZER_UID, MEMBER_UID), stored?.allowedUids)
+  }
+
+  @Test
+  fun updateEvent_aStartedEvent_isSavedAndKeepsFieldsTheEventDoesNotHold() = runBlocking {
+    val uid = signInStudent()
+    val started = managedBy(uid).copy(startTime = NOW.minus(Duration.ofHours(1)))
+    // A field a later feature may add (for example an attendee count) must survive an edit.
+    emulator.createAsAdmin(
+        EVENTS_COLLECTION,
+        "started",
+        started.toFirestoreMap() + ("attendeeCount" to 3L),
+    )
+
+    val result =
+        withTimeout(TIMEOUT_MS) {
+          repository.updateEvent(started.copy(id = "started", title = "New title"))
+        }
+
+    assertEquals(UpdateEventResult.Updated, result)
+    val snapshot =
+        emulator.firestore
+            .collection(EVENTS_COLLECTION)
+            .document("started")
+            .get(Source.SERVER)
+            .await()
+    assertEquals("New title", snapshot.getString("title"))
+    assertEquals(3L, snapshot.getLong("attendeeCount"))
   }
 
   @Test

@@ -1,5 +1,6 @@
-// Contributors: Claude (drafted the Event model and withCreator; the place name, #112; keeping
-// the stored organizers on update, #130); Mohamed Khellaf (reviewed).
+// Contributors: Claude (drafted the Event model and withCreator; the place name, #112); Mohamed
+// Khellaf (reviewed). Claude (keeping the stored organizers on update, #130); Franciszek Najda
+// (reviewed).
 package com.polysocial.model.event
 
 import java.time.Instant
