@@ -1,6 +1,7 @@
 // Contributors: Claude (tab definitions for the bottom navigation, #41; loading messages, #43;
 // per-tab routes, #42; Create Event route, #110; app bar actions, #84; event detail route, #112;
-// placeholder detail doc after "View event" moved to the event detail, #211).
+// placeholder detail doc after "View event" moved to the event detail, #211; Edit event route,
+// #131).
 // Contributors: OpenAI Codex (Profile privacy and full-notice routes, #103).
 package com.polysocial.ui.navigation
 
@@ -108,4 +109,14 @@ enum class Tab(
 
   /** The route that opens the detail of the event [eventId] inside this tab. */
   fun eventDetailRoute(eventId: String): String = "$route/event/${Uri.encode(eventId)}"
+
+  /**
+   * Route pattern of Edit event (#131), one level below the event's detail in this tab's graph, so
+   * closing or saving returns to the detail.
+   */
+  val editEventRoute: String
+    get() = "$eventDetailRoute/edit"
+
+  /** The route that opens Edit event for the event [eventId] inside this tab. */
+  fun editEventRoute(eventId: String): String = "${eventDetailRoute(eventId)}/edit"
 }
