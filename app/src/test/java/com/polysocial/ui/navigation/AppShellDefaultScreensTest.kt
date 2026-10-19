@@ -1,4 +1,5 @@
-// Contributors: Claude (UI test for the real Map and Create Event screens inside AppShell, #110).
+// Contributors: Claude (UI test for the real Map and Create Event screens inside AppShell, #110;
+// the real Edit event screen, #131).
 package com.polysocial.ui.navigation
 
 import android.content.res.Resources
@@ -8,16 +9,21 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.rememberNavController
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.MainActivity
 import com.polysocial.R
 import com.polysocial.model.event.EventModule
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.FakeEventRepository
+import com.polysocial.model.event.withCreator
 import com.polysocial.model.location.FakeLocationService
 import com.polysocial.model.location.LocationModule
 import com.polysocial.model.location.LocationService
@@ -28,6 +34,8 @@ import com.polysocial.model.time.ClockModule
 import com.polysocial.resources.C
 import com.polysocial.ui.event.create.FORM_NOW
 import com.polysocial.ui.event.create.ZURICH
+import com.polysocial.ui.event.create.completeForm
+import com.polysocial.ui.event.create.toEvent
 import com.polysocial.ui.map.MapTags
 import com.polysocial.ui.theme.PolySocialTheme
 import com.polysocial.utils.FirebaseStartupRule
@@ -63,7 +71,11 @@ class AppShellDefaultScreensTest {
 
   @get:Rule(order = 2) val composeTestRule = createAndroidComposeRule<MainActivity>()
 
-  @BindValue @JvmField val eventRepository: EventRepository = FakeEventRepository(now = FORM_NOW)
+  private val events = FakeEventRepository(now = FORM_NOW)
+
+  @BindValue @JvmField val eventRepository: EventRepository = events
+
+  private lateinit var navController: NavHostController
 
   @BindValue
   @JvmField
@@ -83,7 +95,10 @@ class AppShellDefaultScreensTest {
     every { resources.getString(R.string.mapbox_access_token) } returns ""
     activity.setContent {
       CompositionLocalProvider(LocalResources provides resources) {
-        PolySocialTheme { AppShell(eventsContent = { TabRootScreen(Tab.EVENTS) }) }
+        navController = rememberNavController()
+        PolySocialTheme {
+          AppShell(navController = navController, eventsContent = { TabRootScreen(Tab.EVENTS) })
+        }
       }
     }
     node(Tab.MAP.navItemTag).performClick()
@@ -125,5 +140,26 @@ class AppShellDefaultScreensTest {
 
     assertOnTheMap()
     node(C.Tag.bottom_nav).assertIsDisplayed()
+  }
+
+  @Test
+  fun theRealEditEventScreen_showsTheEventAndClosesBackToTheMap() {
+    events.seed(
+        completeForm().toEvent(ZURICH)!!.withCreator("test-creator", false).copy(id = "event-1")
+    )
+
+    composeTestRule.runOnIdle { navController.navigate(Tab.MAP.editEventRoute("event-1")) }
+    composeTestRule.waitForIdle()
+
+    composeTestRule
+        .onNodeWithText(composeTestRule.activity.getString(R.string.edit_event_title))
+        .assertIsDisplayed()
+    node(C.Tag.create_event_title).assertTextContains(completeForm().title)
+    assertGone(C.Tag.bottom_nav)
+
+    node(C.Tag.create_event_close).performClick()
+    composeTestRule.waitForIdle()
+
+    assertOnTheMap()
   }
 }
