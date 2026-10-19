@@ -1,6 +1,7 @@
 // Contributors: Claude (drafted the EventRepository interface; the creator's profile, #45; the
 // public upcoming-events query, #49; reading one event, #112); Mohamed Khellaf (reviewed). Claude
 // (updating and deleting, #130; an association's own events, #132); Franciszek Najda (reviewed).
+// Claude (NotCached KDoc, #194).
 package com.polysocial.model.event
 
 import kotlinx.coroutines.flow.Flow
@@ -124,8 +125,9 @@ sealed interface EventResult {
   data object NotFound : EventResult
 
   /**
-   * The device is offline and the event isn't in the offline cache, so it can't be read yet. The
-   * flow keeps listening and emits the event once the device is back online.
+   * Firestore considers itself offline (Android may still report a network) and the event isn't in
+   * the offline cache, so it can't be read yet. The flow keeps listening and emits the event once
+   * Firestore reaches its server again.
    */
   data object NotCached : EventResult
 }
