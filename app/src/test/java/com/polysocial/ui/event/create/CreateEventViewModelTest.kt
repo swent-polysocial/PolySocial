@@ -1,6 +1,6 @@
 // Contributors: Claude (wrote these tests; the location picker's selection, #111; saving the
 // place name, #112); Mohamed Khellaf (reviewed). Claude (the ViewModel's navigation arguments,
-// #131).
+// #131; the repository's errors, #131 review).
 package com.polysocial.ui.event.create
 
 import androidx.lifecycle.SavedStateHandle
@@ -220,6 +220,7 @@ class CreateEventViewModelTest {
     advanceUntilIdle()
 
     assertEquals(CreateEventStatus.Editing, state().status)
+    assertEquals(setOf(CreateEventFormError.START_IN_PAST), state().visibleErrors)
     assertTrue(repository.events.isEmpty())
   }
 

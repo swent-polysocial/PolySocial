@@ -1,5 +1,5 @@
 // Contributors: Claude (drafted the Create Event ViewModel); Mohamed Khellaf (reviewed). Claude
-// (editing an event, #131).
+// (editing an event, #131; the repository's errors, #131 review).
 package com.polysocial.ui.event.create
 
 import androidx.lifecycle.SavedStateHandle
@@ -10,6 +10,7 @@ import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.EventResult
+import com.polysocial.model.event.EventValidationError
 import com.polysocial.model.event.UpdateEventResult
 import com.polysocial.ui.event.detail.EventDetailViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -61,7 +62,7 @@ sealed interface CreateEventStatus {
  * Everything the Create Event screen shows.
  *
  * @property visibleErrors the errors to show now: those of the fields the organizer has changed, or
- *   all of them after a submit attempt.
+ *   all of them after a submit attempt, plus those the repository refused the event for.
  * @property canSubmit whether the Create button is enabled. It is disabled while saving, and after
  *   a submit attempt until the errors it revealed are fixed.
  * @property today the first date the date picker offers.
@@ -119,6 +120,13 @@ constructor(
 
   private val changedFields = mutableSetOf<Field>()
   private var submitAttempted = false
+
+  /**
+   * The rules the repository refused the last save for, shown until the form changes. They can
+   * differ from the form's own errors: the minute may have passed, or the stored start may have
+   * changed since the screen opened.
+   */
+  private var refused: Set<CreateEventFormError> = emptySet()
 
   /** The event being edited, as read when the screen opened. */
   private var stored: Event? = null
@@ -183,12 +191,9 @@ constructor(
   }
 
   private suspend fun save(event: Event): CreateEventStatus =
-      when (repository.updateEvent(event)) {
+      when (val result = repository.updateEvent(event)) {
         UpdateEventResult.Updated -> CreateEventStatus.Saved
-        is UpdateEventResult.Invalid -> {
-          submitAttempted = true
-          CreateEventStatus.Editing
-        }
+        is UpdateEventResult.Invalid -> refuse(result.errors)
         UpdateEventResult.NetworkError ->
             CreateEventStatus.Failed(CreateEventStatus.Failed.Reason.OFFLINE)
         // Never reported as saved: the form stays, with Try again (#131).
@@ -202,10 +207,7 @@ constructor(
       when (val result = repository.createEvent(event)) {
         is CreateEventResult.Created ->
             CreateEventStatus.Created(result.eventId, event.title, event.isPrivate)
-        is CreateEventResult.Invalid -> {
-          submitAttempted = true
-          CreateEventStatus.Editing
-        }
+        is CreateEventResult.Invalid -> refuse(result.errors)
         CreateEventResult.NetworkError ->
             CreateEventStatus.Failed(CreateEventStatus.Failed.Reason.OFFLINE)
         CreateEventResult.NotSignedIn,
@@ -213,17 +215,24 @@ constructor(
             CreateEventStatus.Failed(CreateEventStatus.Failed.Reason.UNEXPECTED)
       }
 
+  private fun refuse(errors: List<EventValidationError>): CreateEventStatus {
+    submitAttempted = true
+    refused = errors.map { it.toFormError() }.toSet()
+    return CreateEventStatus.Editing
+  }
+
   private fun edit(field: Field?, change: (CreateEventForm) -> CreateEventForm) {
     val state = _uiState.value
     if (state.status.isLocked) return
     field?.let { changedFields += it }
+    refused = emptySet()
     val status =
         if (state.status is CreateEventStatus.Failed) CreateEventStatus.Editing else state.status
     publish(change(state.form), status)
   }
 
   private fun publish(form: CreateEventForm, status: CreateEventStatus) {
-    val errors = currentErrors(form)
+    val errors = currentErrors(form) + refused
     val shown = if (submitAttempted) errors else errors.filter { it.field in changedFields }.toSet()
     _uiState.value =
         CreateEventUiState(
