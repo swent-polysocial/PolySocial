@@ -1,6 +1,6 @@
 // Contributors: Claude (drafted the Create Event form logic; picked place's address, #111; saving
 // the place's name, #112); Mohamed Khellaf (reviewed). Claude (filling the form from an event to
-// edit it, #131).
+// edit it, #131; the repository's errors, #131 review).
 package com.polysocial.ui.event.create
 
 import com.polysocial.model.event.Coordinates
@@ -181,7 +181,8 @@ private fun CreateEventForm.placeholderFor(now: Instant, zone: ZoneId): Event {
   )
 }
 
-private fun EventValidationError.toFormError() =
+/** The form error to show for a rule the repository refused an event for. */
+internal fun EventValidationError.toFormError() =
     when (this) {
       EventValidationError.BLANK_TITLE -> CreateEventFormError.MISSING_TITLE
       EventValidationError.TITLE_TOO_LONG -> CreateEventFormError.TITLE_TOO_LONG

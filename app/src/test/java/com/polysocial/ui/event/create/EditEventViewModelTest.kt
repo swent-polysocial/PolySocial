@@ -1,4 +1,5 @@
-// Contributors: Claude (wrote these tests of Edit event, #131).
+// Contributors: Claude (wrote these tests of Edit event, #131; the repository's errors, #131
+// review).
 package com.polysocial.ui.event.create
 
 import androidx.lifecycle.SavedStateHandle
@@ -12,6 +13,7 @@ import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalTime
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -173,7 +175,15 @@ class EditEventViewModelTest {
     viewModel.onSubmit()
     runPending()
 
+    // The form found nothing wrong, so only the repository's error explains the refusal.
     assertEquals(CreateEventStatus.Editing, viewModel.state().status)
+    assertEquals(setOf(CreateEventFormError.START_IN_PAST), viewModel.state().visibleErrors)
+    assertFalse(viewModel.state().canSubmit)
     assertEquals(stored, repository.events.single())
+
+    // Changing the form hides it until the next save.
+    viewModel.onTitleChange("Exam review")
+    assertTrue(viewModel.state().visibleErrors.isEmpty())
+    assertTrue(viewModel.state().canSubmit)
   }
 }
