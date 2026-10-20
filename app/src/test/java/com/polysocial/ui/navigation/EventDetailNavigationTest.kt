@@ -1,9 +1,10 @@
 // Contributors: Claude (wrote these tests of opening an event's detail from a tab, #112; double
 // taps during the transition, after review; Edit event above the detail, #131; Edit event closing
-// during its enter transition, #131 review).
+// during its enter transition, #131 review; the detail's Edit and Cancel event, #131).
 package com.polysocial.ui.navigation
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
 import androidx.compose.runtime.LaunchedEffect
@@ -16,10 +17,12 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.R
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.validEvent
 import com.polysocial.resources.C
@@ -102,13 +105,20 @@ class EventDetailNavigationTest {
             },
             // The real map needs Hilt and the native renderer; the detail route is what's tested.
             mapContent = { _, _ -> TabRootScreen(Tab.MAP) },
-            eventDetailContent = { onBack ->
+            eventDetailContent = { navigation ->
               val id =
                   navController.currentBackStackEntry
                       ?.arguments
                       ?.getString(EventDetailViewModel.EVENT_ID_ARG)
-              Button(onClick = onBack, modifier = Modifier.testTag(DETAIL)) {
-                Text(id.orEmpty(), Modifier.testTag(DETAIL_ID))
+              Column {
+                Button(onClick = navigation.onBack, modifier = Modifier.testTag(DETAIL)) {
+                  Text(id.orEmpty(), Modifier.testTag(DETAIL_ID))
+                }
+                Button(onClick = navigation.onEdit, modifier = Modifier.testTag(DETAIL_EDIT)) {}
+                Button(
+                    onClick = navigation.onCancelled,
+                    modifier = Modifier.testTag(DETAIL_CANCELLED),
+                ) {}
               }
             },
             editEventContent = { onClose ->
@@ -305,11 +315,37 @@ class EventDetailNavigationTest {
     composeTestRule.onNodeWithTag(DETAIL_ID, useUnmergedTree = true).assertTextEquals(trickyId)
   }
 
+  @Test
+  fun theDetailsEdit_opensEditEventForThatEvent() {
+    composeTestRule.onNodeWithTag(EventsTags.card(trickyId)).performClick()
+
+    composeTestRule.onNodeWithTag(DETAIL_EDIT).performClick()
+
+    composeTestRule.onNodeWithTag(EDIT_ID, useUnmergedTree = true).assertTextEquals(trickyId)
+    composeTestRule.runOnIdle {
+      assertEquals(Tab.EVENTS.editEventRoute, navController.currentDestination?.route)
+    }
+  }
+
+  @Test
+  fun aCancelledEvent_returnsToTheListAndSaysSo() {
+    composeTestRule.onNodeWithTag(EventsTags.card(trickyId)).performClick()
+
+    composeTestRule.onNodeWithTag(DETAIL_CANCELLED).performClick()
+
+    assertOnRootOf(Tab.EVENTS)
+    composeTestRule
+        .onNodeWithText(composeTestRule.activity.getString(R.string.event_cancelled))
+        .assertIsDisplayed()
+  }
+
   private companion object {
     const val DETAIL = "fake_event_detail"
     const val DETAIL_ID = "fake_event_detail_id"
     const val EDIT = "fake_edit_event"
     const val EDIT_ID = "fake_edit_event_id"
+    const val DETAIL_EDIT = "fake_event_detail_edit"
+    const val DETAIL_CANCELLED = "fake_event_detail_cancelled"
   }
 }
 
