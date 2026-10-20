@@ -4,7 +4,7 @@
 // list, #105; "+" button and Create Event navigation from the Events and Map tabs, #110; app bar
 // actions, #84; event detail route, #112; "View event" opens the event detail, #211; the
 // association's Events tab, #132; Edit event route, #131; closing it during its
-// enter transition, #131 review).
+// enter transition, #131 review; Edit and Cancel event from the detail, #131).
 // Contributors: OpenAI Codex (map route and detail placeholder, #50).
 // Contributors: OpenAI Codex (Profile privacy navigation and full-screen notices, #103).
 package com.polysocial.ui.navigation
@@ -29,10 +29,14 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -68,6 +72,7 @@ import com.polysocial.ui.profile.PrivacyRoute
 import com.polysocial.ui.profile.ProfileRoute
 import com.polysocial.ui.theme.Ink
 import com.polysocial.ui.theme.Ink3
+import kotlinx.coroutines.launch
 
 /**
  * Tabs that open Create Event from a "+" button: over the Events list, and among the map's overlays
@@ -83,6 +88,16 @@ data class CreateEventNavigation(
     val onClose: () -> Unit,
     val onViewEvent: (eventId: String) -> Unit,
     val onBackToMap: () -> Unit,
+)
+
+/**
+ * Where the event detail leaves to: [onBack] to the screen it was opened from, [onEdit] to Edit
+ * event, and [onCancelled] back to that screen once the event is cancelled, which then says so.
+ */
+data class EventDetailNavigation(
+    val onBack: () -> Unit,
+    val onEdit: () -> Unit,
+    val onCancelled: () -> Unit,
 )
 
 /**
@@ -104,7 +119,8 @@ data class CreateEventNavigation(
  *   Tests replace its Hilt and native renderer boundary.
  * @param createEventContent the Create Event screen. Tests replace it, because the real one needs
  *   Hilt.
- * @param eventDetailContent the event detail screen, given the Back action. Tests replace it too.
+ * @param eventDetailContent the event detail screen, given where it leaves to. Tests replace it
+ *   too.
  * @param editEventContent the Edit event screen, given what leaves it (back to the detail). Tests
  *   replace it, because the real one needs Hilt.
  */
@@ -126,8 +142,12 @@ fun AppShell(
           onBackToMap = navigation.onBackToMap,
       )
     },
-    eventDetailContent: @Composable (onBack: () -> Unit) -> Unit = { onBack ->
-      EventDetailRoute(onBack = onBack)
+    eventDetailContent: @Composable (EventDetailNavigation) -> Unit = { navigation ->
+      EventDetailRoute(
+          onBack = navigation.onBack,
+          onEdit = navigation.onEdit,
+          onCancelled = navigation.onCancelled,
+      )
     },
     editEventContent: @Composable (onClose: () -> Unit) -> Unit = { onClose ->
       EditEventScreen(onClose = onClose)
@@ -159,9 +179,15 @@ fun AppShell(
   val action = currentTab.action.takeIf { destination?.route == currentTab.rootRoute }
 
   val onEventDetail = destination?.route == currentTab.eventDetailRoute
+  // Shown on the screen the detail returns to once its event is cancelled (Figma "Cancel event ·
+  // cancelled").
+  val snackbarHostState = remember { SnackbarHostState() }
+  val scope = rememberCoroutineScope()
+  val eventCancelled = stringResource(R.string.event_cancelled)
 
   Scaffold(
       modifier = modifier.testTag(C.Tag.app_shell),
+      snackbarHost = { SnackbarHost(snackbarHostState) },
       // The detail draws its own header behind the status bar and keeps its action bar above the
       // navigation bar, so it gets no system insets from the Scaffold.
       contentWindowInsets =
@@ -293,7 +319,25 @@ fun AppShell(
                       navArgument(EventDetailViewModel.EVENT_ID_ARG) { type = NavType.StringType }
                   ),
           ) { entry ->
-            eventDetailContent { if (entry.isResumed) navController.popBackStack() }
+            eventDetailContent(
+                EventDetailNavigation(
+                    onBack = { if (entry.isResumed) navController.popBackStack() },
+                    onEdit = {
+                      val id = entry.arguments?.getString(EventDetailViewModel.EVENT_ID_ARG)
+                      if (entry.isResumed && id != null) {
+                        navController.navigate(tab.editEventRoute(id))
+                      }
+                    },
+                    // Not isResumed: the event may be deleted while a transition runs.
+                    onCancelled = {
+                      if (navController.currentBackStackEntry == entry) {
+                        navController.popBackStack()
+                        snackbarHostState.currentSnackbarData?.dismiss()
+                        scope.launch { snackbarHostState.showSnackbar(eventCancelled) }
+                      }
+                    },
+                )
+            )
           }
           composable(
               tab.editEventRoute,
