@@ -1,10 +1,12 @@
 // Contributors: Claude (drafted the event detail ViewModel, #112; the server timeout and Retry,
-// #194).
+// #194; Edit and Cancel event for organizers, #131).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.polysocial.model.auth.AuthRepository
+import com.polysocial.model.event.DeleteEventResult
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.EventResult
@@ -22,6 +24,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
@@ -29,6 +32,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
 /**
  * An event with its times in the device's time zone, as the detail screen shows them.
@@ -69,8 +73,14 @@ sealed interface EventDetailUiState {
    *
    * @property isOffline true when the device is offline and the event comes from the offline cache,
    *   so the screen says it shows the details saved on the phone.
+   * @property isOrganizer true when the signed-in user organizes the event, so the screen offers
+   *   Edit and Cancel event (#131).
    */
-  data class Loaded(val details: EventDetails, val isOffline: Boolean) : EventDetailUiState
+  data class Loaded(
+      val details: EventDetails,
+      val isOffline: Boolean,
+      val isOrganizer: Boolean = false,
+  ) : EventDetailUiState
 
   /** The event doesn't exist (anymore), or the user isn't allowed to see it. */
   data object NotFound : EventDetailUiState
@@ -81,6 +91,29 @@ sealed interface EventDetailUiState {
    * or the user taps Retry.
    */
   data object OfflineNotSaved : EventDetailUiState
+}
+
+/** Where "Cancel event" is (Figma section 10, "Cancel event · …"). */
+sealed interface CancelEventState {
+  /** The confirmation isn't shown. */
+  data object Hidden : CancelEventState
+
+  /** The confirmation asks whether to cancel the event. */
+  data object Confirming : CancelEventState
+
+  /** The event is being deleted; the confirmation can't be dismissed meanwhile. */
+  data object Cancelling : CancelEventState
+
+  /** The event wasn't cancelled; the confirmation stays with Try again. */
+  data class Failed(val reason: Reason) : CancelEventState {
+    enum class Reason {
+      OFFLINE,
+      UNEXPECTED,
+    }
+  }
+
+  /** The event was deleted: the screen closes. */
+  data object Cancelled : CancelEventState
 }
 
 /**
@@ -100,6 +133,13 @@ sealed interface EventDetailUiState {
  * shows [EventDetailUiState.OfflineNotSaved] with Retry. The read keeps listening after the
  * timeout, so a late answer from the server still shows the event.
  *
+ * Its organizers can also cancel it ([cancelState]): a confirmation, then
+ * [EventRepository.deleteEvent] (in Sprint 3, cancelling deletes the event). A failed or refused
+ * delete is never reported as cancelled: the confirmation stays with Try again. While it is
+ * deleted, the event's live read reports it missing, so the screen keeps showing the event until it
+ * closes.
+ *
+ * @param auth tells whether the signed-in user is one of the event's organizers.
  * @param clock gives the device's time zone, in which the times are shown.
  */
 @HiltViewModel
@@ -109,6 +149,7 @@ constructor(
     savedStateHandle: SavedStateHandle,
     private val repository: EventRepository,
     private val network: NetworkMonitor,
+    private val auth: AuthRepository,
     private val clock: Clock,
 ) : ViewModel() {
 
@@ -117,10 +158,22 @@ constructor(
   /** Bumped by [retry], so the event is read again. */
   private val reads = MutableStateFlow(0)
 
+  private val _cancelState = MutableStateFlow<CancelEventState>(CancelEventState.Hidden)
+  val cancelState: StateFlow<CancelEventState> = _cancelState.asStateFlow()
+
+  /** The event last shown, kept on screen while it is deleted. */
+  private var lastLoaded: EventDetailUiState.Loaded? = null
+
   @OptIn(ExperimentalCoroutinesApi::class)
   val uiState: StateFlow<EventDetailUiState> =
       reads
           .flatMapLatest { eventStates().onStart { emit(EventDetailUiState.Loading) } }
+          .combine(_cancelState) { state, cancel ->
+            val deleting =
+                cancel == CancelEventState.Cancelling || cancel == CancelEventState.Cancelled
+            if (state is EventDetailUiState.Loaded) lastLoaded = state
+            if (deleting && state !is EventDetailUiState.Loaded) lastLoaded ?: state else state
+          }
           .stateIn(
               viewModelScope,
               SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
@@ -134,6 +187,39 @@ constructor(
    */
   fun retry() {
     reads.update { it + 1 }
+  }
+
+  /** Asks to confirm "Cancel event". */
+  fun onCancelEvent() {
+    _cancelState.compareAndSet(CancelEventState.Hidden, CancelEventState.Confirming)
+  }
+
+  /** "Keep event", or dismissing the confirmation: nothing changes. Ignored while cancelling. */
+  fun onKeepEvent() {
+    _cancelState.update {
+      if (it == CancelEventState.Cancelling || it == CancelEventState.Cancelled) it
+      else CancelEventState.Hidden
+    }
+  }
+
+  /** Deletes the event, from the confirmation or its Try again. */
+  fun onConfirmCancel() {
+    val state = _cancelState.value
+    if (state != CancelEventState.Confirming && state !is CancelEventState.Failed) return
+    _cancelState.value = CancelEventState.Cancelling
+    viewModelScope.launch {
+      _cancelState.value =
+          when (repository.deleteEvent(eventId)) {
+            DeleteEventResult.Deleted -> CancelEventState.Cancelled
+            DeleteEventResult.NetworkError ->
+                CancelEventState.Failed(CancelEventState.Failed.Reason.OFFLINE)
+            // Never reported as cancelled. A missing event shows "not found" behind (#131).
+            DeleteEventResult.NotOrganizer,
+            DeleteEventResult.NotFound,
+            DeleteEventResult.UnexpectedError ->
+                CancelEventState.Failed(CancelEventState.Failed.Reason.UNEXPECTED)
+          }
+    }
   }
 
   /**
@@ -165,6 +251,7 @@ constructor(
             EventDetailUiState.Loaded(
                 eventDetails(result.event, clock.zone),
                 isOffline = result.fromCache && !network.isOnline(),
+                isOrganizer = auth.currentUser()?.uid in result.event.organizerIds,
             )
         EventResult.NotFound -> EventDetailUiState.NotFound
         // Even offline, the cache answers a moment later and may have the event.

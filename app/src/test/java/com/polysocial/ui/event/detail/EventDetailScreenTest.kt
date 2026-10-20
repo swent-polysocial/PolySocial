@@ -1,10 +1,12 @@
-// Contributors: Claude (wrote these tests of the event detail screen, #112; Retry, #194).
+// Contributors: Claude (wrote these tests of the event detail screen, #112; Retry, #194; Edit and
+// Cancel event for organizers, #131).
 package com.polysocial.ui.event.detail
 
 import android.content.Context
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
@@ -18,10 +20,14 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
+import com.polysocial.model.auth.AuthUser
+import com.polysocial.model.auth.FakeAuthRepository
+import com.polysocial.model.event.DeleteEventResult
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.validEvent
+import com.polysocial.model.event.withCreator
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.resources.C
 import com.polysocial.ui.theme.PolySocialTheme
@@ -32,6 +38,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -331,6 +338,7 @@ class EventDetailScreenTest {
             SavedStateHandle(mapOf(EventDetailViewModel.EVENT_ID_ARG to "party")),
             repository,
             network,
+            FakeAuthRepository(),
             clock,
         )
     composeTestRule.setContent {
@@ -370,6 +378,7 @@ class EventDetailScreenTest {
             SavedStateHandle(mapOf(EventDetailViewModel.EVENT_ID_ARG to "party")),
             repository,
             network,
+            FakeAuthRepository(),
             clock,
         )
     composeTestRule.setContent {
@@ -391,5 +400,158 @@ class EventDetailScreenTest {
     assertAbsent(EventDetailTags.TITLE)
     composeTestRule.onNodeWithTag(EventDetailTags.NOT_FOUND_BACK).performClick()
     assertEquals(1, backs)
+  }
+
+  private var edits = 0
+
+  private var cancels = 0
+
+  private fun showOrganizer(cancelState: CancelEventState = CancelEventState.Hidden) {
+    composeTestRule.setContent {
+      PolySocialTheme {
+        EventDetailScreen(
+            EventDetailUiState.Loaded(details(), isOffline = false, isOrganizer = true),
+            onBack = {},
+            onRetry = {},
+            cancelState = cancelState,
+            organizer = EventOrganizerActions(onEdit = { edits++ }),
+        )
+      }
+    }
+  }
+
+  /** The route for [party], organized by the signed-in user, against [repository]. */
+  private fun showOrganizerRoute(repository: FakeEventRepository) {
+    repository.currentUid = "organizer"
+    repository.seed(party.withCreator("organizer", isVerifiedAssociation = false))
+    val viewModel =
+        EventDetailViewModel(
+            SavedStateHandle(mapOf(EventDetailViewModel.EVENT_ID_ARG to "party")),
+            repository,
+            object : NetworkMonitor {
+              override fun isOnline() = true
+            },
+            FakeAuthRepository(AuthUser("organizer", "organizer@example.com", true)),
+            Clock.fixed(Instant.parse("2026-09-30T10:00:00Z"), ZoneId.of("Europe/Zurich")),
+        )
+    composeTestRule.setContent {
+      PolySocialTheme {
+        EventDetailRoute(onBack = {}, onCancelled = { cancels++ }, viewModel = viewModel)
+      }
+    }
+    settle()
+  }
+
+  private fun tap(tag: String) {
+    composeTestRule.onNodeWithTag(tag).performClick()
+    settle()
+  }
+
+  @Test
+  fun anOrganizer_seesEditOrganizedByYouAndCancelEvent() {
+    showOrganizer()
+
+    composeTestRule
+        .onNodeWithTag(EventDetailTags.ORGANIZED_BY_YOU)
+        .assertTextEquals(string(R.string.event_detail_organized_by_you))
+    composeTestRule.onNodeWithTag(EventDetailTags.CANCEL_EVENT).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(EventDetailTags.EDIT).performClick()
+
+    assertEquals(1, edits)
+    // The confirmation only opens from Cancel event.
+    assertAbsent(EventDetailTags.CANCEL_SHEET)
+  }
+
+  @Test
+  fun anotherStudent_seesNoOrganizerActions() {
+    showLoaded()
+
+    assertAbsent(EventDetailTags.EDIT)
+    assertAbsent(EventDetailTags.ORGANIZED_BY_YOU)
+    assertAbsent(EventDetailTags.CANCEL_EVENT)
+  }
+
+  @Test
+  fun whileCancelling_theSheetShowsCancellingAndKeepEventIsDisabled() {
+    showOrganizer(CancelEventState.Cancelling)
+
+    composeTestRule
+        .onNodeWithTag(EventDetailTags.CONFIRM_CANCEL)
+        .assertTextEquals(string(R.string.cancel_event_cancelling))
+        .assertIsNotEnabled()
+    composeTestRule.onNodeWithTag(EventDetailTags.KEEP_EVENT).assertIsNotEnabled()
+  }
+
+  @Test
+  fun confirmingCancelEvent_deletesTheEventAndLeaves() {
+    val repository = FakeEventRepository()
+    showOrganizerRoute(repository)
+
+    tap(EventDetailTags.CANCEL_EVENT)
+    composeTestRule.onNodeWithText(string(R.string.cancel_event_title)).assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText(context.getString(R.string.cancel_event_body, "Balélec warm-up"))
+        .assertIsDisplayed()
+    tap(EventDetailTags.CONFIRM_CANCEL)
+
+    assertEquals(listOf("party"), repository.deleteRequests)
+    assertTrue(repository.events.isEmpty())
+    assertEquals(1, cancels)
+    // The deleted event never shows as "not found" before the screen closes.
+    assertAbsent(EventDetailTags.NOT_FOUND)
+  }
+
+  @Test
+  fun keepEvent_closesTheConfirmationAndChangesNothing() {
+    val repository = FakeEventRepository()
+    showOrganizerRoute(repository)
+
+    tap(EventDetailTags.CANCEL_EVENT)
+    tap(EventDetailTags.KEEP_EVENT)
+
+    assertAbsent(EventDetailTags.CANCEL_SHEET)
+    assertTrue(repository.deleteRequests.isEmpty())
+    assertEquals(0, cancels)
+    composeTestRule.onNodeWithTag(EventDetailTags.TITLE).assertTextEquals("Balélec warm-up")
+  }
+
+  @Test
+  fun cancellingOffline_showsFigmasErrorAndTryAgain() {
+    val repository = FakeEventRepository()
+    repository.deleteFailure = DeleteEventResult.NetworkError
+    showOrganizerRoute(repository)
+
+    tap(EventDetailTags.CANCEL_EVENT)
+    tap(EventDetailTags.CONFIRM_CANCEL)
+
+    composeTestRule
+        .onNodeWithTag(EventDetailTags.CANCEL_FAILURE)
+        .assertTextEquals(string(R.string.cancel_event_offline))
+    composeTestRule
+        .onNodeWithTag(EventDetailTags.CONFIRM_CANCEL)
+        .assertTextEquals(string(R.string.create_event_try_again))
+    assertEquals(0, cancels)
+
+    // Back online, Try again cancels it.
+    repository.deleteFailure = null
+    tap(EventDetailTags.CONFIRM_CANCEL)
+
+    assertEquals(1, cancels)
+  }
+
+  @Test
+  fun aRefusedCancel_showsTheUnexpectedError() {
+    val repository = FakeEventRepository()
+    repository.deleteFailure = DeleteEventResult.UnexpectedError
+    showOrganizerRoute(repository)
+
+    tap(EventDetailTags.CANCEL_EVENT)
+    tap(EventDetailTags.CONFIRM_CANCEL)
+
+    composeTestRule
+        .onNodeWithTag(EventDetailTags.CANCEL_FAILURE)
+        .assertTextEquals(string(R.string.cancel_event_unexpected))
+    assertEquals(1, repository.events.size)
+    assertEquals(0, cancels)
   }
 }
