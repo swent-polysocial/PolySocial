@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (converted from the team Figma's "Cancel event" sheet, #131). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="22dp"
+    android:height="22dp"
+    android:viewportWidth="22"
+    android:viewportHeight="22">
+    <path
+        android:pathData="M5.5 4.58333H16.5C17.7657 4.58333 18.7917 5.60935 18.7917 6.875V16.0417C18.7917 17.3073 17.7657 18.3333 16.5 18.3333H5.5C4.23435 18.3333 3.20833 17.3073 3.20833 16.0417V6.875C3.20833 5.60935 4.23435 4.58333 5.5 4.58333Z"
+        android:strokeWidth="1.83333"
+        android:strokeColor="#FF000000" />
+    <path
+        android:pathData="M3.20833 9.16667H18.7917M7.33333 2.75V6.41667M14.6667 2.75V6.41667M8.70833 12.375L11 14.6667M11 14.6667L13.2917 16.9583M11 14.6667L13.2917 12.375M11 14.6667L8.70833 16.9583"
+        android:strokeWidth="1.83333"
+        android:strokeColor="#FF000000"
+        android:strokeLineCap="round" />
+</vector>
