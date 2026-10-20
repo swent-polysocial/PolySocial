@@ -1,10 +1,12 @@
 // Contributors: Claude (wrote these tests of opening an event's detail from a tab, #112; double
-// taps during the transition, after review; Edit event above the detail, #131).
+// taps during the transition, after review; Edit event above the detail, #131; Edit event closing
+// during its enter transition, #131 review).
 package com.polysocial.ui.navigation
 
 import androidx.activity.ComponentActivity
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertCountEquals
@@ -47,6 +49,9 @@ class EventDetailNavigationTest {
   @get:Rule val composeTestRule = createAndroidComposeRule<ComponentActivity>()
 
   private lateinit var navController: NavHostController
+
+  /** Whether the fake Edit event closes as soon as it opens, like one whose event can't be read. */
+  private var editClosesAtOnce = false
 
   private val zone = ZoneId.of("Europe/Zurich")
 
@@ -111,6 +116,7 @@ class EventDetailNavigationTest {
                   navController.currentBackStackEntry
                       ?.arguments
                       ?.getString(EventDetailViewModel.EVENT_ID_ARG)
+              LaunchedEffect(Unit) { if (editClosesAtOnce) onClose() }
               Button(onClick = onClose, modifier = Modifier.testTag(EDIT)) {
                 Text(id.orEmpty(), Modifier.testTag(EDIT_ID))
               }
@@ -274,6 +280,29 @@ class EventDetailNavigationTest {
     composeTestRule.onNodeWithTag(DETAIL_ID, useUnmergedTree = true).assertTextEquals(trickyId)
     pressBack()
     assertOnRootOf(Tab.EVENTS)
+  }
+
+  @Test
+  fun editEvent_closingDuringItsEnterTransition_stillReturnsToTheDetail() {
+    composeTestRule.onNodeWithTag(EventsTags.card(trickyId)).performClick()
+    composeTestRule.onNodeWithTag(DETAIL).assertIsDisplayed()
+    editClosesAtOnce = true
+
+    composeTestRule.mainClock.autoAdvance = false
+    try {
+      composeTestRule.runOnIdle { navController.navigate(Tab.EVENTS.editEventRoute(trickyId)) }
+      // Edit event closes in its first frames, long before its enter transition ends.
+      composeTestRule.mainClock.advanceTimeByFrame()
+      composeTestRule.mainClock.advanceTimeByFrame()
+    } finally {
+      composeTestRule.mainClock.autoAdvance = true
+    }
+    composeTestRule.waitForIdle()
+
+    composeTestRule.runOnIdle {
+      assertEquals(Tab.EVENTS.eventDetailRoute, navController.currentDestination?.route)
+    }
+    composeTestRule.onNodeWithTag(DETAIL_ID, useUnmergedTree = true).assertTextEquals(trickyId)
   }
 
   private companion object {

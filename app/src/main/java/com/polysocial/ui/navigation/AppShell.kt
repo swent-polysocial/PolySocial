@@ -3,7 +3,8 @@
 // review; bottom bar matched to the Figma; loading state, #43; per-tab back stacks, #42; Events
 // list, #105; "+" button and Create Event navigation from the Events and Map tabs, #110; app bar
 // actions, #84; event detail route, #112; "View event" opens the event detail, #211; the
-// association's Events tab, #132; Edit event route, #131).
+// association's Events tab, #132; Edit event route, #131; closing it during its
+// enter transition, #131 review).
 // Contributors: OpenAI Codex (map route and detail placeholder, #50).
 // Contributors: OpenAI Codex (Profile privacy navigation and full-screen notices, #103).
 package com.polysocial.ui.navigation
@@ -301,7 +302,11 @@ fun AppShell(
                       navArgument(EventDetailViewModel.EVENT_ID_ARG) { type = NavType.StringType }
                   ),
           ) { entry ->
-            editEventContent { if (entry.isResumed) navController.popBackStack() }
+            // Not isResumed: Edit event can close itself during its enter transition (an event
+            // that can't be read), and must not stay open on a blank screen then.
+            editEventContent {
+              if (navController.currentBackStackEntry == entry) navController.popBackStack()
+            }
           }
         }
       }
