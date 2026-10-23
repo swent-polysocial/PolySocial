@@ -1,5 +1,5 @@
-// Contributors: Claude (wrote these tests, including reading events back, #49; the place name,
-// #112; the place name's read, write and round-trip tests, #112).
+// Contributors: Claude (wrote these tests, including reading events back, #49; the place name's
+// read, write and round-trip tests, #112).
 package com.polysocial.model.event
 
 import com.google.firebase.Timestamp
