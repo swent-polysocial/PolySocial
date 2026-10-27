@@ -1,5 +1,6 @@
 // Contributors: Claude (drafted the Create Event screen and restyled it from the Figma, section 04,
-// following the Log in and profile screens; opens the location picker, #111; Edit event, #131).
+// following the Log in and profile screens; opens the location picker, #111; Edit event, #131;
+// the organizer row, #134).
 package com.polysocial.ui.event.create
 
 import androidx.activity.compose.BackHandler
@@ -274,12 +275,7 @@ fun CreateEventFormContent(
         // While saving, Figma fades the whole form (not the top bar) to 45%.
         Column(Modifier.alpha(if (editable) 1f else SAVING_ALPHA)) {
           Spacer(Modifier.height(4.dp))
-          Text(
-              stringResource(R.string.create_event_organized_by_you),
-              style = MaterialTheme.typography.labelMedium,
-              color = Ink2,
-              modifier = Modifier.heightIn(min = 24.dp).padding(top = 3.dp),
-          )
+          OrganizerRow(state.organizer)
 
           Section(R.string.create_event_title_label) {
             InputField(
