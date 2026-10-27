@@ -1,4 +1,4 @@
-<!-- Contributors: OpenAI Codex (Google sign-in setup for #106). -->
+<!-- Contributors: OpenAI Codex (Google sign-in setup and review clarifications for #106). -->
 <!-- Contributors: Claude (drafted the README structure, Setup, Running and testing, Tech stack and Project links sections; Firestore index deployment, #49; Firestore emulator tests, #117); OpenAI Codex (documented startup routing and rebase reconciliation); OpenAI Codex (Mapbox integration and setup, #50; one-off Map location privacy note, #51). -->
 <!-- Contributors: OpenAI Codex (verification startup integration and Back sign-out, #31). -->
 <!-- Contributors: Claude (Sprint 2 status in the Features table and the startup routing note). -->
@@ -115,7 +115,9 @@ For the CI APK to show the map, a repository maintainer must configure the GitHu
 
 In Firebase console → Authentication → Sign-in method, enable **Google** and select a support email. Keep **one account per email address** enabled.
 
-In Project settings → Your apps → `com.polysocial`, register the **SHA-1 fingerprints** for every teammate's debug keystore, CI, and release/Play signing keystores (`./gradlew signingReport` for local fingerprints). Download a fresh, git-ignored `app/google-services.json` and ask the repository owner to update the CI secret. The config must include the **Web OAuth client ID**, which generates `default_web_client_id`; never hardcode it or commit keystores.
+In Project settings → Your apps → `com.polysocial`, register the **SHA-1 fingerprints** for every teammate's debug keystore, CI, and release/Play signing keystores (`./gradlew signingReport` for local fingerprints). Download a fresh, git-ignored `app/google-services.json` and ask the repository owner to update the CI secret. The config must include the **Web OAuth client ID**, which generates `default_web_client_id`; never hardcode it or commit keystores. If an older config has no Web OAuth client (`client_type: 3`), compilation fails with **unresolved reference `default_web_client_id`** before the runtime configuration check can run. Re-download the config and update the CI secret.
+
+**CI APK limitation:** runners currently generate a fresh debug signing key for every run, so Google sign-in cannot be configured reliably for `polysocial-apk`. The stable CI key and Firebase SHA-1 registration are tracked in [#137](https://github.com/swent-polysocial/PolySocial/issues/137). Resolve that follow-up before relying on Google sign-in in the next deliverable; each teammate must also register their local SHA-1 and download the updated config.
 
 ## Running and testing
 
