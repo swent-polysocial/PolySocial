@@ -1,5 +1,5 @@
 // Contributors: Claude (wrote these tests; opening the location picker and its result, #111; the
-// ViewModel's navigation arguments, #131).
+// ViewModel's navigation arguments, #131; the organizer's repositories, #134).
 package com.polysocial.ui.event.create
 
 import android.app.Application
@@ -28,6 +28,8 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.model.association.FakeAssociationRepository
+import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.CreateEventResult
 import com.polysocial.model.event.EventCategory
@@ -38,6 +40,7 @@ import com.polysocial.model.geocoding.FakeGeocodingService
 import com.polysocial.model.geocoding.Place
 import com.polysocial.model.geocoding.ReverseGeocodeResult
 import com.polysocial.model.location.FakeLocationService
+import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.resources.C
 import java.time.Clock
 import java.time.Duration
@@ -69,7 +72,14 @@ class CreateEventScreenTest {
 
   private val repository = FakeEventRepository(now = FORM_NOW)
   private val viewModel =
-      CreateEventViewModel(repository, Clock.fixed(FORM_NOW, ZURICH), SavedStateHandle())
+      CreateEventViewModel(
+          repository,
+          Clock.fixed(FORM_NOW, ZURICH),
+          SavedStateHandle(),
+          FakeAuthRepository(),
+          FakeUserProfileRepository(),
+          FakeAssociationRepository(),
+      )
 
   private var closed = false
   private var viewedEventId: String? = null

@@ -1,4 +1,5 @@
-// Contributors: Claude (wrote these tests of the Edit event screen, #131).
+// Contributors: Claude (wrote these tests of the Edit event screen, #131; the organizer's
+// repositories, #134).
 package com.polysocial.ui.event.create
 
 import android.app.Application
@@ -16,10 +17,13 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
+import com.polysocial.model.association.FakeAssociationRepository
+import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.UpdateEventResult
 import com.polysocial.model.event.withCreator
+import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.resources.C
 import com.polysocial.ui.event.detail.EventDetailViewModel
 import java.time.Clock
@@ -56,6 +60,9 @@ class EditEventScreenTest {
             events,
             Clock.fixed(FORM_NOW, ZURICH),
             SavedStateHandle(mapOf(EventDetailViewModel.EVENT_ID_ARG to id)),
+            FakeAuthRepository(),
+            FakeUserProfileRepository(),
+            FakeAssociationRepository(),
         )
     composeTestRule.setContent {
       EditEventScreen(

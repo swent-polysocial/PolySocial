@@ -1,10 +1,13 @@
 // Contributors: Claude (drafted the Create Event ViewModel); Mohamed Khellaf (reviewed). Claude
-// (editing an event, #131; the repository's errors, #131 review).
+// (editing an event, #131; the repository's errors, #131 review; the organizer row, #134).
 package com.polysocial.ui.event.create
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.polysocial.model.association.AssociationRepository
+import com.polysocial.model.association.AssociationResult
+import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.event.CreateEventResult
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
@@ -12,6 +15,8 @@ import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.EventResult
 import com.polysocial.model.event.EventValidationError
 import com.polysocial.model.event.UpdateEventResult
+import com.polysocial.model.user.ProfileResult
+import com.polysocial.model.user.UserProfileRepository
 import com.polysocial.ui.event.detail.EventDetailViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
@@ -59,6 +64,25 @@ sealed interface CreateEventStatus {
 }
 
 /**
+ * Who the form says organizes the event, shown at its top (#134). It is read once when the screen
+ * opens, so it starts as [Loading].
+ */
+sealed interface Organizer {
+  /** The account is still being read: the row stays empty, so no wrong organizer flashes. */
+  data object Loading : Organizer
+
+  /**
+   * "Organized by you": a student, an association an admin hasn't verified yet, nobody signed in,
+   * or an account whose profile or association can't be read (offline, missing): the form works the
+   * same.
+   */
+  data object You : Organizer
+
+  /** A verified association, which publishes under its [name] with the Verified badge. */
+  data class Association(val name: String) : Organizer
+}
+
+/**
  * Everything the Create Event screen shows.
  *
  * @property visibleErrors the errors to show now: those of the fields the organizer has changed, or
@@ -68,6 +92,7 @@ sealed interface CreateEventStatus {
  * @property today the first date the date picker offers.
  * @property isEditing true for Edit event, which saves changes to an existing event instead of
  *   creating one.
+ * @property organizer who the form says organizes the event.
  */
 data class CreateEventUiState(
     val today: LocalDate,
@@ -76,6 +101,7 @@ data class CreateEventUiState(
     val visibleErrors: Set<CreateEventFormError> = emptySet(),
     val canSubmit: Boolean = true,
     val status: CreateEventStatus = CreateEventStatus.Editing,
+    val organizer: Organizer = Organizer.Loading,
 )
 
 /**
@@ -92,8 +118,16 @@ data class CreateEventUiState(
  * already read the event, so the read normally answers at once from Firestore's cache. A start that
  * is already past is accepted while it is the stored one (see [errors]).
  *
+ * It also reads who organizes the event (#134): a verified association sees its name, from its
+ * profile ([UserProfileRepository]) and its association ([AssociationRepository]); everyone else,
+ * and an account whose profile or association can't be read, sees "Organized by you". The form
+ * never waits for it.
+ *
  * @param clock gives the current time and time zone, so tests can fix them.
  * @param savedStateHandle holds the navigation arguments; without an event ID, it creates an event.
+ * @param auth gives the signed-in account, whose organizer row is shown.
+ * @param profiles reads that account's profile, to know whether it is a verified association.
+ * @param associations reads a verified association's name.
  */
 @HiltViewModel
 class CreateEventViewModel
@@ -102,6 +136,9 @@ constructor(
     private val repository: EventRepository,
     private val clock: Clock,
     savedStateHandle: SavedStateHandle,
+    private val auth: AuthRepository,
+    private val profiles: UserProfileRepository,
+    private val associations: AssociationRepository,
 ) : ViewModel() {
 
   /** The ID of the event being edited, or null when creating one. */
@@ -132,7 +169,23 @@ constructor(
   private var stored: Event? = null
 
   init {
+    viewModelScope.launch {
+      val organizer = readOrganizer()
+      _uiState.update { it.copy(organizer = organizer) }
+    }
     editedId?.let { id -> viewModelScope.launch { load(id) } }
+  }
+
+  /**
+   * The signed-in account's organizer row. Only a verified association's name is read, and any
+   * failure gives [Organizer.You], since the repositories report failures as results.
+   */
+  private suspend fun readOrganizer(): Organizer {
+    val uid = auth.currentUser()?.uid ?: return Organizer.You
+    val profile = (profiles.getProfile(uid) as? ProfileResult.Found)?.profile
+    if (profile?.isVerifiedAssociation != true) return Organizer.You
+    val name = (associations.getAssociation(uid) as? AssociationResult.Found)?.association?.name
+    return if (name.isNullOrBlank()) Organizer.You else Organizer.Association(name)
   }
 
   private suspend fun load(id: String) {
@@ -234,16 +287,19 @@ constructor(
   private fun publish(form: CreateEventForm, status: CreateEventStatus) {
     val errors = currentErrors(form) + refused
     val shown = if (submitAttempted) errors else errors.filter { it.field in changedFields }.toSet()
-    _uiState.value =
-        CreateEventUiState(
-            today = LocalDate.now(clock),
-            isEditing = editedId != null,
-            form = form,
-            visibleErrors = shown,
-            canSubmit =
-                status != CreateEventStatus.Saving && !(submitAttempted && errors.isNotEmpty()),
-            status = status,
-        )
+    // update, not a plain set: the organizer read may answer in between, and must be kept.
+    _uiState.update {
+      CreateEventUiState(
+          today = LocalDate.now(clock),
+          isEditing = editedId != null,
+          form = form,
+          visibleErrors = shown,
+          canSubmit =
+              status != CreateEventStatus.Saving && !(submitAttempted && errors.isNotEmpty()),
+          status = status,
+          organizer = it.organizer,
+      )
+    }
   }
 
   private fun currentErrors(form: CreateEventForm) =

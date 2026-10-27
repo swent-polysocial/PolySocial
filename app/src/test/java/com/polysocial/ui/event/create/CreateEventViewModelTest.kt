@@ -1,9 +1,11 @@
 // Contributors: Claude (wrote these tests; the location picker's selection, #111; saving the
 // place name, #112); Mohamed Khellaf (reviewed). Claude (the ViewModel's navigation arguments,
-// #131; the repository's errors, #131 review).
+// #131; the repository's errors, #131 review; the organizer's repositories, #134).
 package com.polysocial.ui.event.create
 
 import androidx.lifecycle.SavedStateHandle
+import com.polysocial.model.association.FakeAssociationRepository
+import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.CreateEventResult
 import com.polysocial.model.event.EventCategory
@@ -13,6 +15,7 @@ import com.polysocial.model.geocoding.FakeGeocodingService
 import com.polysocial.model.geocoding.Place
 import com.polysocial.model.geocoding.ReverseGeocodeResult
 import com.polysocial.model.location.FakeLocationService
+import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.utils.MainDispatcherRule
 import java.time.Clock
 import java.time.Instant
@@ -33,8 +36,18 @@ class CreateEventViewModelTest {
   @get:Rule val mainDispatcherRule = MainDispatcherRule()
 
   private val repository = FakeEventRepository(now = FORM_NOW)
-  private val viewModel =
-      CreateEventViewModel(repository, Clock.fixed(FORM_NOW, ZURICH), SavedStateHandle())
+  // Lazy, so it's created after mainDispatcherRule has set the test dispatcher: the ViewModel
+  // starts reading its organizer when it is created (#134).
+  private val viewModel by lazy {
+    CreateEventViewModel(
+        repository,
+        Clock.fixed(FORM_NOW, ZURICH),
+        SavedStateHandle(),
+        FakeAuthRepository(),
+        FakeUserProfileRepository(),
+        FakeAssociationRepository(),
+    )
+  }
 
   private fun state() = viewModel.uiState.value
 
