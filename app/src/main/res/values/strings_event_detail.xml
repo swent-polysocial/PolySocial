@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Contributors: Claude (event detail texts from the Figma "Event detail" frames, #112; Edit
-     and Cancel event from the Figma section 10 frames, #131). -->
+     and Cancel event from the Figma section 10 frames, #131; the association's name, #128). -->
 <resources>
     <string name="event_detail_navigate_back">Back</string>
     <string name="event_detail_loading">Loading event…</string>
     <string name="event_detail_verified">Verified association</string>
+    <string name="event_detail_by_association">by %1$s</string>
     <!-- The end time when the event ends on a later day, for example "01:00 (+1 day)". -->
     <plurals name="event_detail_end_later">
         <item quantity="one">%1$s (+%2$d day)</item>

@@ -1,5 +1,5 @@
 // Contributors: Claude (wrote these tests of the event detail screen, #112; Retry, #194; Edit and
-// Cancel event for organizers, #131).
+// Cancel event for organizers, #131; the association names dependency, #128).
 package com.polysocial.ui.event.detail
 
 import android.content.Context
@@ -20,6 +20,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
+import com.polysocial.model.association.FakeAssociationNames
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.event.DeleteEventResult
@@ -340,6 +341,7 @@ class EventDetailScreenTest {
             network,
             FakeAuthRepository(),
             clock,
+            FakeAssociationNames(),
         )
     composeTestRule.setContent {
       PolySocialTheme { EventDetailRoute(onBack = { backs++ }, viewModel = viewModel) }
@@ -380,6 +382,7 @@ class EventDetailScreenTest {
             network,
             FakeAuthRepository(),
             clock,
+            FakeAssociationNames(),
         )
     composeTestRule.setContent {
       PolySocialTheme { EventDetailRoute(onBack = { backs++ }, viewModel = viewModel) }
@@ -433,6 +436,7 @@ class EventDetailScreenTest {
             },
             FakeAuthRepository(AuthUser("organizer", "organizer@example.com", true)),
             Clock.fixed(Instant.parse("2026-09-30T10:00:00Z"), ZoneId.of("Europe/Zurich")),
+            FakeAssociationNames(),
         )
     composeTestRule.setContent {
       PolySocialTheme {
