@@ -1,5 +1,5 @@
 // Contributors: Claude (wrote these tests; the location picker stays open, #111; the ViewModel's
-// navigation arguments, #131).
+// navigation arguments, #131; the organizer's repositories, #134).
 package com.polysocial.ui.event.create
 
 import android.app.Application
@@ -13,7 +13,10 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.model.association.FakeAssociationRepository
+import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.event.FakeEventRepository
+import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.resources.C
 import java.time.Clock
 import org.junit.Rule
@@ -35,6 +38,9 @@ class CreateEventStateRestorationTest {
             FakeEventRepository(now = FORM_NOW),
             Clock.fixed(FORM_NOW, ZURICH),
             SavedStateHandle(),
+            FakeAuthRepository(),
+            FakeUserProfileRepository(),
+            FakeAssociationRepository(),
         )
     val restorationTester = StateRestorationTester(composeTestRule)
     restorationTester.setContent {
@@ -61,6 +67,9 @@ class CreateEventStateRestorationTest {
             FakeEventRepository(now = FORM_NOW),
             Clock.fixed(FORM_NOW, ZURICH),
             SavedStateHandle(),
+            FakeAuthRepository(),
+            FakeUserProfileRepository(),
+            FakeAssociationRepository(),
         )
     val restorationTester = StateRestorationTester(composeTestRule)
     restorationTester.setContent {
