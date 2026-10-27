@@ -1,7 +1,7 @@
 <!-- Contributors: OpenAI Codex (Google authentication architecture, Firebase-managed linking clarification and review cleanup for #106; preserved contributor acknowledgments during rebase). -->
 <!-- Contributors: OpenAI Codex (removed obsolete Google collision UI, #107). -->
 <!-- Contributors: OpenAI Codex (Google entry routing for #107). -->
-<!-- Contributors: OpenAI Codex (Sprint 2 architecture, navigation, registration/reminder design and open questions, #139; documented Mapbox renderer/setup decisions and production/privacy open questions, #50); Claude (drafted this page and its diagrams from the README, the Scrum Board and the issue descriptions; association accounts without an EPFL email; Create Event design update, #44; ViewModel rule wording; Security Rules state after #35; the profile step's year question, #34; association badge from the profile, #45; synced the place-name and sign-in decisions with `CONTEXT.md`; association profiles and their rules, #126). -->
+<!-- Contributors: OpenAI Codex (Sprint 2 architecture, navigation, registration/reminder design and open questions, #139; documented Mapbox renderer/setup decisions and production/privacy open questions, #50); Claude (drafted this page and its diagrams from the README, the Scrum Board and the issue descriptions; association accounts without an EPFL email; Create Event design update, #44; ViewModel rule wording; Security Rules state after #35; the profile step's year question, #34; association badge from the profile, #45; synced the place-name and sign-in decisions with `CONTEXT.md`; association profiles and their rules, #126; association names, #128). -->
 
 How PolySocial is built, as we currently envision it. The page follows the [Android App Architecture guide](https://developer.android.com/topic/architecture/intro): a **UI layer** (Compose screens and ViewModels), a **domain layer** of pure Kotlin logic, and a **data layer** of repositories in front of Firebase, the map and geocoding services, and the device sensors.
 
@@ -143,11 +143,15 @@ flowchart TB
   mapVM --> dist["Haversine distance<br/><i>domain</i>"]:::s1
   mapVM --> ev["<b>EventRepository</b><br/>getUpcomingPublicEvents"]:::s1
   mapVM --> loc["<b>LocationService</b><br/>permission · one-off location"]:::s1
+  mapVM -. "association names, #128" .-> names["<b>AssociationNames</b><br/>app-wide · one read per association<br/>shared with the Events tab and the detail"]:::s1
+  names --> assoc["<b>AssociationRepository</b><br/>getAssociation, #126"]:::s1
   ev --> fs[("Firestore<br/>events")]:::ext
+  assoc --> fs
   loc --> gps[("Android approximate location<br/>network provider")]:::ext
 ```
 
 - **Map (#50, #51).** The map is centred on Lausanne. Location permission is requested once, on first entry to the Map tab. If it's denied, the map stays fully usable without distance badges. Distance is labelled *straight-line*, not walking time. Route-based distances are out of scope.
+- **Association names (#128).** The map preview, the Events tab's cards and the event detail show the name of an association's event next to its Verified badge. One app-wide `AssociationNames` (`CachedAssociationNames`) reads each association once and shares it; a name that can't be read leaves the badge alone and is tried again later (fresh events from the server, opening the preview or the detail). Names belong to the signed-in account.
 - **Upcoming events query (#49).** The query **must** include `isPrivate == false`. Security Rules are not filters, so a query that could return a private event is rejected as a whole. Combining equality on `isPrivate` with a range on `startTime` needs a composite index, which should be versioned in `firestore.indexes.json` next to the rules.
 
 ### 3.3 Create Event (Sprint 1)
