@@ -1,5 +1,6 @@
 // Contributors: OpenAI Codex (fake-renderer map UI and day-label regression tests for #50;
 // denied and granted location preview tests for #51).
+// Contributors: Claude (the association names dependency, #128).
 package com.polysocial.ui.map
 
 import android.content.Context
@@ -36,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
+import com.polysocial.model.association.FakeAssociationNames
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.validEvent
@@ -74,7 +76,7 @@ class MapScreenTest {
 
   @Before
   fun setUp() {
-    vm = MapViewModel(MapEventSource { source }, location, MAP_TEST_CLOCK)
+    vm = MapViewModel(MapEventSource { source }, location, MAP_TEST_CLOCK, FakeAssociationNames())
   }
 
   private fun show(

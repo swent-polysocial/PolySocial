@@ -1,4 +1,5 @@
 // Contributors: OpenAI Codex (permission launcher and foreground lifecycle integration tests, #51).
+// Contributors: Claude (the association names dependency, #128).
 package com.polysocial.ui.map
 
 import android.Manifest
@@ -29,6 +30,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
+import com.polysocial.model.association.FakeAssociationNames
 import com.polysocial.model.event.validEvent
 import com.polysocial.model.location.FakeLocationService
 import com.polysocial.model.location.LocationResult
@@ -84,6 +86,7 @@ class MapRouteTest {
           MapEventSource { flowOf(MapEventResult.Events(listOf(event))) },
           service,
           MAP_TEST_CLOCK,
+          FakeAssociationNames(),
       )
 
   private fun show(initialState: Lifecycle.State = Lifecycle.State.RESUMED) {

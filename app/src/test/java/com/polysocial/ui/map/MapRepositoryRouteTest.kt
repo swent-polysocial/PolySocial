@@ -1,4 +1,5 @@
 // Contributors: OpenAI Codex (repository-to-map UI tests for #50; denied-location fake for #51).
+// Contributors: Claude (the association names dependency, #128).
 package com.polysocial.ui.map
 
 import android.content.Context
@@ -25,6 +26,7 @@ import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
+import com.polysocial.model.association.FakeAssociationNames
 import com.polysocial.model.event.CreateEventResult
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.FakeEventRepository
@@ -52,6 +54,7 @@ class MapRepositoryRouteTest {
           RepositoryMapEventSource(repository),
           FakeLocationService().apply { markPermissionRequested() },
           MAP_TEST_CLOCK,
+          FakeAssociationNames(),
       )
 
   private fun show(repository: FakeEventRepository, tokenConfigured: Boolean = true) {

@@ -1,7 +1,9 @@
 // Contributors: OpenAI Codex (repository-to-map stream tests for #50; location fakes for #51);
-// Claude (getEvent stub, #112; update and delete stubs, #130; own association events stub, #132).
+// Claude (getEvent stub, #112; update and delete stubs, #130; own association events stub, #132;
+// the association names dependency, #128).
 package com.polysocial.model.map
 
+import com.polysocial.model.association.FakeAssociationNames
 import com.polysocial.model.event.CreateEventResult
 import com.polysocial.model.event.DeleteEventResult
 import com.polysocial.model.event.Event
@@ -57,7 +59,12 @@ class RepositoryMapEventSourceTest {
   fun newlyCreatedEventReachesTheMapWithoutRetry() = runTest {
     val repository = FakeEventRepository()
     val viewModel =
-        MapViewModel(RepositoryMapEventSource(repository), FakeLocationService(), MAP_TEST_CLOCK)
+        MapViewModel(
+            RepositoryMapEventSource(repository),
+            FakeLocationService(),
+            MAP_TEST_CLOCK,
+            FakeAssociationNames(),
+        )
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     assertEquals(MapContentStatus.EMPTY, viewModel.uiState.value.status)
 
@@ -76,7 +83,12 @@ class RepositoryMapEventSourceTest {
     val repository = FakeEventRepository().apply { readFromCache = true }
     repository.seed(cached)
     val viewModel =
-        MapViewModel(RepositoryMapEventSource(repository), FakeLocationService(), MAP_TEST_CLOCK)
+        MapViewModel(
+            RepositoryMapEventSource(repository),
+            FakeLocationService(),
+            MAP_TEST_CLOCK,
+            FakeAssociationNames(),
+        )
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
 
     assertEquals(MapContentStatus.READY, viewModel.uiState.value.status)
@@ -99,7 +111,12 @@ class RepositoryMapEventSourceTest {
   fun retryAfterTerminalErrorStartsAFreshRepositoryCollection() = runTest {
     val repository = FakeEventRepository().apply { readFailure = true }
     val viewModel =
-        MapViewModel(RepositoryMapEventSource(repository), FakeLocationService(), MAP_TEST_CLOCK)
+        MapViewModel(
+            RepositoryMapEventSource(repository),
+            FakeLocationService(),
+            MAP_TEST_CLOCK,
+            FakeAssociationNames(),
+        )
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     assertEquals(MapContentStatus.ERROR, viewModel.uiState.value.status)
 
