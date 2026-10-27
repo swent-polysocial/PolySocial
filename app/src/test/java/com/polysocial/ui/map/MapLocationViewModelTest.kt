@@ -1,7 +1,9 @@
 // Contributors: OpenAI Codex (optional Map permission and one-off location lifecycle tests for
 // #51).
+// Contributors: Claude (the association names dependency, #128).
 package com.polysocial.ui.map
 
+import com.polysocial.model.association.FakeAssociationNames
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.validEvent
 import com.polysocial.model.location.FakeLocationService
@@ -27,7 +29,7 @@ class MapLocationViewModelTest {
   private val service = FakeLocationService()
 
   private fun model(location: LocationService = service): MapViewModel =
-      MapViewModel(source, location, MAP_TEST_CLOCK)
+      MapViewModel(source, location, MAP_TEST_CLOCK, FakeAssociationNames())
 
   private fun settle() = dispatcherRule.dispatcher.scheduler.advanceUntilIdle()
 

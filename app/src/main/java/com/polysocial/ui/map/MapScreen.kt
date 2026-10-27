@@ -1,6 +1,7 @@
 // Contributors: OpenAI Codex (map overlays and event preview for #50; reuse shared category
 // styles; optional location notices and straight-line badges and review fixes for #51).
-// Contributors: Claude (the "+" that opens Create Event among the map overlays, #110).
+// Contributors: Claude (the "+" that opens Create Event among the map overlays, #110; an
+// association's badge and name on the event preview, #128).
 package com.polysocial.ui.map
 
 import androidx.annotation.StringRes
@@ -36,6 +37,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -52,6 +54,7 @@ import com.polysocial.R
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
 import com.polysocial.resources.C
+import com.polysocial.ui.event.VerifiedPill
 import com.polysocial.ui.event.create.CreateEventButton
 import com.polysocial.ui.event.create.CreateEventButtonSize
 import com.polysocial.ui.event.style
@@ -86,6 +89,7 @@ object MapTags {
   const val LOCATION_REFRESH = "map_location_refresh"
   const val LOCATION_ICON = "map_location_icon"
   const val DISTANCE = "map_preview_distance"
+  const val VERIFIED = "map_preview_verified"
 
   fun marker(id: String) = "map_marker_$id"
 }
@@ -289,6 +293,7 @@ fun MapScreen(
     state.selectedEvent?.let { event ->
       EventPreview(
           event,
+          state.associationNames[event.createdBy],
           onClosePreview,
           { onViewDetails(event.id) },
           state.selectedEventIsToday,
@@ -362,6 +367,7 @@ private fun MapError(@StringRes message: Int, onRetry: () -> Unit, modifier: Mod
 @Composable
 private fun EventPreview(
     event: Event,
+    associationName: String?,
     onClose: () -> Unit,
     onDetails: () -> Unit,
     isToday: Boolean,
@@ -392,20 +398,34 @@ private fun EventPreview(
           )
         }
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
-          Text(
-              stringResource(
-                  R.string.map_category_day,
-                  stringResource(categoryLabel(event.category)),
-                  when {
-                    isTonight -> stringResource(R.string.map_tonight)
-                    isToday -> stringResource(R.string.events_today)
-                    else -> previewDateFormatter.format(event.startTime)
-                  },
-              ),
-              color = categoryColor(event.category),
-              style = MaterialTheme.typography.labelMedium,
-              modifier = Modifier.testTag(MapTags.CATEGORY),
-          )
+          // An association's event (#128, Figma "Map · event preview · association"): the
+          // Verified badge 8 dp after the category and day.
+          Row(
+              horizontalArrangement = Arrangement.spacedBy(8.dp),
+              verticalAlignment = Alignment.CenterVertically,
+          ) {
+            Text(
+                stringResource(
+                    R.string.map_category_day,
+                    stringResource(categoryLabel(event.category)),
+                    when {
+                      isTonight -> stringResource(R.string.map_tonight)
+                      isToday -> stringResource(R.string.events_today)
+                      else -> previewDateFormatter.format(event.startTime)
+                    },
+                ),
+                color = categoryColor(event.category),
+                style = MaterialTheme.typography.labelMedium,
+                // Measured after the badge, so a larger text wraps instead of crushing it.
+                modifier = Modifier.weight(1f, fill = false).testTag(MapTags.CATEGORY),
+            )
+            if (event.isAssociationEvent) {
+              VerifiedPill(
+                  stringResource(R.string.event_verified_badge),
+                  Modifier.overlappingTheLine().testTag(MapTags.VERIFIED),
+              )
+            }
+          }
           Text(
               event.title,
               style = MaterialTheme.typography.titleLarge,
@@ -424,15 +444,18 @@ private fun EventPreview(
           Icon(painterResource(R.drawable.ic_close), stringResource(R.string.map_close))
         }
       }
-      val time = previewTimeFormatter.format(event.startTime)
-      Text(
-          if (event.endTime == null) time
+      val start = previewTimeFormatter.format(event.startTime)
+      val time =
+          if (event.endTime == null) start
           else
               stringResource(
                   R.string.map_time_range,
-                  time,
+                  start,
                   previewTimeFormatter.format(event.endTime),
-              ),
+              )
+      val name = associationName?.takeIf { event.isAssociationEvent }
+      Text(
+          if (name == null) time else stringResource(R.string.map_time_by, time, name),
           style = MaterialTheme.typography.bodyMedium,
           modifier = Modifier.testTag(MapTags.TIME),
       )
@@ -460,6 +483,16 @@ private fun EventPreview(
       }
     }
   }
+}
+
+/**
+ * Lays this out without any height and draws it centered on the row: like Figma's badge, which is
+ * taller than the category line it sits on, it overlaps the line's margins instead of moving the
+ * title down (#128).
+ */
+private fun Modifier.overlappingTheLine(): Modifier = layout { measurable, constraints ->
+  val placeable = measurable.measure(constraints.copy(minHeight = 0))
+  layout(placeable.width, 0) { placeable.place(0, -placeable.height / 2) }
 }
 
 private val previewTimeFormatter =
