@@ -109,9 +109,12 @@ guessing. It also shows how the design evolved.
     publish and manage its own events (upcoming, drafts, past). It gets no
     access to students' profiles, groups, chats or matching.
 
-  The only exception: any account with a verified email may read and write
+  The only exceptions: any account with a verified email may read and write
   its own `users/{uid}`, but may never set `isAssociationVerified`, on create
-  or on update. That is all an unverified association can reach. Never add the
+  or on update; and an account whose `users/{uid}` is an association's may
+  read, create and edit its own public `associations/{uid}` (name, type,
+  about, website), so it can set up its association while its review is
+  pending (#126). That is all an unverified association can reach. Never add the
   verified-association branch to a rule while a broader rule (such as the
   catch-all `match /{document=**}`) still lets other users write
   `users/{uid}`; protect the flag first. If the sign-in provider does not
@@ -255,7 +258,8 @@ guessing. It also shows how the design evolved.
   manage it, and only a verified association can publish an event under its
   name; every access requires a verified EPFL account, or a verified
   association account limited to its own association and events, except
-  each account's own `users/{uid}` (see "Authentication").
+  each account's own `users/{uid}` and an association account's own
+  `associations/{uid}` (see "Authentication").
 - An agent may change the rules file when the issue requires it (for example a
   new collection or a new access pattern). Every such PR must:
   1. say "Changes Security Rules" in the PR description, with a short
