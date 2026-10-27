@@ -1,5 +1,6 @@
 // Contributors: Claude (event detail screen from the Figma "Event detail" Sprint 2 frames, #112;
-// Retry in the offline "not saved" state, #194; Edit and Cancel event for organizers, #131).
+// Retry in the offline "not saved" state, #194; Edit and Cancel event for organizers, #131;
+// the association's name, #128).
 package com.polysocial.ui.event.detail
 
 import androidx.annotation.DrawableRes
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
@@ -47,7 +49,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
@@ -62,20 +66,20 @@ import com.polysocial.R
 import com.polysocial.model.event.EventCategory
 import com.polysocial.ui.common.LoadingState
 import com.polysocial.ui.common.StateButton
+import com.polysocial.ui.event.VerifiedPill
 import com.polysocial.ui.event.style
 import com.polysocial.ui.theme.Accent
 import com.polysocial.ui.theme.AccentText
 import com.polysocial.ui.theme.Bg
 import com.polysocial.ui.theme.Border
 import com.polysocial.ui.theme.Disabled
-import com.polysocial.ui.theme.Info
-import com.polysocial.ui.theme.InfoSoft
 import com.polysocial.ui.theme.Ink
 import com.polysocial.ui.theme.Ink2
 import com.polysocial.ui.theme.PlusJakartaSans
 import com.polysocial.ui.theme.Surface
 import com.polysocial.ui.theme.Warning
 import com.polysocial.ui.theme.WarningSoft
+import com.polysocial.ui.theme.exact
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import kotlinx.coroutines.launch
@@ -87,6 +91,7 @@ object EventDetailTags {
   const val CATEGORY = "event_detail_category"
   const val TITLE = "event_detail_title"
   const val VERIFIED_BADGE = "event_detail_verified_badge"
+  const val ASSOCIATION_NAME = "event_detail_association_name"
   const val DATE = "event_detail_date"
   const val TIME = "event_detail_time"
   const val LOCATION = "event_detail_location"
@@ -287,14 +292,7 @@ private fun EventContent(
           )
           if (event.isAssociationEvent) {
             Spacer(Modifier.height(6.dp))
-            Pill(
-                text = stringResource(R.string.event_detail_verified),
-                color = Info,
-                background = InfoSoft,
-                height = 22.dp,
-                horizontalPadding = 8.dp,
-                modifier = Modifier.testTag(EventDetailTags.VERIFIED_BADGE),
-            )
+            AssociationRow(state.associationName)
           }
           Spacer(Modifier.height(14.dp))
           InfoRow(
@@ -477,6 +475,52 @@ private fun Pill(
     Text(text = text, style = PILL_STYLE, color = color)
   }
 }
+
+/**
+ * Who publishes an association's event (#128): "by <name>" and the Verified badge 9 dp after it
+ * (Figma "Event detail · Sprint 2 · association name"), or "Verified association" alone while or
+ * when its [name] can't be read (Figma "Event detail · Sprint 2").
+ */
+@Composable
+private fun AssociationRow(name: String?) {
+  if (name == null) {
+    VerifiedPill(
+        stringResource(R.string.event_detail_verified),
+        Modifier.testTag(EventDetailTags.VERIFIED_BADGE),
+    )
+    return
+  }
+  Row(verticalAlignment = Alignment.CenterVertically) {
+    val by = stringResource(R.string.event_detail_by_association, name)
+    val nameStart = by.lastIndexOf(name)
+    Text(
+        text =
+            buildAnnotatedString {
+              append(by)
+              // Figma sets the name in bold Ink, after a regular "by".
+              if (nameStart >= 0) {
+                addStyle(
+                    SpanStyle(fontWeight = FontWeight.Bold, color = Ink),
+                    nameStart,
+                    nameStart + name.length,
+                )
+              }
+            },
+        style = BY_STYLE,
+        color = Ink2,
+        modifier = Modifier.weight(1f, fill = false).testTag(EventDetailTags.ASSOCIATION_NAME),
+    )
+    Spacer(Modifier.width(9.dp))
+    VerifiedPill(
+        stringResource(R.string.event_verified_badge),
+        Modifier.testTag(EventDetailTags.VERIFIED_BADGE),
+    )
+  }
+}
+
+/** Figma's "by <name>": 13 sp on a 16.4 sp line, glyphs placed like Figma's (see CONTEXT.md). */
+private val BY_STYLE =
+    TextStyle(fontFamily = PlusJakartaSans, fontSize = 13.sp, lineHeight = 16.4.sp).exact()
 
 /** A row of the details: an icon tile, a bold line and an optional second line. */
 @Composable

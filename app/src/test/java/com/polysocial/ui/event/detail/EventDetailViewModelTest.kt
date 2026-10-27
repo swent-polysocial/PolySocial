@@ -1,8 +1,10 @@
 // Contributors: Claude (wrote these tests of the event detail ViewModel, #112; the server timeout
-// and Retry, #194; Edit and Cancel event for organizers, #131).
+// and Retry, #194; Edit and Cancel event for organizers, #131; the association names dependency,
+// #128).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
+import com.polysocial.model.association.FakeAssociationNames
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.event.DeleteEventResult
@@ -76,7 +78,15 @@ class EventDetailViewModelTest {
   private fun viewModel(
       args: Map<String, Any?> = mapOf("eventId" to "event-1"),
       repository: EventRepository = this.repository,
-  ) = EventDetailViewModel(SavedStateHandle(args), repository, network, auth, clock)
+  ) =
+      EventDetailViewModel(
+          SavedStateHandle(args),
+          repository,
+          network,
+          auth,
+          clock,
+          FakeAssociationNames(),
+      )
 
   /** [repository], except that [getEvent][EventRepository.getEvent] returns [results]. */
   private fun repositoryAnswering(results: Flow<EventResult>): EventRepository =
