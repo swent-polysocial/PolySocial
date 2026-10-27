@@ -1,4 +1,4 @@
-<!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42; Create Event texts, #46; "+" button, #110; app bar actions, #84); OpenAI Codex (Google and welcome copy). OpenAI Codex (sign-up form, startup integration, name hint and unused-title cleanup; Mapbox integration and setup, #50; location permission and distance text, #51). Claude (Retry, app-start loading and error texts, #74; Edit event texts, #131; map association name, #128). -->
+<!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42; Create Event texts, #46; "+" button, #110; app bar actions, #84); OpenAI Codex (Google and welcome copy). OpenAI Codex (sign-up form, startup integration, name hint and unused-title cleanup; Mapbox integration and setup, #50; location permission and distance text, #51). Claude (Retry, app-start loading and error texts, #74; Edit event texts, #131; map association name, #128; Create Event organizer row, #134). -->
 <!-- Contributors: OpenAI Codex (verification screen and failure messages for #31). -->
 <!-- Contributors: OpenAI Codex (current-build privacy summary and full notice, #103). -->
 <!-- Contributors: OpenAI Codex (Google authentication errors; removed collision copy for #107). -->
@@ -72,6 +72,9 @@
     <string name="create_event_title">New event</string>
     <string name="create_event_close">Close</string>
     <string name="create_event_organized_by_you">Organized by you</string>
+    <!-- The organizer row for a verified association (#134): its name, and the Verified badge. -->
+    <string name="create_event_organized_by">Organized by %1$s</string>
+    <string name="create_event_verified">Verified</string>
     <string name="create_event_title_label">Title</string>
     <string name="create_event_title_placeholder">e.g. Study together · Analysis III</string>
     <string name="create_event_description_label">Description</string>
