@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Contributors: Claude (Events tab texts from the Figma "Discover events" frames, #105; search and
-     filters, #115; the association's Events tab, #132). -->
+     filters, #115; the association's Events tab, #132; association names, #128). -->
 <resources>
     <string name="event_category_party">Party</string>
     <string name="event_category_sports">Sports</string>
@@ -12,6 +12,9 @@
     <string name="events_tomorrow">Tomorrow</string>
     <!-- Category and start time on an event card, for example "Party · 20:00". -->
     <string name="events_card_details">%1$s · %2$s</string>
+    <!-- An association's event (#128): the card's details end with its name, next to the badge. -->
+    <string name="events_card_details_by">%1$s · %2$s · by %3$s</string>
+    <string name="event_verified_badge">Verified</string>
     <!-- Start and end time, for example "20:00 – 23:00". -->
     <string name="events_time_range">%1$s – %2$s</string>
     <string name="events_offline">You\'re offline. Showing saved events.</string>
