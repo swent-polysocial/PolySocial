@@ -1,6 +1,7 @@
 // Contributors: Claude (wrote this fake for tests, including the upcoming-events query, #49, the
 // pending save, #46, and reading one event, #112; the ID guard, #112); Mohamed Khellaf
-// (reviewed).
+// (reviewed). Claude (updating and deleting, #130; an association's own events, #132); Franciszek
+// Najda (reviewed).
 package com.polysocial.model.event
 
 import java.time.Instant
@@ -13,7 +14,9 @@ import kotlinx.coroutines.flow.map
 /**
  * In-memory [EventRepository] for tests. It follows the [EventRepository.createEvent] contract,
  * with a fixed clock: validation, then the signed-in user, then [pending], then [failure], then the
- * save. Tests that read events [seed] them first.
+ * save. [updateEvent] and [deleteEvent] follow their contracts the same way, with [pending] and
+ * then [updateFailure] or [deleteFailure] before the stored event is checked. Tests that read,
+ * update or delete events [seed] them first.
  *
  * @property currentUid the signed-in user, or null when nobody is signed in.
  * @property creatorIsVerifiedAssociation whether the signed-in user is a verified association.
@@ -39,10 +42,28 @@ class FakeEventRepository(
    */
   var pending: CompletableDeferred<Unit>? = null
 
+  /** When set, [updateEvent] returns this result instead of saving, like a failed write. */
+  var updateFailure: UpdateEventResult? = null
+
+  /** When set, [deleteEvent] returns this result instead of deleting, like a failed write. */
+  var deleteFailure: DeleteEventResult? = null
+
+  /** The events passed to [updateEvent] so far, valid or not, in call order. */
+  val updateRequests = mutableListOf<Event>()
+
+  /** The IDs passed to [deleteEvent] so far, in call order. */
+  val deleteRequests = mutableListOf<String>()
+
   /** When true, [getUpcomingPublicEvents] emits [PublicEventsResult.Error], like a denied query. */
   var readFailure = false
 
-  /** The `fromCache` flag [getUpcomingPublicEvents] reports, to simulate being offline. */
+  /**
+   * When true, [getOwnAssociationEvents] emits [OwnEventsResult.Error], like a query the rules
+   * deny.
+   */
+  var ownEventsFailure = false
+
+  /** The `fromCache` flag the event flows report, to simulate being offline. */
   var readFromCache = false
 
   /** Bumped on every change to [events], so [getUpcomingPublicEvents] emits again. */
@@ -78,6 +99,47 @@ class FakeEventRepository(
     return CreateEventResult.Created(saved.id)
   }
 
+  override suspend fun updateEvent(event: Event): UpdateEventResult {
+    updateRequests += event
+    val errors = validateNewEvent(event, now) - EventValidationError.START_IN_PAST
+    if (errors.isNotEmpty()) return UpdateEventResult.Invalid(errors)
+    if (!isReadableEventId(event.id)) return UpdateEventResult.NotFound
+    val uid = currentUid ?: return UpdateEventResult.NotOrganizer
+    pending?.await()
+    updateFailure?.let {
+      return it
+    }
+    val index = readableIndexOf(event.id)
+    if (index < 0) return UpdateEventResult.NotFound
+    val stored = events[index]
+    if (uid !in stored.organizerIds) return UpdateEventResult.NotOrganizer
+    val startErrors = validateEventUpdate(event, stored, now)
+    if (startErrors.isNotEmpty()) return UpdateEventResult.Invalid(startErrors)
+    events[index] = event.withOwnershipOf(stored)
+    changes.value++
+    return UpdateEventResult.Updated
+  }
+
+  override suspend fun deleteEvent(id: String): DeleteEventResult {
+    deleteRequests += id
+    if (!isReadableEventId(id)) return DeleteEventResult.NotFound
+    val uid = currentUid ?: return DeleteEventResult.NotOrganizer
+    pending?.await()
+    deleteFailure?.let {
+      return it
+    }
+    val index = readableIndexOf(id)
+    if (index < 0) return DeleteEventResult.NotFound
+    if (uid !in events[index].organizerIds) return DeleteEventResult.NotOrganizer
+    events.removeAt(index)
+    changes.value++
+    return DeleteEventResult.Deleted
+  }
+
+  /** The index of the stored event [id], or -1 if it is missing or in [deniedIds]. */
+  private fun readableIndexOf(id: String): Int =
+      if (id in deniedIds) -1 else events.indexOfFirst { it.id == id }
+
   /** Emits the stored events that [isUpcomingPublicEvent] keeps at [now], and again on changes. */
   override fun getUpcomingPublicEvents(windowDays: Int): Flow<PublicEventsResult> {
     require(windowDays > 0) { "windowDays must be positive, was $windowDays" }
@@ -86,6 +148,24 @@ class FakeEventRepository(
     return changes.map {
       PublicEventsResult.Events(
           events.filter { it.isUpcomingPublicEvent(start, windowDays) }.sortedBy { it.startTime },
+          readFromCache,
+      )
+    }
+  }
+
+  /**
+   * Emits the stored association events of [currentUid], sorted by start time, and again on
+   * changes. Nobody signed in, or [ownEventsFailure], is [OwnEventsResult.Error], like the real
+   * repository.
+   */
+  override fun getOwnAssociationEvents(): Flow<OwnEventsResult> {
+    val uid = currentUid
+    if (uid == null || ownEventsFailure) return flowOf(OwnEventsResult.Error)
+    return changes.map {
+      OwnEventsResult.Events(
+          events
+              .filter { it.createdBy == uid && it.isAssociationEvent }
+              .sortedBy { it.startTime },
           readFromCache,
       )
     }

@@ -1,6 +1,8 @@
 // Contributors: Claude (event repository read and createEvent tests against the Firestore
 // emulator, #118). OpenAI Codex (adapted the event-test auth fixture to the verification
-// contract, #31); OpenAI Codex (password-reset contract in the event-test fixture, #164).
+// contract, #31); OpenAI Codex (password-reset contract in the event-test fixture, #164); Claude
+// (updateEvent and deleteEvent against the rules, #130; an association's own events against the
+// rules, #132); Franciszek Najda (reviewed #130).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -14,16 +16,20 @@ import com.polysocial.model.auth.SignUpResult
 import com.polysocial.model.auth.VerificationResult
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.CreateEventResult
+import com.polysocial.model.event.DeleteEventResult
 import com.polysocial.model.event.EVENTS_COLLECTION
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.FirestoreEventRepository
+import com.polysocial.model.event.OwnEventsResult
 import com.polysocial.model.event.PublicEventsResult
+import com.polysocial.model.event.UpdateEventResult
 import com.polysocial.model.event.eventFromFirestore
 import com.polysocial.model.event.toFirestoreMap
 import com.polysocial.model.event.withCreator
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.user.FirestoreUserProfileRepository
+import com.polysocial.model.user.USERS_COLLECTION
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -45,7 +51,9 @@ import org.junit.runner.RunWith
  * Tests [FirestoreEventRepository] against the Firestore and Auth emulators, so its transaction,
  * its query, its live listener and the event rules (#47, #52) run on the real Firestore. The read
  * tests seed events as an admin would, from [Event.toFirestoreMap], so the stored field names are
- * the ones the repository writes; the `createEvent` tests check those names by hand.
+ * the ones the repository writes; the `createEvent` tests check those names by hand. The
+ * `updateEvent` and `deleteEvent` tests check that the rules accept what an organizer sends and
+ * that each refusal reaches the app as the right result.
  *
  * The clock is fixed at [NOW], far in the future, so the window never depends on the real date.
  */
@@ -267,6 +275,195 @@ class FirestoreEventRepositoryEmulatorTest {
     assertEquals(emptyList<String>(), firstServerResult().ids())
   }
 
+  /** A public event managed by [organizerUid] and [ORGANIZER_UID], also readable by a member. */
+  private fun managedBy(organizerUid: String) =
+      publicEvent(startsIn = Duration.ofHours(2))
+          .copy(
+              createdBy = organizerUid,
+              organizerIds = listOf(organizerUid, ORGANIZER_UID),
+              allowedUids = listOf(organizerUid, ORGANIZER_UID, MEMBER_UID),
+          )
+
+  /** `events/[id]` as the signed-in student reads it from the server. */
+  private suspend fun storedEvent(id: String): Event? {
+    val snapshot =
+        emulator.firestore.collection(EVENTS_COLLECTION).document(id).get(Source.SERVER).await()
+    return eventFromFirestore(id, snapshot.data.orEmpty())
+  }
+
+  @Test
+  fun updateEvent_byAnOrganizer_isAcceptedAndKeepsWhoManagesTheEvent() = runBlocking {
+    val uid = signInStudent()
+    seed("managed", managedBy(uid))
+    // The form also tries to take over the event; the stored creator and organizers stay.
+    val edit =
+        publicEvent(startsIn = Duration.ofHours(3))
+            .copy(
+                id = "managed",
+                title = "New title",
+                createdBy = "intruder",
+                organizerIds = listOf("intruder"),
+                allowedUids = emptyList(),
+            )
+
+    val result = withTimeout(TIMEOUT_MS) { repository.updateEvent(edit) }
+
+    assertEquals(UpdateEventResult.Updated, result)
+    val stored = storedEvent("managed")
+    assertEquals("New title", stored?.title)
+    assertEquals(NOW.plus(Duration.ofHours(3)), stored?.startTime)
+    assertEquals(listOf(uid, ORGANIZER_UID), stored?.organizerIds)
+    assertEquals(uid, stored?.createdBy)
+    assertEquals(listOf(uid, ORGANIZER_UID, MEMBER_UID), stored?.allowedUids)
+  }
+
+  @Test
+  fun updateEvent_aStartedEvent_isSavedAndKeepsFieldsTheEventDoesNotHold() = runBlocking {
+    val uid = signInStudent()
+    val started = managedBy(uid).copy(startTime = NOW.minus(Duration.ofHours(1)))
+    // A field a later feature may add (for example an attendee count) must survive an edit.
+    emulator.createAsAdmin(
+        EVENTS_COLLECTION,
+        "started",
+        started.toFirestoreMap() + ("attendeeCount" to 3L),
+    )
+
+    val result =
+        withTimeout(TIMEOUT_MS) {
+          repository.updateEvent(started.copy(id = "started", title = "New title"))
+        }
+
+    assertEquals(UpdateEventResult.Updated, result)
+    val snapshot =
+        emulator.firestore
+            .collection(EVENTS_COLLECTION)
+            .document("started")
+            .get(Source.SERVER)
+            .await()
+    assertEquals("New title", snapshot.getString("title"))
+    assertEquals(3L, snapshot.getLong("attendeeCount"))
+  }
+
+  @Test
+  fun updateEvent_bySomeoneWhoIsNotAnOrganizer_isRefusedAndChangesNothing() = runBlocking {
+    signInStudent()
+    seed("theirs", publicEvent(startsIn = Duration.ofHours(2)))
+
+    val result =
+        withTimeout(TIMEOUT_MS) {
+          repository.updateEvent(
+              publicEvent(startsIn = Duration.ofHours(2)).copy(id = "theirs", title = "Taken over")
+          )
+        }
+
+    assertEquals(UpdateEventResult.NotOrganizer, result)
+    assertEquals("Test event", storedEvent("theirs")?.title)
+  }
+
+  @Test
+  fun updateEvent_aPrivateEventTheStudentCannotRead_isNotFound() = runBlocking {
+    signInStudent()
+    seed("hidden", publicEvent(startsIn = Duration.ofHours(2)).copy(isPrivate = true))
+
+    val result =
+        withTimeout(TIMEOUT_MS) {
+          repository.updateEvent(publicEvent(startsIn = Duration.ofHours(2)).copy(id = "hidden"))
+        }
+
+    assertEquals(UpdateEventResult.NotFound, result)
+  }
+
+  @Test
+  fun deleteEvent_byAnOrganizer_removesTheEvent() = runBlocking {
+    val uid = signInStudent()
+    seed("managed", managedBy(uid))
+
+    val result = withTimeout(TIMEOUT_MS) { repository.deleteEvent("managed") }
+
+    assertEquals(DeleteEventResult.Deleted, result)
+    assertEquals(emptyList<String>(), firstServerResult().ids())
+  }
+
+  @Test
+  fun deleteEvent_bySomeoneWhoIsNotAnOrganizer_isRefusedAndKeepsTheEvent() = runBlocking {
+    signInStudent()
+    seed("theirs", publicEvent(startsIn = Duration.ofHours(2)))
+
+    val result = withTimeout(TIMEOUT_MS) { repository.deleteEvent("theirs") }
+
+    assertEquals(DeleteEventResult.NotOrganizer, result)
+    assertEquals(listOf("theirs"), firstServerResult().ids())
+  }
+
+  @Test
+  fun deleteEvent_anEventThatDoesNotExist_isNotFound() = runBlocking {
+    signInStudent()
+
+    // The read rule checks the document's fields, so reading a missing event is denied.
+    val result = withTimeout(TIMEOUT_MS) { repository.deleteEvent("missing") }
+
+    assertEquals(DeleteEventResult.NotFound, result)
+  }
+
+  /** Signs in [ASSOCIATION_EMAIL] with a profile a PolySocial admin has verified. */
+  private suspend fun signInVerifiedAssociation(): String {
+    val uid = emulator.signInVerifiedUser(ASSOCIATION_EMAIL).uid
+    emulator.createAsAdmin(
+        USERS_COLLECTION,
+        uid,
+        mapOf(
+            "uid" to uid,
+            "email" to ASSOCIATION_EMAIL,
+            "displayName" to "Test Association",
+            "accountType" to "association",
+            "isAssociationVerified" to true,
+        ),
+    )
+    return uid
+  }
+
+  /**
+   * The first result of [FirestoreEventRepository.getOwnAssociationEvents] read from the server.
+   */
+  private suspend fun firstOwnEvents(): OwnEventsResult =
+      withTimeout(TIMEOUT_MS) {
+        repository.getOwnAssociationEvents().first {
+          it !is OwnEventsResult.Events || !it.fromCache
+        }
+      }
+
+  @Test
+  fun ownEvents_aVerifiedAssociationReadsAllItsOwnEventsAndNoOthers() = runBlocking {
+    val uid = signInVerifiedAssociation()
+    val own =
+        publicEvent(startsIn = Duration.ofDays(2))
+            .copy(
+                createdBy = uid,
+                organizerIds = listOf(uid),
+                allowedUids = listOf(uid),
+                isAssociationEvent = true,
+            )
+    seed("later", own)
+    seed("privateAndPast", own.copy(isPrivate = true, startTime = NOW.minus(Duration.ofDays(3))))
+    seed("someoneElses", publicEvent(startsIn = Duration.ofDays(1)).copy(isAssociationEvent = true))
+
+    val result = firstOwnEvents()
+
+    assertTrue("Expected events, got $result", result is OwnEventsResult.Events)
+    assertEquals(
+        listOf("privateAndPast", "later"),
+        (result as OwnEventsResult.Events).events.map { it.id },
+    )
+  }
+
+  @Test
+  fun ownEvents_aStudentIsDeniedAndGetsAnError() = runBlocking {
+    signInStudent()
+    seed("public", publicEvent(startsIn = Duration.ofDays(1)))
+
+    assertEquals(OwnEventsResult.Error, firstOwnEvents())
+  }
+
   private suspend fun collectAll(): List<PublicEventsResult> {
     val results = mutableListOf<PublicEventsResult>()
     repository.getUpcomingPublicEvents(WINDOW_DAYS).collect { results += it }
@@ -326,6 +523,7 @@ class FirestoreEventRepositoryEmulatorTest {
     const val STUDENT_EMAIL = "test.student@epfl.ch"
     const val ASSOCIATION_EMAIL = "test.association@example.com"
     const val ORGANIZER_UID = "fictional-organizer"
+    const val MEMBER_UID = "fictional-member"
     const val WINDOW_DAYS = 14
     val WINDOW: Duration = Duration.ofDays(WINDOW_DAYS.toLong())
     val NOW: Instant = Instant.parse("2030-03-01T12:00:00Z")

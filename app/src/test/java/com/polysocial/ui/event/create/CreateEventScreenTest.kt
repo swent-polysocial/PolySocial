@@ -1,4 +1,5 @@
-// Contributors: Claude (wrote these tests; opening the location picker and its result, #111).
+// Contributors: Claude (wrote these tests; opening the location picker and its result, #111; the
+// ViewModel's navigation arguments, #131).
 package com.polysocial.ui.event.create
 
 import android.app.Application
@@ -25,6 +26,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.lifecycle.SavedStateHandle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.CreateEventResult
@@ -66,7 +68,8 @@ class CreateEventScreenTest {
   @get:Rule val composeTestRule = createComposeRule()
 
   private val repository = FakeEventRepository(now = FORM_NOW)
-  private val viewModel = CreateEventViewModel(repository, Clock.fixed(FORM_NOW, ZURICH))
+  private val viewModel =
+      CreateEventViewModel(repository, Clock.fixed(FORM_NOW, ZURICH), SavedStateHandle())
 
   private var closed = false
   private var viewedEventId: String? = null

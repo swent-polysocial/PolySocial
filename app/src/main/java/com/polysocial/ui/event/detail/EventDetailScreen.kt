@@ -1,4 +1,5 @@
-// Contributors: Claude (event detail screen from the Figma "Event detail" Sprint 2 frames, #112).
+// Contributors: Claude (event detail screen from the Figma "Event detail" Sprint 2 frames, #112;
+// Retry in the offline "not saved" state, #194; Edit and Cancel event for organizers, #131).
 package com.polysocial.ui.event.detail
 
 import androidx.annotation.DrawableRes
@@ -31,6 +32,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -59,11 +61,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
 import com.polysocial.model.event.EventCategory
 import com.polysocial.ui.common.LoadingState
+import com.polysocial.ui.common.StateButton
 import com.polysocial.ui.event.style
 import com.polysocial.ui.theme.Accent
 import com.polysocial.ui.theme.AccentText
 import com.polysocial.ui.theme.Bg
 import com.polysocial.ui.theme.Border
+import com.polysocial.ui.theme.Disabled
 import com.polysocial.ui.theme.Info
 import com.polysocial.ui.theme.InfoSoft
 import com.polysocial.ui.theme.Ink
@@ -93,31 +97,75 @@ object EventDetailTags {
   const val NOT_FOUND = "event_detail_not_found"
   const val NOT_FOUND_BACK = "event_detail_not_found_back"
   const val OFFLINE_NOT_SAVED = "event_detail_offline_not_saved"
+  const val RETRY = "event_detail_retry"
+  const val EDIT = "event_detail_edit"
+  const val ORGANIZED_BY_YOU = "event_detail_organized_by_you"
+  const val CANCEL_EVENT = "event_detail_cancel_event"
+  const val CANCEL_SHEET = "event_detail_cancel_sheet"
+  const val CONFIRM_CANCEL = "event_detail_confirm_cancel"
+  const val KEEP_EVENT = "event_detail_keep_event"
+  const val CANCEL_FAILURE = "event_detail_cancel_failure"
 }
 
 /**
+ * What an organizer can do on the detail (#131): open Edit event, and cancel the event through its
+ * confirmation.
+ */
+data class EventOrganizerActions(
+    val onEdit: () -> Unit = {},
+    val onCancelEvent: () -> Unit = {},
+    val onConfirmCancel: () -> Unit = {},
+    val onKeepEvent: () -> Unit = {},
+)
+
+/**
  * The event detail screen for the event in the navigation arguments (see [EventDetailViewModel]).
+ * An organizer's Edit calls [onEdit], and [onCancelled] is called once the event is cancelled, to
+ * leave the screen.
  */
 @Composable
 fun EventDetailRoute(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    onEdit: () -> Unit = {},
+    onCancelled: () -> Unit = {},
     viewModel: EventDetailViewModel = hiltViewModel(),
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
-  EventDetailScreen(state, onBack, modifier)
+  val cancelState by viewModel.cancelState.collectAsStateWithLifecycle()
+  LaunchedEffect(cancelState) { if (cancelState == CancelEventState.Cancelled) onCancelled() }
+  EventDetailScreen(
+      state,
+      onBack,
+      viewModel::retry,
+      modifier,
+      cancelState,
+      EventOrganizerActions(
+          onEdit = onEdit,
+          onCancelEvent = viewModel::onCancelEvent,
+          onConfirmCancel = viewModel::onConfirmCancel,
+          onKeepEvent = viewModel::onKeepEvent,
+      ),
+  )
 }
 
 /**
  * Draws [state] as in the Figma "Event detail" Sprint 2 frames (section 03): the event, or its
- * loading, not-found and offline states. Every state keeps the Back button. "Find a group" isn't
- * built yet (matching comes later), so it shows a "not available yet" Snackbar.
+ * loading, not-found and offline states. Every state keeps the Back button, and the offline "not
+ * saved" state has Retry, which calls [onRetry]. "Find a group" isn't built yet (matching comes
+ * later), so it shows a "not available yet" Snackbar.
+ *
+ * An organizer also sees Edit, "Organized by you" and Cancel event (Figma section 10, "Event detail
+ * · organizer"), and the confirmation while [cancelState] isn't hidden.
  */
 @Composable
 fun EventDetailScreen(
     state: EventDetailUiState,
     onBack: () -> Unit,
+    onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    cancelState: CancelEventState = CancelEventState.Hidden,
+    organizer: EventOrganizerActions = EventOrganizerActions(),
 ) {
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
@@ -134,6 +182,7 @@ fun EventDetailScreen(
               state,
               onBack,
               snackbarHostState,
+              organizer,
               onFindGroup = {
                 // Replace a message already shown instead of queueing one per tap.
                 snackbarHostState.currentSnackbarData?.dismiss()
@@ -147,9 +196,14 @@ fun EventDetailScreen(
               title = stringResource(R.string.event_detail_not_found_title),
               body = stringResource(R.string.event_detail_not_found_body),
               onBack = onBack,
-              showBackButton = true,
               tag = EventDetailTags.NOT_FOUND,
-          )
+          ) {
+            StateButton(
+                stringResource(R.string.event_detail_navigate_back),
+                onBack,
+                Modifier.testTag(EventDetailTags.NOT_FOUND_BACK),
+            )
+          }
       EventDetailUiState.OfflineNotSaved ->
           MessageState(
               icon = R.drawable.ic_offline,
@@ -157,9 +211,24 @@ fun EventDetailScreen(
               title = stringResource(R.string.event_detail_offline_not_saved_title),
               body = stringResource(R.string.event_detail_offline_not_saved_body),
               onBack = onBack,
-              showBackButton = false,
               tag = EventDetailTags.OFFLINE_NOT_SAVED,
-          )
+          ) {
+            StateButton(
+                stringResource(R.string.retry),
+                onRetry,
+                Modifier.testTag(EventDetailTags.RETRY),
+            )
+          }
+    }
+    if (state is EventDetailUiState.Loaded && state.isOrganizer) {
+      if (cancelState != CancelEventState.Hidden) {
+        CancelEventSheet(
+            title = state.details.event.title,
+            state = cancelState,
+            onConfirm = organizer.onConfirmCancel,
+            onKeep = organizer.onKeepEvent,
+        )
+      }
     }
   }
 }
@@ -169,6 +238,7 @@ private fun EventContent(
     state: EventDetailUiState.Loaded,
     onBack: () -> Unit,
     snackbarHostState: SnackbarHostState,
+    organizer: EventOrganizerActions,
     onFindGroup: () -> Unit,
 ) {
   val details = state.details
@@ -179,7 +249,7 @@ private fun EventContent(
       Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         // The category tile overlaps the bottom of the header, as in Figma.
         Box {
-          Header(category.tileColor, onBack)
+          Header(category.tileColor, onBack, onEdit = organizer.onEdit.takeIf { state.isOrganizer })
           CategoryTile(
               event.category,
               Modifier.windowInsetsPadding(WindowInsets.statusBars)
@@ -188,14 +258,26 @@ private fun EventContent(
         }
         Column(Modifier.padding(horizontal = 20.dp)) {
           Spacer(Modifier.height(16.dp))
-          Pill(
-              text = stringResource(category.label),
-              color = category.color,
-              background = category.tileColor,
-              height = 24.dp,
-              horizontalPadding = 10.dp,
-              modifier = Modifier.testTag(EventDetailTags.CATEGORY),
-          )
+          Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Pill(
+                text = stringResource(category.label),
+                color = category.color,
+                background = category.tileColor,
+                height = 24.dp,
+                horizontalPadding = 10.dp,
+                modifier = Modifier.testTag(EventDetailTags.CATEGORY),
+            )
+            if (state.isOrganizer) {
+              Pill(
+                  text = stringResource(R.string.event_detail_organized_by_you),
+                  color = Ink2,
+                  background = Disabled,
+                  height = 24.dp,
+                  horizontalPadding = 10.dp,
+                  modifier = Modifier.testTag(EventDetailTags.ORGANIZED_BY_YOU),
+              )
+            }
+          }
           Spacer(Modifier.height(14.dp))
           Text(
               text = event.title,
@@ -254,17 +336,24 @@ private fun EventContent(
       SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
     }
     if (state.isOffline) OfflineBanner(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp))
+    if (state.isOrganizer) {
+      CancelEventButton(
+          organizer.onCancelEvent,
+          Modifier.padding(start = 20.dp, end = 20.dp, bottom = 16.dp),
+      )
+    }
     ActionBar(onFindGroup)
   }
 }
 
 /**
- * The colored top of the screen with the round Back button. Its color runs behind the status bar,
- * and its Figma height starts below it. The Back button is Figma's 44 dp circle inside a 48 dp
- * touch area, Android's minimum.
+ * The colored top of the screen with the round Back button, and the organizer's Edit button when
+ * [onEdit] isn't null. Its color runs behind the status bar, and its Figma height starts below it.
+ * The Back button is Figma's 44 dp circle inside a 48 dp touch area, Android's minimum, and Edit's
+ * 36 dp pill has a 48 dp touch area too.
  */
 @Composable
-private fun Header(color: Color, onBack: () -> Unit) {
+private fun Header(color: Color, onBack: () -> Unit, onEdit: (() -> Unit)? = null) {
   Box(
       Modifier.fillMaxWidth()
           .background(color)
@@ -289,6 +378,52 @@ private fun Header(color: Color, onBack: () -> Unit) {
         )
       }
     }
+    if (onEdit != null) {
+      Box(
+          modifier =
+              Modifier.align(Alignment.TopEnd)
+                  .padding(top = 10.dp, end = 12.dp)
+                  .height(48.dp)
+                  .clip(RoundedCornerShape(24.dp))
+                  .clickable(role = Role.Button, onClick = onEdit)
+                  .padding(horizontal = 4.dp)
+                  .testTag(EventDetailTags.EDIT),
+          contentAlignment = Alignment.Center,
+      ) {
+        Box(
+            Modifier.height(36.dp)
+                .background(Bg, RoundedCornerShape(18.dp))
+                .border(1.dp, Border, RoundedCornerShape(18.dp))
+                .padding(horizontal = 14.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+          Text(stringResource(R.string.event_detail_edit), style = EDIT_STYLE, color = Ink)
+        }
+      }
+    }
+  }
+}
+
+/** The organizer's outlined "Cancel event" button, above the action bar. */
+@Composable
+private fun CancelEventButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+  Box(
+      modifier =
+          modifier
+              .fillMaxWidth()
+              .height(48.dp)
+              .clip(RoundedCornerShape(24.dp))
+              .background(Bg)
+              .border(1.dp, Border, RoundedCornerShape(24.dp))
+              .clickable(role = Role.Button, onClick = onClick)
+              .testTag(EventDetailTags.CANCEL_EVENT),
+      contentAlignment = Alignment.Center,
+  ) {
+    Text(
+        stringResource(R.string.event_detail_cancel_event),
+        style = CANCEL_STYLE,
+        color = AccentText,
+    )
   }
 }
 
@@ -454,7 +589,7 @@ private fun ActionBar(onFindGroup: () -> Unit) {
 /**
  * A full-screen message centred on the screen, with a neutral header, as in the Figma "Event detail
  * · not found" and "· offline, not saved" frames: an icon in a round tile, a title, a short text,
- * and optionally a Back button.
+ * and a [button] below it (Back when not found, Retry when offline and not saved).
  */
 @Composable
 private fun MessageState(
@@ -463,8 +598,8 @@ private fun MessageState(
     title: String,
     body: String,
     onBack: () -> Unit,
-    showBackButton: Boolean,
     tag: String,
+    button: @Composable () -> Unit,
 ) {
   Box(Modifier.fillMaxSize().testTag(tag)) {
     // Centred on the whole screen like the app's other full-screen states. The same padding above
@@ -509,23 +644,7 @@ private fun MessageState(
           textAlign = TextAlign.Center,
           modifier = Modifier.widthIn(max = 280.dp),
       )
-      if (showBackButton) {
-        Box(
-            modifier =
-                Modifier.size(width = 160.dp, height = 48.dp)
-                    .clip(RoundedCornerShape(24.dp))
-                    .background(Ink)
-                    .clickable(role = Role.Button, onClick = onBack)
-                    .testTag(EventDetailTags.NOT_FOUND_BACK),
-            contentAlignment = Alignment.Center,
-        ) {
-          Text(
-              stringResource(R.string.event_detail_navigate_back),
-              style = MaterialTheme.typography.titleSmall,
-              color = Bg,
-          )
-        }
-      }
+      button()
     }
     Header(Surface, onBack)
   }
@@ -571,6 +690,22 @@ private val ROW_TITLE_STYLE =
             fontWeight = FontWeight.Bold,
             fontSize = 15.sp,
             lineHeight = 18.9.sp,
+        )
+        .figmaExact()
+private val EDIT_STYLE =
+    TextStyle(
+            fontFamily = PlusJakartaSans,
+            fontWeight = FontWeight.Bold,
+            fontSize = 13.sp,
+            lineHeight = 16.4.sp,
+        )
+        .figmaExact()
+private val CANCEL_STYLE =
+    TextStyle(
+            fontFamily = PlusJakartaSans,
+            fontWeight = FontWeight.Bold,
+            fontSize = 14.sp,
+            lineHeight = 17.6.sp,
         )
         .figmaExact()
 private val ROW_SUBTITLE_STYLE =

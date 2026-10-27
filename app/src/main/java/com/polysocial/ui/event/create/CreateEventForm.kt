@@ -1,5 +1,6 @@
 // Contributors: Claude (drafted the Create Event form logic; picked place's address, #111; saving
-// the place's name, #112); Mohamed Khellaf (reviewed).
+// the place's name, #112); Mohamed Khellaf (reviewed). Claude (filling the form from an event to
+// edit it, #131; the repository's errors, #131 review).
 package com.polysocial.ui.event.create
 
 import com.polysocial.model.event.Coordinates
@@ -87,10 +88,37 @@ fun CreateEventForm.toEvent(zone: ZoneId): Event? {
 }
 
 /**
- * Returns every problem with the form at [now]: missing required fields, a capacity that isn't a
- * whole number, and the rules of [validateNewEvent].
+ * The form filled in with [event]'s values, to edit it. Times are shown in [zone]; an end on the
+ * next day shows as an end time earlier than the start (see [endsNextDay]). The place keeps the
+ * name it was saved with; without one, the location picker looks it up again when it reopens.
  */
-fun CreateEventForm.errors(now: Instant, zone: ZoneId): Set<CreateEventFormError> {
+fun Event.toForm(zone: ZoneId): CreateEventForm {
+  val start = startTime.atZone(zone)
+  return CreateEventForm(
+      title = title,
+      description = description,
+      category = category,
+      date = start.toLocalDate(),
+      startTime = start.toLocalTime(),
+      endTime = endTime?.atZone(zone)?.toLocalTime(),
+      location = PickedLocation(location, locationName, isNamed = locationName.isNotBlank()),
+      capacityText = capacity?.toString().orEmpty(),
+      isPrivate = isPrivate,
+  )
+}
+
+/**
+ * Returns every problem with the form at [now]: missing required fields, a capacity that isn't a
+ * whole number, and the rules of [validateNewEvent]. When editing an event, [keptStart] is its
+ * stored start: a start in the past is then only an error if it differs from it, as
+ * [com.polysocial.model.event.validateEventUpdate] decides, so an event that has started can still
+ * be edited.
+ */
+fun CreateEventForm.errors(
+    now: Instant,
+    zone: ZoneId,
+    keptStart: Instant? = null,
+): Set<CreateEventFormError> {
   val errors = mutableSetOf<CreateEventFormError>()
   if (date == null || startTime == null) errors += CreateEventFormError.MISSING_DATE
   if (location == null) errors += CreateEventFormError.MISSING_LOCATION
@@ -99,6 +127,9 @@ fun CreateEventForm.errors(now: Instant, zone: ZoneId): Set<CreateEventFormError
   if (category == null) errors += CreateEventFormError.MISSING_CATEGORY
   val event = toEvent(zone) ?: placeholderFor(now, zone)
   errors += validateNewEvent(event, now).map { it.toFormError() }
+  if (keptStart != null && startIn(zone)?.toInstant() == keptStart) {
+    errors -= CreateEventFormError.START_IN_PAST
+  }
   return errors
 }
 
@@ -150,7 +181,8 @@ private fun CreateEventForm.placeholderFor(now: Instant, zone: ZoneId): Event {
   )
 }
 
-private fun EventValidationError.toFormError() =
+/** The form error to show for a rule the repository refused an event for. */
+internal fun EventValidationError.toFormError() =
     when (this) {
       EventValidationError.BLANK_TITLE -> CreateEventFormError.MISSING_TITLE
       EventValidationError.TITLE_TOO_LONG -> CreateEventFormError.TITLE_TOO_LONG

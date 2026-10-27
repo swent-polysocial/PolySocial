@@ -1,19 +1,24 @@
 // Contributors: OpenAI Codex (refresh Firestore and handle blocked cache access, #156).
 // Contributors: Claude (drafted the Firestore event repository; verified association badge, #45;
 // the public upcoming-events listener, #49; unexpected failures reported as errors, #182; the
-// single-event listener and its failures, #112).
+// single-event listener and its failures, #112; updating and deleting as an organizer, #130; an
+// association's own events, #132); Franciszek Najda (reviewed #130).
 package com.polysocial.model.event
 
 import com.google.firebase.FirebaseException
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.MetadataChanges
+import com.google.firebase.firestore.Query
+import com.google.firebase.firestore.Transaction
 import com.google.firebase.firestore.TransactionOptions
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.UserProfileRepository
 import java.time.Clock
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
@@ -39,6 +44,9 @@ const val EVENTS_COLLECTION = "events"
  * of being queued and finished later. The transaction is tried only once: it only creates a new
  * document, so it can't conflict with another write, and retries would just delay the offline
  * error.
+ *
+ * Updates and deletes follow the same pattern: after the same offline check, one transaction reads
+ * the stored event, checks that the user is one of its organizers, and writes.
  *
  * @param clock the current time, used to reject events that start in the past and to place the
  *   upcoming-events window.
@@ -90,65 +98,205 @@ class FirestoreEventRepository(
     }
   }
 
+  override suspend fun updateEvent(event: Event): UpdateEventResult {
+    val now = clock.instant()
+    // A start in the past depends on the stored start, so it is checked after the read.
+    val errors = validateNewEvent(event, now) - EventValidationError.START_IN_PAST
+    if (errors.isNotEmpty()) return UpdateEventResult.Invalid(errors)
+    if (!isReadableEventId(event.id)) return UpdateEventResult.NotFound
+    val user = auth.currentUser() ?: return UpdateEventResult.NotOrganizer
+    if (!network.isOnline()) return UpdateEventResult.NetworkError
+    val outcome =
+        writeAsOrganizer(event.id, user.uid) { transaction, document, stored ->
+          val valid = validateEventUpdate(event, stored, now).isEmpty()
+          // `update`, not `set`, so fields this app version doesn't write are kept.
+          if (valid) transaction.update(document, event.withOwnershipOf(stored).toFirestoreMap())
+          valid
+        }
+    return when (outcome) {
+      OrganizerWrite.DONE -> UpdateEventResult.Updated
+      // The start is the only rule left unchecked before the read.
+      OrganizerWrite.REFUSED ->
+          UpdateEventResult.Invalid(listOf(EventValidationError.START_IN_PAST))
+      OrganizerWrite.NOT_FOUND -> UpdateEventResult.NotFound
+      OrganizerWrite.NOT_ORGANIZER -> UpdateEventResult.NotOrganizer
+      OrganizerWrite.NETWORK_ERROR -> UpdateEventResult.NetworkError
+      OrganizerWrite.UNEXPECTED_ERROR -> UpdateEventResult.UnexpectedError
+    }
+  }
+
+  override suspend fun deleteEvent(id: String): DeleteEventResult {
+    if (!isReadableEventId(id)) return DeleteEventResult.NotFound
+    val user = auth.currentUser() ?: return DeleteEventResult.NotOrganizer
+    if (!network.isOnline()) return DeleteEventResult.NetworkError
+    val outcome =
+        writeAsOrganizer(id, user.uid) { transaction, document, _ ->
+          transaction.delete(document)
+          true
+        }
+    return when (outcome) {
+      OrganizerWrite.DONE -> DeleteEventResult.Deleted
+      // Deleting never refuses the stored event.
+      OrganizerWrite.REFUSED -> DeleteEventResult.UnexpectedError
+      OrganizerWrite.NOT_FOUND -> DeleteEventResult.NotFound
+      OrganizerWrite.NOT_ORGANIZER -> DeleteEventResult.NotOrganizer
+      OrganizerWrite.NETWORK_ERROR -> DeleteEventResult.NetworkError
+      OrganizerWrite.UNEXPECTED_ERROR -> DeleteEventResult.UnexpectedError
+    }
+  }
+
+  /** How [writeAsOrganizer] ended. */
+  private enum class OrganizerWrite {
+    DONE,
+    REFUSED,
+    NOT_FOUND,
+    NOT_ORGANIZER,
+    NETWORK_ERROR,
+    UNEXPECTED_ERROR,
+  }
+
+  /**
+   * In one transaction, reads `events/[id]` and, if [uid] is one of its organizers, runs [write]
+   * with the stored event. [write] returns false, without writing, to refuse the stored event
+   * ([OrganizerWrite.REFUSED]). Like [createEvent]'s, the transaction runs only against the server
+   * and is tried once, so it fails offline instead of being queued.
+   *
+   * A missing or malformed document is [OrganizerWrite.NOT_FOUND], like in [getEvent]. A read the
+   * Security Rules deny is also [OrganizerWrite.NOT_FOUND]: #52's read rule checks the document's
+   * fields, so a document that doesn't exist reaches the app as a denied read, and a private event
+   * the user can't read must look missing too. A write the rules deny after the read succeeded is
+   * [OrganizerWrite.NOT_ORGANIZER].
+   */
+  private suspend fun writeAsOrganizer(
+      id: String,
+      uid: String,
+      write: (Transaction, DocumentReference, Event) -> Boolean,
+  ): OrganizerWrite {
+    // Set on Firestore's transaction thread, read here once the transaction has ended.
+    val wasRead = AtomicBoolean(false)
+    return try {
+      val document = db.collection(EVENTS_COLLECTION).document(id)
+      db.runTransaction(SINGLE_ATTEMPT) { transaction ->
+            val snapshot = transaction.get(document)
+            wasRead.set(true)
+            val stored =
+                if (snapshot.exists()) eventFromFirestore(id, snapshot.data.orEmpty()) else null
+            when {
+              stored == null -> OrganizerWrite.NOT_FOUND
+              uid !in stored.organizerIds -> OrganizerWrite.NOT_ORGANIZER
+              write(transaction, document, stored) -> OrganizerWrite.DONE
+              else -> OrganizerWrite.REFUSED
+            }
+          }
+          .await()
+    } catch (e: FirebaseException) {
+      when {
+        e.isOffline() -> OrganizerWrite.NETWORK_ERROR
+        e.isDenied() && wasRead.get() -> OrganizerWrite.NOT_ORGANIZER
+        e.isDenied() -> OrganizerWrite.NOT_FOUND
+        else -> OrganizerWrite.UNEXPECTED_ERROR
+      }
+    } catch (e: CancellationException) {
+      // Like createEvent: a task cancelled while the caller still runs is a failure.
+      currentCoroutineContext().ensureActive()
+      OrganizerWrite.UNEXPECTED_ERROR
+    } catch (e: Exception) {
+      OrganizerWrite.UNEXPECTED_ERROR
+    }
+  }
+
   /**
    * Listens to the query Firestore needs for [isUpcomingPublicEvent]: `isPrivate == false` (the
    * Security Rules reject a query that could return a private event) and a `startTime` range. This
    * equality plus range needs the composite index in `firebase/firestore/firestore.indexes.json`.
-   *
-   * Metadata changes are included, so the flow also emits when only [PublicEventsResult.Events]'s
-   * `fromCache` changes, for example when the device comes back online.
-   *
-   * The flow is conflated: a slow collector gets only the latest result, never a backlog of
-   * outdated snapshots. Sending never fails or blocks the listener's callback, so the terminal
-   * [PublicEventsResult.Error] replaces any result still waiting and always reaches the collector
-   * before the flow ends. Any failure, including an unexpected exception while building the query
-   * or reading a snapshot, ends the flow with that error instead of throwing.
+   * The window is fixed when collection starts. See [listenToEvents] for how it emits and fails.
    */
   override fun getUpcomingPublicEvents(windowDays: Int): Flow<PublicEventsResult> {
     require(windowDays > 0) { "windowDays must be positive, was $windowDays" }
-    return callbackFlow {
-          fun fail() {
-            trySend(PublicEventsResult.Error)
-            close()
-          }
-          // Nothing in this try suspends, so it can't catch the collector's cancellation, and
-          // awaitClose still ends a cancelled collection.
-          val registration =
-              try {
-                val now = clock.instant()
-                db.collection(EVENTS_COLLECTION)
-                    .whereEqualTo("isPrivate", false)
-                    .whereGreaterThanOrEqualTo("startTime", now.toTimestamp())
-                    .whereLessThan("startTime", upcomingWindowEnd(now, windowDays).toTimestamp())
-                    .orderBy("startTime")
-                    .addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, error ->
-                      if (error != null || snapshot == null) fail()
-                      else
-                          try {
-                            val events =
-                                snapshot.documents.mapNotNull {
-                                  eventFromFirestore(it.id, it.data.orEmpty())
-                                }
-                            trySend(
-                                PublicEventsResult.Events(events, snapshot.metadata.isFromCache)
-                            )
-                          } catch (e: Exception) {
-                            // Thrown here, it would crash the app on Firestore's callback thread.
-                            fail()
-                          }
-                    }
-              } catch (e: Exception) {
-                fail()
-                null
-              }
-          awaitClose { registration?.remove() }
-        }
-        .buffer(Channel.CONFLATED)
-        .catch { error ->
-          if (error is CancellationException) throw error
-          emit(PublicEventsResult.Error)
-        }
+    return listenToEvents(
+        query = {
+          val now = clock.instant()
+          db.collection(EVENTS_COLLECTION)
+              .whereEqualTo("isPrivate", false)
+              .whereGreaterThanOrEqualTo("startTime", now.toTimestamp())
+              .whereLessThan("startTime", upcomingWindowEnd(now, windowDays).toTimestamp())
+              .orderBy("startTime")
+        },
+        events = PublicEventsResult::Events,
+        error = PublicEventsResult.Error,
+    )
   }
+
+  /**
+   * Listens to `createdBy == uid` and `isAssociationEvent == true`, sorted by `startTime`: the
+   * owner-constrained shape #52's read rule requires of an association, which needs the second
+   * composite index in `firebase/firestore/firestore.indexes.json`. Nobody signed in is an
+   * [OwnEventsResult.Error] without a query. See [listenToEvents] for how it emits and fails.
+   */
+  override fun getOwnAssociationEvents(): Flow<OwnEventsResult> =
+      listenToEvents(
+          query = {
+            auth.currentUser()?.let { user ->
+              db.collection(EVENTS_COLLECTION)
+                  .whereEqualTo("createdBy", user.uid)
+                  .whereEqualTo("isAssociationEvent", true)
+                  .orderBy("startTime")
+            }
+          },
+          events = OwnEventsResult::Events,
+          error = OwnEventsResult.Error,
+      )
+
+  /**
+   * Listens to the events [query] returns, built when collection starts, and emits them through
+   * [events] with whether they come from the offline cache. Metadata changes are included, so the
+   * flow also emits when only `fromCache` changes, for example when the device comes back online. A
+   * document that can't be read as an [Event] is skipped.
+   *
+   * The flow is conflated: a slow collector gets only the latest result, never a backlog of
+   * outdated snapshots. Sending never fails or blocks the listener's callback, so the terminal
+   * [error] replaces any result still waiting and always reaches the collector before the flow
+   * ends. Any failure, including a null [query] (nobody signed in) or an unexpected exception while
+   * building the query or reading a snapshot, ends the flow with [error] instead of throwing.
+   */
+  private fun <R : Any> listenToEvents(
+      query: () -> Query?,
+      events: (List<Event>, Boolean) -> R,
+      error: R,
+  ): Flow<R> = callbackFlow {
+    fun fail() {
+      trySend(error)
+      close()
+    }
+    // Nothing in this try suspends, so it can't catch the collector's cancellation, and
+    // awaitClose still ends a cancelled collection.
+    val registration =
+        try {
+          val listened = query()
+          if (listened == null) fail()
+          listened?.addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, failure ->
+            if (failure != null || snapshot == null) fail()
+            else
+                try {
+                  val read =
+                      snapshot.documents.mapNotNull { eventFromFirestore(it.id, it.data.orEmpty()) }
+                  trySend(events(read, snapshot.metadata.isFromCache))
+                } catch (e: Exception) {
+                  // Thrown here, it would crash the app on Firestore's callback thread.
+                  fail()
+                }
+          }
+        } catch (e: Exception) {
+          fail()
+          null
+        }
+    awaitClose { registration?.remove() }
+  }
+      .buffer(Channel.CONFLATED)
+      .catch { failure ->
+        if (failure is CancellationException) throw failure
+        emit(error)
+      }
 
   /**
    * Listens to `events/[id]`. Metadata changes are included, so the flow also emits when only
@@ -209,6 +357,10 @@ class FirestoreEventRepository(
 
   private fun FirebaseException.isOffline() =
       this is FirebaseFirestoreException && code == FirebaseFirestoreException.Code.UNAVAILABLE
+
+  private fun FirebaseException.isDenied() =
+      this is FirebaseFirestoreException &&
+          code == FirebaseFirestoreException.Code.PERMISSION_DENIED
 
   private companion object {
     val SINGLE_ATTEMPT: TransactionOptions = TransactionOptions.Builder().setMaxAttempts(1).build()

@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Contributors: Claude (event detail texts from the Figma "Event detail" frames, #112). -->
+<!-- Contributors: Claude (event detail texts from the Figma "Event detail" frames, #112; Edit
+     and Cancel event from the Figma section 10 frames, #131). -->
 <resources>
     <string name="event_detail_navigate_back">Back</string>
     <string name="event_detail_loading">Loading event…</string>
@@ -23,4 +24,16 @@
     <string name="event_detail_not_found_body">It may have been cancelled, or it\'s private.</string>
     <string name="event_detail_offline_not_saved_title">You\'re offline</string>
     <string name="event_detail_offline_not_saved_body">This event isn\'t saved on this phone yet. It loads once you\'re back online.</string>
+    <string name="event_detail_edit">Edit</string>
+    <string name="event_detail_organized_by_you">Organized by you</string>
+    <string name="event_detail_cancel_event">Cancel event</string>
+    <string name="cancel_event_title">Cancel this event?</string>
+    <!-- %1$s is the event's title. -->
+    <string name="cancel_event_body">\"%1$s\" is deleted for everyone and disappears from the map and the Events list. This can\'t be undone.</string>
+    <string name="cancel_event_cancelling">Cancelling event…</string>
+    <string name="cancel_event_keep">Keep event</string>
+    <string name="cancel_event_offline">You\'re offline, so the event wasn\'t cancelled. Try again once you\'re back online.</string>
+    <!-- Not in Figma, which only has the offline failure; worded like Edit event's. -->
+    <string name="cancel_event_unexpected">Something went wrong, so the event wasn\'t cancelled. Try again.</string>
+    <string name="event_cancelled">Event cancelled. It\'s no longer on the map.</string>
 </resources>

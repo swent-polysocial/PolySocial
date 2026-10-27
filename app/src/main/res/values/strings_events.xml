@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Contributors: Claude (Events tab texts from the Figma "Discover events" frames, #105; search and
-     filters, #115). -->
+     filters, #115; the association's Events tab, #132). -->
 <resources>
     <string name="event_category_party">Party</string>
     <string name="event_category_sports">Sports</string>
@@ -52,4 +52,19 @@
     </plurals>
     <string name="events_error">Couldn\'t load events. Check your connection and try again.</string>
     <string name="events_retry">Retry</string>
+
+    <!-- The association's Events tab (Figma "Association · events tab"). -->
+    <string name="association_events_upcoming">Upcoming · %d</string>
+    <string name="association_events_drafts">Drafts</string>
+    <string name="association_events_past">Past · %d</string>
+    <string name="association_events_drafts_unavailable">Drafts aren\'t available yet.</string>
+    <!-- Day, start time and place on an association's event card, for example "Today · 20:00 · Satellite". -->
+    <string name="association_events_card_details">%1$s · %2$s · %3$s</string>
+    <string name="association_events_live">Live</string>
+    <string name="association_events_public">Public</string>
+    <string name="association_events_private">Private</string>
+    <string name="association_events_no_upcoming_title">No upcoming events</string>
+    <string name="association_events_no_upcoming_body">Create one with +. Students find it on the map.</string>
+    <string name="association_events_no_past_title">No past events</string>
+    <string name="association_events_no_past_body">Your events show here once they\'re over.</string>
 </resources>

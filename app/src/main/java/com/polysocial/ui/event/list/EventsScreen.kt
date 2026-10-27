@@ -1,6 +1,6 @@
 // Contributors: Claude (Events tab list from the Figma "Discover events" frames, #105; no matching
 // event state, search field, filter chips, Filters sheet and its location permission, #115;
-// opening an event's detail, #112).
+// opening an event's detail, #112; banner and states shared with the association tab, #132).
 package com.polysocial.ui.event.list
 
 import android.Manifest
@@ -253,7 +253,7 @@ fun EventsScreen(
         }
       }
       is EventsListState.Events -> EventList(list, zone, onEventClick)
-      EventsListState.Error -> ErrorState(onRetry)
+      EventsListState.Error -> EventsErrorState(onRetry)
     }
   }
 }
@@ -393,8 +393,9 @@ private fun EventCard(
   }
 }
 
+/** Figma's offline banner: the events shown are a saved copy. */
 @Composable
-private fun OfflineBanner(modifier: Modifier = Modifier) {
+internal fun OfflineBanner(modifier: Modifier = Modifier) {
   Row(
       modifier =
           modifier
@@ -416,7 +417,7 @@ private fun OfflineBanner(modifier: Modifier = Modifier) {
 
 /** The Figma empty state: the events icon, [title] and [body], then an optional [action]. */
 @Composable
-private fun EmptyState(
+internal fun EmptyState(
     title: String,
     body: String,
     tag: String,
@@ -479,8 +480,9 @@ private fun ClearFiltersLink(onClick: () -> Unit) {
   }
 }
 
+/** The events couldn't be loaded: the message and Retry. */
 @Composable
-private fun ErrorState(onRetry: () -> Unit) {
+internal fun EventsErrorState(onRetry: () -> Unit) {
   Column(
       modifier = Modifier.fillMaxSize().padding(horizontal = 40.dp).testTag(EventsTags.ERROR),
       verticalArrangement = Arrangement.spacedBy(20.dp, Alignment.CenterVertically),

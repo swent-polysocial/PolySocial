@@ -1,5 +1,7 @@
 // Contributors: Claude (drafted the EventRepository interface; the creator's profile, #45; the
-// public upcoming-events query, #49; reading one event, #112); Mohamed Khellaf (reviewed).
+// public upcoming-events query, #49; reading one event, #112); Mohamed Khellaf (reviewed). Claude
+// (updating and deleting, #130; an association's own events, #132); Franciszek Najda (reviewed).
+// Claude (NotCached KDoc, #194).
 package com.polysocial.model.event
 
 import kotlinx.coroutines.flow.Flow
@@ -25,6 +27,51 @@ sealed interface CreateEventResult {
   data object UnexpectedError : CreateEventResult
 }
 
+/** Outcome of [EventRepository.updateEvent]. */
+sealed interface UpdateEventResult {
+  /** The event was saved with the new values. */
+  data object Updated : UpdateEventResult
+
+  /** The new values break the rules in [errors] (see [validateNewEvent]). Nothing was written. */
+  data class Invalid(val errors: List<EventValidationError>) : UpdateEventResult
+
+  /**
+   * The user may not manage this event: they aren't one of its organizers, nobody is signed in, or
+   * the Security Rules denied the write. Nothing was written.
+   */
+  data object NotOrganizer : UpdateEventResult
+
+  /**
+   * There is no event the user can read under this ID (see [EventResult.NotFound]), for example
+   * because another organizer deleted it. Nothing was written.
+   */
+  data object NotFound : UpdateEventResult
+
+  /** The device is offline. Nothing was written or queued, so the form keeps its input. */
+  data object NetworkError : UpdateEventResult
+
+  /** Any other failure. Nothing was written. */
+  data object UnexpectedError : UpdateEventResult
+}
+
+/** Outcome of [EventRepository.deleteEvent]. */
+sealed interface DeleteEventResult {
+  /** The event was deleted. */
+  data object Deleted : DeleteEventResult
+
+  /** The user may not manage this event (see [UpdateEventResult.NotOrganizer]). Nothing changed. */
+  data object NotOrganizer : DeleteEventResult
+
+  /** There is no event the user can read under this ID (see [EventResult.NotFound]). */
+  data object NotFound : DeleteEventResult
+
+  /** The device is offline. Nothing was deleted or queued. */
+  data object NetworkError : DeleteEventResult
+
+  /** Any other failure. Nothing was deleted. */
+  data object UnexpectedError : DeleteEventResult
+}
+
 /** How many days ahead [EventRepository.getUpcomingPublicEvents] looks by default. */
 const val DEFAULT_UPCOMING_WINDOW_DAYS = 14
 
@@ -40,6 +87,23 @@ sealed interface PublicEventsResult {
 
   /** The events couldn't be read, for example because the Security Rules denied the query. */
   data object Error : PublicEventsResult
+}
+
+/** What [EventRepository.getOwnAssociationEvents] emits. */
+sealed interface OwnEventsResult {
+  /**
+   * Every event the signed-in association published, past and upcoming, sorted by start time.
+   *
+   * @property fromCache true when the list comes from Firestore's offline cache, like
+   *   [PublicEventsResult.Events].
+   */
+  data class Events(val events: List<Event>, val fromCache: Boolean) : OwnEventsResult
+
+  /**
+   * The events couldn't be read: nobody is signed in, or the Security Rules denied the query (only
+   * a verified association may read its own association events).
+   */
+  data object Error : OwnEventsResult
 }
 
 /** What [EventRepository.getEvent] emits. */
@@ -61,8 +125,9 @@ sealed interface EventResult {
   data object NotFound : EventResult
 
   /**
-   * The device is offline and the event isn't in the offline cache, so it can't be read yet. The
-   * flow keeps listening and emits the event once the device is back online.
+   * Firestore considers itself offline (Android may still report a network) and the event isn't in
+   * the offline cache, so it can't be read yet. The flow keeps listening and emits the event once
+   * Firestore reaches its server again.
    */
   data object NotCached : EventResult
 }
@@ -95,6 +160,35 @@ interface EventRepository {
   suspend fun createEvent(event: Event): CreateEventResult
 
   /**
+   * Saves [event]'s new values over the stored `events/[Event.id]`, if the signed-in user is one of
+   * its organizers. The stored [Event.createdBy], [Event.organizerIds], [Event.allowedUids] and
+   * [Event.isAssociationEvent] are kept, ignoring the caller's values (see [withOwnershipOf]).
+   *
+   * The checks run in this order, and each one stops before anything is written: new values that
+   * [validateNewEvent] rejects for another reason than a start in the past return
+   * [UpdateEventResult.Invalid], an ID that can't be a document ID (see [isReadableEventId])
+   * returns [UpdateEventResult.NotFound], a missing user returns [UpdateEventResult.NotOrganizer],
+   * and an offline device returns [UpdateEventResult.NetworkError] without starting a write, like
+   * [createEvent]. Then the stored event is read and written in one step, so the organizers checked
+   * are the ones the update keeps. A start in the past is refused there with
+   * [EventValidationError.START_IN_PAST] only if it differs from the stored start (see
+   * [validateEventUpdate]): an event that has started can still be edited, but no event can be
+   * moved into the past. Only the fields [Event] holds are written; other stored fields are kept.
+   */
+  suspend fun updateEvent(event: Event): UpdateEventResult
+
+  /**
+   * Deletes `events/[id]`, if the signed-in user is one of its organizers. In Sprint 2, cancelling
+   * an event deletes it (there is no "cancelled" status).
+   *
+   * Like [updateEvent], an ID that can't be a document ID returns [DeleteEventResult.NotFound], a
+   * missing user [DeleteEventResult.NotOrganizer] and an offline device
+   * [DeleteEventResult.NetworkError], each before anything is deleted. An event that no longer
+   * exists is [DeleteEventResult.NotFound], not a success.
+   */
+  suspend fun deleteEvent(id: String): DeleteEventResult
+
+  /**
    * Observes the public events that start within the next [windowDays] days (see
    * [isUpcomingPublicEvent]), for the map. Private events are never returned.
    *
@@ -108,6 +202,17 @@ interface EventRepository {
   fun getUpcomingPublicEvents(
       windowDays: Int = DEFAULT_UPCOMING_WINDOW_DAYS
   ): Flow<PublicEventsResult>
+
+  /**
+   * Observes the events the signed-in user published as a verified association (`createdBy` is its
+   * UID and `isAssociationEvent` is true, the shape #52's read rule requires), for the
+   * association's Events tab. Private ones are included: the association organizes them.
+   *
+   * Like [getUpcomingPublicEvents], the flow emits on every change, including from the offline
+   * cache, is conflated, and ends after an [OwnEventsResult.Error], which is always delivered
+   * first. The user is read when collection starts.
+   */
+  fun getOwnAssociationEvents(): Flow<OwnEventsResult>
 
   /**
    * Observes the event `events/[id]`, for its detail screen.

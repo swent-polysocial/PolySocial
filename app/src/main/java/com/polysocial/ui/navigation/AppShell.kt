@@ -2,7 +2,9 @@
 // Contributors: Claude (app shell with bottom navigation and app bar, #41; theme title style after
 // review; bottom bar matched to the Figma; loading state, #43; per-tab back stacks, #42; Events
 // list, #105; "+" button and Create Event navigation from the Events and Map tabs, #110; app bar
-// actions, #84; event detail route, #112).
+// actions, #84; event detail route, #112; "View event" opens the event detail, #211; the
+// association's Events tab, #132; Edit event route, #131; closing it during its
+// enter transition, #131 review; Edit and Cancel event from the detail, #131).
 // Contributors: OpenAI Codex (map route and detail placeholder, #50).
 // Contributors: OpenAI Codex (Profile privacy navigation and full-screen notices, #103).
 package com.polysocial.ui.navigation
@@ -27,10 +29,14 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -56,15 +62,17 @@ import com.polysocial.R
 import com.polysocial.resources.C
 import com.polysocial.ui.event.create.CreateEventButton
 import com.polysocial.ui.event.create.CreateEventScreen
+import com.polysocial.ui.event.create.EditEventScreen
 import com.polysocial.ui.event.detail.EventDetailRoute
 import com.polysocial.ui.event.detail.EventDetailViewModel
-import com.polysocial.ui.event.list.EventsRoute
+import com.polysocial.ui.event.list.EventsTabRoute
 import com.polysocial.ui.map.MapRoute
 import com.polysocial.ui.profile.FullPrivacyNoticeRoute
 import com.polysocial.ui.profile.PrivacyRoute
 import com.polysocial.ui.profile.ProfileRoute
 import com.polysocial.ui.theme.Ink
 import com.polysocial.ui.theme.Ink3
+import kotlinx.coroutines.launch
 
 /**
  * Tabs that open Create Event from a "+" button: over the Events list, and among the map's overlays
@@ -83,16 +91,27 @@ data class CreateEventNavigation(
 )
 
 /**
+ * Where the event detail leaves to: [onBack] to the screen it was opened from, [onEdit] to Edit
+ * event, and [onCancelled] back to that screen once the event is cancelled, which then says so.
+ */
+data class EventDetailNavigation(
+    val onBack: () -> Unit,
+    val onEdit: () -> Unit,
+    val onCancelled: () -> Unit,
+)
+
+/**
  * Root of the signed-in app: an app bar with the current tab's title and, at the tab's root, its
  * action (see [TabAction]), the current tab's screen, and the bottom navigation bar. The Events tab
- * shows the upcoming events and the Map tab the event map, both with the "+" button that opens
- * Create Event inside the tab, full screen; the Profile provides logout and Chats shows a loading
- * state, then a placeholder until their feature is built. The map uses floating overlays instead of
- * the app bar.
+ * shows the upcoming events (a verified association's own events instead, #132) and the Map tab the
+ * event map, both with the "+" button that opens Create Event inside the tab, full screen; the
+ * Profile provides logout and Chats shows a loading state, then a placeholder until their feature
+ * is built. The map uses floating overlays instead of the app bar.
  *
  * Each tab's graph also holds the event detail ([Tab.eventDetailRoute]), so an event opened from a
  * tab keeps that tab selected and Back returns to it. The detail has its own header and action bar
- * (Figma "Event detail"), so the app bar and the bottom bar are hidden there.
+ * (Figma "Event detail"), so the app bar and the bottom bar are hidden there. Edit event
+ * ([Tab.editEventRoute], #131) opens one level below the detail, full screen like Create Event.
  *
  * @param eventsContent the Events tab's root screen; it opens an event's detail with the callback
  *   it gets. Tests replace it, because the real one needs Hilt.
@@ -100,14 +119,17 @@ data class CreateEventNavigation(
  *   Tests replace its Hilt and native renderer boundary.
  * @param createEventContent the Create Event screen. Tests replace it, because the real one needs
  *   Hilt.
- * @param eventDetailContent the event detail screen, given the Back action. Tests replace it too.
+ * @param eventDetailContent the event detail screen, given where it leaves to. Tests replace it
+ *   too.
+ * @param editEventContent the Edit event screen, given what leaves it (back to the detail). Tests
+ *   replace it, because the real one needs Hilt.
  */
 @Composable
 fun AppShell(
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
     eventsContent: @Composable (onEventClick: (String) -> Unit) -> Unit = { onEventClick ->
-      EventsRoute(onEventClick = onEventClick)
+      EventsTabRoute(onEventClick = onEventClick)
     },
     mapContent: @Composable (onViewDetails: (String) -> Unit, onCreateEvent: () -> Unit) -> Unit =
         { onDetails, onCreateEvent ->
@@ -120,8 +142,15 @@ fun AppShell(
           onBackToMap = navigation.onBackToMap,
       )
     },
-    eventDetailContent: @Composable (onBack: () -> Unit) -> Unit = { onBack ->
-      EventDetailRoute(onBack = onBack)
+    eventDetailContent: @Composable (EventDetailNavigation) -> Unit = { navigation ->
+      EventDetailRoute(
+          onBack = navigation.onBack,
+          onEdit = navigation.onEdit,
+          onCancelled = navigation.onCancelled,
+      )
+    },
+    editEventContent: @Composable (onClose: () -> Unit) -> Unit = { onClose ->
+      EditEventScreen(onClose = onClose)
     },
     onLoggedOut: () -> Unit = {},
     profileContent: @Composable (() -> Unit) -> Unit = { done ->
@@ -141,15 +170,24 @@ fun AppShell(
   val privacyScreen =
       destination?.route == Tab.PROFILE.privacyRoute ||
           destination?.route == Tab.PROFILE.privacyNoticeRoute
-  val showBars = destination?.route != currentTab.createEventRoute && !privacyScreen
+  val showBars =
+      destination?.route != currentTab.createEventRoute &&
+          destination?.route != currentTab.editEventRoute &&
+          !privacyScreen
   // The app bar action (TabAction, set per tab in Tab.action) shows only on the current tab's root
   // screen: it is hidden on the screens opened from there, including the one the action opens.
   val action = currentTab.action.takeIf { destination?.route == currentTab.rootRoute }
 
   val onEventDetail = destination?.route == currentTab.eventDetailRoute
+  // Shown on the screen the detail returns to once its event is cancelled (Figma "Cancel event ·
+  // cancelled").
+  val snackbarHostState = remember { SnackbarHostState() }
+  val scope = rememberCoroutineScope()
+  val eventCancelled = stringResource(R.string.event_cancelled)
 
   Scaffold(
       modifier = modifier.testTag(C.Tag.app_shell),
+      snackbarHost = { SnackbarHost(snackbarHostState) },
       // The detail draws its own header behind the status bar and keeps its action bar above the
       // navigation bar, so it gets no system insets from the Scaffold.
       contentWindowInsets =
@@ -281,7 +319,38 @@ fun AppShell(
                       navArgument(EventDetailViewModel.EVENT_ID_ARG) { type = NavType.StringType }
                   ),
           ) { entry ->
-            eventDetailContent { if (entry.isResumed) navController.popBackStack() }
+            eventDetailContent(
+                EventDetailNavigation(
+                    onBack = { if (entry.isResumed) navController.popBackStack() },
+                    onEdit = {
+                      val id = entry.arguments?.getString(EventDetailViewModel.EVENT_ID_ARG)
+                      if (entry.isResumed && id != null) {
+                        navController.navigate(tab.editEventRoute(id))
+                      }
+                    },
+                    // Not isResumed: the event may be deleted while a transition runs.
+                    onCancelled = {
+                      if (navController.currentBackStackEntry == entry) {
+                        navController.popBackStack()
+                        snackbarHostState.currentSnackbarData?.dismiss()
+                        scope.launch { snackbarHostState.showSnackbar(eventCancelled) }
+                      }
+                    },
+                )
+            )
+          }
+          composable(
+              tab.editEventRoute,
+              arguments =
+                  listOf(
+                      navArgument(EventDetailViewModel.EVENT_ID_ARG) { type = NavType.StringType }
+                  ),
+          ) { entry ->
+            // Not isResumed: Edit event can close itself during its enter transition (an event
+            // that can't be read), and must not stay open on a blank screen then.
+            editEventContent {
+              if (navController.currentBackStackEntry == entry) navController.popBackStack()
+            }
           }
         }
       }
@@ -290,13 +359,11 @@ fun AppShell(
 }
 
 /**
- * Replaces Create Event with the new event's screen, so Back from it returns to [tab] and never to
- * the confirmation or the filled form.
+ * Replaces Create Event with the new event's detail screen, so Back from it returns to [tab] and
+ * never to the confirmation or the filled form.
  */
 private fun NavHostController.openCreatedEvent(tab: Tab, eventId: String) {
-  // TODO(#112): open the new event's detail screen instead of the placeholder.
-  val route = if (tab == Tab.MAP) mapDetailRoute(eventId) else tab.detailRoute
-  navigate(route) { popUpTo(tab.createEventRoute) { inclusive = true } }
+  navigate(tab.eventDetailRoute(eventId)) { popUpTo(tab.createEventRoute) { inclusive = true } }
 }
 
 /** The Map tab's placeholder detail for [eventId] (its route takes the id, unlike the others). */

@@ -1,5 +1,5 @@
 // Contributors: Claude (drafted the Create Event screen and restyled it from the Figma, section 04,
-// following the Log in and profile screens; opens the location picker, #111).
+// following the Log in and profile screens; opens the location picker, #111; Edit event, #131).
 package com.polysocial.ui.event.create
 
 import androidx.activity.compose.BackHandler
@@ -85,6 +85,7 @@ import com.polysocial.model.event.MAX_DESCRIPTION_LENGTH
 import com.polysocial.model.event.MAX_TITLE_LENGTH
 import com.polysocial.model.event.MIN_CAPACITY
 import com.polysocial.resources.C
+import com.polysocial.ui.common.LoadingState
 import com.polysocial.ui.theme.Accent
 import com.polysocial.ui.theme.AccentSoft
 import com.polysocial.ui.theme.AccentText
@@ -138,6 +139,37 @@ fun CreateEventScreen(
     viewModel: CreateEventViewModel = hiltViewModel(),
     locationPicker: LocationPickerSlot = DefaultLocationPicker,
 ) {
+  EventFormScreen(viewModel, onClose, locationPicker, modifier) { created ->
+    EventCreated(created, onClose, onViewEvent = { onViewEvent(created.eventId) }, onBackToMap)
+  }
+}
+
+/**
+ * The Edit event screen (Figma section 10, #129): the Create Event form filled in with the event
+ * whose ID is the navigation argument, with "Save changes". It closes through [onClose] once the
+ * changes are saved (the event detail below it shows them), when the event can't be read, or when
+ * the organizer closes it.
+ */
+@Composable
+fun EditEventScreen(
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+    viewModel: CreateEventViewModel = hiltViewModel(),
+    locationPicker: LocationPickerSlot = DefaultLocationPicker,
+) {
+  // Edit event never creates an event, so it never shows the confirmation.
+  EventFormScreen(viewModel, onClose, locationPicker, modifier) {}
+}
+
+/** The form of [CreateEventScreen] and [EditEventScreen], with the location picker over it. */
+@Composable
+private fun EventFormScreen(
+    viewModel: CreateEventViewModel,
+    onClose: () -> Unit,
+    locationPicker: LocationPickerSlot,
+    modifier: Modifier,
+    created: @Composable (CreateEventStatus.Created) -> Unit,
+) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   var picking by rememberSaveable { mutableStateOf(false) }
   var pickerSession by rememberSaveable { mutableIntStateOf(0) }
@@ -154,8 +186,14 @@ fun CreateEventScreen(
     return
   }
   when (val status = state.status) {
-    is CreateEventStatus.Created ->
-        EventCreated(status, onClose, onViewEvent = { onViewEvent(status.eventId) }, onBackToMap)
+    is CreateEventStatus.Created -> created(status)
+    CreateEventStatus.Loading ->
+        LoadingState(stringResource(R.string.edit_event_loading), modifier.background(Bg))
+    CreateEventStatus.Saved,
+    CreateEventStatus.Unavailable -> {
+      Box(modifier.fillMaxSize().background(Bg))
+      LaunchedEffect(status) { onClose() }
+    }
     else ->
         CreateEventFormContent(
             state = state,
@@ -228,7 +266,11 @@ fun CreateEventFormContent(
   Box(modifier.fillMaxSize().background(Bg).testTag(C.Tag.create_event_screen)) {
     Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
       Column(Modifier.weight(1f).verticalScroll(scroll).padding(horizontal = 20.dp)) {
-        TopBar(R.string.create_event_title, actions.onClose, closeEnabled = editable)
+        TopBar(
+            if (state.isEditing) R.string.edit_event_title else R.string.create_event_title,
+            actions.onClose,
+            closeEnabled = editable,
+        )
         // While saving, Figma fades the whole form (not the top bar) to 45%.
         Column(Modifier.alpha(if (editable) 1f else SAVING_ALPHA)) {
           Spacer(Modifier.height(4.dp))
@@ -397,7 +439,7 @@ fun CreateEventFormContent(
 
           (state.status as? CreateEventStatus.Failed)?.let {
             Spacer(Modifier.height(12.dp))
-            FailureBanner(it.reason)
+            FailureBanner(it.reason, state.isEditing)
           }
           Spacer(Modifier.height(24.dp))
         }
@@ -694,8 +736,11 @@ private fun ActionBar(state: CreateEventUiState, onSubmit: () -> Unit) {
       PrimaryButton(
           text =
               when {
+                state.status == CreateEventStatus.Saving && state.isEditing ->
+                    R.string.edit_event_saving
                 state.status == CreateEventStatus.Saving -> R.string.create_event_saving
                 failed -> R.string.create_event_try_again
+                state.isEditing -> R.string.edit_event_submit
                 state.form.isPrivate -> R.string.create_event_submit_private
                 else -> R.string.create_event_submit_public
               },
@@ -745,7 +790,7 @@ private fun PrimaryButton(
 }
 
 @Composable
-private fun FailureBanner(reason: CreateEventStatus.Failed.Reason) {
+private fun FailureBanner(reason: CreateEventStatus.Failed.Reason, isEditing: Boolean) {
   Row(
       Modifier.fillMaxWidth()
           .background(AccentSoft, RoundedCornerShape(14.dp))
@@ -765,15 +810,22 @@ private fun FailureBanner(reason: CreateEventStatus.Failed.Reason) {
     )
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
       Text(
-          stringResource(R.string.create_event_failed_title),
+          stringResource(
+              if (isEditing) R.string.edit_event_failed_title
+              else R.string.create_event_failed_title
+          ),
           style = secondaryTextStyle().copy(fontSize = 14.sp, fontWeight = FontWeight.Bold),
           color = Ink,
       )
       Text(
           stringResource(
               when (reason) {
-                CreateEventStatus.Failed.Reason.OFFLINE -> R.string.create_event_offline_body
-                CreateEventStatus.Failed.Reason.UNEXPECTED -> R.string.create_event_unexpected_body
+                CreateEventStatus.Failed.Reason.OFFLINE ->
+                    if (isEditing) R.string.edit_event_offline_body
+                    else R.string.create_event_offline_body
+                CreateEventStatus.Failed.Reason.UNEXPECTED ->
+                    if (isEditing) R.string.edit_event_unexpected_body
+                    else R.string.create_event_unexpected_body
               }
           ),
           style = secondaryTextStyle(),

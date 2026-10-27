@@ -1,10 +1,13 @@
 // Contributors: Claude (wrote these tests of opening an event's detail from a tab, #112; double
-// taps during the transition, after review).
+// taps during the transition, after review; Edit event above the detail, #131; Edit event closing
+// during its enter transition, #131 review; the detail's Edit and Cancel event, #131).
 package com.polysocial.ui.navigation
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Button
 import androidx.compose.material3.Text
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertCountEquals
@@ -14,10 +17,12 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.R
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.validEvent
 import com.polysocial.resources.C
@@ -47,6 +52,9 @@ class EventDetailNavigationTest {
   @get:Rule val composeTestRule = createAndroidComposeRule<ComponentActivity>()
 
   private lateinit var navController: NavHostController
+
+  /** Whether the fake Edit event closes as soon as it opens, like one whose event can't be read. */
+  private var editClosesAtOnce = false
 
   private val zone = ZoneId.of("Europe/Zurich")
 
@@ -97,13 +105,30 @@ class EventDetailNavigationTest {
             },
             // The real map needs Hilt and the native renderer; the detail route is what's tested.
             mapContent = { _, _ -> TabRootScreen(Tab.MAP) },
-            eventDetailContent = { onBack ->
+            eventDetailContent = { navigation ->
               val id =
                   navController.currentBackStackEntry
                       ?.arguments
                       ?.getString(EventDetailViewModel.EVENT_ID_ARG)
-              Button(onClick = onBack, modifier = Modifier.testTag(DETAIL)) {
-                Text(id.orEmpty(), Modifier.testTag(DETAIL_ID))
+              Column {
+                Button(onClick = navigation.onBack, modifier = Modifier.testTag(DETAIL)) {
+                  Text(id.orEmpty(), Modifier.testTag(DETAIL_ID))
+                }
+                Button(onClick = navigation.onEdit, modifier = Modifier.testTag(DETAIL_EDIT)) {}
+                Button(
+                    onClick = navigation.onCancelled,
+                    modifier = Modifier.testTag(DETAIL_CANCELLED),
+                ) {}
+              }
+            },
+            editEventContent = { onClose ->
+              val id =
+                  navController.currentBackStackEntry
+                      ?.arguments
+                      ?.getString(EventDetailViewModel.EVENT_ID_ARG)
+              LaunchedEffect(Unit) { if (editClosesAtOnce) onClose() }
+              Button(onClick = onClose, modifier = Modifier.testTag(EDIT)) {
+                Text(id.orEmpty(), Modifier.testTag(EDIT_ID))
               }
             },
         )
@@ -247,9 +272,80 @@ class EventDetailNavigationTest {
     assertOnRootOf(Tab.EVENTS)
   }
 
+  @Test
+  fun editEvent_opensAboveTheDetail_fullScreen_andClosingReturnsToTheDetail() {
+    composeTestRule.onNodeWithTag(EventsTags.card(trickyId)).performClick()
+    composeTestRule.onNodeWithTag(DETAIL).assertIsDisplayed()
+
+    composeTestRule.runOnIdle { navController.navigate(Tab.EVENTS.editEventRoute(trickyId)) }
+
+    composeTestRule.onNodeWithTag(EDIT_ID, useUnmergedTree = true).assertTextEquals(trickyId)
+    assertBarsHidden()
+    composeTestRule.runOnIdle {
+      assertEquals(Tab.EVENTS.editEventRoute, navController.currentDestination?.route)
+    }
+
+    composeTestRule.onNodeWithTag(EDIT).performClick()
+
+    composeTestRule.onNodeWithTag(DETAIL_ID, useUnmergedTree = true).assertTextEquals(trickyId)
+    pressBack()
+    assertOnRootOf(Tab.EVENTS)
+  }
+
+  @Test
+  fun editEvent_closingDuringItsEnterTransition_stillReturnsToTheDetail() {
+    composeTestRule.onNodeWithTag(EventsTags.card(trickyId)).performClick()
+    composeTestRule.onNodeWithTag(DETAIL).assertIsDisplayed()
+    editClosesAtOnce = true
+
+    composeTestRule.mainClock.autoAdvance = false
+    try {
+      composeTestRule.runOnIdle { navController.navigate(Tab.EVENTS.editEventRoute(trickyId)) }
+      // Edit event closes in its first frames, long before its enter transition ends.
+      composeTestRule.mainClock.advanceTimeByFrame()
+      composeTestRule.mainClock.advanceTimeByFrame()
+    } finally {
+      composeTestRule.mainClock.autoAdvance = true
+    }
+    composeTestRule.waitForIdle()
+
+    composeTestRule.runOnIdle {
+      assertEquals(Tab.EVENTS.eventDetailRoute, navController.currentDestination?.route)
+    }
+    composeTestRule.onNodeWithTag(DETAIL_ID, useUnmergedTree = true).assertTextEquals(trickyId)
+  }
+
+  @Test
+  fun theDetailsEdit_opensEditEventForThatEvent() {
+    composeTestRule.onNodeWithTag(EventsTags.card(trickyId)).performClick()
+
+    composeTestRule.onNodeWithTag(DETAIL_EDIT).performClick()
+
+    composeTestRule.onNodeWithTag(EDIT_ID, useUnmergedTree = true).assertTextEquals(trickyId)
+    composeTestRule.runOnIdle {
+      assertEquals(Tab.EVENTS.editEventRoute, navController.currentDestination?.route)
+    }
+  }
+
+  @Test
+  fun aCancelledEvent_returnsToTheListAndSaysSo() {
+    composeTestRule.onNodeWithTag(EventsTags.card(trickyId)).performClick()
+
+    composeTestRule.onNodeWithTag(DETAIL_CANCELLED).performClick()
+
+    assertOnRootOf(Tab.EVENTS)
+    composeTestRule
+        .onNodeWithText(composeTestRule.activity.getString(R.string.event_cancelled))
+        .assertIsDisplayed()
+  }
+
   private companion object {
     const val DETAIL = "fake_event_detail"
     const val DETAIL_ID = "fake_event_detail_id"
+    const val EDIT = "fake_edit_event"
+    const val EDIT_ID = "fake_edit_event_id"
+    const val DETAIL_EDIT = "fake_event_detail_edit"
+    const val DETAIL_CANCELLED = "fake_event_detail_cancelled"
   }
 }
 
