@@ -1,5 +1,5 @@
 // Contributors: OpenAI Codex (offline Google authentication and Firebase-managed account regression
-// tests for #106).
+// tests and exact-domain validation coverage for #106).
 package com.polysocial.model.auth
 
 import android.app.Application
@@ -102,9 +102,13 @@ class GoogleAuthRepositoryTest {
 
   @Test
   fun firebaseEmailIsCheckedAfterTokenValidation() = runTest {
-    signedIn(email = "other@example.org")
-    assertEquals(GoogleSignInResult.NotEpfl(account), repository.signInWithGoogle(context))
-    verify(exactly = 1) { auth.signOut() }
+    val invalidEmails =
+        listOf("other@example.org", "student@EPFL.CH", "student@sub.epfl.ch", "student@epfl.ch ")
+    for (email in invalidEmails) {
+      signedIn(email = email)
+      assertEquals(GoogleSignInResult.NotEpfl(account), repository.signInWithGoogle(context))
+    }
+    verify(exactly = invalidEmails.size) { auth.signOut() }
   }
 
   @Test

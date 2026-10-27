@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (verified EPFL Google sign-in; Firebase-managed account linking).
+// Contributors: OpenAI Codex (verified EPFL Google sign-in; Firebase-managed account linking;
+// exact-domain validation).
 // Contributors: Claude (logIn, logOut and currentUser for #32); OpenAI Codex
 // (GPT-6.1 Sol, medium; sign-up and display-name integration; verification delivery and
 // token refresh for #31);
@@ -48,7 +49,7 @@ private constructor(
       val google = googleCredentials.get(context)
       // Reject before Firebase can create an account. This is only a preliminary check;
       // Firebase validates the token and the resulting identity is checked again below.
-      if (!isEpflEmail(google.account.email) || !google.account.email.endsWith("@epfl.ch")) {
+      if (!isExactEpflEmail(google.account.email)) {
         auth.signOut()
         return GoogleSignInResult.NotEpfl(google.account)
       }
@@ -61,7 +62,7 @@ private constructor(
         auth.signOut()
         return GoogleSignInResult.UnexpectedError
       }
-      if (!isEpflEmail(user.email.orEmpty()) || !user.email.orEmpty().endsWith("@epfl.ch")) {
+      if (!isExactEpflEmail(user.email.orEmpty())) {
         auth.signOut()
         return GoogleSignInResult.NotEpfl(google.account)
       }
@@ -197,6 +198,10 @@ private constructor(
   override fun logOut() = auth.signOut()
 
   override fun currentUser(): AuthUser? = auth.currentUser?.snapshot()
+
+  /** Matches the rules' lowercase domain as well as the shared mailbox validation. */
+  private fun isExactEpflEmail(email: String): Boolean =
+      isEpflEmail(email) && email.endsWith("@epfl.ch")
 
   private fun FirebaseUser.snapshot() =
       AuthUser(
