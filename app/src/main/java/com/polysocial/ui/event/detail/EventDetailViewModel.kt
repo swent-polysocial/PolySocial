@@ -1,10 +1,11 @@
 // Contributors: Claude (drafted the event detail ViewModel, #112; the server timeout and Retry,
-// #194; Edit and Cancel event for organizers, #131).
+// #194; Edit and Cancel event for organizers, #131; the association's name, #128).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.polysocial.model.association.AssociationNames
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.event.DeleteEventResult
 import com.polysocial.model.event.Event
@@ -29,6 +30,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
@@ -75,11 +77,14 @@ sealed interface EventDetailUiState {
    *   so the screen says it shows the details saved on the phone.
    * @property isOrganizer true when the signed-in user organizes the event, so the screen offers
    *   Edit and Cancel event (#131).
+   * @property associationName the name of the association that publishes the event, once read
+   *   (#128); null for a student's event, and while or when it can't be read.
    */
   data class Loaded(
       val details: EventDetails,
       val isOffline: Boolean,
       val isOrganizer: Boolean = false,
+      val associationName: String? = null,
   ) : EventDetailUiState
 
   /** The event doesn't exist (anymore), or the user isn't allowed to see it. */
@@ -139,6 +144,9 @@ sealed interface CancelEventState {
  * deleted, the event's live read reports it missing, so the screen keeps showing the event until it
  * closes.
  *
+ * An association's event shows the association's name (#128), read once through the shared
+ * [associationNames]; the event shows at once, and the name joins it when it arrives.
+ *
  * @param auth tells whether the signed-in user is one of the event's organizers.
  * @param clock gives the device's time zone, in which the times are shown.
  */
@@ -151,6 +159,7 @@ constructor(
     private val network: NetworkMonitor,
     private val auth: AuthRepository,
     private val clock: Clock,
+    private val associationNames: AssociationNames,
 ) : ViewModel() {
 
   private val eventId = savedStateHandle.get<String>(EVENT_ID_ARG).orEmpty()
@@ -164,10 +173,15 @@ constructor(
   /** The event last shown, kept on screen while it is deleted. */
   private var lastLoaded: EventDetailUiState.Loaded? = null
 
+  /** The association whose name this screen asked for, so it is asked for once. */
+  private var requestedName: String? = null
+
   @OptIn(ExperimentalCoroutinesApi::class)
   val uiState: StateFlow<EventDetailUiState> =
       reads
           .flatMapLatest { eventStates().onStart { emit(EventDetailUiState.Loading) } }
+          .onEach(::loadAssociationName)
+          .combine(associationNames.names, ::withAssociationName)
           .combine(_cancelState) { state, cancel ->
             val deleting =
                 cancel == CancelEventState.Cancelling || cancel == CancelEventState.Cancelled
@@ -179,6 +193,24 @@ constructor(
               SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
               EventDetailUiState.Loading,
           )
+
+  /** Asks once for the name of the association that publishes the event in [state], if any. */
+  private fun loadAssociationName(state: EventDetailUiState) {
+    val event = (state as? EventDetailUiState.Loaded)?.details?.event ?: return
+    if (!event.isAssociationEvent || requestedName == event.createdBy) return
+    requestedName = event.createdBy
+    viewModelScope.launch { associationNames.load(event.createdBy) }
+  }
+
+  /** [state] with its association's name from [names], when it is an association's event. */
+  private fun withAssociationName(
+      state: EventDetailUiState,
+      names: Map<String, String>,
+  ): EventDetailUiState {
+    val event = (state as? EventDetailUiState.Loaded)?.details?.event ?: return state
+    return if (event.isAssociationEvent) state.copy(associationName = names[event.createdBy])
+    else state
+  }
 
   /**
    * Reads the event again, showing [EventDetailUiState.Loading] meanwhile (the offline "not saved"
