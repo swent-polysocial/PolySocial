@@ -1,5 +1,5 @@
 // Contributors: Claude (the distance filter's location permission on the Events tab, and reading it
-// only in the foreground after review, #115).
+// only in the foreground after review, #115; the association names dependency, #128).
 package com.polysocial.ui.event.list
 
 import android.Manifest
@@ -27,6 +27,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.model.association.FakeAssociationNames
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.FakeEventRepository
@@ -87,6 +88,7 @@ class EventsRouteTest {
             location,
             Clock.fixed(repository.now, ZoneId.of("Europe/Zurich")),
             SavedStateHandle(),
+            FakeAssociationNames(),
         )
     lifecycle.registry.currentState = Lifecycle.State.RESUMED
     val registryOwner =

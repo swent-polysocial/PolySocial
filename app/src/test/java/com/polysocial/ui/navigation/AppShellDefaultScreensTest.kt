@@ -1,5 +1,5 @@
 // Contributors: Claude (UI test for the real Map and Create Event screens inside AppShell, #110;
-// the real Edit event screen, #131).
+// the real Edit event screen, #131; a fake association repository for the association names, #128).
 package com.polysocial.ui.navigation
 
 import android.content.res.Resources
@@ -20,6 +20,9 @@ import androidx.navigation.compose.rememberNavController
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.MainActivity
 import com.polysocial.R
+import com.polysocial.model.association.AssociationModule
+import com.polysocial.model.association.AssociationRepository
+import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.event.EventModule
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.FakeEventRepository
@@ -61,7 +64,13 @@ import org.robolectric.annotation.Config
  * clock, and the Mapbox token is blanked so no native map or network request runs.
  */
 @HiltAndroidTest
-@UninstallModules(EventModule::class, MapModule::class, LocationModule::class, ClockModule::class)
+@UninstallModules(
+    AssociationModule::class,
+    EventModule::class,
+    MapModule::class,
+    LocationModule::class,
+    ClockModule::class,
+)
 @Config(application = HiltTestApplication::class)
 @RunWith(AndroidJUnit4::class)
 class AppShellDefaultScreensTest {
@@ -74,6 +83,9 @@ class AppShellDefaultScreensTest {
   private val events = FakeEventRepository(now = FORM_NOW)
 
   @BindValue @JvmField val eventRepository: EventRepository = events
+
+  // In memory, so the names of associations never reach Firestore.
+  @BindValue @JvmField val associations: AssociationRepository = FakeAssociationRepository()
 
   private lateinit var navController: NavHostController
 

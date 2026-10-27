@@ -1,4 +1,5 @@
 // Contributors: OpenAI Codex (Hilt logout and verification wiring with offline fakes, #109).
+// Contributors: Claude (fake association repository for the association names, #128).
 package com.polysocial.ui.profile
 
 import androidx.compose.ui.test.*
@@ -6,6 +7,9 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.MainActivity
 import com.polysocial.auth.MemoryVerificationStore
+import com.polysocial.model.association.AssociationModule
+import com.polysocial.model.association.AssociationRepository
+import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
 import com.polysocial.model.event.*
 import com.polysocial.model.firebase.*
@@ -22,6 +26,7 @@ import org.robolectric.annotation.Config
 /** Exercises default routes and injected ViewModels, rather than replacing app screens. */
 @HiltAndroidTest
 @UninstallModules(
+    AssociationModule::class,
     AuthModule::class,
     EventModule::class,
     UserProfileModule::class,
@@ -38,6 +43,7 @@ class LogoutInjectionTest {
   @BindValue @JvmField val verificationClock: VerificationClock = VerificationClock { 1000 }
   @BindValue @JvmField val auth: AuthRepository = fakeAuth
   @BindValue @JvmField val events: EventRepository = FakeEventRepository()
+  @BindValue @JvmField val associations: AssociationRepository = FakeAssociationRepository()
   @BindValue
   @JvmField
   val profiles: UserProfileRepository =

@@ -1,6 +1,7 @@
 // Contributors: Claude (Events tab list from the Figma "Discover events" frames, #105; no matching
 // event state, search field, filter chips, Filters sheet and its location permission, #115;
-// opening an event's detail, #112; banner and states shared with the association tab, #132).
+// opening an event's detail, #112; banner and states shared with the association tab, #132; an
+// association's badge and name on its cards, #128).
 package com.polysocial.ui.event.list
 
 import android.Manifest
@@ -63,6 +64,7 @@ import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
 import com.polysocial.resources.C
 import com.polysocial.ui.common.LoadingState
+import com.polysocial.ui.event.VerifiedPill
 import com.polysocial.ui.event.style
 import com.polysocial.ui.theme.Bg
 import com.polysocial.ui.theme.Border
@@ -96,6 +98,12 @@ object EventsTags {
   fun dayHeader(index: Int) = "events_day_header_$index"
 
   fun card(eventId: String) = "events_card_$eventId"
+
+  /** The details line of the card of [eventId]: category, time and an association's name. */
+  fun details(eventId: String) = "events_card_details_$eventId"
+
+  /** The Verified badge on the card of an association's event [eventId] (#128). */
+  fun verified(eventId: String) = "events_card_verified_$eventId"
 
   /**
    * A filter chip: `ALL`, `TODAY`, `THIS_WEEK`, `DAY` (a picked day), `DISTANCE` or an
@@ -252,7 +260,7 @@ fun EventsScreen(
           ClearFiltersLink(onClearFilters)
         }
       }
-      is EventsListState.Events -> EventList(list, zone, onEventClick)
+      is EventsListState.Events -> EventList(list, zone, state.associationNames, onEventClick)
       EventsListState.Error -> EventsErrorState(onRetry)
     }
   }
@@ -300,6 +308,7 @@ private fun Header(
 private fun EventList(
     state: EventsListState.Events,
     zone: ZoneId,
+    associationNames: Map<String, String>,
     onEventClick: (eventId: String) -> Unit,
 ) {
   LazyColumn(
@@ -315,6 +324,7 @@ private fun EventList(
         EventCard(
             event,
             zone,
+            associationName = associationNames[event.createdBy],
             onClick = { onEventClick(event.id) },
             Modifier.padding(bottom = 14.dp),
         )
@@ -348,6 +358,7 @@ private fun DayHeader(date: LocalDate, today: LocalDate, index: Int) {
 private fun EventCard(
     event: Event,
     zone: ZoneId,
+    associationName: String?,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -377,17 +388,34 @@ private fun EventCard(
       Icon(painterResource(category.icon), contentDescription = null, tint = category.color)
     }
     Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+      // An association's event (#128, Figma "Events · association event"): the Verified badge
+      // 8 dp after the title, on its first line, and its name, once read, at the end of the
+      // details.
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = event.title,
+            style = MaterialTheme.typography.titleSmall.copy(fontSize = 16.sp),
+            color = Ink,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        if (event.isAssociationEvent) {
+          VerifiedPill(
+              stringResource(R.string.event_verified_badge),
+              Modifier.testTag(EventsTags.verified(event.id)),
+          )
+        }
+      }
+      val label = stringResource(category.label)
+      val name = associationName?.takeIf { event.isAssociationEvent }
       Text(
-          text = event.title,
-          style = MaterialTheme.typography.titleSmall.copy(fontSize = 16.sp),
-          color = Ink,
-          maxLines = 2,
-          overflow = TextOverflow.Ellipsis,
-      )
-      Text(
-          text = stringResource(R.string.events_card_details, stringResource(category.label), time),
+          text =
+              if (name == null) stringResource(R.string.events_card_details, label, time)
+              else stringResource(R.string.events_card_details_by, label, time, name),
           style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Normal),
           color = Ink2,
+          modifier = Modifier.testTag(EventsTags.details(event.id)),
       )
     }
   }

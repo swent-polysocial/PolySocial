@@ -1,5 +1,6 @@
 // Contributors: Claude (screen tests for the Events tab list, #105; no matching event, search and
-// filter chips, Filters sheet and location off, #115; opening an event's detail, #112).
+// filter chips, Filters sheet and location off, #115; opening an event's detail, #112; the
+// association names dependency, #128).
 package com.polysocial.ui.event.list
 
 import android.content.Context
@@ -30,6 +31,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
+import com.polysocial.model.association.FakeAssociationNames
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.FakeEventRepository
@@ -362,7 +364,14 @@ class EventsScreenTest {
           override fun isOnline() = true
         }
     val viewModel =
-        EventsViewModel(repository, network, FakeLocationService(), clock, SavedStateHandle())
+        EventsViewModel(
+            repository,
+            network,
+            FakeLocationService(),
+            clock,
+            SavedStateHandle(),
+            FakeAssociationNames(),
+        )
     composeTestRule.setContent {
       PolySocialTheme { EventsRoute(onEventClick = {}, viewModel = viewModel) }
     }
@@ -448,6 +457,7 @@ class EventsScreenTest {
             FakeLocationService(),
             Clock.fixed(repository.now, lausanne),
             SavedStateHandle(),
+            FakeAssociationNames(),
         )
     composeTestRule.setContent {
       PolySocialTheme { EventsRoute(onEventClick = {}, viewModel = viewModel) }
@@ -486,6 +496,7 @@ class EventsScreenTest {
             FakeLocationService(),
             Clock.fixed(repository.now, lausanne),
             SavedStateHandle(),
+            FakeAssociationNames(),
         )
     composeTestRule.setContent {
       PolySocialTheme { EventsRoute(onEventClick = {}, viewModel = viewModel) }
@@ -528,6 +539,7 @@ class EventsScreenTest {
             FakeLocationService(),
             Clock.fixed(repository.now, lausanne),
             SavedStateHandle(),
+            FakeAssociationNames(),
         )
     composeTestRule.setContent {
       PolySocialTheme { EventsRoute(onEventClick = {}, viewModel = viewModel) }
@@ -645,6 +657,7 @@ class EventsScreenTest {
             FakeLocationService(),
             Clock.fixed(repository.now, lausanne),
             SavedStateHandle(),
+            FakeAssociationNames(),
         )
     composeTestRule.setContent {
       PolySocialTheme { EventsRoute(onEventClick = {}, viewModel = viewModel) }
@@ -685,6 +698,7 @@ class EventsScreenTest {
             FakeLocationService(),
             Clock.fixed(repository.now, lausanne),
             SavedStateHandle(),
+            FakeAssociationNames(),
         )
     composeTestRule.setContent {
       PolySocialTheme { EventsRoute(onEventClick = {}, viewModel = viewModel) }
@@ -955,6 +969,7 @@ class EventsScreenTest {
             FakeLocationService(),
             Clock.fixed(repository.now, lausanne),
             SavedStateHandle(),
+            FakeAssociationNames(),
         )
     composeTestRule.setContent {
       PolySocialTheme { EventsRoute(onEventClick = {}, viewModel = viewModel) }

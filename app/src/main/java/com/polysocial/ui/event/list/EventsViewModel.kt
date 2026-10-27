@@ -1,11 +1,12 @@
 // Contributors: Claude (state of the Events tab's list, #105; offline only when the device is,
 // after review; search and filters, and the one-off location and its permission for the distance
-// filter, #115).
+// filter, #115; the names of the associations whose events it lists, #128).
 package com.polysocial.ui.event.list
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.polysocial.model.association.AssociationNames
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
@@ -37,6 +38,8 @@ data class EventsUiState(
     val list: EventsListState = EventsListState.Loading,
     val selection: EventSelection = EventSelection(),
     val location: EventsLocationState = EventsLocationState.NotRead,
+    /** The names read so far of the associations whose events are listed, by UID (#128). */
+    val associationNames: Map<String, String> = emptyMap(),
 )
 
 /**
@@ -120,6 +123,10 @@ sealed interface EventsListState {
  * After an error the repository stops emitting, so the list stays in [EventsListState.Error] until
  * [retry].
  *
+ * The cards of an association's events show its name (#128): it is read once per association
+ * through the shared [associationNames], whatever the events or the selection do, and a name that
+ * can't be read is left out until events arrive from the server again.
+ *
  * @param clock gives the current date and time zone for the day sections and the date filters, so
  *   tests can fix them.
  */
@@ -132,6 +139,7 @@ constructor(
     private val locationService: LocationService,
     private val clock: Clock,
     private val savedState: SavedStateHandle,
+    private val associationNames: AssociationNames,
 ) : ViewModel() {
   private val _uiState = MutableStateFlow(EventsUiState(selection = restoreSelection()))
   val uiState: StateFlow<EventsUiState> = _uiState.asStateFlow()
@@ -149,7 +157,15 @@ constructor(
   private var observation: Job? = null
   private var locationRequest: Job? = null
 
+  /** The associations whose names this tab asked for, so each is asked for once. */
+  private val requestedNames = mutableSetOf<String>()
+
   init {
+    viewModelScope.launch {
+      associationNames.names.collect { names ->
+        _uiState.value = _uiState.value.copy(associationNames = names)
+      }
+    }
     when {
       !locationService.hasPermission() -> locationOff()
       selection().maxDistanceMeters != null -> readLocation()
@@ -272,7 +288,7 @@ constructor(
   /** Shows [selection] and [location], and the list they give. */
   private fun show(selection: EventSelection, location: EventsLocationState) {
     val list = loaded?.let { listFor(it, selection, location) } ?: _uiState.value.list
-    _uiState.value = EventsUiState(list, selection, location)
+    _uiState.value = _uiState.value.copy(list = list, selection = selection, location = location)
   }
 
   /** Reads the location once; on any failure, the location is off. */
@@ -326,6 +342,7 @@ constructor(
                 EventsListState.Error
               }
               is PublicEventsResult.Events -> {
+                loadNamesOf(result.events, retryUnknown = !result.fromCache)
                 val events = Loaded(result.events, result.fromCache && !network.isOnline())
                 loaded = events
                 listFor(events, selection(), location())
@@ -348,6 +365,18 @@ constructor(
     val matching = filterEvents(loaded.events, selection.toFilter(today), clock.zone, userLocation)
     return if (matching.isEmpty()) EventsListState.NoMatch(isOffline)
     else EventsListState.Events(groupEventsByDay(matching, clock), today, isOffline)
+  }
+
+  /**
+   * Asks once for the name of each association with an event in [events]. With [retryUnknown]
+   * (events fresh from the server, so the device is online), names still unknown, for example
+   * because the tab opened offline, are asked for again; a known name never is.
+   */
+  private fun loadNamesOf(events: List<Event>, retryUnknown: Boolean) {
+    for (uid in events.filter { it.isAssociationEvent }.map { it.createdBy }.toSet()) {
+      val retry = retryUnknown && uid !in _uiState.value.associationNames
+      if (requestedNames.add(uid) || retry) viewModelScope.launch { associationNames.load(uid) }
+    }
   }
 
   /** Events from the repository, and whether they are an offline copy. */

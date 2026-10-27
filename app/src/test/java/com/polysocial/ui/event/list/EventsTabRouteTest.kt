@@ -1,4 +1,4 @@
-// Contributors: Claude (wrote these tests, #132).
+// Contributors: Claude (wrote these tests, #132; the association names dependency, #128).
 package com.polysocial.ui.event.list
 
 import android.content.Context
@@ -13,6 +13,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
+import com.polysocial.model.association.FakeAssociationNames
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.event.FakeEventRepository
@@ -82,7 +83,14 @@ class EventsTabRouteTest {
     // Created once, outside composition, like hiltViewModel() would.
     val tab = EventsTabViewModel(auth, profiles)
     val students =
-        EventsViewModel(repository, network, FakeLocationService(), clock, SavedStateHandle())
+        EventsViewModel(
+            repository,
+            network,
+            FakeLocationService(),
+            clock,
+            SavedStateHandle(),
+            FakeAssociationNames(),
+        )
     val association = AssociationEventsViewModel(repository, network, clock)
     composeTestRule.setContent {
       PolySocialTheme {

@@ -1,5 +1,5 @@
 // Contributors: Claude (end-to-end test of the M1 student flow with Hilt test bindings and a fake
-// map renderer, #136).
+// map renderer, #136; a fake association repository for the association names, #128).
 package com.polysocial.endtoend
 
 import androidx.activity.compose.setContent
@@ -31,6 +31,9 @@ import androidx.compose.ui.test.performTextInput
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.MainActivity
+import com.polysocial.model.association.AssociationModule
+import com.polysocial.model.association.AssociationRepository
+import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.AuthModule
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.auth.AuthUser
@@ -117,6 +120,7 @@ import org.junit.runner.RunWith
  */
 @HiltAndroidTest
 @UninstallModules(
+    AssociationModule::class,
     AuthModule::class,
     ClockModule::class,
     EventModule::class,
@@ -138,6 +142,7 @@ class M1EndToEndTest {
   @BindValue @JvmField val auth: AuthRepository = fakeAuth
   @BindValue @JvmField val events: EventRepository = fakeEvents
   @BindValue @JvmField val profiles: UserProfileRepository = fakeProfiles
+  @BindValue @JvmField val associations: AssociationRepository = FakeAssociationRepository()
   @BindValue @JvmField val clock: Clock = Clock.fixed(NOW, ZURICH)
   @BindValue @JvmField val verificationClock = VerificationClock { NOW.toEpochMilli() }
   @BindValue @JvmField val verificationStore: VerificationStore = InMemoryVerificationStore()
