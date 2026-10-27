@@ -1,6 +1,7 @@
 // Contributors: Claude (isEpflUser helper, #33; own users/{uid} rule and no catch-all, #35;
 // fixed uid and accountType after review, #35; @epfl.ch associations aren't students and
-// accountType values on create, association profiles not deletable by the client, #161);
+// accountType values on create, association profiles not deletable by the client, #161;
+// associations/{uid}, #126);
 // OpenAI Codex (public/private event read rules, #52); Claude Opus 5.5 (event write rules, #47;
 // badge and locationName checks after review; isStudent for writes after #161; organizers
 // stay allowed readers after review).
@@ -31,8 +32,9 @@ service cloud.firestore {
           && !(exists(profile) && get(profile).data.get('accountType', 'student') == 'association');
     }
 
-    // Each account's private profile. The only rule open to any verified email (most
-    // associations have no EPFL email), so an unverified association reaches nothing else.
+    // Each account's private profile. Open to any verified email (most associations have no
+    // EPFL email); besides it, an unverified association reaches only its own
+    // associations/{uid} (#126).
     // Only an admin sets isAssociationVerified, in the Firebase console. The uid field names
     // the document's owner, and uid and accountType are fixed once created, so an admin
     // verifying an account isn't misled. An association can't delete its own profile: without
@@ -140,6 +142,63 @@ service cloud.firestore {
               .hasAny(['createdBy', 'isAssociationEvent']);
 
       allow delete: if canWriteEvents() && isOrganizer();
+    }
+
+    // An association's public profile (#126), keyed by the association account's UID. Its
+    // owner, an account whose users/{uid} is an association's, reads and writes it from sign-up
+    // on, before an admin has verified it, so it can set it up while its review is pending.
+    // Besides its own users/{uid}, that is the only exception to "no access before
+    // verification". Students read it only once an admin has verified the association
+    // (users/{uid}.isAssociationVerified, read here with get(), so students never see
+    // users/{uid} itself); other associations never do. Once verified, its name and type are
+    // fixed, so a verified badge can't move to another name. Nobody lists the collection, and
+    // only an admin deletes a document.
+    match /associations/{uid} {
+      function isAssociationOwner() {
+        let profile = /databases/$(database)/documents/users/$(request.auth.uid);
+        return hasVerifiedEmail()
+            && request.auth.uid == uid
+            && exists(profile)
+            && get(profile).data.get('accountType', null) == 'association';
+      }
+
+      function isVerifiedAssociation() {
+        let owner = /databases/$(database)/documents/users/$(uid);
+        return exists(owner)
+            && get(owner).data.get('accountType', null) == 'association'
+            && get(owner).data.get('isAssociationVerified', false) == true;
+      }
+
+      // The fields of the Figma "Association setup" frame, with the app's limits, and nothing
+      // else: no email, no verification flag. A missing name, type or about fails its check
+      // below, and a missing createdAt fails request.time on create and is a change on update.
+      function isValidAssociation(data) {
+        return data.keys().hasOnly(['name', 'type', 'about', 'website', 'createdAt'])
+            && data.name is string
+            && data.name.trim().size() > 0
+            && data.name.size() <= 60
+            && data.type in ['ASSOCIATION', 'COMMISSION', 'CLUB', 'EPFL_UNIT']
+            && data.about is string
+            && data.about.trim().size() > 0
+            && data.about.size() <= 1000
+            && (!('website' in data)
+                || (data.website is string
+                    && data.website.size() <= 200
+                    && data.website.matches('https://[^\\s]+')));
+      }
+
+      allow get: if isAssociationOwner() || (isStudent() && isVerifiedAssociation());
+
+      allow create: if isAssociationOwner()
+          && isValidAssociation(request.resource.data)
+          && request.resource.data.createdAt == request.time;
+
+      allow update: if isAssociationOwner()
+          && isValidAssociation(request.resource.data)
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['createdAt'])
+          && !(isVerifiedAssociation()
+              && request.resource.data.diff(resource.data).affectedKeys()
+                  .hasAny(['name', 'type']));
     }
   }
 }
