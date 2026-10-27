@@ -1,7 +1,9 @@
 // Contributors: OpenAI Codex (map stream, day labels, selection and privacy regression tests
 // for #50; optional location test dependency and lifecycle-safe setup for #51).
+// Contributors: Claude (the association names dependency, #128).
 package com.polysocial.ui.map
 
+import com.polysocial.model.association.FakeAssociationNames
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.validEvent
@@ -31,7 +33,13 @@ class MapViewModelTest {
 
   @Before
   fun setUp() {
-    vm = MapViewModel(MapEventSource { result }, FakeLocationService(), MAP_TEST_CLOCK)
+    vm =
+        MapViewModel(
+            MapEventSource { result },
+            FakeLocationService(),
+            MAP_TEST_CLOCK,
+            FakeAssociationNames(),
+        )
   }
 
   private fun emit(value: MapEventResult) {
@@ -80,6 +88,7 @@ class MapViewModelTest {
             MapEventSource { result },
             FakeLocationService(),
             Clock.fixed(now, ZoneOffset.UTC),
+            FakeAssociationNames(),
         )
     val tonight = event.copy(startTime = Instant.parse("2026-10-09T18:00:00Z"))
     val tomorrow = event.copy(id = "tomorrow", startTime = Instant.parse("2026-10-10T18:00:00Z"))
@@ -106,6 +115,7 @@ class MapViewModelTest {
             MapEventSource { result },
             FakeLocationService(),
             Clock.fixed(now, ZoneOffset.UTC),
+            FakeAssociationNames(),
         )
     val morning = event.copy(startTime = Instant.parse("2026-10-09T08:00:00Z"))
     val tomorrow = morning.copy(id = "tomorrow", startTime = Instant.parse("2026-10-10T08:00:00Z"))
@@ -201,12 +211,14 @@ class MapViewModelTest {
             MapEventSource { error("test failure") },
             FakeLocationService(),
             MAP_TEST_CLOCK,
+            FakeAssociationNames(),
         )
     val flowFailure =
         MapViewModel(
             MapEventSource { flow { error("test failure") } },
             FakeLocationService(),
             MAP_TEST_CLOCK,
+            FakeAssociationNames(),
         )
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     assertEquals(MapContentStatus.ERROR, factoryFailure.uiState.value.status)
@@ -239,7 +251,7 @@ class MapViewModelTest {
         }
       }
     }
-    val model = MapViewModel(source, FakeLocationService(), MAP_TEST_CLOCK)
+    val model = MapViewModel(source, FakeLocationService(), MAP_TEST_CLOCK, FakeAssociationNames())
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     model.retry()
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
@@ -265,6 +277,7 @@ class MapViewModelTest {
             },
             FakeLocationService(),
             MAP_TEST_CLOCK,
+            FakeAssociationNames(),
         )
     emit(MapEventResult.Events(listOf(event)))
     model.selectEvent(event.id)
@@ -294,6 +307,7 @@ class MapViewModelTest {
             },
             FakeLocationService(),
             MAP_TEST_CLOCK,
+            FakeAssociationNames(),
         )
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     model.onRenderStatus(MapRenderStatus.ERROR)

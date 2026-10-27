@@ -1,9 +1,11 @@
 // Contributors: OpenAI Codex (map state, selection, day labels and failure handling for #50;
 // one-off location permission and distance state for #51).
+// Contributors: Claude (the names of the associations with events on the map, #128).
 package com.polysocial.ui.map
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.polysocial.model.association.AssociationNames
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.Event
 import com.polysocial.model.location.LocationResult
@@ -69,6 +71,8 @@ data class MapUiState(
     val selectedEventIsTonight: Boolean = false,
     val selectedEventIsToday: Boolean = false,
     val locationState: MapLocationState = MapLocationState.Idle,
+    /** The names read so far of the associations with events on the map, by UID (#128). */
+    val associationNames: Map<String, String> = emptyMap(),
 ) {
   /** Distance to the selected event, calculated outside Compose with pure haversine math. */
   val selectedDistanceMeters: Double?
@@ -81,6 +85,9 @@ data class MapUiState(
 
 /**
  * Observes events, protects the public map and retains cached markers during transient failures.
+ * The name of each association with events on the map is read once, through the shared
+ * [associationNames], so its preview shows it (#128); a name that can't be read is left out, and
+ * tried again when its preview opens.
  */
 @HiltViewModel
 class MapViewModel
@@ -89,6 +96,7 @@ constructor(
     private val source: MapEventSource,
     private val locationService: LocationService,
     private val clock: Clock,
+    private val associationNames: AssociationNames,
 ) : ViewModel() {
   private val mutableState = MutableStateFlow(MapUiState())
   val uiState: StateFlow<MapUiState> = mutableState.asStateFlow()
@@ -98,7 +106,15 @@ constructor(
   private var mapActive = false
   private var readAfterPermissionResult = false
 
+  /** The associations whose names the map asked for, so each is asked for once. */
+  private val requestedNames = mutableSetOf<String>()
+
   init {
+    viewModelScope.launch {
+      associationNames.names.collect { names ->
+        mutableState.update { it.copy(associationNames = names) }
+      }
+    }
     observeEvents()
   }
 
@@ -207,7 +223,21 @@ constructor(
     }
   }
 
-  fun selectEvent(id: String) = mutableState.update {
+  fun selectEvent(id: String) {
+    val event = mutableState.value.events.firstOrNull { it.id == id }
+    // A name that couldn't be read (say the map opened offline) is tried again when its preview
+    // opens; the shared names never read a known one twice.
+    if (
+        event != null &&
+            event.isAssociationEvent &&
+            event.createdBy !in mutableState.value.associationNames
+    ) {
+      viewModelScope.launch { associationNames.load(event.createdBy) }
+    }
+    showPreview(id)
+  }
+
+  private fun showPreview(id: String) = mutableState.update {
     val selected = it.events.firstOrNull { event -> event.id == id }
     it.copy(
         selectedEvent = selected,
@@ -241,6 +271,7 @@ constructor(
       flow { emitAll(source.observePublicUpcomingEvents()) }
           .catch { emit(MapEventResult.Error) }
           .collect { result ->
+            if (result is MapEventResult.Events) loadNamesOf(publicMapEvents(result.events))
             mutableState.update { previous ->
               when (result) {
                 MapEventResult.Error -> previous.copy(status = MapContentStatus.ERROR)
@@ -259,6 +290,13 @@ constructor(
               }
             }
           }
+    }
+  }
+
+  /** Asks once for the name of each association with an event in [events]. */
+  private fun loadNamesOf(events: List<Event>) {
+    for (uid in events.filter { it.isAssociationEvent }.map { it.createdBy }.toSet()) {
+      if (requestedNames.add(uid)) viewModelScope.launch { associationNames.load(uid) }
     }
   }
 
