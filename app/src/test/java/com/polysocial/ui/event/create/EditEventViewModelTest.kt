@@ -1,12 +1,15 @@
 // Contributors: Claude (wrote these tests of Edit event, #131; the repository's errors, #131
-// review).
+// review; the organizer's repositories, #134).
 package com.polysocial.ui.event.create
 
 import androidx.lifecycle.SavedStateHandle
+import com.polysocial.model.association.FakeAssociationRepository
+import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.event.EventValidationError
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.UpdateEventResult
 import com.polysocial.model.event.withCreator
+import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.ui.event.detail.EventDetailViewModel
 import com.polysocial.utils.MainDispatcherRule
 import java.time.Clock
@@ -37,6 +40,9 @@ class EditEventViewModelTest {
           repository,
           Clock.fixed(FORM_NOW, ZURICH),
           SavedStateHandle(mapOf(EventDetailViewModel.EVENT_ID_ARG to id)),
+          FakeAuthRepository(),
+          FakeUserProfileRepository(),
+          FakeAssociationRepository(),
       )
 
   private fun runPending() = mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
