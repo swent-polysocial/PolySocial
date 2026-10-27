@@ -1,5 +1,6 @@
 // Contributors: Claude (app shell and tab test tags, #41; loading state tag, #43; Create Event
-// tags, #46; "+" button, #110; app bar action tags, #84; error state tags, #74).
+// tags, #46; "+" button, #110; app bar action tags, #84; error state tags, #74; Create Event
+// organizer row tags, #134).
 // Contributors: OpenAI Codex (map event-detail tags, #50).
 // Contributors: OpenAI Codex (Profile privacy navigation and action tags, #103).
 package com.polysocial.resources
@@ -50,6 +51,10 @@ object C {
     const val create_event_button = "create_event_button"
     const val create_event_screen = "create_event_screen"
     const val create_event_close = "create_event_close"
+    const val create_event_organized_by = "create_event_organized_by"
+    const val create_event_organizer_loading = "create_event_organizer_loading"
+    const val create_event_organizer_avatar = "create_event_organizer_avatar"
+    const val create_event_verified_badge = "create_event_verified_badge"
     const val create_event_title = "create_event_title"
     const val create_event_description = "create_event_description"
     const val create_event_date = "create_event_date"

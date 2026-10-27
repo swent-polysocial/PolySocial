@@ -1,0 +1,7 @@
+<!-- Contributors: Claude (vector of the Figma "Create event · association" Verified badge icon, #134). -->
+<!-- Check mark of the Verified badge, exact path from the Figma frame (node 273:58). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="12dp" android:height="12dp" android:viewportWidth="12" android:viewportHeight="12">
+    <path android:pathData="M10,3L4.5,8.5L2,6" android:strokeColor="#2F5FD0"
+        android:strokeWidth="1.5" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

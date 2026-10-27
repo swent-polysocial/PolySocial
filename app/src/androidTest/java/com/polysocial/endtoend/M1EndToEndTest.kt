@@ -1,5 +1,6 @@
 // Contributors: Claude (end-to-end test of the M1 student flow with Hilt test bindings and a fake
-// map renderer, #136; a fake association repository for the association names, #128).
+// map renderer, #136; a fake association repository for the association names, #128; the
+// student's organizer row, #134).
 package com.polysocial.endtoend
 
 import androidx.activity.compose.setContent
@@ -15,6 +16,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasSetTextAction
@@ -107,8 +109,9 @@ import org.junit.runner.RunWith
  * 3. Profile step: section and year, then the app opens on the Events tab (#34, #74).
  * 4. Events tab: the upcoming public events, grouped by day (#105).
  * 5. Event detail opened from the list, and Back to the list (#112).
- * 6. Create Event from the "+" (#46, #110): title, category, date and time pickers, public, and a
- *    place found with the location picker's search (#111).
+ * 6. Create Event from the "+" (#46, #110): "Organized by you" for a student (#134), title,
+ *    category, date and time pickers, public, and a place found with the location picker's search
+ *    (#111).
  * 7. The new event appears in the Events list and its detail opens (#105, #112).
  * 8. Map tab: both events have a marker, and tapping the new one opens its preview (#50, #94).
  *
@@ -229,6 +232,9 @@ class M1EndToEndTest {
   private fun createPublicEvent() {
     node(C.Tag.create_event_button).performClick()
     await(C.Tag.create_event_screen)
+    // A student organizes in their own name (#134).
+    await(C.Tag.create_event_organized_by)
+    node(C.Tag.create_event_organized_by).assertTextEquals("Organized by you")
     type(C.Tag.create_event_title, NEW_TITLE)
     node(C.Tag.createEventCategory(EventCategory.STUDY.name)).performScrollTo().performClick()
     pickDate(NEW_DATE)
