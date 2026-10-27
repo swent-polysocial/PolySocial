@@ -1,7 +1,9 @@
-// Contributors: Claude (wrote these tests, #105; search, filters and distance, #115).
+// Contributors: Claude (wrote these tests, #105; search, filters and distance, #115; the
+// association names dependency, #128).
 package com.polysocial.ui.event.list
 
 import androidx.lifecycle.SavedStateHandle
+import com.polysocial.model.association.FakeAssociationNames
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.FakeEventRepository
@@ -43,7 +45,7 @@ class EventsViewModelTest {
       }
 
   private fun createViewModel(savedState: SavedStateHandle = SavedStateHandle()) =
-      EventsViewModel(repository, network, location, clock, savedState)
+      EventsViewModel(repository, network, location, clock, savedState, FakeAssociationNames())
 
   private fun runPending() = mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
 
@@ -524,7 +526,15 @@ class EventsViewModelTest {
               throw IllegalStateException("No provider")
         }
     repository.seed(laterToday, inTown)
-    val viewModel = EventsViewModel(repository, network, failing, clock, SavedStateHandle())
+    val viewModel =
+        EventsViewModel(
+            repository,
+            network,
+            failing,
+            clock,
+            SavedStateHandle(),
+            FakeAssociationNames(),
+        )
     runPending()
 
     viewModel.selectDistance(1_000)
