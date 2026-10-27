@@ -1,4 +1,4 @@
-// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review).
+// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review).
 const { after, before, beforeEach, test } = require("node:test");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
@@ -19,6 +19,7 @@ const {
   orderBy,
   query,
   runTransaction,
+  serverTimestamp,
   setDoc,
   updateDoc,
   where,
@@ -1146,4 +1147,386 @@ test("an association whose verification was revoked can't manage its events", as
   const db = associationDb("verifiedClub");
   await assertFails(updateDoc(doc(db, "events/clubManaged"), { title: "Changed" }));
   await assertFails(deleteDoc(doc(db, "events/clubManaged")));
+});
+
+// ---- associations/{uid} (#126) ----
+// users/club is a pending association, users/verifiedClub a verified one (seeded above).
+
+/** A valid new association, with fields overridden or removed (set to undefined) by [changes]. */
+function newAssociation(changes = {}) {
+  const association = {
+    name: "Test Club",
+    type: "CLUB",
+    about: "A fictional club for tests.",
+    website: "https://club.example.org",
+    createdAt: serverTimestamp(),
+    ...changes,
+  };
+  for (const key of Object.keys(association)) {
+    if (association[key] === undefined) delete association[key];
+  }
+  return association;
+}
+
+/** Seeds users/[uid] with the rules off, as an admin or a past sign-up would. */
+async function seedUser(uid, fields) {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), `users/${uid}`), { uid, ...fields });
+  });
+}
+
+/** Seeds associations/[uid] with the rules off. */
+async function seedAssociation(uid, changes = {}) {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(
+      doc(context.firestore(), `associations/${uid}`),
+      newAssociation({ createdAt: Timestamp.fromMillis(1_790_000_000_000), ...changes }),
+    );
+  });
+}
+
+/** A pending association with an @epfl.ch email (#161), with its users/{uid} seeded. */
+async function seededEpflAssociationDb() {
+  await seedUser("epflClub", { accountType: "association", isAssociationVerified: false });
+  return epflAssociationDb("epflClub");
+}
+
+// -- create --
+
+test("a pending association can create its own associations/{uid}", async () => {
+  await assertSucceeds(setDoc(doc(associationDb("club"), "associations/club"), newAssociation()));
+});
+
+test("a verified association can create its own associations/{uid}", async () => {
+  const db = associationDb("verifiedClub");
+  await assertSucceeds(setDoc(doc(db, "associations/verifiedClub"), newAssociation()));
+});
+
+test("an @epfl.ch association can create its own associations/{uid}", async () => {
+  const db = await seededEpflAssociationDb();
+  await assertSucceeds(setDoc(doc(db, "associations/epflClub"), newAssociation()));
+});
+
+test("an association can create its associations/{uid} without a website", async () => {
+  const db = associationDb("club");
+  await assertSucceeds(
+    setDoc(doc(db, "associations/club"), newAssociation({ website: undefined })),
+  );
+});
+
+for (const type of ["ASSOCIATION", "COMMISSION", "CLUB", "EPFL_UNIT"]) {
+  test(`an association can create its associations/{uid} as ${type}`, async () => {
+    await assertSucceeds(
+      setDoc(doc(associationDb("club"), "associations/club"), newAssociation({ type })),
+    );
+  });
+}
+
+test("a student can't create an associations/{uid}", async () => {
+  await assertFails(setDoc(doc(studentDb("u1"), "associations/u1"), newAssociation()));
+});
+
+test("an association can't create another account's associations/{uid}", async () => {
+  const db = associationDb("club");
+  await assertFails(setDoc(doc(db, "associations/verifiedClub"), newAssociation()));
+  await assertFails(setDoc(doc(db, "associations/newClub"), newAssociation()));
+});
+
+test("an account without a profile can't create an associations/{uid}", async () => {
+  await assertFails(setDoc(doc(associationDb("nobody"), "associations/nobody"), newAssociation()));
+});
+
+test("a non-EPFL account whose profile isn't an association's can't create one", async () => {
+  await seedUser("plain", { displayName: "Test Account" });
+  await assertFails(setDoc(doc(associationDb("plain"), "associations/plain"), newAssociation()));
+});
+
+test("an association without a verified email can't create its associations/{uid}", async () => {
+  const db = firestoreAs("contact@club.org", false, "club");
+  await assertFails(setDoc(doc(db, "associations/club"), newAssociation()));
+});
+
+test("a signed-out user can't create an associations/{uid}", async () => {
+  const db = env.unauthenticatedContext().firestore();
+  await assertFails(setDoc(doc(db, "associations/club"), newAssociation()));
+});
+
+for (const [name, changes] of [
+  ["without a name", { name: undefined }],
+  ["without a type", { type: undefined }],
+  ["without an about", { about: undefined }],
+  ["without createdAt", { createdAt: undefined }],
+  ["with a client createdAt", { createdAt: Timestamp.fromMillis(1_790_000_000_000) }],
+  ["with an empty name", { name: "" }],
+  ["with a blank name", { name: "   " }],
+  ["with a name over 60 characters", { name: "a".repeat(61) }],
+  ["with a name that isn't a string", { name: 42 }],
+  ["with an empty about", { about: "" }],
+  ["with a blank about", { about: " \n " }],
+  ["with an about over 1000 characters", { about: "a".repeat(1001) }],
+  ["with an unknown type", { type: "UNION" }],
+  ["with a lowercase type", { type: "club" }],
+  ["with a type that isn't a string", { type: 1 }],
+  ["with an http website", { website: "http://club.example.org" }],
+  ["with a website that is only https://", { website: "https://" }],
+  ["with a website containing a space", { website: "https://club example.org" }],
+  ["with a website over 200 characters", { website: `https://${"a".repeat(193)}` }],
+  ["with a null website", { website: null }],
+  ["with a website that isn't a string", { website: 7 }],
+  ["with isAssociationVerified", { isAssociationVerified: true }],
+  ["with a uid field", { uid: "club" }],
+  ["with an email field", { email: "contact@club.org" }],
+]) {
+  test(`creating an associations/{uid} ${name} is denied`, async () => {
+    await assertFails(
+      setDoc(doc(associationDb("club"), "associations/club"), newAssociation(changes)),
+    );
+  });
+}
+
+test("the length limits allow exactly 60, 1000 and 200 characters", async () => {
+  const db = associationDb("club");
+  await assertSucceeds(setDoc(doc(db, "associations/club"), newAssociation({
+    name: "a".repeat(60),
+    about: "a".repeat(1000),
+    website: `https://${"a".repeat(192)}`,
+  })));
+});
+
+test("the name limit counts UTF-16 units, like Kotlin's String.length", async () => {
+  // So #125's form and the rules agree: an accented letter is one unit, an emoji two.
+  for (const [uid, name, allowed] of [
+    ["accentClub", "\u00e9".repeat(60), true],
+    ["emojiClub", "\u{1F389}".repeat(30), true],
+    ["longEmojiClub", "\u{1F389}".repeat(31), false],
+  ]) {
+    await seedUser(uid, { accountType: "association", isAssociationVerified: false });
+    const write = setDoc(doc(associationDb(uid), `associations/${uid}`), newAssociation({ name }));
+    await (allowed ? assertSucceeds(write) : assertFails(write)).catch((error) => {
+      throw new Error(`${name.length} units, allowed=${allowed}: ${error.message}`);
+    });
+  }
+});
+
+test("the lower limits allow a 1-character name and about and https://a", async () => {
+  // Not blank is the only lower limit: a single character is a valid name or about.
+  const db = associationDb("club");
+  await assertSucceeds(setDoc(doc(db, "associations/club"), newAssociation({
+    name: "A",
+    about: "B",
+    website: "https://a",
+  })));
+});
+
+test("a website may hold any characters but whitespace after https://", async () => {
+  // An "s" and a backslash too: the rule's [^\\s] must mean "not whitespace".
+  const website = "https://assos.epfl.ch/clubs/sports?id=42&lang=fr#a\\b";
+  await assertSucceeds(
+    setDoc(doc(associationDb("club"), "associations/club"), newAssociation({ website })),
+  );
+});
+
+test("recreating an existing associations/{uid} is denied", async () => {
+  await seedAssociation("club");
+  await assertFails(setDoc(doc(associationDb("club"), "associations/club"), newAssociation()));
+});
+
+// -- update --
+
+test("a pending association can edit every field of its own associations/{uid}", async () => {
+  await seedAssociation("club");
+  await assertSucceeds(updateDoc(doc(associationDb("club"), "associations/club"), {
+    name: "Renamed Club",
+    type: "COMMISSION",
+    about: "New about.",
+    website: "https://new.example.org",
+  }));
+});
+
+test("an association can remove its website", async () => {
+  await seedAssociation("club");
+  await assertSucceeds(
+    updateDoc(doc(associationDb("club"), "associations/club"), { website: deleteField() }),
+  );
+});
+
+test("an association can add a website later", async () => {
+  await seedAssociation("club", { website: undefined });
+  await assertSucceeds(updateDoc(doc(associationDb("club"), "associations/club"), {
+    website: "https://club.example.org",
+  }));
+});
+
+test("a verified association can edit its about and website, resending its name and type", async () => {
+  await seedAssociation("verifiedClub");
+  // The repository always sends every editable field; unchanged ones aren't changes.
+  await assertSucceeds(updateDoc(doc(associationDb("verifiedClub"), "associations/verifiedClub"), {
+    name: "Test Club",
+    type: "CLUB",
+    about: "New about.",
+    website: "https://new.example.org",
+  }));
+});
+
+for (const [name, change] of [
+  ["rename itself", { name: "Another Club" }],
+  ["change its type", { type: "COMMISSION" }],
+]) {
+  test(`a verified association can't ${name}`, async () => {
+    await seedAssociation("verifiedClub");
+    await assertFails(
+      updateDoc(doc(associationDb("verifiedClub"), "associations/verifiedClub"), change),
+    );
+  });
+}
+
+for (const [name, change] of [
+  ["change createdAt", { createdAt: Timestamp.fromMillis(1) }],
+  ["remove createdAt", { createdAt: deleteField() }],
+  ["remove the name", { name: deleteField() }],
+  ["remove the about", { about: deleteField() }],
+  ["blank the name", { name: " " }],
+  ["empty the about", { about: "" }],
+  ["set an unknown type", { type: "UNION" }],
+  ["set an http website", { website: "http://club.example.org" }],
+  ["set a name over 60 characters", { name: "a".repeat(61) }],
+  ["add isAssociationVerified", { isAssociationVerified: true }],
+  ["add another field", { logo: "https://club.example.org/logo.png" }],
+]) {
+  test(`an association can't ${name} on its associations/{uid}`, async () => {
+    await seedAssociation("club");
+    await assertFails(updateDoc(doc(associationDb("club"), "associations/club"), change));
+  });
+}
+
+for (const [name, getDb] of [
+  ["a student", () => studentDb("u1")],
+  ["another association", () => associationDb("verifiedClub")],
+  ["the owner without a verified email", () => firestoreAs("contact@club.org", false, "club")],
+  ["a signed-out user", () => env.unauthenticatedContext().firestore()],
+]) {
+  test(`${name} can't update or delete an association's associations/{uid}`, async () => {
+    await seedAssociation("club");
+    await assertFails(updateDoc(doc(getDb(), "associations/club"), { about: "Hijacked" }));
+    await assertFails(deleteDoc(doc(getDb(), "associations/club")));
+  });
+}
+
+// -- delete --
+
+for (const owner of ["club", "verifiedClub"]) {
+  test(`an association (${owner}) can't delete its own associations/{uid}`, async () => {
+    await seedAssociation(owner);
+    await assertFails(deleteDoc(doc(associationDb(owner), `associations/${owner}`)));
+  });
+}
+
+// -- read --
+
+for (const owner of ["club", "verifiedClub"]) {
+  test(`an association (${owner}) can read its own associations/{uid}`, async () => {
+    await seedAssociation(owner);
+    await assertSucceeds(getDoc(doc(associationDb(owner), `associations/${owner}`)));
+  });
+}
+
+test("an association can read its own associations/{uid} before it exists", async () => {
+  // createAssociation reads the document in its transaction before creating it.
+  await assertSucceeds(getDoc(doc(associationDb("club"), "associations/club")));
+});
+
+test("an association creates its associations/{uid} in a transaction", async () => {
+  const db = associationDb("club");
+  const ref = doc(db, "associations/club");
+  await assertSucceeds(runTransaction(db, async (transaction) => {
+    if (!(await transaction.get(ref)).exists()) transaction.set(ref, newAssociation());
+  }));
+});
+
+test("a student can read a verified association's associations/{uid}", async () => {
+  await seedAssociation("verifiedClub");
+  await assertSucceeds(getDoc(doc(studentDb("u1"), "associations/verifiedClub")));
+});
+
+test("a student can't read a pending association's associations/{uid}", async () => {
+  await seedAssociation("club");
+  await assertFails(getDoc(doc(studentDb("u1"), "associations/club")));
+});
+
+test("a student can't read an associations/{uid} whose owner has no profile", async () => {
+  await seedAssociation("ghost");
+  await assertFails(getDoc(doc(studentDb("u1"), "associations/ghost")));
+});
+
+for (const [name, fields] of [
+  ['isAssociationVerified "true" (a string)', { accountType: "association", isAssociationVerified: "true" }],
+  ["a verified flag on a student profile", { isAssociationVerified: true }],
+]) {
+  test(`a student can't read an associations/{uid} whose owner has ${name}`, async () => {
+    await seedUser("oddClub", fields);
+    await seedAssociation("oddClub");
+    await assertFails(getDoc(doc(studentDb("u1"), "associations/oddClub")));
+  });
+}
+
+test("a student can't read an association whose verification was revoked", async () => {
+  await seedAssociation("verifiedClub");
+  await env.withSecurityRulesDisabled(async (context) => {
+    await updateDoc(doc(context.firestore(), "users/verifiedClub"), {
+      isAssociationVerified: false,
+    });
+  });
+  await assertFails(getDoc(doc(studentDb("u1"), "associations/verifiedClub")));
+});
+
+for (const [name, getDb] of [
+  ["another verified association", async () => {
+    await seedUser("otherClub", { accountType: "association", isAssociationVerified: true });
+    return associationDb("otherClub");
+  }],
+  ["a pending association", async () => associationDb("club")],
+  ["an @epfl.ch association", seededEpflAssociationDb],
+  ["a non-EPFL account without a profile", async () => associationDb("nobody")],
+  ["a student without a verified email", async () => firestoreAs("student@epfl.ch", false, "u1")],
+  ["a signed-out user", async () => env.unauthenticatedContext().firestore()],
+]) {
+  test(`${name} can't read a verified association's associations/{uid}`, async () => {
+    await seedAssociation("verifiedClub");
+    await assertFails(getDoc(doc(await getDb(), "associations/verifiedClub")));
+  });
+}
+
+// The refinement of #126: the private account data (email, verification) stays in the
+// owner-only users/{uid}, even once associations/{uid} is readable.
+for (const owner of ["club", "verifiedClub"]) {
+  test(`neither a student nor another association can read ${owner}'s users/{uid}`, async () => {
+    await seedAssociation(owner);
+    await seedUser("otherClub", { accountType: "association", isAssociationVerified: true });
+    for (const [name, db] of [
+      ["a student", studentDb("u1")],
+      ["another verified association", associationDb("otherClub")],
+    ]) {
+      await assertFails(getDoc(doc(db, `users/${owner}`))).catch((error) => {
+        throw new Error(`${name} read users/${owner}: ${error.message}`);
+      });
+    }
+  });
+}
+
+test("no one can list the associations collection", async () => {
+  await seedAssociation("verifiedClub");
+  await seedAssociation("club");
+  await assertFails(getDocs(collection(studentDb("u1"), "associations")));
+  const owner = associationDb("club");
+  await assertFails(getDocs(collection(owner, "associations")));
+  await assertFails(
+    getDocs(query(collection(owner, "associations"), where(documentId(), "==", "club"))),
+  );
+});
+
+test("a subcollection of an associations/{uid} is denied, even to its owner", async () => {
+  await seedAssociation("club");
+  const db = associationDb("club");
+  await assertFails(getDoc(doc(db, "associations/club/members/u1")));
+  await assertFails(setDoc(doc(db, "associations/club/members/u1"), { role: "admin" }));
 });
