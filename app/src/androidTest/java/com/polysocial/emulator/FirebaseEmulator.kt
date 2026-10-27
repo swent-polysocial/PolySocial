@@ -1,5 +1,6 @@
 // Contributors: Claude (Firestore emulator test setup, #117; timeouts and the port in the error
-// after an adversarial test review; geopoints and nulls in admin writes after review).
+// after an adversarial test review; geopoints and nulls in admin writes after review; admin
+// existence check, #126).
 package com.polysocial.emulator
 
 import android.net.Uri
@@ -95,6 +96,18 @@ class FirebaseEmulator : ExternalResource() {
     )
   }
 
+  /**
+   * Whether the document [id] exists in [collection], read as an administrator would, bypassing the
+   * Security Rules (for example to check that a denied write stored nothing).
+   */
+  suspend fun existsAsAdmin(collection: String, id: String): Boolean =
+      request(
+          "GET",
+          "$FIRESTORE_URL/v1/projects/$PROJECT_ID/databases/(default)/documents/" +
+              "${Uri.encode(collection)}/${Uri.encode(id)}",
+          missingAllowed = true,
+      ) != HTTP_NOT_FOUND
+
   /** [value] in the Firestore REST API's typed form, for example `{"booleanValue": true}`. */
   private fun firestoreValue(value: Any?): JSONObject =
       when (value) {
@@ -135,13 +148,21 @@ class FirebaseEmulator : ExternalResource() {
     )
   }
 
-  private suspend fun delete(url: String) = request("DELETE", url)
+  private suspend fun delete(url: String) {
+    request("DELETE", url)
+  }
 
   /**
    * Sends one request to an emulator's REST API. `Bearer owner` is the emulators' admin token: it
-   * bypasses the Security Rules and works only on the emulators.
+   * bypasses the Security Rules and works only on the emulators. Returns the HTTP status; with
+   * [missingAllowed], a 404 is returned instead of failing.
    */
-  private suspend fun request(method: String, url: String, body: String? = null) =
+  private suspend fun request(
+      method: String,
+      url: String,
+      body: String? = null,
+      missingAllowed: Boolean = false,
+  ): Int =
       withContext(Dispatchers.IO) {
         val connection = URL(url).openConnection() as HttpURLConnection
         try {
@@ -165,7 +186,10 @@ class FirebaseEmulator : ExternalResource() {
                     e,
                 )
               }
-          check(code in 200..299) { "$method $url failed with HTTP $code" }
+          check(code in 200..299 || (missingAllowed && code == HTTP_NOT_FOUND)) {
+            "$method $url failed with HTTP $code"
+          }
+          code
         } finally {
           connection.disconnect()
         }
@@ -207,5 +231,6 @@ class FirebaseEmulator : ExternalResource() {
     private const val TEST_PASSWORD = "fictional-password-1"
     private const val API_WITH_LOCAL_NETWORK_PERMISSION = 37
     private const val TIMEOUT_MS = 10_000
+    private const val HTTP_NOT_FOUND = 404
   }
 }
