@@ -6,6 +6,9 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 
 ## Current state
 
+- **Manual association approval (#135):** follow [README · Verifying an association](README.md#verifying-an-association). Only project owners set `users/{uid}.isAssociationVerified` to boolean true/false. The [#210 workflow proposal](docs/Association-Review.md) awaits teammate agreement; it adds no status field or access. #126/#127 remain responsible for pending data access and routing.
+
+
 - **Password recovery (#164):** the owner keeps email enumeration protection enabled. Request resets directly through `AuthRepository`; never fetch providers by email. All accepted requests show conditional inbox guidance, including unknown and Google-only addresses. The request preserves the auth session and login form. Firebase handles password choice on its hosted action page.
 - **Privacy notice (#103):** Profile exposes a read-only Privacy & data entry alongside confirmed logout (#109). The app shell supplies its destination to `ProfileRoute`; a standalone profile without that destination hides the entry. The summary and dated full notice are bundled and need no data query, so they remain usable offline. Export, in-app deletion and attendance-based matching show an unavailable Snackbar; the switch remains Off and writes no consent. Collection/access text describes this build; #121 and #123 must update it when attendance or reminders are enabled. Mehdi authorized explicit prototype draft wording while contact/provider details are pending. `privacy_contact_email` stays empty until supplied; Hilt provides the configured address and contact service to each notice entry's ViewModel, which opens a user-controlled email draft when configured, and otherwise explains the missing address/client. No account data is added. Feedback effects must key both text and owner callback: replacing a ViewModel with the same message otherwise dismisses the previous owner.
 
@@ -195,6 +198,9 @@ Closed issues keep their original text, so where one disagrees with this section
 Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 ## Decision log
+
+- 2026-10-28 · Document manual association verification and draft review/rejection examples for teammate agreement; no backend permissions changed. ([#135](https://github.com/swent-polysocial/PolySocial/issues/135), [#210](https://github.com/swent-polysocial/PolySocial/issues/210))
+
 
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 

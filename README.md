@@ -1,3 +1,4 @@
+<!-- Contributors: OpenAI Codex (manual association verification guide, #135). -->
 <!-- Contributors: OpenAI Codex (Google sign-in setup and review clarifications for #106). -->
 <!-- Contributors: OpenAI Codex (Google entry behavior for #107). -->
 <!-- Contributors: Claude (drafted the README structure, Setup, Running and testing, Tech stack and Project links sections; Firestore index deployment, #49; Firestore emulator tests, #117); OpenAI Codex (documented startup routing and rebase reconciliation); OpenAI Codex (Mapbox integration and setup, #50; one-off Map location privacy note, #51). -->
@@ -156,6 +157,52 @@ firebase emulators:exec --project demo-polysocial --only firestore,auth "gradlew
 ```
 
 `-Pemulator` runs **only** the emulator tests, in place of the regular instrumented tests, so run `./gradlew connectedCheck` separately for those. Without the flag, `connectedCheck` skips the emulator tests. `-Pemulator=all` runs both, which is what CI does inside `firebase emulators:exec`. The tests reach the host machine at `10.0.2.2`, which only works from an Android emulator, not from a physical device.
+
+## Verifying an association
+
+Only PolySocial admins who are Firebase/Google Cloud project owners perform this
+manual operation. The Android app never writes `isAssociationVerified`; neither
+students nor association accounts can grant, revoke, or copy a verified badge.
+Email verification and association approval are separate checks.
+
+1. In the correct Firebase project, open **Authentication → Users**, locate the
+   applicant and check that their email is verified. Copy their UID; never put
+   applicant details in a public issue or test fixture.
+2. Open **Firestore Database → users → {uid}**. Confirm `accountType` is the
+   string `association` and the document belongs to that same UID. Do not turn a
+   student account into an association by editing its type.
+3. Open **associations → {uid}** and check the association's name, type, about
+   and optional website against independent official evidence. This document
+   and the setup/pending exception are supplied by #126; if they are not yet
+   deployed, stop rather than creating an ad hoc document or granting access.
+   The review, duplicate and rejection proposal is in
+   [Association review workflow](docs/Association-Review.md) (#210), awaiting
+   teammate agreement.
+4. After accepting the request, add or edit **`isAssociationVerified`** in
+   `users/{uid}` with Firestore type **boolean**, value **`true`**. The string
+   `"true"` does not verify the association. Never add this field to
+   `associations/{uid}` or to client-writable metadata.
+5. Re-read both documents and confirm the UID, association name and type are
+   still the ones reviewed. If anything changed during review, revoke approval
+   and check again. Under #126, name/type are locked while approved.
+6. Ask the applicant to restart the app (or sign out and back in). Once #127
+   and #140 are integrated, it opens the association's Events, Map and
+   Organization tabs with verified publishing access for its **own** events.
+   It never gains student profile, group, chat or matching access. Until that
+   routing lands, do not promise that the current UI reflects approval.
+
+To **undo verification**, set the same boolean to **`false`**. On the next app
+start #127 returns the association to pending review; server rules deny new
+verified-only operations immediately. Revocation does not delete events or
+cached data and cannot retract data already read. Under #126 it also unlocks
+name/type editing, so re-check identity before approving again. Do not use
+revocation to grant access to any other account.
+
+Until a rejection policy is agreed, keep the flag absent/false and coordinate
+manually with a project owner; there is no client-writable rejection status.
+Account deletion is a separate approved procedure: an admin must remove the
+association's `associations/{uid}` document as well as the account/private data,
+subject to that procedure's retention requirements (#201/#206).
 
 ## Project links
 
