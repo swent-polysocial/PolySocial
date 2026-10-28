@@ -1,14 +1,24 @@
+// Contributors: OpenAI Codex (association onboarding destinations and fail-closed routing, #125).
 // Contributors: Claude (app-start routing for #32; refresh after Log in, not while loading; log
 // out and the created profile; Verify Email opened in-session, #74).
 package com.polysocial.ui.start
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.polysocial.model.association.AssociationRepository
+import com.polysocial.model.association.AssociationResult
+import com.polysocial.model.auth.AssociationSignupStore
 import com.polysocial.model.auth.AuthRepository
+import com.polysocial.model.auth.AuthUser
+import com.polysocial.model.auth.EmptyAssociationSignupStore
+import com.polysocial.model.auth.isEpflEmail
+import com.polysocial.model.user.AccountType
 import com.polysocial.model.user.ProfileResult
+import com.polysocial.model.user.UserProfile
 import com.polysocial.model.user.UserProfileRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,6 +36,11 @@ sealed interface StartDestination {
   /** Verified, but no profile yet: the profile step after verification (#34). */
   data object ProfileSetup : StartDestination
 
+  data object AssociationSetup : StartDestination
+
+  /** #127 owns pending rendering; #140 owns the verified shell. */
+  data class Association(val verified: Boolean) : StartDestination
+
   data object Main : StartDestination
 
   /** The profile could not be loaded; the user can retry. */
@@ -42,12 +57,17 @@ class AppStartViewModel
 constructor(
     private val auth: AuthRepository,
     private val profiles: UserProfileRepository,
+    private val associationSignup: AssociationSignupStore = EmptyAssociationSignupStore,
+    private val associations: AssociationRepository? = null,
 ) : ViewModel() {
   private val _destination = MutableStateFlow<StartDestination>(StartDestination.Loading)
   val destination: StateFlow<StartDestination> = _destination.asStateFlow()
 
   /** The running profile read, cancelled by [logOut] so it can't route the signed-out user. */
   private var profileRead: Job? = null
+
+  private val _accountType = MutableStateFlow(AccountType.STUDENT)
+  val accountType: StateFlow<AccountType> = _accountType.asStateFlow()
 
   init {
     resolve()
@@ -88,24 +108,59 @@ constructor(
   fun logOut() {
     profileRead?.cancel()
     auth.logOut()
+    _accountType.value = AccountType.STUDENT
     _destination.value = StartDestination.Login
   }
 
   private fun resolve() {
     _destination.value = StartDestination.Loading
+    _accountType.value = AccountType.STUDENT
     val user = auth.currentUser()
     when {
       user == null -> _destination.value = StartDestination.Login
-      !user.isEmailVerified -> _destination.value = StartDestination.VerifyEmail
+      !user.isEmailVerified -> profileRead = viewModelScope.launch {
+            try {
+              _accountType.value =
+                  if (associationSignup.contains(user.email)) AccountType.ASSOCIATION
+                  else AccountType.STUDENT
+              _destination.value = StartDestination.VerifyEmail
+            } catch (cancelled: CancellationException) {
+              throw cancelled
+            } catch (_: Exception) {
+              _destination.value = StartDestination.Error
+            }
+          }
       else -> profileRead = viewModelScope.launch {
             _destination.value =
-                when (profiles.getProfile(user.uid)) {
-                  is ProfileResult.Found -> StartDestination.Main
-                  ProfileResult.NotFound -> StartDestination.ProfileSetup
-                  ProfileResult.NetworkError,
-                  ProfileResult.UnexpectedError -> StartDestination.Error
+                try {
+                  when (val result = profiles.getProfile(user.uid)) {
+                    is ProfileResult.Found -> resolveProfile(user, result.profile)
+                    ProfileResult.NotFound ->
+                        if (associationSignup.contains(user.email))
+                            StartDestination.AssociationSetup
+                        else if (isEpflEmail(user.email)) StartDestination.ProfileSetup
+                        else StartDestination.Error
+                    ProfileResult.NetworkError,
+                    ProfileResult.UnexpectedError -> StartDestination.Error
+                  }
+                } catch (cancelled: CancellationException) {
+                  throw cancelled
+                } catch (_: Exception) {
+                  StartDestination.Error
                 }
           }
+    }
+  }
+
+  private suspend fun resolveProfile(user: AuthUser, profile: UserProfile): StartDestination {
+    if (profile.accountType != AccountType.ASSOCIATION) {
+      return if (isEpflEmail(user.email)) StartDestination.Main else StartDestination.Error
+    }
+    associationSignup.clear(user.email)
+    return when (associations?.getAssociation(user.uid)) {
+      is AssociationResult.Found -> StartDestination.Association(profile.isAssociationVerified)
+      AssociationResult.NotFound -> StartDestination.AssociationSetup
+      else -> StartDestination.Error
     }
   }
 }

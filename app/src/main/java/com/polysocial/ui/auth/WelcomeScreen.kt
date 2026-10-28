@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (association signup entry, #125).
 // Contributors: Figma mockup (event/group illustration assets); OpenAI Codex (GPT-6.1 Sol,
 // medium; implemented the welcome layout, navigation callbacks and unavailable actions;
 // added a compact two-column layout for landscape and reused theme typography after review).
@@ -74,7 +75,11 @@ object WelcomeTags {
 }
 
 @Composable
-fun WelcomeScreen(onSignUp: () -> Unit, onLogIn: () -> Unit) {
+fun WelcomeScreen(
+    onSignUp: () -> Unit,
+    onLogIn: () -> Unit,
+    onAssociationSignUp: (() -> Unit)? = null,
+) {
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
   val unavailable = stringResource(R.string.not_available_yet)
@@ -106,7 +111,12 @@ fun WelcomeScreen(onSignUp: () -> Unit, onLogIn: () -> Unit) {
               Modifier.weight(1f).widthIn(max = 400.dp),
               horizontalAlignment = Alignment.CenterHorizontally,
           ) {
-            WelcomeActions(onSignUp, onLogIn, showUnavailable)
+            WelcomeActions(
+                onSignUp,
+                onLogIn,
+                showUnavailable,
+                onAssociationSignUp ?: showUnavailable,
+            )
           }
         }
       } else {
@@ -121,7 +131,7 @@ fun WelcomeScreen(onSignUp: () -> Unit, onLogIn: () -> Unit) {
           Spacer(Modifier.height(86.dp + extraSpace))
           WelcomeHeading()
           Spacer(Modifier.height(70.dp))
-          WelcomeActions(onSignUp, onLogIn, showUnavailable)
+          WelcomeActions(onSignUp, onLogIn, showUnavailable, onAssociationSignUp ?: showUnavailable)
           Spacer(Modifier.height(10.dp))
         }
       }
@@ -154,7 +164,12 @@ private fun WelcomeHeading() {
 }
 
 @Composable
-private fun WelcomeActions(onSignUp: () -> Unit, onLogIn: () -> Unit, showUnavailable: () -> Unit) {
+private fun WelcomeActions(
+    onSignUp: () -> Unit,
+    onLogIn: () -> Unit,
+    showUnavailable: () -> Unit,
+    onAssociationSignUp: () -> Unit,
+) {
   GoogleSignInButton(WelcomeTags.Google, showUnavailable)
   Spacer(Modifier.height(12.dp))
   Box(
@@ -187,7 +202,7 @@ private fun WelcomeActions(onSignUp: () -> Unit, onLogIn: () -> Unit, showUnavai
   WelcomeLink(
       stringResource(R.string.welcome_association),
       WelcomeTags.Association,
-      showUnavailable,
+      onAssociationSignUp,
   )
   Spacer(Modifier.height(4.dp))
   BasicText(

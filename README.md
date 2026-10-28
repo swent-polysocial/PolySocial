@@ -1,3 +1,4 @@
+<!-- Contributors: OpenAI Codex (association onboarding integration notes, #125). -->
 <!-- Contributors: Claude (drafted the README structure, Setup, Running and testing, Tech stack and Project links sections; Firestore index deployment, #49; Firestore emulator tests, #117); OpenAI Codex (documented startup routing and rebase reconciliation); OpenAI Codex (Mapbox integration and setup, #50; one-off Map location privacy note, #51). -->
 <!-- Contributors: OpenAI Codex (verification startup integration and Back sign-out, #31). -->
 <!-- Contributors: Claude (Sprint 2 status in the Features table and the startup routing note). -->
@@ -146,6 +147,21 @@ firebase emulators:exec --project demo-polysocial --only firestore,auth "gradlew
 ```
 
 `-Pemulator` runs **only** the emulator tests, in place of the regular instrumented tests, so run `./gradlew connectedCheck` separately for those. Without the flag, `connectedCheck` skips the emulator tests. `-Pemulator=all` runs both, which is what CI does inside `firebase emulators:exec`. The tests reach the host machine at `10.0.2.2`, which only works from an Android emulator, not from a physical device.
+
+## Association onboarding integration
+
+The association signup link reuses the email/password and verification screens.
+The setup form uses initials, not uploads, and saves `users/{uid}` as an
+association before calling #126's `createAssociation`. Passwords stay in memory.
+A private local digest of the signup email preserves unfinished association
+routing across restarts on the same device. This hint is routing metadata, not
+an authorization claim; the server rules still control all access.
+
+The onboarding draft depends on #126's association repository and agreed
+setup/pending access exception. Pending-review UI/routing belongs to #127,
+association login to #208, and association Map content to #133. Their unfinished
+integration must not expose the student app or public event query to an
+association. No Firebase-console setup or new dependency is added here.
 
 ## Project links
 

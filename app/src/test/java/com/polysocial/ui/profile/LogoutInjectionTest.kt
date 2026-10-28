@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (keep association onboarding dependencies fake in Hilt tests, #125).
 // Contributors: OpenAI Codex (Hilt logout and verification wiring with offline fakes, #109).
 package com.polysocial.ui.profile
 
@@ -6,7 +7,12 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.MainActivity
 import com.polysocial.auth.MemoryVerificationStore
+import com.polysocial.model.association.AssociationModule
+import com.polysocial.model.association.AssociationRepository
+import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
+import com.polysocial.model.auth.AssociationSignupStore
+import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.event.*
 import com.polysocial.model.firebase.*
 import com.polysocial.model.user.*
@@ -22,6 +28,7 @@ import org.robolectric.annotation.Config
 /** Exercises default routes and injected ViewModels, rather than replacing app screens. */
 @HiltAndroidTest
 @UninstallModules(
+    AssociationModule::class,
     AuthModule::class,
     EventModule::class,
     UserProfileModule::class,
@@ -30,6 +37,11 @@ import org.robolectric.annotation.Config
 @Config(application = HiltTestApplication::class)
 @RunWith(AndroidJUnit4::class)
 class LogoutInjectionTest {
+  @BindValue
+  @JvmField
+  val associationSignupStore: AssociationSignupStore = EmptyAssociationSignupStore
+  @BindValue @JvmField val associations: AssociationRepository = FakeAssociationRepository()
+
   private val student = AuthUser("fictional-student", "fictional@epfl.ch", true)
   private val fakeAuth = FakeAuthRepository(student)
   private var cleanup = CacheClearResult.UnexpectedError

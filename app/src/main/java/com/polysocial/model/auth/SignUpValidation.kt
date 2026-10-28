@@ -1,5 +1,8 @@
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; implemented framework-free sign-up validation).
+// Contributors: OpenAI Codex (association-only mailbox policy and optional personal name, #125).
 package com.polysocial.model.auth
+
+import com.polysocial.model.user.AccountType
 
 /** Accepts a single mailbox on exactly epfl.ch; subdomains and lookalike suffixes are rejected. */
 fun isEpflEmail(email: String): Boolean =
@@ -19,6 +22,7 @@ enum class SignUpField {
 enum class FieldError {
   Required,
   InvalidDomain,
+  InvalidEmail,
   PasswordRules,
   PasswordMismatch,
 }
@@ -29,6 +33,7 @@ data class SignUpForm(
     val email: String = "",
     val password: String = "",
     val confirmPassword: String = "",
+    val accountType: AccountType = AccountType.STUDENT,
 ) {
   val hasMinimumLength: Boolean
     get() = password.length >= 8
@@ -38,10 +43,14 @@ data class SignUpForm(
 
   fun error(field: SignUpField): FieldError? =
       when (field) {
-        SignUpField.FullName -> if (fullName.isBlank()) FieldError.Required else null
+        SignUpField.FullName ->
+            if (accountType == AccountType.STUDENT && fullName.isBlank()) FieldError.Required
+            else null
         SignUpField.Email ->
             when {
               email.isBlank() -> FieldError.Required
+              accountType == AccountType.ASSOCIATION ->
+                  if (isRecoveryEmail(email)) null else FieldError.InvalidEmail
               !isEpflEmail(email) -> FieldError.InvalidDomain
               else -> null
             }

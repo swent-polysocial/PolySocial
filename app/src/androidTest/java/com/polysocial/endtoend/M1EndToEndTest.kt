@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (keep association onboarding dependencies fake in Hilt tests, #125).
 // Contributors: Claude (end-to-end test of the M1 student flow with Hilt test bindings and a fake
 // map renderer, #136).
 package com.polysocial.endtoend
@@ -31,9 +32,14 @@ import androidx.compose.ui.test.performTextInput
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.MainActivity
+import com.polysocial.model.association.AssociationModule
+import com.polysocial.model.association.AssociationRepository
+import com.polysocial.model.association.FakeAssociationRepository
+import com.polysocial.model.auth.AssociationSignupStore
 import com.polysocial.model.auth.AuthModule
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.auth.AuthUser
+import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.auth.SignUpField
 import com.polysocial.model.auth.SignUpResult
@@ -117,6 +123,7 @@ import org.junit.runner.RunWith
  */
 @HiltAndroidTest
 @UninstallModules(
+    AssociationModule::class,
     AuthModule::class,
     ClockModule::class,
     EventModule::class,
@@ -127,6 +134,10 @@ import org.junit.runner.RunWith
 )
 @RunWith(AndroidJUnit4::class)
 class M1EndToEndTest {
+  @BindValue
+  @JvmField
+  val associationSignupStore: AssociationSignupStore = EmptyAssociationSignupStore
+  @BindValue @JvmField val associations: AssociationRepository = FakeAssociationRepository()
 
   private val fakeAuth =
       FakeAuthRepository().apply {

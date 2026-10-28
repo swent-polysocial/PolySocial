@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (association signup contract, #125).
 // Contributors: Claude (event repository read and createEvent tests against the Firestore
 // emulator, #118). OpenAI Codex (adapted the event-test auth fixture to the verification
 // contract, #31); OpenAI Codex (password-reset contract in the event-test fixture, #164); Claude
@@ -28,6 +29,7 @@ import com.polysocial.model.event.eventFromFirestore
 import com.polysocial.model.event.toFirestoreMap
 import com.polysocial.model.event.withCreator
 import com.polysocial.model.network.NetworkMonitor
+import com.polysocial.model.user.AccountType
 import com.polysocial.model.user.FirestoreUserProfileRepository
 import com.polysocial.model.user.USERS_COLLECTION
 import java.time.Clock
@@ -493,7 +495,12 @@ class FirestoreEventRepositoryEmulatorTest {
    * `createEvent`); the tests sign in through the emulator, never through this class.
    */
   private inner class SignedInUser : AuthRepository {
-    override suspend fun signUp(fullName: String, email: String, password: String): SignUpResult =
+    override suspend fun signUp(
+        fullName: String,
+        email: String,
+        password: String,
+        accountType: AccountType,
+    ): SignUpResult =
         throw UnsupportedOperationException("Sign in with FirebaseEmulator.signInVerifiedUser")
 
     override suspend fun logIn(email: String, password: String): LogInResult =

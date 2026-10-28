@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (durable association signup binding, #125).
 // Contributors: Claude (Hilt binding for the auth repository); OpenAI Codex
 // (GPT-6.1 Sol, medium; retained one binding with lazy Firebase initialization; bound verification
 // timing storage and clock for #31).
@@ -19,6 +20,11 @@ object AuthModule {
 
   @Provides
   fun verificationClock(): VerificationClock = VerificationClock { System.currentTimeMillis() }
+
+  @Provides
+  @Singleton
+  fun associationSignupStore(store: PreferencesAssociationSignupStore): AssociationSignupStore =
+      store
 
   @Provides @Singleton fun authRepository(): AuthRepository = FirebaseAuthRepository()
 }
