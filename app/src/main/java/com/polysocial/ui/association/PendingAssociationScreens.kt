@@ -85,6 +85,7 @@ object AssociationTags {
   const val MAP_SCREEN = "association_pending_map"
 
   const val ORGANIZATION_SCREEN = "association_pending_organization"
+  const val EDIT = "association_edit_details"
   const val NAME = "association_name"
   const val TYPE = "association_type"
   const val ABOUT = "association_about"
@@ -416,15 +417,18 @@ fun PendingMapScreen(association: Association?) {
 
 /**
  * The Organization tab while an admin reviews the association (Figma "Association · pending ·
- * Organization"): its details with the "Under review" badge, and Log out, a spinner while they are
- * read, which is always there, even when the details couldn't be read ([onRetry]).
+ * Organization"): its details with the "Under review" badge, Edit details ([onEdit], once they are
+ * read; no pencil without it) and Log out, a spinner while they are read, which is always there,
+ * even when the details couldn't be read ([onRetry]).
  */
 @Composable
 fun PendingOrganizationScreen(
     state: PendingAssociationUiState,
+    onEdit: (() -> Unit)?,
     onRetry: () -> Unit,
     onLogOut: () -> Unit,
 ) {
+  val loaded = state as? PendingAssociationUiState.Loaded
   // The error state scrolls itself and takes the rest of the screen; the details scroll here.
   val scroll =
       if (state == PendingAssociationUiState.Failed) Modifier
@@ -446,8 +450,24 @@ fun PendingOrganizationScreen(
           color = Ink,
           modifier = Modifier.weight(1f).semantics { heading() },
       )
-      // Keeps the height of Figma's pencil row, which Edit details adds (#127).
-      Spacer(Modifier.height(44.dp))
+      if (loaded != null && onEdit != null) {
+        // Figma's 20 dp pencil, centred 22 dp from the right edge, in a 44 dp touch target.
+        Box(
+            Modifier.size(44.dp)
+                .clickable(role = Role.Button, onClick = onEdit)
+                .testTag(AssociationTags.EDIT),
+            contentAlignment = Alignment.Center,
+        ) {
+          Icon(
+              painterResource(R.drawable.ic_edit),
+              contentDescription = stringResource(R.string.association_edit_details),
+              tint = Ink,
+              modifier = Modifier.size(20.dp),
+          )
+        }
+      } else {
+        Spacer(Modifier.height(44.dp))
+      }
     }
     when (state) {
       is PendingAssociationUiState.Loaded -> {

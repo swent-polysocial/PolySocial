@@ -33,6 +33,7 @@ import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.UserProfile
 import com.polysocial.resources.C
 import com.polysocial.ui.association.AssociationTags
+import com.polysocial.ui.association.EditAssociationViewModel
 import com.polysocial.ui.association.PendingAssociationApp
 import com.polysocial.ui.association.PendingAssociationViewModel
 import com.polysocial.ui.auth.AuthFlow
@@ -126,6 +127,7 @@ class PendingAssociationFlowTest {
                   onLoggedOut = done,
                   viewModel = viewModel { PendingAssociationViewModel(auth, associations) },
                   logoutViewModel = viewModel { ProfileViewModel(auth, cache) },
+                  editViewModel = { viewModel { EditAssociationViewModel(associations) } },
               )
             },
         )

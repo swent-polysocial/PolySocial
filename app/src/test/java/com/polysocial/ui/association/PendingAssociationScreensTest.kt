@@ -42,6 +42,7 @@ import org.robolectric.annotation.GraphicsMode
 class PendingAssociationScreensTest {
   @get:Rule val compose = createComposeRule()
 
+  private var edits = 0
   private var retries = 0
   private var logOuts = 0
 
@@ -50,9 +51,13 @@ class PendingAssociationScreensTest {
     compose.waitForIdle()
   }
 
-  private fun showOrganization(state: PendingAssociationUiState) = show {
+  private fun showOrganization(
+      state: PendingAssociationUiState,
+      onEdit: (() -> Unit)? = { edits++ },
+  ) = show {
     PendingOrganizationScreen(
         state = state,
+        onEdit = onEdit,
         onRetry = { retries++ },
         onLogOut = { logOuts++ },
     )
@@ -63,9 +68,27 @@ class PendingAssociationScreensTest {
   // --- The Organization tab's states ---
 
   @Test
-  fun whileLoading_aSpinnerShows_andLogOutIsThere() {
+  fun loaded_showsThePencil_whichOpensEditDetails() {
+    showOrganization(PendingAssociationUiState.Loaded(testClub))
+
+    compose.onNodeWithTag(AssociationTags.EDIT).assertIsDisplayed().performClick()
+
+    assertEquals(1, edits)
+  }
+
+  @Test
+  fun withoutOnEdit_thereIsNoPencil_evenOnceLoaded() {
+    showOrganization(PendingAssociationUiState.Loaded(testClub), onEdit = null)
+
+    compose.onNodeWithTag(AssociationTags.EDIT).assertDoesNotExist()
+    node(AssociationTags.NAME).assertTextEquals("Test Club")
+  }
+
+  @Test
+  fun whileLoading_thereIsNoPencil_butLogOutIsThere() {
     showOrganization(PendingAssociationUiState.Loading)
 
+    compose.onNodeWithTag(AssociationTags.EDIT).assertDoesNotExist()
     node(AssociationTags.NAME).assertDoesNotExist()
     // A visible loading state while the details are read.
     compose.onNodeWithTag(AssociationTags.LOADING).assertIsDisplayed()
@@ -74,9 +97,10 @@ class PendingAssociationScreensTest {
   }
 
   @Test
-  fun failed_offersRetry_andLogOut() {
+  fun failed_offersRetry_andLogOut_withoutThePencil() {
     showOrganization(PendingAssociationUiState.Failed)
 
+    compose.onNodeWithTag(AssociationTags.EDIT).assertDoesNotExist()
     compose.onNodeWithTag(AssociationTags.LOADING).assertDoesNotExist()
     compose.onNodeWithTag(AssociationTags.LOAD_ERROR).assertIsDisplayed()
     compose.onNodeWithTag(AssociationTags.LOG_OUT).assertIsDisplayed().performClick()
@@ -135,10 +159,18 @@ class PendingAssociationScreensTest {
   }
 
   @Test
-  fun theOrganizationTab_hasItsTitleAsAHeading() {
+  fun theOrganizationTab_hasItsTitleAsAHeading_andAPencilNamedEditDetails() {
     showOrganization(PendingAssociationUiState.Loaded(testClub))
 
     compose.onNode(isHeading() and hasText("Organization")).assertIsDisplayed()
+    compose
+        .onNodeWithTag(AssociationTags.EDIT)
+        .assert(
+            SemanticsMatcher.expectValue(
+                SemanticsProperties.ContentDescription,
+                listOf("Edit details"),
+            )
+        )
   }
 
   // --- A very long name, with native graphics (Robolectric's legacy mode never shortens text) ---
@@ -185,6 +217,7 @@ class PendingAssociationScreensTest {
     val screen = compose.onRoot().getBoundsInRoot()
     val name = node(AssociationTags.NAME).getBoundsInRoot()
     assertTrue("The name ($name) runs into the margin", name.right <= screen.right - 20.dp)
+    compose.onNodeWithTag(AssociationTags.EDIT).assertIsDisplayed()
     assertNothingCutOff(AssociationTags.ORGANIZATION_SCREEN)
   }
 
