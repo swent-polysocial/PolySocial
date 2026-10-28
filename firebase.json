@@ -3,12 +3,23 @@
     "rules": "firebase/firestore/firestore.rules",
     "indexes": "firebase/firestore/firestore.indexes.json"
   },
+  "functions": [
+    {
+      "source": "firebase/functions",
+      "codebase": "default",
+      "runtime": "nodejs22",
+      "ignore": ["node_modules", "*.test.js", ".git"]
+    }
+  ],
   "emulators": {
     "auth": {
       "port": 9099
     },
     "firestore": {
       "port": 8080
+    },
+    "functions": {
+      "port": 5001
     },
     "ui": {
       "enabled": true
