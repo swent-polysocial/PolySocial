@@ -466,7 +466,7 @@ How each failure behaves:
 | profile deleted, Auth delete failed | user still signed in; Retry completes step 2 (step 1 is a no-op) |
 | both deleted, answer lost | next attempt sees an invalid user, treated as `Deleted`, then local cleanup |
 | cache clear fails after deletion | blocking Retry, as for logout; the account is already gone |
-| user cancels before the function call | nothing changes |
+| user cancels before the function call (Cancel, or the Google picker dismissed) | nothing changes; the reauthentication step stays open |
 
 **Open questions** (add new ones here and in `CONTEXT.md`):
 - **Mapbox production account:** who adds billing, which usage alert applies, and when does a dedicated token replace the signup token? Mapbox bills separately from Google Cloud. Needed before release.
