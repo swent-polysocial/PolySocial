@@ -1,4 +1,5 @@
 // Contributors: OpenAI Codex (confirmation and logout state, #109).
+// Contributors: Claude (reset for the next session, #127).
 package com.polysocial.ui.profile
 
 import androidx.lifecycle.ViewModel
@@ -39,6 +40,15 @@ constructor(
 
   fun cancelLogout() {
     if (state.value == LogoutState.Confirming) state.value = LogoutState.Idle
+  }
+
+  /**
+   * Back to [LogoutState.Idle] once the logged-out app was left (#127). The association's app gets
+   * this ViewModel from the activity, which outlives the session, so the next account must not
+   * start "logged out". Ignored unless logged out.
+   */
+  fun reset() {
+    if (state.value == LogoutState.LoggedOut) state.value = LogoutState.Idle
   }
 
   fun confirmLogout() {

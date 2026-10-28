@@ -1,5 +1,6 @@
 // Contributors: OpenAI Codex (confirmation, duplicate actions, cancellation and logout failure
 // proof, #109).
+// Contributors: Claude (reset for the next session, #127).
 package com.polysocial.ui.profile
 
 import androidx.lifecycle.viewModelScope
@@ -158,5 +159,30 @@ class ProfileViewModelTest {
         runCurrent()
         assertEquals(LogoutState.LoggedOut, profile.uiState.value)
         verify(exactly = 2) { failing.logOut() }
+      }
+
+  @Test
+  fun reset_afterLoggingOut_startsTheNextSessionIdle_andIsIgnoredOtherwise() =
+      runTest(main.dispatcher) {
+        vm.reset()
+        assertEquals(LogoutState.Idle, vm.uiState.value)
+        vm.requestLogout()
+        vm.reset()
+        assertEquals(LogoutState.Confirming, vm.uiState.value)
+        gate = CompletableDeferred()
+        vm.confirmLogout()
+        runCurrent()
+        vm.reset()
+        assertEquals(LogoutState.Clearing, vm.uiState.value)
+        gate!!.complete(Unit)
+        runCurrent()
+        assertEquals(LogoutState.LoggedOut, vm.uiState.value)
+
+        vm.reset()
+
+        assertEquals(LogoutState.Idle, vm.uiState.value)
+        // The next session can log out again.
+        vm.requestLogout()
+        assertEquals(LogoutState.Confirming, vm.uiState.value)
       }
 }

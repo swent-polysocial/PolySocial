@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (the pending association app, from the Figma "Association · pending" frames, #127). -->
+<resources>
+    <!-- The association's bottom bar (#127; its verified tabs come with #140). -->
+    <string name="association_tab_events">Events</string>
+    <string name="association_tab_map">Map</string>
+    <string name="association_tab_organization">Organization</string>
+
+    <!-- The kinds of organization (#126), as in the Figma "Association setup" chips. -->
+    <string name="association_type_association">Association</string>
+    <string name="association_type_commission">Commission</string>
+    <string name="association_type_club">Club</string>
+    <string name="association_type_epfl_unit">EPFL unit</string>
+    <!-- Under the name on the Organization tab: the type, then EPFL ("Association · EPFL"). -->
+    <string name="association_type_at_epfl">%1$s · EPFL</string>
+
+    <!-- Events tab, Figma "Association · pending review". -->
+    <string name="association_pending_under_review">Under review</string>
+    <string name="association_pending_title">You can\'t publish events yet.</string>
+    <string name="association_pending_step_sent">Request sent</string>
+    <string name="association_pending_step_checking">PolySocial team checks it</string>
+    <string name="association_pending_step_verified">Verified: your drafts can go live</string>
+    <!-- TalkBack: the state of each review step, after its text. -->
+    <string name="association_pending_step_done">done</string>
+    <string name="association_pending_step_current">in progress</string>
+    <string name="association_pending_step_upcoming">not yet</string>
+    <string name="association_pending_drafts">Drafts</string>
+    <string name="association_pending_new_draft">New draft</string>
+    <string name="association_pending_invite_members">Invite members</string>
+    <string name="association_not_available_yet">Not available yet</string>
+
+    <!-- Map tab, Figma "Association · pending · Map". -->
+    <string name="association_pending_map_title">The map opens once you\'re verified</string>
+    <string name="association_pending_map_body">PolySocial checks every association by hand. Once you are verified, students see your events here.</string>
+
+    <!-- Organization tab, Figma "Association · pending · Organization". -->
+    <string name="association_log_out">Log out</string>
+    <string name="association_load_error_title">Couldn\'t load your association</string>
+    <string name="association_load_error_message">Check your connection and try again.</string>
+
+</resources>

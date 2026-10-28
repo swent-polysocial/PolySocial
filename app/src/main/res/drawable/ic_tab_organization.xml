@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (converted from the team Figma "Association · pending review" bottom bar, #127). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="22dp"
+    android:height="22dp"
+    android:viewportWidth="22"
+    android:viewportHeight="22">
+    <path
+        android:pathData="M2.75 19.25H19.25M4.58333 19.25V6.41667L11 2.75L17.4167 6.41667V19.25M8.25 19.25V13.75H13.75V19.25M8.25 9.16667H8.25917M13.75 9.16667H13.7592"
+        android:strokeWidth="1.83333"
+        android:strokeColor="#FF000000"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>
