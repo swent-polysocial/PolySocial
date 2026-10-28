@@ -1,4 +1,4 @@
-# Contributors: Claude (Firestore rules-test entries, #33).
+# Contributors: Claude (Firestore rules-test entries, #33; Cloud Functions packages, #206).
 /.idea/
 .DS_Store
 .gradle
@@ -28,5 +28,5 @@ secrets.properties
 # Firebase Local Emulator Suite logs and cache
 *-debug.log
 .firebase/
-# npm packages for the Firestore rules tests (installed with npm ci)
+# npm packages for the Firestore rules tests and the Cloud Functions (installed with npm ci)
 node_modules/
