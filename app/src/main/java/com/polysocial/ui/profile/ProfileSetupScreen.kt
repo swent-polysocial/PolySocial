@@ -1,7 +1,8 @@
 // Contributors: Claude (profile step screen for #34, built from the Figma "First proposal
 // revamped" Profile frames; layout that grows with large text, one save report and picker
 // accessibility after review; plain Column layout after review; exact text from the theme, and
-// Back locked while saving, #74; generic save error with Log out, #142; full name limit, #143).
+// Back locked while saving, #74; generic save error with Log out, #142; full name limit, #143, as a
+// plural after review).
 // Contributors: Claude (the shared field label, #251).
 package com.polysocial.ui.profile
 
@@ -65,6 +66,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -385,7 +387,12 @@ private fun NameField(
 ) {
   // While saving, Figma fades the editable fields to 45%.
   val shape = MaterialTheme.shapes.small
-  val tooLongMessage = stringResource(R.string.full_name_too_long, MAX_DISPLAY_NAME_LENGTH)
+  val tooLongMessage =
+      pluralStringResource(
+          R.plurals.full_name_too_long,
+          MAX_DISPLAY_NAME_LENGTH,
+          MAX_DISPLAY_NAME_LENGTH,
+      )
   BasicTextField(
       value = value,
       onValueChange = onValueChange,
@@ -695,7 +702,11 @@ private fun NameTooLong() {
         modifier = Modifier.padding(top = 1.dp),
     )
     Text(
-        stringResource(R.string.full_name_too_long, MAX_DISPLAY_NAME_LENGTH),
+        pluralStringResource(
+            R.plurals.full_name_too_long,
+            MAX_DISPLAY_NAME_LENGTH,
+            MAX_DISPLAY_NAME_LENGTH,
+        ),
         style = MaterialTheme.typography.bodySmall.exact(),
         color = AccentText,
     )

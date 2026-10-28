@@ -7,7 +7,7 @@
 // preserved submission handoffs on Back and aligned form hints, loading and recovery layout);
 // Claude (injectable signed-in content, so tests run without Hilt, #105; signed-out back stack,
 // profile step, sign-out and Figma start states, #74; the pending association app, #127; the
-// full name limit message, test-first, #143).
+// full name limit message, test-first, #143, as a plural after review).
 // OpenAI Codex (verification routing, Back sign-out and replacement-session
 // entry and stable current-model callbacks for #31);
 // OpenAI Codex (password recovery destination and Back routing for #164).
@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.TextStyle
@@ -509,11 +510,7 @@ fun SignUpScreen(
               { onBlur(field) },
           )
           if (fieldError != null) {
-            // Only the too-long message has an argument, the limit; the others ignore it.
-            ErrorLabel(
-                stringResource(fieldError.message(), MAX_DISPLAY_NAME_LENGTH),
-                SignUpTags.error(field),
-            )
+            ErrorLabel(fieldError.text(), SignUpTags.error(field))
           }
           if (field == SignUpField.Email) {
             when {
@@ -843,13 +840,20 @@ private fun Label(
   BasicText(text, modifier, style = style.copy(color = color, textDecoration = decoration))
 }
 
-private fun FieldError.message(): Int =
+/** The message under a field: only the too-long one takes an argument, the limit. */
+@Composable
+private fun FieldError.text(): String =
     when (this) {
-      FieldError.Required -> R.string.signup_required
-      FieldError.InvalidDomain -> R.string.signup_invalid_domain
-      FieldError.PasswordRules -> R.string.signup_password_rules
-      FieldError.PasswordMismatch -> R.string.signup_password_mismatch
-      FieldError.TooLong -> R.string.full_name_too_long
+      FieldError.Required -> stringResource(R.string.signup_required)
+      FieldError.InvalidDomain -> stringResource(R.string.signup_invalid_domain)
+      FieldError.PasswordRules -> stringResource(R.string.signup_password_rules)
+      FieldError.PasswordMismatch -> stringResource(R.string.signup_password_mismatch)
+      FieldError.TooLong ->
+          pluralStringResource(
+              R.plurals.full_name_too_long,
+              MAX_DISPLAY_NAME_LENGTH,
+              MAX_DISPLAY_NAME_LENGTH,
+          )
     }
 
 private fun SignUpResult.Failure.message(): Int =
