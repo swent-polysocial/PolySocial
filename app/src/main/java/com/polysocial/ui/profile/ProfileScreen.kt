@@ -1,6 +1,7 @@
 // Contributors: OpenAI Codex (Profile tab, shared logout dialog and remembered action binding,
 // #109; matched the logout row and icon to Figma).
 // Contributors: OpenAI Codex (privacy entry alongside confirmed logout after rebase, #103).
+// Contributors: Claude (the logout dialog shared with the association's Organization tab, #127).
 package com.polysocial.ui.profile
 
 import androidx.activity.compose.BackHandler
@@ -93,6 +94,16 @@ fun ProfileScreen(
       )
     }
   }
+  LogoutDialog(state, onCancel, onConfirm)
+}
+
+/**
+ * The logout confirmation for [state] (#109): shown while confirming, clearing the cache or after a
+ * failed clear, and nothing otherwise. Shared by the students' Profile and the association's
+ * Organization tab (#127).
+ */
+@Composable
+internal fun LogoutDialog(state: LogoutState, onCancel: () -> Unit, onConfirm: () -> Unit) {
   if (
       state == LogoutState.Confirming || state == LogoutState.Clearing || state == LogoutState.Error
   ) {
