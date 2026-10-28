@@ -1,0 +1,90 @@
+// Contributors: Claude (wrote these tests, #251).
+package com.polysocial.ui.common
+
+import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertHeightIsEqualTo
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.dp
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.R
+import com.polysocial.ui.theme.PolySocialTheme
+import org.junit.Assert.assertEquals
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+
+/** The shared form and banner parts (#251) on their own; each screen's tests cover its use. */
+@RunWith(AndroidJUnit4::class)
+class FormPartsTest {
+  @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+  private fun show(content: @androidx.compose.runtime.Composable () -> Unit) {
+    compose.setContent { PolySocialTheme { content() } }
+  }
+
+  @Test
+  fun fieldLabel_showsItsText() {
+    show { FieldLabel(R.string.login_email_label) }
+
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.login_email_label))
+        .assertIsDisplayed()
+  }
+
+  @Test
+  fun offlineBanner_showsItsMessage_underItsTag() {
+    show { OfflineBanner("You're offline.", tag = "banner") }
+
+    compose.onNodeWithTag("banner").assertIsDisplayed()
+    compose.onNodeWithText("You're offline.").assertIsDisplayed()
+  }
+
+  @Test
+  fun errorBanner_showsItsTitleAndMessage() {
+    show { ErrorBanner("Couldn't save", "Try again later.", offline = true, tag = "error") }
+
+    compose.onNodeWithTag("error").assertIsDisplayed()
+    compose.onNodeWithText("Couldn't save").assertIsDisplayed()
+    compose.onNodeWithText("Try again later.").assertIsDisplayed()
+  }
+
+  @Test
+  fun primaryButton_clicksOnlyWhenEnabled_andKeepsFigmasHeight() {
+    var clicks = 0
+    var enabled = true
+    compose.setContent {
+      PolySocialTheme { PrimaryButton("Save", enabled = enabled, tag = "button") { clicks++ } }
+    }
+    compose
+        .onNodeWithTag("button")
+        .assertHeightIsEqualTo(52.dp)
+        .assertHasClickAction()
+        .assertIsEnabled()
+        .performClick()
+    assertEquals(1, clicks)
+  }
+
+  @Test
+  fun primaryButton_disabledOrLoading_ignoresTaps() {
+    var clicks = 0
+    show {
+      androidx.compose.foundation.layout.Column {
+        PrimaryButton("Save", enabled = false, tag = "disabled") { clicks++ }
+        PrimaryButton("Saving…", enabled = false, tag = "loading", loading = true) { clicks++ }
+      }
+    }
+
+    compose.onNodeWithTag("disabled").assertIsNotEnabled().performClick()
+    compose.onNodeWithTag("loading").assertIsNotEnabled().assertTextEquals("Saving…").performClick()
+
+    assertEquals(0, clicks)
+  }
+}

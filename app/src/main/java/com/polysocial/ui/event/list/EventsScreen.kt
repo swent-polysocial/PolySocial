@@ -2,6 +2,7 @@
 // event state, search field, filter chips, Filters sheet and its location permission, #115;
 // opening an event's detail, #112; banner and states shared with the association tab, #132; an
 // association's badge and name on its cards, #128).
+// Contributors: Claude (the shared offline banner, #251).
 package com.polysocial.ui.event.list
 
 import android.Manifest
@@ -64,6 +65,7 @@ import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
 import com.polysocial.resources.C
 import com.polysocial.ui.common.LoadingState
+import com.polysocial.ui.common.OfflineBanner
 import com.polysocial.ui.event.VerifiedPill
 import com.polysocial.ui.event.style
 import com.polysocial.ui.theme.Bg
@@ -242,7 +244,7 @@ fun EventsScreen(
     when (list) {
       EventsListState.Loading -> Unit
       is EventsListState.Empty -> {
-        if (list.isOffline) OfflineBanner(Modifier.padding(horizontal = 20.dp))
+        if (list.isOffline) EventsOfflineBanner(Modifier.padding(horizontal = 20.dp))
         EmptyState(
             title = stringResource(R.string.events_empty_title),
             body = stringResource(R.string.events_empty_body),
@@ -250,7 +252,7 @@ fun EventsScreen(
         )
       }
       is EventsListState.NoMatch -> {
-        if (list.isOffline) OfflineBanner(Modifier.padding(horizontal = 20.dp))
+        if (list.isOffline) EventsOfflineBanner(Modifier.padding(horizontal = 20.dp))
         EmptyState(
             title = stringResource(R.string.events_no_match_title),
             body = stringResource(R.string.events_no_match_body),
@@ -316,7 +318,7 @@ private fun EventList(
       contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 20.dp),
   ) {
     if (state.isOffline) {
-      item { OfflineBanner(Modifier.padding(bottom = 14.dp)) }
+      item { EventsOfflineBanner(Modifier.padding(bottom = 14.dp)) }
     }
     state.sections.forEachIndexed { index, section ->
       item(key = "day-$index") { DayHeader(section.date, state.today, index) }
@@ -421,26 +423,10 @@ private fun EventCard(
   }
 }
 
-/** Figma's offline banner: the events shown are a saved copy. */
+/** The Events list's offline banner (Figma "Events · offline"). */
 @Composable
-internal fun OfflineBanner(modifier: Modifier = Modifier) {
-  Row(
-      modifier =
-          modifier
-              .fillMaxWidth()
-              .background(WarningSoft, RoundedCornerShape(14.dp))
-              .padding(horizontal = 14.dp, vertical = 13.dp)
-              .testTag(EventsTags.OFFLINE_BANNER),
-      horizontalArrangement = Arrangement.spacedBy(10.dp),
-      verticalAlignment = Alignment.CenterVertically,
-  ) {
-    Icon(painterResource(R.drawable.ic_offline), contentDescription = null, tint = Warning)
-    Text(
-        text = stringResource(R.string.events_offline),
-        style = MaterialTheme.typography.labelMedium,
-        color = Warning,
-    )
-  }
+internal fun EventsOfflineBanner(modifier: Modifier = Modifier) {
+  OfflineBanner(stringResource(R.string.events_offline), EventsTags.OFFLINE_BANNER, modifier)
 }
 
 /** The Figma empty state: the events icon, [title] and [body], then an optional [action]. */

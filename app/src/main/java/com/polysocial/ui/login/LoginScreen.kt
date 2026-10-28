@@ -4,6 +4,7 @@
 // redirecting, after review); OpenAI Codex (GPT-6.1 Sol, medium; official Google button artwork;
 // lock navigation actions during login and verification handoffs);
 // OpenAI Codex (recovery navigation and shared email field for #164).
+// Contributors: Claude (the shared field label, #251).
 package com.polysocial.ui.login
 
 import androidx.activity.compose.BackHandler
@@ -65,6 +66,7 @@ import com.polysocial.R
 import com.polysocial.model.auth.GoogleSignInResult
 import com.polysocial.ui.auth.GoogleAuthErrorScreen
 import com.polysocial.ui.auth.GoogleSignInButton
+import com.polysocial.ui.common.FieldLabel
 import com.polysocial.ui.theme.Accent
 import com.polysocial.ui.theme.AccentText
 import com.polysocial.ui.theme.Bg
@@ -352,11 +354,6 @@ private fun OrWithEmailDivider() {
     )
     Box(Modifier.weight(1f).height(1.dp).background(Border))
   }
-}
-
-@Composable
-private fun FieldLabel(@StringRes text: Int) {
-  Text(stringResource(text), style = MaterialTheme.typography.labelMedium, color = Ink2)
 }
 
 @Composable

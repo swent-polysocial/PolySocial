@@ -2,6 +2,7 @@
 // revamped" Profile frames; layout that grows with large text, one save report and picker
 // accessibility after review; plain Column layout after review; exact text from the theme, and
 // Back locked while saving, #74; generic save error with Log out, #142).
+// Contributors: Claude (the shared field label, #251).
 package com.polysocial.ui.profile
 
 import androidx.activity.compose.BackHandler
@@ -91,6 +92,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.polysocial.R
 import com.polysocial.model.user.SECTIONS
 import com.polysocial.model.user.YEARS
+import com.polysocial.ui.common.FieldLabel
 import com.polysocial.ui.theme.AccentText
 import com.polysocial.ui.theme.Bg
 import com.polysocial.ui.theme.Border
@@ -210,7 +212,7 @@ fun ProfileSetupContent(
           Spacer(Modifier.height(17.dp))
           Initials(state.displayName)
           Spacer(Modifier.height(15.5.dp))
-          FieldLabel(R.string.profile_full_name)
+          MeasuredFieldLabel(R.string.profile_full_name)
           Spacer(Modifier.height(5.5.dp))
           NameField(state.displayName, onDisplayNameChange, enabled = editable, faded = saving)
           Spacer(Modifier.height(13.5.dp))
@@ -347,14 +349,13 @@ private fun Initials(displayName: String) {
   }
 }
 
+/** Figma's field label, in a 17 dp box so the field below starts exactly where Figma's does. */
 @Composable
-private fun FieldLabel(@StringRes text: Int, modifier: Modifier = Modifier) {
-  // 17 dp: the height of Figma's label box, so the field below starts exactly where Figma's does.
-  Text(
-      stringResource(text),
-      style = MaterialTheme.typography.labelMedium.exact(),
-      color = Ink2,
-      modifier = modifier.heightIn(min = 17.dp),
+private fun MeasuredFieldLabel(@StringRes text: Int, modifier: Modifier = Modifier) {
+  FieldLabel(
+      text,
+      modifier.heightIn(min = 17.dp),
+      MaterialTheme.typography.labelMedium.exact(),
   )
 }
 
@@ -406,7 +407,7 @@ private fun EmailLabel() {
       Modifier.fillMaxWidth().heightIn(min = 17.dp),
       verticalAlignment = Alignment.CenterVertically,
   ) {
-    FieldLabel(R.string.profile_email)
+    MeasuredFieldLabel(R.string.profile_email)
     Spacer(Modifier.weight(1f))
     Image(painterResource(R.drawable.ic_check_small), contentDescription = null)
     Spacer(Modifier.width(4.dp))
@@ -458,7 +459,7 @@ private fun Picker(
   val shownValue = value ?: stringResource(R.string.profile_choose)
   Column(modifier) {
     // The field announces its label itself, so screen readers don't read it twice.
-    FieldLabel(label, Modifier.semantics { hideFromAccessibility() })
+    MeasuredFieldLabel(label, Modifier.semantics { hideFromAccessibility() })
     Spacer(Modifier.height(5.5.dp))
     Box(Modifier.onGloballyPositioned { fieldBottom = it.boundsInWindow().bottom.roundToInt() }) {
       Row(
