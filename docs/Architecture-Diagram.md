@@ -1,3 +1,4 @@
+<!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the account deletion decision, its deletion/failure matrix and the related open questions (#201); Mohamed Khellaf (reviewed and revised). -->
 <!-- Contributors: OpenAI Codex (Google authentication architecture, Firebase-managed linking clarification and review cleanup for #106; preserved contributor acknowledgments during rebase); Claude (the shared UI parts, #251). -->
 <!-- Contributors: OpenAI Codex (removed obsolete Google collision UI, #107). -->
 <!-- Contributors: OpenAI Codex (Google entry routing for #107). -->
@@ -91,7 +92,7 @@ flowchart TB
   chats["Chats list · chat"]:::pb
 ```
 
-**Integration:** #112 replaces the Map detail placeholder with one shared screen and ViewModel class. Each entry tab registers its own event-ID route (the helper proposed in #157 is `Tab.eventDetailRoute`), so Events, Map and Create Event entry points return to their own tab stack without changing the selected tab. Unbuilt actions (Find a group, download data, attendance-based matching and account deletion) show a not-available Snackbar; they do not open unfinished screens. Privacy's full notice works offline. Logout must also cancel the previous account's reminders and avoid exposing its cached data to the next account (#109).
+**Integration:** #112 replaces the Map detail placeholder with one shared screen and ViewModel class. Each entry tab registers its own event-ID route (the helper proposed in #157 is `Tab.eventDetailRoute`), so Events, Map and Create Event entry points return to their own tab stack without changing the selected tab. Unbuilt actions (Find a group, download data, attendance-based matching and account deletion) show a not-available Snackbar; they do not open unfinished screens. Account deletion keeps it until #207 connects the agreed flow (decision 15). Privacy's full notice works offline. Logout and account deletion must also cancel the previous account's reminders (#109, #123); #198's `SessionGuard` keeps the cached data away from the next account (decision 15).
 
 
 Notes:
@@ -211,7 +212,7 @@ This is the design to build against, not a claim that every component is already
 | Filtering (#114, #115) | `EventFilter` + pure `filterEvents(events, filter, userLocation)`; Events / Map ViewModels | Filter already loaded `getUpcomingPublicEvents` results | No new Firestore query or index. Case/accent-insensitive title search; categories OR, criteria AND; clock-injected date range [start, end); missing location ignores the distance criterion. |
 | Attendance (#121, #122) | Detail: register/cancel; pure capacity checks coordinated by its ViewModel | `RegistrationRepository.register(eventId)`, `cancel(eventId)`, `observeMyRegistrations()`; Firestore implementation + fake | Planned `events/{eventId}/attendees/{uid}`. Register is idempotent; full events are refused atomically; offline writes fail instead of queuing. Schema and capacity enforcement still need the confirmation below. |
 | Reminder (#120, #123) | Registered student's explicit opt-in; pure start minus 1 hour calculation | `ReminderScheduler` interface + fake; WorkManager only in its implementation | Unique work per event on the device, no new Firestore collection or FCM. No scheduling once the reminder time has passed; denial restores Off. Off/cancel/logout removes work; notification taps open shared detail. |
-| Privacy / logout (#103, #108, #109) | Profile entry, dated offline notice and unbuilt-action Snackbar; logout confirmation | Notice requires no new data access; logout uses `AuthRepository.logOut()` | Notice describes only collected data and actual access. Export, attendance-based matching and in-app deletion remain unavailable; the private manual-deletion contact must be confirmed. Logout/cache isolation needs the #109 team's decision. |
+| Privacy / logout (#103, #108, #109) | Profile entry, dated offline notice and unbuilt-action Snackbar; logout confirmation | Notice requires no new data access; logout uses `AuthRepository.logOut()` | Notice describes only collected data and actual access. Export and attendance-based matching remain unavailable, and in-app deletion until #207 (policy: decision 15). The private manual-deletion contact, also the associations' deletion route, must be confirmed. Cache isolation on any UID change follows #198 (decision 15). |
 
 **Sprint Planning decisions** recorded in [#141](https://github.com/swent-polysocial/PolySocial/pull/141): only the creator is an organizer until Public profiles provides a way to find co-organizers; reminders are opt-in, not automatic; association screens move to Sprint 3; an eventual Cancel event deletes it rather than introducing a cancellation status; every unbuilt action reports its availability. This document records the design without changing Authentication or Security Rules.
 
@@ -417,7 +418,7 @@ Every PR that changes rules follows the process in `AGENTS.md`: "Changes Securit
 
 - **Google sign-in (#106):** both entry buttons use Credential Manager through the auth repository. Invalid domains are rejected before Firebase account creation; Firebase validates the token and verified exact `@epfl.ch` identity before profile access. Firebase manages compatible account linking; the owner confirmed automatic linking for EPFL Google accounts through EPFL SSO. Use Firebase's returned UID without client-side linking or a dedicated collision flow.
 
-Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after review, and 5 and 11 revised on 2026-10-06. The issues are being updated to match.
+Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after review, and 5 and 11 revised on 2026-10-06; 15 added on 2026-10-28 (#201). The issues are being updated to match.
 
 | # | Topic | Decision |
 |---|---|---|
@@ -435,8 +436,37 @@ Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after re
 | 12 | One-to-one chat | A two-member group (one chat model) |
 | 13 | Dependency injection | **Hilt** (changed after review). It is Android's recommended DI library, scales as repositories grow, and Hilt test modules swap in the fakes cleanly. The cost is some setup and slower builds |
 | 14 | Back button | At a non-home tab root, go to the Events tab. At the Events root, exit. This is Android's standard pattern (changed after review) |
+| 15 | Account deletion | Self-service for students, unverified accounts included; associations stay admin-assisted and the flow refuses them with the privacy contact. A callable Cloud Function `deleteAccount` (Functions v2, Node 22, `europe-west6`) requires a sign-in under 5 minutes old, then deletes `users/{uid}` and the Auth user with the Admin SDK; both steps are idempotent, so Retry completes a partial deletion. Events are kept unchanged (the UID is opaque; a missing profile shows "Deleted user"). No Security Rules change; deployed by hand on Blaze, expected within the free quotas. The client refuses offline, reauthenticates, then clears the cache and verification keys and opens Welcome. `SessionGuard` clears the cache on any UID change (#198); unverified accounts older than 7 days are deleted on a schedule (#149) (added on 2026-10-28, #201) |
 
 **Sprint 2 decisions:** sign-in is email/password and Google only, not Microsoft, which would need EPFL's admin to whitelist the app, while Google goes through EPFL's SSO (#106, #107, PR #197 review); events store the picked place's name as an optional `locationName` of at most 100 characters (rules #102, app #151; blank for older events); Nominatim remains the approved explicit-search geocoder; one shared detail screen replaces the Map placeholder, using each entry tab's event-ID route; co-organizers wait for Public profiles; associations move to Sprint 3; unbuilt actions show a Snackbar. Sources: #103, #106, #111, #112 and the Sprint Planning record #141.
+
+**Account deletion matrix** (decision 15, #201). What a student's deletion does to each piece of data:
+
+| Data | On delete | Layer |
+|---|---|---|
+| Firebase Auth user | deleted (step 2) | function (Admin SDK) |
+| `users/{uid}` | deleted (step 1) | function (Admin SDK) |
+| `events/*` the user created or organizes | kept unchanged; co-organizers keep managing it, a sole organizer's event can't be edited any more; "Deleted user" where a profile lookup fails | none |
+| `allowedUids` entries on others' private events | kept (opaque UID, no personal data) | none |
+| attendees (#121), reminders (#123) | not built yet; their issues add cleanup to the function or the reminder worker | — |
+| Firestore disk cache | cleared after `Deleted` (`SessionCache.clear()`) | client |
+| `verification_timing` keys for the UID | cleared (`VerificationStore.clear(uid)`) | client |
+| tab and auth UI state | reset; Welcome shown, Back can't return | client |
+
+How each failure behaves:
+
+| Failure | Behaviour |
+|---|---|
+| offline at confirm | refused before any call ("You're offline"); nothing changes |
+| wrong password | stays on the password step with an error; account unchanged |
+| reauthentication network error | recoverable error with Retry |
+| function `recent-login-required` | back to the password step |
+| function `association` | `NotAllowed` message with the privacy contact; account unchanged |
+| function `unavailable` / `internal` | error with Retry; retrying is safe (idempotent) |
+| profile deleted, Auth delete failed | user still signed in; Retry completes step 2 (step 1 is a no-op) |
+| both deleted, answer lost | next attempt sees an invalid user, treated as `Deleted`, then local cleanup |
+| cache clear fails after deletion | blocking Retry, as for logout; the account is already gone |
+| user cancels before the function call | nothing changes |
 
 **Open questions** (add new ones here and in `CONTEXT.md`):
 - **Mapbox production account:** who adds billing, which usage alert applies, and when does a dedicated token replace the signup token? Mapbox bills separately from Google Cloud. Needed before release.
@@ -445,7 +475,8 @@ Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after re
 - **Association validation shared between stacks (#125, #127):** setup (#256) and Edit details (#248) would validate the same fields twice, with different website checks. Proposed: whichever merges first owns it, and the other reuses it. Lucas [answered](https://github.com/swent-polysocial/PolySocial/pull/256#issuecomment-6498630706) that #256's `AssociationValidation.kt` owns it and #248 reuses it; open until #248 confirms.
 - **Events without an end time:** `endTime` is optional, but check-in and Find my group only work during the event. Which time window applies when it is not set?
 - **Attendance schema/capacity (#121):** confirm `events/{eventId}/attendees/{uid}` and its fields before implementation. How can a student's registration atomically enforce capacity while other attendees and event writes remain organizer-only? Agree the transaction/rules design without widening private reads or organizer write access.
-- **Logout/reminders (#109, #123):** confirm account-scoped reminder cancellation and cache isolation before another account enters.
+- **Logout/reminders (#109, #123):** confirm account-scoped reminder cancellation on logout and account deletion before another account enters; cache isolation is decided (#198, decision 15).
+- **Association account deletion (#201):** associations can't delete their own `users/{uid}` (#161), and the deletion flow refuses them with the privacy contact. Who deletes an association account, its `associations/{uid}` and its events, and how, is not decided.
 - **Year field values:** the profile step offers BA1–BA6 and MA1–MA4 under "Year" (as in Figma and #34), but these are EPFL semesters, and there is no option for exchange or PhD students. Rename to "Semester" and/or add options?
 
 ## 8. Backlog traceability
