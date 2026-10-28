@@ -5,6 +5,8 @@
 // #31 after review); OpenAI Codex (GPT-6.1 Sol, medium; integrated sign-up results and display
 // name; implemented verification result contracts for #31);
 // OpenAI Codex (password recovery contract for #164).
+// Contributors: Claude (Fable 5.1, Anthropic) drafted the re-authentication contract for #206;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.model.auth
 
 import android.content.Context
@@ -97,6 +99,46 @@ interface AuthRepository {
 
   /** Reloads the account and refreshes its ID token before reporting verified access. */
   suspend fun reloadAndCheckVerified(): VerificationResult
+
+  /**
+   * How the signed-in account can sign in, to offer the matching re-authentication. Empty when
+   * nobody is signed in or no supported method is linked.
+   */
+  fun currentSignInMethods(): Set<SignInMethod>
+
+  /** Confirms the signed-in user's password before a sensitive operation such as deletion. */
+  suspend fun reauthenticateWithPassword(password: String): ReauthResult
+
+  /**
+   * Confirms the signed-in user with the Google picker, like [signInWithGoogle]; the context is
+   * held only while the picker is open.
+   */
+  suspend fun reauthenticateWithGoogle(context: Context): ReauthResult
+}
+
+/** A sign-in method linked to the account, reduced to the ones the app supports. */
+enum class SignInMethod {
+  PASSWORD,
+  GOOGLE,
+}
+
+/** Outcome of re-authenticating the signed-in user; a failure leaves the account unchanged. */
+sealed interface ReauthResult {
+  data object Success : ReauthResult
+
+  /** The password is wrong. */
+  data object WrongPassword : ReauthResult
+
+  /** The user dismissed the Google picker; nothing changed. */
+  data object Cancelled : ReauthResult
+
+  /** Nobody is signed in, or the account no longer exists or is disabled. */
+  data object NotSignedIn : ReauthResult
+
+  data object NetworkError : ReauthResult
+
+  /** Any other failure, including picking a Google account other than the signed-in one. */
+  data object UnexpectedError : ReauthResult
 }
 
 /** Outcome of sending an email; a successful send does not mean the account is verified. */

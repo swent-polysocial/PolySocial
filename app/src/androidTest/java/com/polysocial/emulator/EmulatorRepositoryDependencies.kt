@@ -1,3 +1,5 @@
+// Contributors: Claude (Fable 5.1, Anthropic) drafted the re-authentication stubs for #206; Mohamed
+// Khellaf (reviewed and revised).
 // Contributors: Claude (the signed-in user of the event tests, #118); OpenAI Codex (verification,
 // password-reset and Google sign-in contracts, #31, #164, #106). Claude Opus 5.5 (moved here to
 // share it with the registration tests, #121).
@@ -9,7 +11,9 @@ import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.GoogleSignInResult
 import com.polysocial.model.auth.LogInResult
 import com.polysocial.model.auth.PasswordResetResult
+import com.polysocial.model.auth.ReauthResult
 import com.polysocial.model.auth.SendVerificationResult
+import com.polysocial.model.auth.SignInMethod
 import com.polysocial.model.auth.SignUpResult
 import com.polysocial.model.auth.VerificationResult
 import com.polysocial.model.network.NetworkMonitor
@@ -42,6 +46,14 @@ class EmulatorSignedInUser(private val emulator: FirebaseEmulator) : AuthReposit
 
   override suspend fun reloadAndCheckVerified(): VerificationResult =
       throw UnsupportedOperationException("Verification is outside the emulator fixtures")
+
+  override fun currentSignInMethods(): Set<SignInMethod> = emptySet()
+
+  override suspend fun reauthenticateWithPassword(password: String): ReauthResult =
+      throw UnsupportedOperationException("Re-authentication is outside the emulator fixtures")
+
+  override suspend fun reauthenticateWithGoogle(context: Context): ReauthResult =
+      throw UnsupportedOperationException("Re-authentication is outside the emulator fixtures")
 
   override fun logOut() = emulator.auth.signOut()
 
