@@ -1,5 +1,6 @@
 // Contributors: Claude (the association's Events tab from the Figma "Association · events tab"
 // frame, #132; keeping the split current and the year on other years' dates, #132 review).
+// Contributors: Claude (the shared offline banner, #251).
 package com.polysocial.ui.event.list
 
 import androidx.compose.foundation.background
@@ -156,7 +157,7 @@ fun AssociationEventsScreen(
               },
           )
           val events = if (selected == OwnEventsTab.UPCOMING) state.upcoming else state.past
-          if (state.isOffline) OfflineBanner(Modifier.padding(horizontal = 20.dp))
+          if (state.isOffline) EventsOfflineBanner(Modifier.padding(horizontal = 20.dp))
           if (events.isEmpty()) {
             EmptyState(
                 title =

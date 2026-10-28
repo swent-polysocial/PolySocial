@@ -1,6 +1,7 @@
 // Contributors: Claude (event detail screen from the Figma "Event detail" Sprint 2 frames, #112;
 // Retry in the offline "not saved" state, #194; Edit and Cancel event for organizers, #131;
 // the association's name, #128).
+// Contributors: Claude (the shared offline banner, #251).
 package com.polysocial.ui.event.detail
 
 import androidx.annotation.DrawableRes
@@ -65,6 +66,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
 import com.polysocial.model.event.EventCategory
 import com.polysocial.ui.common.LoadingState
+import com.polysocial.ui.common.OfflineBanner
 import com.polysocial.ui.common.StateButton
 import com.polysocial.ui.event.VerifiedPill
 import com.polysocial.ui.event.style
@@ -77,8 +79,6 @@ import com.polysocial.ui.theme.Ink
 import com.polysocial.ui.theme.Ink2
 import com.polysocial.ui.theme.PlusJakartaSans
 import com.polysocial.ui.theme.Surface
-import com.polysocial.ui.theme.Warning
-import com.polysocial.ui.theme.WarningSoft
 import com.polysocial.ui.theme.exact
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -333,7 +333,8 @@ private fun EventContent(
       }
       SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
     }
-    if (state.isOffline) OfflineBanner(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp))
+    if (state.isOffline)
+        DetailOfflineBanner(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp))
     if (state.isOrganizer) {
       CancelEventButton(
           organizer.onCancelEvent,
@@ -579,27 +580,16 @@ private fun timeText(details: EventDetails): String {
   return stringResource(R.string.events_time_range, start, endText)
 }
 
+/** The detail's offline banner: its text can wrap, so the icon stays on the first line. */
 @Composable
-private fun OfflineBanner(modifier: Modifier = Modifier) {
-  Row(
-      modifier =
-          modifier
-              .fillMaxWidth()
-              .background(WarningSoft, RoundedCornerShape(14.dp))
-              .padding(horizontal = 14.dp, vertical = 13.dp)
-              .testTag(EventDetailTags.OFFLINE_BANNER),
-      horizontalArrangement = Arrangement.spacedBy(10.dp),
-      // Figma starts the icon and the text on the same line, so a two-line text keeps the icon at
-      // the top.
+private fun DetailOfflineBanner(modifier: Modifier = Modifier) {
+  OfflineBanner(
+      message = stringResource(R.string.event_detail_offline),
+      tag = EventDetailTags.OFFLINE_BANNER,
+      modifier = modifier,
+      textStyle = MaterialTheme.typography.labelMedium.figmaExact(),
       verticalAlignment = Alignment.Top,
-  ) {
-    Icon(painterResource(R.drawable.ic_offline), contentDescription = null, tint = Warning)
-    Text(
-        text = stringResource(R.string.event_detail_offline),
-        style = MaterialTheme.typography.labelMedium.figmaExact(),
-        color = Warning,
-    )
-  }
+  )
 }
 
 /**

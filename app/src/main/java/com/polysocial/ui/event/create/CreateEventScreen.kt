@@ -1,5 +1,6 @@
 // Contributors: Claude (drafted the Create Event screen and restyled it from the Figma, section 04,
-// following the Log in and profile screens; opens the location picker, #111; Edit event, #131).
+// following the Log in and profile screens; opens the location picker, #111; Edit event, #131;
+// its field label, failure banner and button shared through ui/common, #251).
 package com.polysocial.ui.event.create
 
 import androidx.activity.compose.BackHandler
@@ -34,7 +35,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -85,13 +85,16 @@ import com.polysocial.model.event.MAX_DESCRIPTION_LENGTH
 import com.polysocial.model.event.MAX_TITLE_LENGTH
 import com.polysocial.model.event.MIN_CAPACITY
 import com.polysocial.resources.C
+import com.polysocial.ui.common.ErrorBanner
+import com.polysocial.ui.common.FieldLabel
 import com.polysocial.ui.common.LoadingState
+import com.polysocial.ui.common.PRIMARY_BUTTON_HEIGHT
+import com.polysocial.ui.common.PrimaryButton
+import com.polysocial.ui.common.secondaryTextStyle
 import com.polysocial.ui.theme.Accent
-import com.polysocial.ui.theme.AccentSoft
 import com.polysocial.ui.theme.AccentText
 import com.polysocial.ui.theme.Bg
 import com.polysocial.ui.theme.Border
-import com.polysocial.ui.theme.Disabled
 import com.polysocial.ui.theme.Ink
 import com.polysocial.ui.theme.Ink2
 import com.polysocial.ui.theme.Ink3
@@ -512,11 +515,6 @@ private fun Section(
   content()
 }
 
-@Composable
-private fun FieldLabel(@StringRes text: Int) {
-  Text(stringResource(text), style = MaterialTheme.typography.labelMedium, color = Ink2)
-}
-
 /** The outline every Figma field shares: white, 12 dp corners, a 2 dp accent border on error. */
 private fun Modifier.fieldOutline(isError: Boolean, shape: RoundedCornerShape) =
     background(Bg, shape)
@@ -722,11 +720,6 @@ private class SuffixTransformation(private val suffix: String) : VisualTransform
   }
 }
 
-/** Figma's 13 sp regular text with 18 sp lines, used under the visibility options and banners. */
-@Composable
-private fun secondaryTextStyle(): TextStyle =
-    MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp, lineHeight = 18.sp)
-
 @Composable
 private fun ActionBar(state: CreateEventUiState, onSubmit: () -> Unit) {
   val failed = state.status is CreateEventStatus.Failed
@@ -735,15 +728,17 @@ private fun ActionBar(state: CreateEventUiState, onSubmit: () -> Unit) {
     Box(Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp)) {
       PrimaryButton(
           text =
-              when {
-                state.status == CreateEventStatus.Saving && state.isEditing ->
-                    R.string.edit_event_saving
-                state.status == CreateEventStatus.Saving -> R.string.create_event_saving
-                failed -> R.string.create_event_try_again
-                state.isEditing -> R.string.edit_event_submit
-                state.form.isPrivate -> R.string.create_event_submit_private
-                else -> R.string.create_event_submit_public
-              },
+              stringResource(
+                  when {
+                    state.status == CreateEventStatus.Saving && state.isEditing ->
+                        R.string.edit_event_saving
+                    state.status == CreateEventStatus.Saving -> R.string.create_event_saving
+                    failed -> R.string.create_event_try_again
+                    state.isEditing -> R.string.edit_event_submit
+                    state.form.isPrivate -> R.string.create_event_submit_private
+                    else -> R.string.create_event_submit_public
+                  }
+              ),
           enabled = state.canSubmit,
           loading = state.status == CreateEventStatus.Saving,
           tag = C.Tag.create_event_submit,
@@ -753,71 +748,15 @@ private fun ActionBar(state: CreateEventUiState, onSubmit: () -> Unit) {
   }
 }
 
-/** Figma's dark pill button; greyed out when disabled, with a spinner while [loading]. */
-@Composable
-private fun PrimaryButton(
-    @StringRes text: Int,
-    enabled: Boolean,
-    tag: String,
-    loading: Boolean = false,
-    onClick: () -> Unit,
-) {
-  val greyed = !enabled && !loading
-  Row(
-      Modifier.fillMaxWidth()
-          .height(BUTTON_HEIGHT)
-          .clip(MaterialTheme.shapes.large)
-          .background(if (greyed) Disabled else Ink)
-          .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-          .testTag(tag),
-      horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
-      verticalAlignment = Alignment.CenterVertically,
-  ) {
-    if (loading) {
-      CircularProgressIndicator(
-          modifier = Modifier.size(18.dp),
-          color = Bg,
-          trackColor = Bg.copy(alpha = 0.3f),
-          strokeWidth = 2.dp,
-      )
-    }
-    Text(
-        stringResource(text),
-        style = MaterialTheme.typography.titleSmall,
-        color = if (greyed) Ink3 else Bg,
-    )
-  }
-}
-
 @Composable
 private fun FailureBanner(reason: CreateEventStatus.Failed.Reason, isEditing: Boolean) {
-  Row(
-      Modifier.fillMaxWidth()
-          .background(AccentSoft, RoundedCornerShape(14.dp))
-          .padding(14.dp)
-          .testTag(C.Tag.create_event_failure),
-      horizontalArrangement = Arrangement.spacedBy(12.dp),
-  ) {
-    Image(
-        painterResource(
-            when (reason) {
-              CreateEventStatus.Failed.Reason.OFFLINE -> R.drawable.ic_wifi_off
-              CreateEventStatus.Failed.Reason.UNEXPECTED -> R.drawable.ic_error
-            }
-        ),
-        contentDescription = null,
-        modifier = Modifier.size(20.dp),
-    )
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-      Text(
+  ErrorBanner(
+      title =
           stringResource(
               if (isEditing) R.string.edit_event_failed_title
               else R.string.create_event_failed_title
           ),
-          style = secondaryTextStyle().copy(fontSize = 14.sp, fontWeight = FontWeight.Bold),
-          color = Ink,
-      )
-      Text(
+      message =
           stringResource(
               when (reason) {
                 CreateEventStatus.Failed.Reason.OFFLINE ->
@@ -828,11 +767,9 @@ private fun FailureBanner(reason: CreateEventStatus.Failed.Reason, isEditing: Bo
                     else R.string.create_event_unexpected_body
               }
           ),
-          style = secondaryTextStyle(),
-          color = Ink2,
-      )
-    }
-  }
+      offline = reason == CreateEventStatus.Failed.Reason.OFFLINE,
+      tag = C.Tag.create_event_failure,
+  )
 }
 
 /** The visible errors among [errors], each as Figma's red marker and message under its field. */
@@ -1018,7 +955,7 @@ private fun EventCreated(
       )
       Spacer(Modifier.weight(1f))
       PrimaryButton(
-          text = R.string.event_created_view_event,
+          text = stringResource(R.string.event_created_view_event),
           enabled = true,
           tag = C.Tag.event_created_view_event,
           onClick = onViewEvent,
@@ -1026,7 +963,7 @@ private fun EventCreated(
       Spacer(Modifier.height(12.dp))
       Box(
           Modifier.fillMaxWidth()
-              .height(BUTTON_HEIGHT)
+              .height(PRIMARY_BUTTON_HEIGHT)
               .clip(MaterialTheme.shapes.large)
               .background(Bg)
               .border(1.dp, Border, MaterialTheme.shapes.large)
@@ -1095,5 +1032,4 @@ private val FIELD_HEIGHT = 50.dp
 private val DESCRIPTION_HEIGHT = 92.dp
 private val LOCATION_HEIGHT = 48.dp
 private val FIELD_RADIUS = 12.dp
-private val BUTTON_HEIGHT = 52.dp
 private const val SAVING_ALPHA = 0.45f
