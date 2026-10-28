@@ -33,7 +33,7 @@ sealed interface PendingAssociationUiState {
 /**
  * Reads the signed-in association's details once, for every tab of its pending app (#127): the
  * Events and Map headers show its name and initials, and the Organization tab its details. A failed
- * read can be retried.
+ * read can be retried; saved edits replace the details without reading them again.
  */
 @HiltViewModel
 class PendingAssociationViewModel
@@ -74,6 +74,11 @@ constructor(
   /** Reads the details again after [PendingAssociationUiState.Failed]; ignored otherwise. */
   fun retry() {
     if (_uiState.value == PendingAssociationUiState.Failed) load()
+  }
+
+  /** Edit details saved [association]: shows it everywhere at once. */
+  fun onSaved(association: Association) {
+    _uiState.value = PendingAssociationUiState.Loaded(association)
   }
 
   private fun load() {
