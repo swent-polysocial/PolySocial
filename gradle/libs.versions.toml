@@ -3,6 +3,8 @@
 # Contributors: Claude (Hilt, KSP and Hilt testing entries, #70; Navigation Compose entry, #41;
 # MockK and coroutines for Play Services Tasks, #32); OpenAI Codex (sign-up test entries
 # and Android MockK for the sign-up form device tests).
+# Contributors: Claude (Fable 5.1, Anthropic) drafted the Firebase Functions entry for #206;
+# Mohamed Khellaf (reviewed and revised).
 [versions]
 mapbox = "11.32.0"
 credentials = "1.6.0"
@@ -72,6 +74,7 @@ mockk-android = { module = "io.mockk:mockk-android", version.ref = "mockk" }
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-auth = { group = "com.google.firebase", name = "firebase-auth" }
 firebase-firestore = { group = "com.google.firebase", name = "firebase-firestore" }
+firebase-functions = { group = "com.google.firebase", name = "firebase-functions" }
 kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "coroutinesPlayServices" }
 
 hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
