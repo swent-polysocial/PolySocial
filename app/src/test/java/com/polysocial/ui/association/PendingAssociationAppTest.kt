@@ -1,12 +1,14 @@
 // Contributors: Claude (wrote these tests, #127; testing agent: each "not available" entry, the
-// replaced Snackbar, the logout dialog's states, #127).
+// replaced Snackbar, the logout dialog's states, leaving once saved, #127).
 package com.polysocial.ui.association
 
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
@@ -17,11 +19,14 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextReplacement
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
 import com.polysocial.model.association.AssociationResult
+import com.polysocial.model.association.AssociationType
 import com.polysocial.model.association.FakeAssociationRepository
+import com.polysocial.model.association.UpdateAssociationResult
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.firebase.CacheClearResult
 import com.polysocial.model.firebase.SessionCache
@@ -38,7 +43,7 @@ import org.junit.runner.RunWith
 
 /**
  * The pending association app (#127) with its real ViewModels over fake repositories: its tabs, the
- * "not available yet" Snackbar, its details and logging out.
+ * "not available yet" Snackbar, editing its details and logging out.
  */
 @RunWith(AndroidJUnit4::class)
 class PendingAssociationAppTest {
@@ -66,6 +71,7 @@ class PendingAssociationAppTest {
             onLoggedOut = { loggedOut++ },
             viewModel = pending,
             logoutViewModel = logout,
+            editViewModel = { viewModel { EditAssociationViewModel(associations) } },
         )
       }
     }
@@ -79,6 +85,17 @@ class PendingAssociationAppTest {
   private fun openOrganization() {
     compose.onNodeWithTag(AssociationTags.NAV_ORGANIZATION).performClick()
     compose.onNodeWithTag(AssociationTags.ORGANIZATION_SCREEN).assertIsDisplayed()
+  }
+
+  private fun openEditDetails() {
+    openOrganization()
+    compose.onNodeWithTag(AssociationTags.EDIT).performClick()
+    compose.onNodeWithTag(EditAssociationTags.SCREEN).assertIsDisplayed()
+  }
+
+  private fun save() {
+    compose.onNodeWithTag(EditAssociationTags.SAVE).performClick()
+    compose.waitForIdle()
   }
 
   // --- The tabs ---
@@ -193,6 +210,163 @@ class PendingAssociationAppTest {
     compose.onNodeWithTag(AssociationTags.NAV_ORGANIZATION).assertIsSelected()
   }
 
+  // --- Edit details ---
+
+  @Test
+  fun editingTheName_callsUpdateAssociation_andShowsTheNewName() {
+    launch()
+    openEditDetails()
+    // Full screen, as in Figma.
+    compose.onNodeWithTag(AssociationTags.BOTTOM_BAR).assertDoesNotExist()
+    compose.onNodeWithTag(EditAssociationTags.NAME).assertTextEquals("Test Club")
+
+    compose.onNodeWithTag(EditAssociationTags.NAME).performTextReplacement("Renamed Club")
+    save()
+
+    assertEquals(listOf(testClub.copy(name = "Renamed Club")), associations.updatedAssociations)
+    // Back on the tab, which shows the saved name, like the other tabs' headers.
+    compose.onNodeWithTag(AssociationTags.ORGANIZATION_SCREEN).assertIsDisplayed()
+    node(AssociationTags.NAME).assertTextEquals("Renamed Club")
+    compose.onNodeWithTag(AssociationTags.NAV_EVENTS).performClick()
+    node(AssociationTags.HEADER_NAME).assertTextEquals("Renamed Club")
+    // Saved without reading the details again.
+    assertEquals(1, associations.requestedUids.size)
+  }
+
+  @Test
+  fun editingTheTypeAboutAndWebsite_savesThemAll() {
+    launch()
+    openEditDetails()
+
+    compose.onNodeWithTag(EditAssociationTags.type(AssociationType.COMMISSION)).performClick()
+    compose.onNodeWithTag(EditAssociationTags.type(AssociationType.COMMISSION)).assertIsSelected()
+    compose.onNodeWithTag(EditAssociationTags.ABOUT).performTextReplacement("New about.")
+    compose.onNodeWithTag(EditAssociationTags.WEBSITE).performTextReplacement("")
+    save()
+
+    assertEquals(
+        testClub.copy(type = AssociationType.COMMISSION, about = "New about.", website = null),
+        associations.updatedAssociations.single(),
+    )
+    node(AssociationTags.TYPE).assertTextEquals("Commission · EPFL")
+  }
+
+  @Test
+  fun emptyFields_showFigmasErrors_disableSave_andSaveNothing() {
+    launch()
+    openEditDetails()
+
+    compose.onNodeWithTag(EditAssociationTags.NAME).performTextReplacement("")
+    compose.onNodeWithTag(EditAssociationTags.ABOUT).performTextReplacement("  ")
+    // The placeholders show in the empty fields.
+    compose.onNodeWithText("Your association's name", useUnmergedTree = true).assertIsDisplayed()
+    save()
+
+    compose
+        .onNodeWithTag(EditAssociationTags.error(AssociationFormError.NAME_MISSING))
+        .assertTextEquals("Add a name")
+    compose
+        .onNodeWithTag(EditAssociationTags.error(AssociationFormError.ABOUT_MISSING))
+        .assertTextEquals("Add a description")
+    compose.onNodeWithTag(EditAssociationTags.SAVE).assertIsNotEnabled()
+    assertEquals(0, associations.updatedAssociations.size)
+
+    compose.onNodeWithTag(EditAssociationTags.NAME).performTextReplacement("Club")
+    compose
+        .onNodeWithTag(EditAssociationTags.error(AssociationFormError.NAME_MISSING))
+        .assertDoesNotExist()
+    compose.onNodeWithTag(EditAssociationTags.ABOUT).performTextReplacement("About")
+    compose.onNodeWithTag(EditAssociationTags.SAVE).assertIsEnabled()
+  }
+
+  @Test
+  fun aWebsiteTheRulesWouldRefuse_showsAnError_andSavesNothing() {
+    launch()
+    openEditDetails()
+
+    compose.onNodeWithTag(EditAssociationTags.WEBSITE).performTextReplacement("example.org")
+    save()
+
+    compose
+        .onNodeWithTag(EditAssociationTags.error(AssociationFormError.WEBSITE_INVALID))
+        .assertTextEquals("Use a link starting with https://")
+    assertEquals(0, associations.updatedAssociations.size)
+  }
+
+  @Test
+  fun offline_showsFigmasBanner_keepsTheEdits_andTryAgainSaves() {
+    associations.updateAssociationResult = UpdateAssociationResult.NetworkError
+    launch()
+    openEditDetails()
+    compose.onNodeWithTag(EditAssociationTags.NAME).performTextReplacement("Renamed Club")
+
+    save()
+
+    compose.onNodeWithTag(EditAssociationTags.FAILURE).assertIsDisplayed()
+    compose
+        .onNodeWithTag(EditAssociationTags.FAILURE)
+        .assertTextContains("Couldn't save your details", substring = true)
+    compose
+        .onNodeWithTag(EditAssociationTags.FAILURE)
+        .assertTextContains(
+            "You're offline. Your changes are kept, so try again once you're back online.",
+            substring = true,
+        )
+    compose.onNodeWithTag(EditAssociationTags.SAVE).assertTextEquals("Try again")
+    compose.onNodeWithTag(EditAssociationTags.NAME).assertTextEquals("Renamed Club")
+    compose.onNodeWithTag(EditAssociationTags.SCREEN).assertIsDisplayed()
+
+    associations.updateAssociationResult = UpdateAssociationResult.Updated
+    save()
+
+    assertEquals(2, associations.updatedAssociations.size)
+    node(AssociationTags.NAME).assertTextEquals("Renamed Club")
+  }
+
+  @Test
+  fun anUnexpectedFailure_hasItsOwnMessage() {
+    associations.updateAssociationResult = UpdateAssociationResult.UnexpectedError
+    launch()
+    openEditDetails()
+
+    save()
+
+    compose
+        .onNodeWithTag(EditAssociationTags.FAILURE)
+        .assertTextContains(
+            "Something went wrong. Your changes are kept, so try again.",
+            substring = true,
+        )
+    node(AssociationTags.NAME).assertDoesNotExist()
+  }
+
+  @Test
+  fun back_leavesWithoutSaving_toTheOrganizationTab() {
+    launch()
+    openEditDetails()
+    compose.onNodeWithTag(EditAssociationTags.NAME).performTextReplacement("Not saved")
+
+    compose.onNodeWithTag(EditAssociationTags.BACK).performClick()
+
+    compose.onNodeWithTag(AssociationTags.ORGANIZATION_SCREEN).assertIsDisplayed()
+    node(AssociationTags.NAME).assertTextEquals("Test Club")
+    assertEquals(0, associations.updatedAssociations.size)
+  }
+
+  @Test
+  fun eachTab_keepsItsOwnBackStack() {
+    launch()
+    openEditDetails()
+
+    compose.onNodeWithTag(AssociationTags.BOTTOM_BAR).assertDoesNotExist()
+    compose.activity.runOnUiThread { compose.activity.onBackPressedDispatcher.onBackPressed() }
+    compose.onNodeWithTag(AssociationTags.ORGANIZATION_SCREEN).assertIsDisplayed()
+    compose.onNodeWithTag(AssociationTags.NAV_EVENTS).performClick()
+    compose.onNodeWithTag(AssociationTags.EVENTS_SCREEN).assertIsDisplayed()
+    compose.onNodeWithTag(AssociationTags.NAV_ORGANIZATION).performClick()
+    compose.onNodeWithTag(AssociationTags.ORGANIZATION_SCREEN).assertIsDisplayed()
+  }
+
   // --- Details that can't be read ---
 
   @Test
@@ -206,6 +380,7 @@ class PendingAssociationAppTest {
     openOrganization()
     compose.onNodeWithTag(AssociationTags.LOAD_ERROR).assertIsDisplayed()
     compose.onNodeWithText("Couldn't load your association").assertIsDisplayed()
+    compose.onNodeWithTag(AssociationTags.EDIT).assertDoesNotExist()
     compose.onNodeWithTag(AssociationTags.LOG_OUT).assertIsDisplayed()
 
     associations.getAssociationResult = AssociationResult.Found(testClub)
@@ -319,6 +494,7 @@ class PendingAssociationAppTest {
             onLoggedOut = { loggedOut++ },
             viewModel = pending,
             logoutViewModel = logout,
+            editViewModel = { viewModel { EditAssociationViewModel(associations) } },
         )
       }
     }
@@ -356,5 +532,17 @@ class PendingAssociationAppTest {
 
     assertEquals(2, clears)
     assertEquals(1, loggedOut)
+  }
+
+  @Test
+  fun theEditsScreen_isLeftOnceSaved_andTheBottomBarComesBack() {
+    launch()
+    openEditDetails()
+
+    save()
+
+    compose.onNodeWithTag(EditAssociationTags.SCREEN).assertDoesNotExist()
+    compose.onNodeWithTag(AssociationTags.BOTTOM_BAR).assertIsDisplayed()
+    compose.onNodeWithTag(AssociationTags.NAV_ORGANIZATION).assertIsSelected()
   }
 }

@@ -1,7 +1,17 @@
-// Contributors: Claude (association model and repository contract, #126).
+// Contributors: Claude (association model and repository contract, #126; the field limits as
+// constants for the Edit details form, #127).
 package com.polysocial.model.association
 
 import java.time.Instant
+
+/** The longest [Association.name] the Security Rules accept (#126). */
+const val MAX_ASSOCIATION_NAME_LENGTH = 60
+
+/** The longest [Association.about] the Security Rules accept (#126). */
+const val MAX_ASSOCIATION_ABOUT_LENGTH = 1000
+
+/** The longest [Association.website] the Security Rules accept (#126). */
+const val MAX_ASSOCIATION_WEBSITE_LENGTH = 200
 
 /** The kinds of organization in the Figma "Association setup" frame, stored by [name]. */
 enum class AssociationType {
