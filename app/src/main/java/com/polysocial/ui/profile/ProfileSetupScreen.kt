@@ -1,4 +1,3 @@
-// Contributors: OpenAI Codex (preserve Google profile-save handoff on Back for #107).
 // Contributors: Claude (profile step screen for #34, built from the Figma "First proposal
 // revamped" Profile frames; layout that grows with large text, one save report and picker
 // accessibility after review; plain Column layout after review; exact text from the theme, and

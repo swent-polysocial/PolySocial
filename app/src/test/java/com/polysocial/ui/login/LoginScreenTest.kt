@@ -1,4 +1,4 @@
-// Contributors: OpenAI Codex (Google cancellation regression for #107).
+// Contributors: OpenAI Codex (Google cancellation and independent loading regressions for #107).
 // Contributors: Claude Opus 5.5 (wrote these tests; eye icon label, exact redirect delay,
 // compact-height scrolling and locked fields while redirecting after review); OpenAI Codex
 // (GPT-6.1 Sol, medium; checked the official Google button label and placeholder behavior);
@@ -184,6 +184,40 @@ class LoginScreenTest {
     composeTestRule.waitForIdle()
 
     assertEquals(1, loggedInCalls)
+  }
+
+  @Test
+  fun googleLoading_disablesPasswordLoginWithoutShowingPasswordProgress() {
+    val gate = CompletableDeferred<Unit>()
+    auth.googleGate = gate
+    auth.googleResult = com.polysocial.model.auth.GoogleSignInResult.Cancelled
+    setScreen()
+    typeCredentials()
+
+    node(LoginScreenTestTags.GOOGLE).performClick()
+
+    node(LoginScreenTestTags.LOG_IN)
+        .assert(shows(string(R.string.login_log_in)))
+        .assertIsNotEnabled()
+    composeTestRule.onNodeWithText(string(R.string.login_logging_in)).assertDoesNotExist()
+    node(LoginScreenTestTags.EMAIL).assertIsNotEnabled()
+    node(LoginScreenTestTags.PASSWORD).assertIsNotEnabled()
+    node(LoginScreenTestTags.GOOGLE).assertIsNotEnabled()
+    node(LoginScreenTestTags.GOOGLE_LOADING).assertIsDisplayed()
+    node(LoginScreenTestTags.BACK).assertIsNotEnabled()
+    node(LoginScreenTestTags.FORGOT_PASSWORD).assertIsNotEnabled()
+    node(LoginScreenTestTags.CREATE_ACCOUNT).assertIsNotEnabled()
+    assertEquals(0, auth.logInCalls)
+
+    gate.complete(Unit)
+    composeTestRule.waitForIdle()
+
+    node(LoginScreenTestTags.GOOGLE_LOADING).assertDoesNotExist()
+    node(LoginScreenTestTags.LOG_IN).assertIsEnabled()
+    node(LoginScreenTestTags.EMAIL).assertIsEnabled()
+    node(LoginScreenTestTags.PASSWORD).assertIsEnabled()
+    assertEquals("a@epfl.ch", viewModel.uiState.value.email)
+    assertEquals("secret", viewModel.uiState.value.password)
   }
 
   @Test

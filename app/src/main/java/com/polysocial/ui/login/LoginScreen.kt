@@ -1,4 +1,4 @@
-// Contributors: OpenAI Codex (shared Google errors and Login handoff for #107).
+// Contributors: OpenAI Codex (shared Google errors, handoff and separate loading UI for #107).
 // Contributors: Claude (Log in screen for #32, built from the Figma "First proposal revamped"
 // frames); Claude Opus 5.5 (eye icon label, scrolling on short screens and locked fields while
 // redirecting, after review); OpenAI Codex (GPT-6.1 Sol, medium; official Google button artwork;
@@ -83,6 +83,7 @@ object LoginScreenTestTags {
   const val SCREEN = "login_screen"
   const val BACK = "login_back"
   const val GOOGLE = "login_google"
+  const val GOOGLE_LOADING = "login_google_loading"
   const val EMAIL = "login_email"
   const val PASSWORD = "login_password"
   const val PASSWORD_VISIBILITY = "login_password_visibility"
@@ -114,10 +115,11 @@ fun LoginScreen(
   val google = state.google
   LaunchedEffect(google.result) { if (google.result is GoogleSignInResult.Success) onLoggedIn() }
   BackHandler(google.busy) {}
-  if (google.error != null) {
+  val error = google.error
+  if (error != null) {
     BackHandler { viewModel.dismissGoogleError() }
     GoogleAuthErrorScreen(
-        google.error!!,
+        error,
         onBack = viewModel::dismissGoogleError,
         onRetry = { viewModel.onGoogle(context) },
     )
@@ -138,7 +140,7 @@ fun LoginScreen(
     }
   }
   LoginContent(
-      state = if (google.busy) state.copy(status = LoginStatus.Loading) else state,
+      state = state,
       onBack = onBack,
       onEmailChange = viewModel::onEmailChange,
       onPasswordChange = viewModel::onPasswordChange,
@@ -169,7 +171,10 @@ fun LoginContent(
   val showNotAvailable: () -> Unit = {
     scope.launch { snackbarHostState.showSnackbar(notAvailable) }
   }
-  val busy = state.status == LoginStatus.Loading || state.status == LoginStatus.LoggedIn
+  val busy =
+      state.google.busy ||
+          state.status == LoginStatus.Loading ||
+          state.status == LoginStatus.LoggedIn
   // While redirecting to Verify Email the account is already fixed, so the fields are locked too,
   // but Figma's redirect state keeps them at full opacity (only loading fades them).
   val fieldsLocked = busy || state.status == LoginStatus.Unverified
@@ -208,6 +213,14 @@ fun LoginContent(
               onClick = onGoogle,
               enabled = !fieldsLocked,
           )
+          if (state.google.busy) {
+            CircularProgressIndicator(
+                Modifier.align(Alignment.CenterHorizontally)
+                    .padding(top = 8.dp)
+                    .size(24.dp)
+                    .testTag(LoginScreenTestTags.GOOGLE_LOADING)
+            )
+          }
           Spacer(Modifier.height(19.5.dp))
           OrWithEmailDivider()
           Spacer(Modifier.height(20.dp))

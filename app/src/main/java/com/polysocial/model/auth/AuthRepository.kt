@@ -1,4 +1,4 @@
-// Contributors: OpenAI Codex (Google sign-in contract for #106).
+// Contributors: OpenAI Codex (Google sign-in contract for #106; context lifetime wording for #107).
 // Contributors: Claude (auth contract for #32; Sign up and Verify Email methods left to #30 and
 // #31 after review); OpenAI Codex (GPT-6.1 Sol, medium; integrated sign-up results and display
 // name; implemented verification result contracts for #31);
@@ -54,7 +54,11 @@ sealed interface SignUpResult {
  * ViewModels depend on this interface so tests can replace the backend.
  */
 interface AuthRepository {
-  /** Opens the Google picker using the current activity; never retains the context. */
+  /**
+   * Opens the Google picker using the current activity. The suspend call may hold this context
+   * until it returns or is cancelled, including across activity recreation; implementations must
+   * not store it beyond the operation.
+   */
   suspend fun signInWithGoogle(context: Context): GoogleSignInResult
 
   /**

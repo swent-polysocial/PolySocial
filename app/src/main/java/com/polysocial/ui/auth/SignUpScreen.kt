@@ -1,6 +1,5 @@
 // Contributors: OpenAI Codex (fresh signed-out forms, shared reset action and Welcome after
 // logout, #109).
-// Contributors: OpenAI Codex (Google startup and profile-step integration for #107).
 // Contributors: OpenAI Codex (Google startup, shared profile callbacks and integration for #107).
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; translated the Figma sign-up form to Compose
 // Foundation, reusing the shared app theme; connected login and added the official Google
@@ -340,10 +339,11 @@ fun AuthFlow(
         )
     AuthDestination.Welcome -> {
       BackHandler(welcomeState.busy) {}
-      if (welcomeState.error != null) {
+      val error = welcomeState.error
+      if (error != null) {
         BackHandler { welcomeViewModel.reset() }
         GoogleAuthErrorScreen(
-            welcomeState.error!!,
+            error,
             onBack = welcomeViewModel::reset,
             onRetry = { welcomeViewModel.onGoogle(context) },
         )

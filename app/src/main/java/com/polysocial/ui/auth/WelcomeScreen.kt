@@ -28,6 +28,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
@@ -69,6 +70,7 @@ import kotlinx.coroutines.launch
 object WelcomeTags {
   const val Screen = "welcome_screen"
   const val Google = "welcome_google"
+  const val GoogleLoading = "google_loading"
   const val SignUp = "welcome_sign_up"
   const val LogIn = "welcome_log_in"
   const val Association = "welcome_association"
@@ -169,8 +171,8 @@ private fun WelcomeActions(
 ) {
   GoogleSignInButton(WelcomeTags.Google, onGoogle, enabled = !busy)
   if (busy) {
-    androidx.compose.material3.CircularProgressIndicator(
-        Modifier.padding(top = 8.dp).size(24.dp).testTag("google_loading")
+    CircularProgressIndicator(
+        Modifier.padding(top = 8.dp).size(24.dp).testTag(WelcomeTags.GoogleLoading)
     )
   }
   Spacer(Modifier.height(12.dp))

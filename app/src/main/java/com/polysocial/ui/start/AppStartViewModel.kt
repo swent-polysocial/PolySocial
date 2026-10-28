@@ -1,6 +1,5 @@
 // Contributors: Claude (app-start routing for #32; refresh after Log in, not while loading; log
 // out and the created profile; Verify Email opened in-session, #74).
-// Contributors: OpenAI Codex (Google profile-setup Back routing for #107).
 package com.polysocial.ui.start
 
 import androidx.lifecycle.ViewModel
