@@ -17,6 +17,10 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 
 - **Association signup foundation (#125):** signup takes the existing account type, defaulting to student. Associations accept a valid email on any domain and omit the personal name. The controller records a private local email digest before remote signup; checked disk commits run off-main and block signup on failure. This same-device routing hint stores no raw email/password and grants no permissions. Setup/navigation follow separately; #127 owns pending UI and #208 owns login.
 
+
+- **Manual association approval (#135):** follow [README · Verifying an association](README.md#verifying-an-association). Only project owners set `users/{uid}.isAssociationVerified` to boolean true/false. The [#210 workflow proposal](docs/Association-Review.md) awaits teammate agreement; it adds no status field or access. #126/#127 remain responsible for pending data access and routing.
+
+
 - **Password recovery (#164):** the owner keeps email enumeration protection enabled. Request resets directly through `AuthRepository`; never fetch providers by email. All accepted requests show conditional inbox guidance, including unknown and Google-only addresses. The request preserves the auth session and login form. Firebase handles password choice on its hosted action page.
 - **Privacy notice (#103):** Profile exposes a read-only Privacy & data entry alongside confirmed logout (#109). The app shell supplies its destination to `ProfileRoute`; a standalone profile without that destination hides the entry. The summary and dated full notice are bundled and need no data query, so they remain usable offline. Export and attendance-based matching show an unavailable Snackbar (Delete account: #207 below); the switch remains Off and writes no consent. Collection/access text describes this build; #121 and #123 must update it when attendance or reminders are enabled. Mehdi authorized explicit prototype draft wording while contact/provider details are pending. `privacy_contact_email` stays empty until supplied; Hilt provides the configured address and contact service to each notice entry's ViewModel, which opens a user-controlled email draft when configured, and otherwise explains the missing address/client. No account data is added. Feedback effects must key both text and owner callback: replacing a ViewModel with the same message otherwise dismisses the previous owner.
 
@@ -238,6 +242,9 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 - 2026-10-29 · Registrations live in `events/{eventId}/attendees/{uid}` (`uid`, `registeredAt`) and a student reads their own with a collection-group query on `uid`, and can't register once the event has ended; the capacity check waits for a team decision on widening the event rule. ([#121](https://github.com/swent-polysocial/PolySocial/issues/121))
 - 2026-10-29 · The app calls the `deleteAccount` callable over plain HTTPS (callable protocol, ID token, explicit region and timeouts) instead of through the Functions SDK, which pulled in firebase-iid (FCM token registration, extra permissions); `firebase-functions` is removed. ([#269](https://github.com/swent-polysocial/PolySocial/pull/269))
 - 2026-10-29 · Until #259/#261 land, association setup uses the pending app and verified entry uses the existing app; an offline identity read keeps the pending retry path. ([#258 review](https://github.com/swent-polysocial/PolySocial/pull/258))
+
+- 2026-10-28 · Document manual association verification and draft review/rejection examples for teammate agreement; no backend permissions changed. ([#135](https://github.com/swent-polysocial/PolySocial/issues/135), [#210](https://github.com/swent-polysocial/PolySocial/issues/210))
+
 
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 
