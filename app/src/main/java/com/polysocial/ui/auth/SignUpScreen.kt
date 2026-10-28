@@ -6,7 +6,7 @@
 // placeholder button; connected the welcome entry screen and app-start/profile routing;
 // preserved submission handoffs on Back and aligned form hints, loading and recovery layout);
 // Claude (injectable signed-in content, so tests run without Hilt, #105; signed-out back stack,
-// profile step, sign-out and Figma start states, #74).
+// profile step, sign-out and Figma start states, #74; the pending association app, #127).
 // OpenAI Codex (verification routing, Back sign-out and replacement-session
 // entry and stable current-model callbacks for #31);
 // OpenAI Codex (password recovery destination and Back routing for #164).
@@ -59,6 +59,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
 import com.polysocial.model.auth.*
+import com.polysocial.ui.association.PendingAssociationApp
 import com.polysocial.ui.common.ErrorState
 import com.polysocial.ui.common.LoadingState
 import com.polysocial.ui.login.LoginScreen
@@ -124,6 +125,8 @@ private enum class AuthDestination {
   VerifyEmail,
   LogIn,
   PasswordRecovery,
+  /** An association an admin hasn't verified yet, in its own tabs (#127). */
+  PendingAssociation,
   SignedIn,
 }
 
@@ -167,6 +170,8 @@ private class ProfileSetupCallbacks(
  *
  * @param signedInContent the app once the user is signed in. Tests replace it, because the real
  *   [AppShell] needs Hilt.
+ * @param pendingAssociationContent the app of an association an admin hasn't verified yet (#127),
+ *   given what to do once it has logged out. Tests replace it too.
  */
 @Composable
 fun AuthFlow(
@@ -181,6 +186,9 @@ fun AuthFlow(
       ProfileSetupScreen(onBack, onSaved, viewModel = profileSetupViewModel)
     },
     recoveryViewModel: PasswordRecoveryViewModel? = null,
+    pendingAssociationContent: @Composable (() -> Unit) -> Unit = { done ->
+      PendingAssociationApp(onLoggedOut = done)
+    },
     signedInContent: @Composable (() -> Unit) -> Unit = { done -> AppShell(onLoggedOut = done) },
 ) {
   val profileCallbacks =
@@ -238,7 +246,8 @@ fun AuthFlow(
             (startDestination != StartDestination.Login &&
                 startDestination != StartDestination.VerifyEmail) ||
             destination == AuthDestination.Loading ||
-            destination == AuthDestination.SignedIn
+            destination == AuthDestination.SignedIn ||
+            destination == AuthDestination.PendingAssociation
     ) {
       val target =
           when (startDestination) {
@@ -247,6 +256,7 @@ fun AuthFlow(
             StartDestination.VerifyEmail -> AuthDestination.VerifyEmail
             StartDestination.ProfileSetup -> AuthDestination.ProfileSetup
             StartDestination.Main -> AuthDestination.SignedIn
+            StartDestination.PendingAssociation -> AuthDestination.PendingAssociation
             StartDestination.Error -> AuthDestination.Error
           }
       // A step left half-done (or already saved) before must not come back: open it fresh.
@@ -308,8 +318,18 @@ fun AuthFlow(
     // other.
     startViewModel.onVerificationNeeded()
   }
+  // The signed-in apps log out themselves (cache cleared, signed out), then come back here.
+  fun loggedOut() {
+    resetSessionState()
+    destination = AuthDestination.Welcome
+    startViewModel.refresh()
+  }
   BackHandler(destination == AuthDestination.Welcome) { onExit() }
-  BackHandler(destination != AuthDestination.Welcome && destination != AuthDestination.SignedIn) {
+  BackHandler(
+      destination != AuthDestination.Welcome &&
+          destination != AuthDestination.SignedIn &&
+          destination != AuthDestination.PendingAssociation
+  ) {
     when (destination) {
       AuthDestination.SignUp,
       AuthDestination.LogIn -> back()
@@ -399,12 +419,8 @@ fun AuthFlow(
       }
       PasswordRecoveryRoute(recovery, onBack = ::back)
     }
-    AuthDestination.SignedIn ->
-        signedInContent {
-          resetSessionState()
-          destination = AuthDestination.Welcome
-          startViewModel.refresh()
-        }
+    AuthDestination.SignedIn -> signedInContent(::loggedOut)
+    AuthDestination.PendingAssociation -> pendingAssociationContent(::loggedOut)
   }
 }
 
