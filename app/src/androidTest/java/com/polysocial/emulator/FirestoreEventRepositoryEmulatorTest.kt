@@ -1,4 +1,6 @@
 // Contributors: OpenAI Codex (association signup contract, #125).
+// Contributors: Claude (Fable 5.1, Anthropic) drafted the re-authentication stubs for #206; Mohamed
+// Khellaf (reviewed and revised).
 // Contributors: Claude (event repository read and createEvent tests against the Firestore
 // emulator, #118). OpenAI Codex (adapted the event-test auth fixture to the verification
 // contract, #31); OpenAI Codex (password-reset contract in the event-test fixture, #164); Claude
@@ -16,7 +18,9 @@ import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.GoogleSignInResult
 import com.polysocial.model.auth.LogInResult
 import com.polysocial.model.auth.PasswordResetResult
+import com.polysocial.model.auth.ReauthResult
 import com.polysocial.model.auth.SendVerificationResult
+import com.polysocial.model.auth.SignInMethod
 import com.polysocial.model.auth.SignUpResult
 import com.polysocial.model.auth.VerificationResult
 import com.polysocial.model.event.Coordinates
@@ -601,6 +605,14 @@ class FirestoreEventRepositoryEmulatorTest {
 
     override suspend fun reloadAndCheckVerified(): VerificationResult =
         throw UnsupportedOperationException("Verification is outside this event-test fixture")
+
+    override fun currentSignInMethods(): Set<SignInMethod> = emptySet()
+
+    override suspend fun reauthenticateWithPassword(password: String): ReauthResult =
+        throw UnsupportedOperationException("Re-authentication is outside this event-test fixture")
+
+    override suspend fun reauthenticateWithGoogle(context: Context): ReauthResult =
+        throw UnsupportedOperationException("Re-authentication is outside this event-test fixture")
 
     override fun logOut() = emulator.auth.signOut()
 

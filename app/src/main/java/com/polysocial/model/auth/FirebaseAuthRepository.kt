@@ -5,6 +5,8 @@
 // (GPT-6.1 Sol, medium; sign-up and display-name integration; verification delivery and
 // token refresh for #31);
 // OpenAI Codex (enumeration-protected password recovery and failure handling for #164).
+// Contributors: Claude (Fable 5.1, Anthropic) drafted password and Google re-authentication for
+// #206; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.model.auth
 
 import android.content.Context
@@ -12,6 +14,8 @@ import androidx.credentials.exceptions.GetCredentialCancellationException
 import com.google.firebase.FirebaseException
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.FirebaseTooManyRequestsException
+import com.google.firebase.auth.AuthCredential
+import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
@@ -176,6 +180,63 @@ private constructor(
     }
   }
 
+  override fun currentSignInMethods(): Set<SignInMethod> =
+      auth.currentUser
+          ?.providerData
+          .orEmpty()
+          .mapNotNull { info ->
+            when (info.providerId) {
+              EmailAuthProvider.PROVIDER_ID -> SignInMethod.PASSWORD
+              GoogleAuthProvider.PROVIDER_ID -> SignInMethod.GOOGLE
+              else -> null
+            }
+          }
+          .toSet()
+
+  override suspend fun reauthenticateWithPassword(password: String): ReauthResult {
+    val user = auth.currentUser ?: return ReauthResult.NotSignedIn
+    val email = user.email
+    if (email.isNullOrBlank()) return ReauthResult.UnexpectedError
+    return reauthenticate(user, wrongCredential = ReauthResult.WrongPassword) {
+      EmailAuthProvider.getCredential(email, password)
+    }
+  }
+
+  override suspend fun reauthenticateWithGoogle(context: Context): ReauthResult {
+    val user = auth.currentUser ?: return ReauthResult.NotSignedIn
+    // An invalid Google token is not a wrong password: report it as unexpected.
+    return reauthenticate(user, wrongCredential = ReauthResult.UnexpectedError) {
+      GoogleAuthProvider.getCredential(googleCredentials.get(context).idToken, null)
+    }
+  }
+
+  /** Maps re-authentication failures; [credential] may open the Google picker. */
+  private suspend fun reauthenticate(
+      user: FirebaseUser,
+      wrongCredential: ReauthResult,
+      credential: suspend () -> AuthCredential,
+  ): ReauthResult =
+      try {
+        user.reauthenticate(credential()).await()
+        ReauthResult.Success
+      } catch (cancelled: CancellationException) {
+        // A cancelled SDK task is a failure; cancellation of our coroutine must still propagate.
+        currentCoroutineContext().ensureActive()
+        ReauthResult.UnexpectedError
+      } catch (_: GetCredentialCancellationException) {
+        ReauthResult.Cancelled
+      } catch (_: FirebaseAuthInvalidCredentialsException) {
+        wrongCredential
+      } catch (error: FirebaseAuthInvalidUserException) {
+        // Another Google account than the signed-in one is a mismatch, not a missing account.
+        if (error.errorCode == USER_MISMATCH) ReauthResult.UnexpectedError
+        else ReauthResult.NotSignedIn
+      } catch (_: FirebaseNetworkException) {
+        ReauthResult.NetworkError
+      } catch (_: Exception) {
+        ReauthResult.UnexpectedError
+      }
+
   override suspend fun sendPasswordResetEmail(email: String): PasswordResetResult {
     if (!isRecoveryEmail(email)) return PasswordResetResult.InvalidEmail
     return try {
@@ -208,6 +269,11 @@ private constructor(
   /** Matches the rules' lowercase domain as well as the shared mailbox validation. */
   private fun isExactEpflEmail(email: String): Boolean =
       isEpflEmail(email) && email.endsWith("@epfl.ch")
+
+  private companion object {
+    /** Firebase's error code when a credential belongs to another account. */
+    const val USER_MISMATCH = "ERROR_USER_MISMATCH"
+  }
 
   private fun FirebaseUser.snapshot() =
       AuthUser(
