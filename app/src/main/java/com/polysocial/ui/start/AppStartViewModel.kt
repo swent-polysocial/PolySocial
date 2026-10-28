@@ -1,11 +1,14 @@
 // Contributors: Claude (app-start routing for #32; refresh after Log in, not while loading; log
-// out and the created profile; Verify Email opened in-session, #74).
+// out and the created profile; Verify Email opened in-session, #74; an association an admin
+// hasn't verified yet opens its pending app, #127).
 package com.polysocial.ui.start
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.polysocial.model.auth.AuthRepository
+import com.polysocial.model.user.AccountType
 import com.polysocial.model.user.ProfileResult
+import com.polysocial.model.user.UserProfile
 import com.polysocial.model.user.UserProfileRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
@@ -26,7 +29,14 @@ sealed interface StartDestination {
   /** Verified, but no profile yet: the profile step after verification (#34). */
   data object ProfileSetup : StartDestination
 
+  /** The students' app, which a verified association also opens until it has its own (#140). */
   data object Main : StartDestination
+
+  /**
+   * An association account an admin hasn't verified yet: its own tabs, in their pending state
+   * (#127). Once an admin sets the flag (#135), the next start opens [Main] instead.
+   */
+  data object PendingAssociation : StartDestination
 
   /** The profile could not be loaded; the user can retry. */
   data object Error : StartDestination
@@ -34,7 +44,9 @@ sealed interface StartDestination {
 
 /**
  * Decides the start destination: no user → Log in; unverified → Verify Email; verified → load the
- * profile once, then the main app, or the profile step when it is missing.
+ * profile once, then the main app, the pending association app for an association an admin hasn't
+ * verified yet, or the profile step when the profile is missing. The account type decides, never
+ * the email: an association with an `@epfl.ch` email is still an association (#161).
  */
 @HiltViewModel
 class AppStartViewModel
@@ -99,8 +111,8 @@ constructor(
       !user.isEmailVerified -> _destination.value = StartDestination.VerifyEmail
       else -> profileRead = viewModelScope.launch {
             _destination.value =
-                when (profiles.getProfile(user.uid)) {
-                  is ProfileResult.Found -> StartDestination.Main
+                when (val result = profiles.getProfile(user.uid)) {
+                  is ProfileResult.Found -> result.profile.startDestination()
                   ProfileResult.NotFound -> StartDestination.ProfileSetup
                   ProfileResult.NetworkError,
                   ProfileResult.UnexpectedError -> StartDestination.Error
@@ -109,3 +121,9 @@ constructor(
     }
   }
 }
+
+/** Where a signed-in account with this profile opens. */
+private fun UserProfile.startDestination(): StartDestination =
+    if (accountType == AccountType.ASSOCIATION && !isAssociationVerified)
+        StartDestination.PendingAssociation
+    else StartDestination.Main

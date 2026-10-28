@@ -1,10 +1,12 @@
 // Contributors: OpenAI Codex (late profile completion cannot reopen a signed-out session, #107).
 // Contributors: Claude Opus 5.5 (wrote these tests; refresh after Log in; full profile fixture,
-// #34); Claude (log out and the created profile; Verify Email opened in-session, #74).
+// #34); Claude (log out and the created profile; Verify Email opened in-session, #74; routing
+// of association accounts, #127).
 package com.polysocial.ui.start
 
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
+import com.polysocial.model.user.AccountType
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.UserProfile
@@ -319,5 +321,73 @@ class AppStartViewModelTest {
 
     // A verified session must never be sent back to Verify Email.
     assertEquals(StartDestination.Main, viewModel.destination.value)
+  }
+
+  private fun association(verified: Boolean, email: String = "club@example.org") =
+      ProfileResult.Found(
+          found.profile.copy(
+              email = email,
+              accountType = AccountType.ASSOCIATION,
+              isAssociationVerified = verified,
+          )
+      )
+
+  private fun routeOf(profile: ProfileResult): StartDestination {
+    auth.user = verified
+    profiles.getProfileResult = profile
+    val viewModel = AppStartViewModel(auth, profiles)
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+    return viewModel.destination.value
+  }
+
+  @Test
+  fun anAssociationAnAdminHasntVerified_routesToItsPendingApp() {
+    assertEquals(StartDestination.PendingAssociation, routeOf(association(verified = false)))
+  }
+
+  @Test
+  fun aVerifiedAssociation_routesToTheMainApp_neverToThePendingOne() {
+    assertEquals(StartDestination.Main, routeOf(association(verified = true)))
+  }
+
+  @Test
+  fun aStudent_routesToTheMainApp_evenWithTheFlagSetByMistake() {
+    // isAssociationVerified only counts on an association's account.
+    val student = ProfileResult.Found(found.profile.copy(isAssociationVerified = true))
+
+    assertEquals(StartDestination.Main, routeOf(found))
+    assertEquals(StartDestination.Main, routeOf(student))
+  }
+
+  @Test
+  fun anAssociationWithAnEpflEmail_isStillAnAssociation() {
+    // Classification follows the account type, not the email (#161).
+    assertEquals(
+        StartDestination.PendingAssociation,
+        routeOf(association(verified = false, email = "club@epfl.ch")),
+    )
+  }
+
+  @Test
+  fun onceAnAdminVerifiesIt_theNextStartOpensTheMainApp() {
+    assertEquals(StartDestination.PendingAssociation, routeOf(association(verified = false)))
+    // The admin sets the flag (#135); the app starts again.
+    assertEquals(StartDestination.Main, routeOf(association(verified = true)))
+  }
+
+  @Test
+  fun aPendingAssociationLoggingOut_returnsToLogin_andRefreshRoutesItBackAfterLogIn() {
+    auth.user = verified
+    profiles.getProfileResult = association(verified = false)
+    val viewModel = AppStartViewModel(auth, profiles)
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+
+    viewModel.logOut()
+    assertEquals(StartDestination.Login, viewModel.destination.value)
+
+    auth.user = verified
+    viewModel.refresh()
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+    assertEquals(StartDestination.PendingAssociation, viewModel.destination.value)
   }
 }
