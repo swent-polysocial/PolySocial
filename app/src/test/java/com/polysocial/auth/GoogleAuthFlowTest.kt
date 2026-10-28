@@ -1,5 +1,5 @@
 // Contributors: OpenAI Codex (offline Google navigation, generic failure recovery and layout tests
-// for #107).
+// for #107, including progress placement and pending-attempt state restoration).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -192,6 +192,7 @@ class GoogleAuthFlowTest {
     launch()
     google(false)
     compose.onNodeWithTag(WelcomeTags.Google).assertIsNotEnabled()
+    compose.onNodeWithTag(WelcomeTags.GoogleLoading).assertIsDisplayed()
     compose.onNodeWithTag(WelcomeTags.SignUp).assertIsNotEnabled()
     compose.onNodeWithTag(WelcomeTags.LogIn).assertIsNotEnabled()
     compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
@@ -213,6 +214,23 @@ class GoogleAuthFlowTest {
     compose.onNodeWithTag(LoginScreenTestTags.SCREEN).assertIsDisplayed()
     compose.runOnIdle { auth.googleGate!!.complete(Unit) }
     compose.onNodeWithTag("google_main").assertIsDisplayed()
+  }
+
+  @Test
+  fun pendingGoogleAttemptSurvivesStateRestorationWithoutOpeningAnotherPicker() {
+    auth.googleGate = CompletableDeferred()
+    auth.googleResult = GoogleSignInResult.Success(user)
+    launch(existing = true)
+    google(false)
+
+    restore.emulateSavedInstanceStateRestore()
+
+    compose.onNodeWithTag(WelcomeTags.GoogleLoading).assertIsDisplayed()
+    compose.onNodeWithTag(WelcomeTags.Google).assertIsNotEnabled()
+    assertEquals(1, auth.googleCalls)
+    compose.runOnIdle { auth.googleGate!!.complete(Unit) }
+    compose.onNodeWithTag("google_main").assertIsDisplayed()
+    assertEquals(1, auth.googleCalls)
   }
 
   @Test

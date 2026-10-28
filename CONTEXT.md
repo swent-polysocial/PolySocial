@@ -111,6 +111,8 @@ Closed issues keep their original text, so where one disagrees with this section
 
 ## Traps
 
+- **Google picker context (#107):** the ViewModel coroutine can hold the initiating Activity until the repository operation returns or is cancelled, including across recreation. No Activity is stored in UI state or repository fields. Offline pending-attempt restoration tests do not prove real Credential Manager rotation behavior; that still needs device validation. ([#168](https://github.com/swent-polysocial/PolySocial/pull/168))
+
 - **Logout navigation tests must retain the controller.** A fresh shell hides missed teardown. Assert the active stack is empty, then try restoring a previously saved tab on the same controller; `clearBackStack()` returning `false` after the active stack is empty does not prove there was no saved state. ([#177](https://github.com/swent-polysocial/PolySocial/pull/177))
 
 - **Verification UI tests must wait for enabled Continue.** Initial email sending and lifecycle verification checks disable it; Compose idleness alone does not guarantee startup work has finished, and a click on a disabled button is ignored. Use observable UI conditions instead of sleeps. For callback/navigation checks, semantic click actions target Continue even when transient UI overlaps its touch coordinates ([#99](https://github.com/swent-polysocial/PolySocial/pull/99)).
@@ -177,6 +179,8 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 ## Decision log
 
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
+
+- 2026-10-28 · [#168 review](https://github.com/swent-polysocial/PolySocial/pull/168): Google progress stays beside the Google action while password actions are locked; clarify the Activity lifetime and the unverified device rotation case.
 
 - 2026-10-27 · [#165 review](https://github.com/swent-polysocial/PolySocial/pull/165): a private config without a Web OAuth client fails compilation; CI Google sign-in awaits the stable signing key already tracked in #137.
 

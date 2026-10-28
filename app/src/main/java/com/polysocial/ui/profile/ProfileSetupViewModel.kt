@@ -1,6 +1,5 @@
 // Contributors: Claude (profile step state for #34; unverified accounts refused after review;
 // reset on sign-out, #74; generic save error, #142).
-// Contributors: OpenAI Codex (Google identity prefill on profile entry for #107).
 package com.polysocial.ui.profile
 
 import androidx.lifecycle.ViewModel

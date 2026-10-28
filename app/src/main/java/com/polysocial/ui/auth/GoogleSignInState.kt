@@ -38,7 +38,10 @@ internal suspend fun googleSignIn(auth: AuthRepository, context: Context): Googl
   return GoogleSignInState(result = result.takeUnless { it == GoogleSignInResult.Cancelled })
 }
 
-/** Owns the Welcome screen's Google attempt, without retaining an activity after the operation. */
+/**
+ * Owns the Welcome screen's Google attempt. Its coroutine holds the activity context until the
+ * operation completes or is cancelled; the context is never stored in screen state or a field.
+ */
 @HiltViewModel
 class WelcomeViewModel @Inject constructor(private val auth: AuthRepository) : ViewModel() {
   private val state = MutableStateFlow(GoogleSignInState())
