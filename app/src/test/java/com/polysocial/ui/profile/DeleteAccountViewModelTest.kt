@@ -147,6 +147,7 @@ class DeleteAccountViewModelTest {
         memory.timings["someone-else"] = VerificationTiming(3, 4)
         openReauth()
         assertEquals(setOf(SignInMethod.PASSWORD), vm.uiState.value.methods)
+        assertEquals(student.email, vm.uiState.value.email)
         vm.submitPassword()
         assertEquals("an empty password is not sent", 0, fakeAuth.reauthCalls)
         vm.onPasswordChange("fictional-password")
@@ -193,6 +194,17 @@ class DeleteAccountViewModelTest {
       }
 
   @Test
+  fun passwordVisibilityTogglesOnlyOnTheStep() {
+    vm.togglePasswordVisibility()
+    assertEquals(false, vm.uiState.value.passwordVisible)
+    openReauth()
+    vm.togglePasswordVisibility()
+    assertEquals(true, vm.uiState.value.passwordVisible)
+    vm.togglePasswordVisibility()
+    assertEquals(false, vm.uiState.value.passwordVisible)
+  }
+
+  @Test
   fun noSignInMethodIsAnErrorWithRetry() {
     fakeAuth.signInMethods = emptySet()
     vm.request()
@@ -213,7 +225,7 @@ class DeleteAccountViewModelTest {
         vm.continueWithGoogle(context)
         runCurrent()
         assertEquals(DeleteAccountStep.Reauthenticate, step)
-        assertNull(error)
+        assertEquals(DeleteAccountError.GoogleCancelled, error)
         assertEquals(0, deletion.calls)
         assertAccountUntouched()
       }
@@ -251,6 +263,29 @@ class DeleteAccountViewModelTest {
         assertEquals(DeleteAccountStep.Done, step)
         assertEquals(false, vm.uiState.value.deleted)
         assertEquals(0, deletion.calls)
+        assertEquals(listOf("cache", "verification:${student.uid}", "logOut"), events)
+        assertNull(memory.timings[student.uid])
+      }
+
+  @Test
+  fun uidReadAtTheStartStillClearsCooldownsAfterFirebaseSignsOutLocally() =
+      runTest(main.dispatcher) {
+        memory.timings[student.uid] = VerificationTiming(1, 2)
+        // Firebase signs a deleted user out locally when it learns the account is gone.
+        val signingOut =
+            object : AuthRepository by auth {
+              override suspend fun reauthenticateWithPassword(password: String): ReauthResult {
+                fakeAuth.user = null
+                return ReauthResult.NotSignedIn
+              }
+            }
+        val model = DeleteAccountViewModel(signingOut, deletion, network, cache, verification)
+        model.request()
+        model.confirm()
+        model.onPasswordChange("fictional-password")
+        model.submitPassword()
+        runCurrent()
+        assertEquals(DeleteAccountStep.Done, model.uiState.value.step)
         assertEquals(listOf("cache", "verification:${student.uid}", "logOut"), events)
         assertNull(memory.timings[student.uid])
       }

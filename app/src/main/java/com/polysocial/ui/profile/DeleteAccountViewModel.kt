@@ -49,6 +49,8 @@ enum class DeleteAccountStep {
 enum class DeleteAccountError {
   Offline,
   WrongPassword,
+  /** The Google picker was dismissed; nothing changed. */
+  GoogleCancelled,
   /** The sign-in is too old for the server: confirm it's you again. */
   SignInAgain,
   Network,
@@ -56,13 +58,16 @@ enum class DeleteAccountError {
 }
 
 /**
- * The Delete account sheet's state; [password] is kept in memory only, never saved. [deleted] tells
- * whether the server confirmed the deletion, so a lost session's cleanup never claims it.
+ * The Delete account sheet's state. [email] is the signed-in account's, shown on the confirmation
+ * step; [password] is kept in memory only, never saved. [deleted] tells whether the server
+ * confirmed the deletion, so a lost session's cleanup never claims it.
  */
 data class DeleteAccountUiState(
     val step: DeleteAccountStep = DeleteAccountStep.Hidden,
     val methods: Set<SignInMethod> = emptySet(),
+    val email: String = "",
     val password: String = "",
+    val passwordVisible: Boolean = false,
     val error: DeleteAccountError? = null,
     val deleted: Boolean = false,
 ) {
@@ -115,7 +120,10 @@ constructor(
   private val state = MutableStateFlow(DeleteAccountUiState())
   val uiState = state.asStateFlow()
 
-  /** The account being deleted, read before anything signs it out. */
+  /**
+   * The account being deleted, read when the flow starts: Firebase signs a deleted, disabled or
+   * expired user out locally, so it can't be read after a failure.
+   */
   private var uid: String? = null
 
   /** Opens the consequences; ignored while the sheet is already open. */
@@ -134,6 +142,7 @@ constructor(
   fun confirm() {
     if (state.value.step != DeleteAccountStep.Confirm) return
     val user = auth.currentUser()
+    uid = user?.uid
     if (user == null) {
       clearSession(deleted = false)
       return
@@ -147,13 +156,23 @@ constructor(
       state.update { it.copy(error = DeleteAccountError.Unexpected) }
       return
     }
-    uid = user.uid
-    state.value = DeleteAccountUiState(step = DeleteAccountStep.Reauthenticate, methods = methods)
+    state.value =
+        DeleteAccountUiState(
+            step = DeleteAccountStep.Reauthenticate,
+            methods = methods,
+            email = user.email,
+        )
   }
 
   fun onPasswordChange(password: String) {
     if (state.value.step == DeleteAccountStep.Reauthenticate) {
       state.update { it.copy(password = password, error = null) }
+    }
+  }
+
+  fun togglePasswordVisibility() {
+    if (state.value.step == DeleteAccountStep.Reauthenticate) {
+      state.update { it.copy(passwordVisible = !it.passwordVisible) }
     }
   }
 
@@ -209,7 +228,7 @@ constructor(
           delete()
         }
         ReauthResult.WrongPassword -> backToReauth(DeleteAccountError.WrongPassword)
-        ReauthResult.Cancelled -> backToReauth(null)
+        ReauthResult.Cancelled -> backToReauth(DeleteAccountError.GoogleCancelled)
         ReauthResult.NotSignedIn -> clearSession(deleted = false)
         ReauthResult.NetworkError -> backToReauth(DeleteAccountError.Network)
         ReauthResult.UnexpectedError -> backToReauth(DeleteAccountError.Unexpected)

@@ -109,7 +109,8 @@ data class EventDetailNavigation(
  * event map, both with the "+" button that opens Create Event inside the tab, full screen; the
  * Profile provides logout and Chats shows a loading state, then a placeholder until their feature
  * is built. Logout and account deletion (Profile → Privacy & data) clear every tab's stack, then
- * call `onLoggedOut`. The map uses floating overlays instead of the app bar.
+ * call `onLoggedOut`, or `onAccountDeleted` once the server confirmed a deletion (#207). The map
+ * uses floating overlays instead of the app bar.
  *
  * Each tab's graph also holds the event detail ([Tab.eventDetailRoute]), so an event opened from a
  * tab keeps that tab selected and Back returns to it. The detail has its own header and action bar
@@ -156,6 +157,7 @@ fun AppShell(
       EditEventScreen(onClose = onClose)
     },
     onLoggedOut: () -> Unit = {},
+    onAccountDeleted: () -> Unit = onLoggedOut,
     profileContent: @Composable (() -> Unit) -> Unit = { done ->
       ProfileRoute(
           onLoggedOut = done,
@@ -189,10 +191,10 @@ fun AppShell(
   val eventCancelled = stringResource(R.string.event_cancelled)
   // Logout and account deletion (#207) leave the app the same way: every tab's saved and active
   // stack is cleared, so Back can't return, then the auth flow opens Welcome.
-  val leaveApp = {
+  val leaveApp = { then: () -> Unit ->
     Tab.entries.forEach { navController.clearBackStack(it.route) }
     navController.popBackStack(Tab.EVENTS.route, inclusive = true)
-    onLoggedOut()
+    then()
   }
 
   Scaffold(
@@ -252,7 +254,7 @@ fun AppShell(
                       modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp, 20.dp),
                   )
                 }
-                Tab.PROFILE -> profileContent(leaveApp)
+                Tab.PROFILE -> profileContent { leaveApp(onLoggedOut) }
                 else -> TabRootScreen(tab)
               }
             }
@@ -308,7 +310,9 @@ fun AppShell(
               PrivacyRoute(
                   onBack = { navController.popBackStack() },
                   onFullNotice = { navController.navigate(tab.privacyNoticeRoute) },
-                  onAccountDeleted = leaveApp,
+                  onSessionEnded = { deleted ->
+                    leaveApp(if (deleted) onAccountDeleted else onLoggedOut)
+                  },
               )
             }
             composable(tab.privacyNoticeRoute) {

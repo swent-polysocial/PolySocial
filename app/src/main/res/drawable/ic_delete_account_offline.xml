@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (Opus 5.5, Anthropic) converted the Figma "Delete account" icon, #207; Mohamed Khellaf (reviewed and revised). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="22dp" android:height="22dp" android:viewportWidth="22" android:viewportHeight="22">
+    <path android:pathData="M11 18.3333H11.01"
+        android:strokeColor="#B3202A"
+        android:strokeWidth="1.83333"
+        android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M7.79167 15.0599C8.64842 14.2201 9.8003 13.7497 11 13.7497C12.1997 13.7497 13.3516 14.2201 14.2083 15.0599"
+        android:strokeColor="#B3202A"
+        android:strokeWidth="1.83333"
+        android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M4.58333 11.7874C5.88319 10.5132 7.53299 9.65476 9.3225 9.32158"
+        android:strokeColor="#B3202A"
+        android:strokeWidth="1.83333"
+        android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M17.4167 11.7874C16.8647 11.2464 16.2466 10.7773 15.5769 10.3913"
+        android:strokeColor="#B3202A"
+        android:strokeWidth="1.83333"
+        android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M1.83333 8.085C2.96688 7.07124 4.26075 6.25254 5.66225 5.66225"
+        android:strokeColor="#B3202A"
+        android:strokeWidth="1.83333"
+        android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M20.1667 8.085C18.7685 6.8345 17.1292 5.8833 15.3498 5.28993C13.5703 4.69656 11.6882 4.47356 9.81933 4.63467"
+        android:strokeColor="#B3202A"
+        android:strokeWidth="1.83333"
+        android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M1.83333 1.83333L20.1667 20.1667"
+        android:strokeColor="#B3202A"
+        android:strokeWidth="1.83333"
+        android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

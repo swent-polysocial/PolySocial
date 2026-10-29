@@ -346,7 +346,7 @@ class M1EndToEndTest {
     node(DeleteAccountTags.Confirm).performScrollTo().performClick()
     await(DeleteAccountTags.Password)
     type(DeleteAccountTags.Password, PASSWORD)
-    node(DeleteAccountTags.Confirm).performScrollTo().performClick()
+    node(DeleteAccountTags.Continue).performScrollTo().performClick()
 
     await(WelcomeTags.Screen)
     assertEquals(PASSWORD, fakeAuth.lastReauthPassword)

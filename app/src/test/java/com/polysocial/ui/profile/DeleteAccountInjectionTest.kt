@@ -114,7 +114,7 @@ class DeleteAccountInjectionTest {
     compose.onNodeWithTag(C.Tag.privacy_delete).performScrollTo().performClick()
     compose.onNodeWithTag(DeleteAccountTags.Confirm).performScrollTo().performClick()
     compose.onNodeWithTag(DeleteAccountTags.Password).performTextInput("fictional-password")
-    compose.onNodeWithTag(DeleteAccountTags.Confirm).performScrollTo().performClick()
+    compose.onNodeWithTag(DeleteAccountTags.Continue).performScrollTo().performClick()
 
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.app_shell).assertDoesNotExist()
