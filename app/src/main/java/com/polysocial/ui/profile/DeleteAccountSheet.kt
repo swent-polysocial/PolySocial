@@ -131,18 +131,28 @@ internal fun DeleteAccountSheet(
       dragHandle = null,
       modifier = Modifier.testTag(DeleteAccountTags.Sheet),
   ) {
-    Column(
-        Modifier.verticalScroll(rememberScrollState())
-            .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-      Box(Modifier.size(width = 36.dp, height = 4.dp).background(Border, RoundedCornerShape(2.dp)))
-      when (state.step) {
-        DeleteAccountStep.Confirm -> ConfirmContent(state, actions)
-        DeleteAccountStep.DeleteFailed -> FailedContent(state, actions)
-        DeleteAccountStep.NotAllowed -> AssociationContent(contactMessage, actions)
-        else -> ReauthContent(state, actions)
-      }
+    DeleteAccountSheetContent(state, contactMessage, actions)
+  }
+}
+
+/** The sheet's handle and the current step, without the modal container. */
+@Composable
+internal fun DeleteAccountSheetContent(
+    state: DeleteAccountUiState,
+    contactMessage: PrivacyContactMessage?,
+    actions: DeleteAccountActions,
+) {
+  Column(
+      Modifier.verticalScroll(rememberScrollState())
+          .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp),
+      verticalArrangement = Arrangement.spacedBy(12.dp),
+  ) {
+    Box(Modifier.size(width = 36.dp, height = 4.dp).background(Border, RoundedCornerShape(2.dp)))
+    when (state.step) {
+      DeleteAccountStep.Confirm -> ConfirmContent(state, actions)
+      DeleteAccountStep.DeleteFailed -> FailedContent(state, actions)
+      DeleteAccountStep.NotAllowed -> AssociationContent(contactMessage, actions)
+      else -> ReauthContent(state, actions)
     }
   }
 }
