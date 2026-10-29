@@ -24,13 +24,12 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 
 /**
- * How long a deletion may take before it counts as a [AccountDeletionResult.NetworkError]. The
- * budget covers waiting for pending writes, fetching the ID token and the request. The request
- * itself is bounded by [CONNECT_TIMEOUT_MILLIS] and [READ_TIMEOUT_MILLIS] (70 s together), and a
- * blocking read only notices this bound once it returns, so a slow write flush can stretch a
- * deletion past 80 s, never past 150 s. If this bound ends while the request is in flight, the
- * server may still delete the account: that is a lost answer, which a retry covers (both server
- * steps are idempotent).
+ * How long waiting for pending writes and fetching the ID token may take before the deletion counts
+ * as a [AccountDeletionResult.NetworkError]. The request itself runs after this bound, under its
+ * own [CONNECT_TIMEOUT_MILLIS] and [READ_TIMEOUT_MILLIS] (70 s together), so its answer is used
+ * whenever it arrives, and a deletion never takes more than 150 s. If the request times out while
+ * the function runs, the server may still delete the account: that is a lost answer, which a retry
+ * covers (both server steps are idempotent).
  */
 internal const val ACCOUNT_DELETION_TIMEOUT_MILLIS = 80_000L
 
@@ -87,8 +86,17 @@ class FirebaseAccountDeletionRepository(
   override suspend fun deleteAccount(): AccountDeletionResult {
     return try {
       val user = auth.currentUser ?: return AccountDeletionResult.NotSignedIn
-      // Each step can stay pending for a long time (offline, or a connection lost mid-answer).
-      withTimeout(ACCOUNT_DELETION_TIMEOUT_MILLIS) { pendingWritesFailure() ?: post(idToken(user)) }
+      // Both steps can stay pending for a long time (offline, or a connection lost mid-answer).
+      val prepared =
+          withTimeout(ACCOUNT_DELETION_TIMEOUT_MILLIS) {
+            pendingWritesFailure()?.let(Prepared::Refused) ?: Prepared.Token(idToken(user))
+          }
+      when (prepared) {
+        is Prepared.Refused -> prepared.result
+        // The request has its own connect and read timeouts and runs outside the bound above, so
+        // an answer that arrives late is still used instead of counting as lost.
+        is Prepared.Token -> post(prepared.token)
+      }
     } catch (_: TimeoutCancellationException) {
       // Our timeout, unless the caller was cancelled at the same moment.
       currentCoroutineContext().ensureActive()
@@ -157,6 +165,13 @@ class FirebaseAccountDeletionRepository(
           connection.disconnect()
         }
       }
+
+  /** What the bounded preparation yields: the token to send, or the result to return instead. */
+  private sealed interface Prepared {
+    class Token(val token: String) : Prepared
+
+    class Refused(val result: AccountDeletionResult) : Prepared
+  }
 
   private companion object {
     /** The callable protocol wraps the argument in `data`; `deleteAccount` takes none. */
