@@ -6,6 +6,8 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 
 ## Current state
 
+- **Manual association approval (#135):** follow [README · Verifying an association](README.md#verifying-an-association). Only project owners set `users/{uid}.isAssociationVerified` to boolean true/false. The [#210 workflow proposal](docs/Association-Review.md) awaits teammate agreement; it adds no status field or access. #126/#127 remain responsible for pending data access and routing.
+
 - **Association startup recovery (#258 review):** an existing private profile remains authoritative. With no profile, non-EPFL accounts resume association setup even after reinstall; only EPFL accounts need the same-device marker to disambiguate student and association setup. This exception changes no backend access. Marker cleanup after durable association typing is housekeeping: a failed write reports `RetryNeeded` and retries on refresh without blocking pending/verified entry. Until #259/#261, incomplete setup opens the pending app and verified accounts open the existing app; an offline identity read preserves the pending app’s retry path.
 
 - **Setup copy (#257 review):** Lucas confirmed keeping the current review-focused description; Figma’s first-admin/invite sentence awaits a team update because the membership model is undecided. The form matches the reviewed geometry and exposes a dedicated wrong-account sign-out message.
@@ -16,10 +18,6 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 
 
 - **Association signup foundation (#125):** signup takes the existing account type, defaulting to student. Associations accept a valid email on any domain and omit the personal name. The controller records a private local email digest before remote signup; checked disk commits run off-main and block signup on failure. This same-device routing hint stores no raw email/password and grants no permissions. Setup/navigation follow separately; #127 owns pending UI and #208 owns login.
-
-
-- **Manual association approval (#135):** follow [README · Verifying an association](README.md#verifying-an-association). Only project owners set `users/{uid}.isAssociationVerified` to boolean true/false. The [#210 workflow proposal](docs/Association-Review.md) awaits teammate agreement; it adds no status field or access. #126/#127 remain responsible for pending data access and routing.
-
 
 - **Password recovery (#164):** the owner keeps email enumeration protection enabled. Request resets directly through `AuthRepository`; never fetch providers by email. All accepted requests show conditional inbox guidance, including unknown and Google-only addresses. The request preserves the auth session and login form. Firebase handles password choice on its hosted action page.
 - **Privacy notice (#103):** Profile exposes a read-only Privacy & data entry alongside confirmed logout (#109). The app shell supplies its destination to `ProfileRoute`; a standalone profile without that destination hides the entry. The summary and dated full notice are bundled and need no data query, so they remain usable offline. Export and attendance-based matching show an unavailable Snackbar (Delete account: #207 below); the switch remains Off and writes no consent. Collection/access text describes this build; #121 and #123 must update it when attendance or reminders are enabled. Mehdi authorized explicit prototype draft wording while contact/provider details are pending. `privacy_contact_email` stays empty until supplied; Hilt provides the configured address and contact service to each notice entry's ViewModel, which opens a user-controlled email draft when configured, and otherwise explains the missing address/client. No account data is added. Feedback effects must key both text and owner callback: replacing a ViewModel with the same message otherwise dismisses the previous owner.
@@ -243,9 +241,6 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 - 2026-10-29 · The app calls the `deleteAccount` callable over plain HTTPS (callable protocol, ID token, explicit region and timeouts) instead of through the Functions SDK, which pulled in firebase-iid (FCM token registration, extra permissions); `firebase-functions` is removed. ([#269](https://github.com/swent-polysocial/PolySocial/pull/269))
 - 2026-10-29 · Until #259/#261 land, association setup uses the pending app and verified entry uses the existing app; an offline identity read keeps the pending retry path. ([#258 review](https://github.com/swent-polysocial/PolySocial/pull/258))
 
-- 2026-10-28 · Document manual association verification and draft review/rejection examples for teammate agreement; no backend permissions changed. ([#135](https://github.com/swent-polysocial/PolySocial/issues/135), [#210](https://github.com/swent-polysocial/PolySocial/issues/210))
-
-
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 
 - 2026-10-29 · The map preview's "Details" opens the event detail inside the Map tab, like the Events list and "View event"; the Map-only placeholder route and its strings are gone (M1 coach feedback). ([#112](https://github.com/swent-polysocial/PolySocial/issues/112))
@@ -260,6 +255,8 @@ Newest first, one line each, with a link. Remove a line once its content lives i
 - 2026-10-28 · An association an admin hasn't verified yet opens its own pending app (Events with the review steps, Map closed until verified, Organization to edit its details and log out); a verified one keeps the students' app until #140, which plugs its tabs into the shared `AssociationShell`. ([#127](https://github.com/swent-polysocial/PolySocial/issues/127))
 - 2026-10-28 · Students (unverified ones too) delete their account through a `deleteAccount` Cloud Function that removes `users/{uid}` then the Auth user, retry-safe; their events are kept, associations stay admin-assisted, a `SessionGuard` clears the cache on any UID change (#198), and unverified accounts are deleted after 7 days (#149). ([#201](https://github.com/swent-polysocial/PolySocial/issues/201))
 - 2026-10-29 · Split #125 into signup persistence, setup saving, setup UI, and auth routing, each with its own tests/coverage gate. ([#125](https://github.com/swent-polysocial/PolySocial/issues/125))
+
+- 2026-10-28 · Document manual association verification and draft review/rejection examples for teammate agreement; no backend permissions changed. ([#135](https://github.com/swent-polysocial/PolySocial/issues/135), [#210](https://github.com/swent-polysocial/PolySocial/issues/210))
 
 - 2026-10-28 · [#168 review](https://github.com/swent-polysocial/PolySocial/pull/168): Google progress stays beside the Google action while password actions are locked; clarify the Activity lifetime and the unverified device rotation case.
 
