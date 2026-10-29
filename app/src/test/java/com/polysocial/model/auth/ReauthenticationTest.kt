@@ -25,11 +25,13 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -207,13 +209,23 @@ class ReauthenticationTest {
   fun callerCancellation_propagates() = runTest {
     val pending = TaskCompletionSource<Void>()
     reauthReturns(pending.task)
-    val attempt = async { repository.reauthenticateWithPassword("secret") }
+    var result: ReauthResult? = null
+    var cancellationReachedCaller = false
+    val attempt = launch {
+      try {
+        result = repository.reauthenticateWithPassword("secret")
+      } catch (cancelled: CancellationException) {
+        cancellationReachedCaller = true
+        throw cancelled
+      }
+    }
     runCurrent()
 
     attempt.cancel()
     pending.setException(FirebaseNetworkException("late failure"))
     runCurrent()
 
-    assertTrue(attempt.isCancelled)
+    assertNull(result)
+    assertTrue(cancellationReachedCaller)
   }
 }
