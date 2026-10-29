@@ -7,8 +7,8 @@
 // OpenAI Codex (enumeration-protected password recovery and failure handling for #164).
 // Contributors: Claude (Fable 5.1, Anthropic) drafted password and Google re-authentication for
 // #206; Mohamed Khellaf (reviewed and revised).
-// Contributors: Claude (Opus 5.5, Anthropic) removed the unreachable user-mismatch branch, #206;
-// Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) removed the unreachable user-mismatch branch and
+// reported too many re-authentication attempts, #206; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.model.auth
 
 import android.content.Context
@@ -237,6 +237,8 @@ private constructor(
         ReauthResult.NotSignedIn
       } catch (_: FirebaseNetworkException) {
         ReauthResult.NetworkError
+      } catch (_: FirebaseTooManyRequestsException) {
+        ReauthResult.TooManyAttempts
       } catch (_: Exception) {
         ReauthResult.UnexpectedError
       }
