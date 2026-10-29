@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (offline signup-store binding after association rebase, #125).
 // Contributors: OpenAI Codex (offline real-activity Google recovery and profile routing for #107).
 package com.polysocial.auth
 
@@ -28,6 +29,7 @@ import org.robolectric.annotation.Config
 @Config(application = HiltTestApplication::class)
 @RunWith(AndroidJUnit4::class)
 class GoogleAuthInjectionTest {
+  @BindValue @JvmField val signupStore: AssociationSignupStore = EmptyAssociationSignupStore
   private val auth = FakeAuthRepository()
   private val profiles = FakeUserProfileRepository()
   @BindValue @JvmField val authBinding: AuthRepository = auth
