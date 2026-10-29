@@ -1,6 +1,6 @@
 <!-- Contributors: OpenAI Codex (Google sign-in setup and review clarifications for #106). -->
 <!-- Contributors: OpenAI Codex (Google entry behavior for #107). -->
-<!-- Contributors: Claude (drafted the README structure, Setup, Running and testing, Tech stack and Project links sections; Firestore index deployment, #49; Firestore emulator tests, #117); OpenAI Codex (documented startup routing and rebase reconciliation); OpenAI Codex (Mapbox integration and setup, #50; one-off Map location privacy note, #51). -->
+<!-- Contributors: Claude (drafted the README structure, Setup, Running and testing, Tech stack and Project links sections; Firestore index deployment, #49; Firestore emulator tests, #117; Security Rules deployment); OpenAI Codex (documented startup routing and rebase reconciliation); OpenAI Codex (Mapbox integration and setup, #50; one-off Map location privacy note, #51). -->
 <!-- Contributors: OpenAI Codex (verification startup integration and Back sign-out, #31). -->
 <!-- Contributors: Claude (Sprint 2 and Sprint 3 status in the Features table and the startup routing notes). -->
 <!-- Contributors: OpenAI Codex (bundled Profile privacy notice and unavailable actions, #103). -->
@@ -110,6 +110,15 @@ firebase deploy --only firestore:indexes --project <project-id>   # firebase/fir
 ```
 
 `<project-id>` is the `project_id` in your `app/google-services.json`. Functions deploy as described in [Cloud Functions](#cloud-functions). A new index takes a few minutes to build (Firebase console → Firestore → Indexes); until it's ready, the query that needs it fails. The local emulator doesn't need indexes.
+
+**Firestore Security Rules:** merging a change to `firebase/firestore/firestore.rules` does not deploy it. Until someone deploys it, Firebase keeps the old rules, and the app's new reads and writes are denied in production. Right after such a PR merges, its author deploys the rules from an up-to-date `main` (never from a feature branch, which could publish rules that aren't merged yet):
+
+```bash
+git switch main && git pull
+firebase deploy --only firestore:rules --project <project-id>
+```
+
+The Firebase console (Firestore → Rules) then shows the new version with its publish time.
 
 ## Downloading the CI APK
 
