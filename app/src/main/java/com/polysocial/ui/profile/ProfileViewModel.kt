@@ -1,15 +1,20 @@
+// Contributors: OpenAI Codex (own Organization loading through the shared logout controller, #140).
 // Contributors: OpenAI Codex (confirmation and logout state, #109).
 // Contributors: Claude (reset for the next session, #127).
 package com.polysocial.ui.profile
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.polysocial.model.association.Association
+import com.polysocial.model.association.AssociationRepository
+import com.polysocial.model.association.AssociationResult
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.firebase.CacheClearResult
 import com.polysocial.model.firebase.SessionCache
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -23,16 +28,77 @@ enum class LogoutState {
   LoggedOut,
 }
 
-/** Owns Profile's sole action, keeping Firebase and cache cleanup outside the UI. */
+sealed interface OrganizationUiState {
+  data object Loading : OrganizationUiState
+
+  data class Ready(val association: Association) : OrganizationUiState
+
+  data object Error : OrganizationUiState
+}
+
+/** Shares cache-first logout and explicit own-organization loading between both account shells. */
 @HiltViewModel
 class ProfileViewModel
 @Inject
 constructor(
     private val auth: AuthRepository,
     private val cache: SessionCache,
+    private val associations: AssociationRepository? = null,
 ) : ViewModel() {
   private val state = MutableStateFlow(LogoutState.Idle)
   val uiState = state.asStateFlow()
+  private val organizationState = MutableStateFlow<OrganizationUiState>(OrganizationUiState.Loading)
+  val organization = organizationState.asStateFlow()
+  private var organizationRead: Job? = null
+  private var organizationUid: String? = null
+  private var organizationGeneration = 0
+
+  /** Reads only the current account's identity on explicit Organization entry or Retry. */
+  fun loadOrganization() {
+    val user = auth.currentUser()
+    val repository = associations
+    if (user == null || !user.isEmailVerified || repository == null) {
+      clearOrganization()
+      organizationState.value = OrganizationUiState.Error
+      return
+    }
+    if (organizationUid == user.uid && organizationRead?.isActive == true) return
+    clearOrganization()
+    organizationUid = user.uid
+    val generation = organizationGeneration
+    organizationRead = viewModelScope.launch {
+      try {
+        val result = repository.getAssociation(user.uid)
+        if (generation == organizationGeneration) {
+          val current = auth.currentUser()
+          organizationState.value =
+              if (current?.uid != user.uid || !current.isEmailVerified) OrganizationUiState.Error
+              else
+                  when (result) {
+                    is AssociationResult.Found -> OrganizationUiState.Ready(result.association)
+                    AssociationResult.NotFound,
+                    AssociationResult.NetworkError,
+                    AssociationResult.UnexpectedError -> OrganizationUiState.Error
+                  }
+        }
+      } catch (cancelled: CancellationException) {
+        if (generation == organizationGeneration)
+            organizationState.value = OrganizationUiState.Error
+        throw cancelled
+      } catch (_: Exception) {
+        if (generation == organizationGeneration)
+            organizationState.value = OrganizationUiState.Error
+      }
+    }
+  }
+
+  private fun clearOrganization() {
+    organizationGeneration++
+    organizationRead?.cancel()
+    organizationRead = null
+    organizationUid = null
+    organizationState.value = OrganizationUiState.Loading
+  }
 
   fun requestLogout() {
     if (state.value == LogoutState.Idle) state.value = LogoutState.Confirming
@@ -58,6 +124,7 @@ constructor(
       try {
         if (cache.clear() == CacheClearResult.Cleared) {
           auth.logOut()
+          clearOrganization()
           state.value = LogoutState.LoggedOut
         } else state.value = LogoutState.Error
       } catch (cancelled: CancellationException) {
