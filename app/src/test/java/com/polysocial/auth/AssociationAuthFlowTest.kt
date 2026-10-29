@@ -332,6 +332,34 @@ class AssociationAuthFlowTest {
     assertEquals(1, auth.logOutCalls)
   }
 
+  @Test
+  fun choosingStudentSignupAfterAssociationCorrectionResetsVerificationAddressMode() {
+    auth.user = user.copy(email = "club@epfl.ch")
+    signupStore.emails += "club@epfl.ch"
+    launch()
+    compose.onNodeWithTag(VerifyEmailTags.ChangeAddress).performClick()
+    pressBack()
+    compose.onNodeWithTag(WelcomeTags.SignUp).performScrollTo().performClick()
+    compose
+        .onNodeWithTag(SignUpTags.input(SignUpField.FullName))
+        .performTextInput("Example Student")
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.Email)).performTextInput("student@epfl.ch")
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.Password)).performTextInput("password1")
+    compose
+        .onNodeWithTag(SignUpTags.input(SignUpField.ConfirmPassword))
+        .performScrollTo()
+        .performTextInput("password1")
+    compose.runOnIdle {
+      auth.signUpResult = SignUpResult.Success(AuthUser("student", "student@epfl.ch", false))
+    }
+    compose.onNodeWithTag(SignUpTags.Submit).performScrollTo().performClick()
+    compose.onNodeWithTag(VerifyEmailTags.ChangeAddress).performClick()
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.FullName)).assertExists()
+    compose.onNodeWithTag(SignUpTags.Google).assertExists()
+    assertEquals(AccountType.STUDENT, signup.uiState.value.form.accountType)
+    assertNull(auth.currentUser())
+  }
+
   private fun pressBack() {
     compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
   }
