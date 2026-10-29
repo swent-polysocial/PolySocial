@@ -162,7 +162,7 @@ firebase emulators:exec --project demo-polysocial --only firestore,auth "gradlew
 
 Server code lives in `firebase/functions` (plain JavaScript, Node.js 22, region `europe-west6`). Today it has one callable function, **`deleteAccount`**: it deletes the signed-in user's private profile `users/{uid}`, then their Firebase Auth user, and returns `{ deleted: true }` only once both are gone. It refuses a sign-in older than 5 minutes (`failed-precondition`, details `recent-login-required`) and association accounts (`failed-precondition`, details `association`: they ask the PolySocial team through the privacy contact). Each step can be retried safely. Events the user created are kept. The Admin SDK bypasses the Security Rules, so the function itself checks who may delete what.
 
-Install the packages once (Node.js 22 or newer), then run the unit tests, which use fakes and need no emulator:
+Install the packages once (Node.js **22.12 or newer**: `firebase-admin` depends on `jwks-rsa`, which needs `^20.19 || ^22.12 || >=23`), then run the unit tests, which use fakes and need no emulator:
 
 ```bash
 npm ci --prefix firebase/functions
@@ -175,7 +175,7 @@ The emulator test calls the function over HTTP, like the app, with the Auth, Fir
 firebase emulators:exec --project demo-polysocial --only firestore,auth,functions "node firebase/functions/deleteAccount.emulator.test.js"
 ```
 
-The Functions emulator runs the function with your installed Node.js and warns if it isn't version 22; the tests still run.
+Use the npm Firebase CLI (`npm install -g firebase-tools`, as CI does) with Node.js 22.12 or newer. The standalone CLI (`curl -sL firebase.tools | bash`) ignores the installed Node.js and runs the function with its own bundled Node 20, which fails to load the function (`ERR_REQUIRE_ESM`) before any test runs; the same applies to the deploy below, which loads the code locally first. The emulator warns if your Node.js isn't version 22; the tests still run on a newer one.
 
 **Deploying is manual.** After a change to `firebase/functions` reaches `main`, a teammate with access to the Firebase project deploys it (`firebase login` first). Cloud Functions need the Blaze plan, which the project uses, with its budget alert:
 
