@@ -1,5 +1,5 @@
-// Contributors: OpenAI Codex (default association onboarding and session cleanup integration,
-// #125).
+// Contributors: OpenAI Codex (default association onboarding, session cleanup and session-guard
+// injection integration, #125).
 package com.polysocial.auth
 
 import androidx.compose.ui.test.*
@@ -42,6 +42,9 @@ class AssociationOnboardingInjectionTest {
   private val writes = mutableListOf<String>()
   private var clears = 0
   @BindValue @JvmField val auth: AuthRepository = fakeAuth
+  @BindValue @JvmField val authSessionSource: AuthSessionSource = FakeAuthSessionSource()
+  @BindValue @JvmField val sessionOwner: SessionOwnerStore = FakeSessionOwnerStore()
+  @BindValue @JvmField val sessions: SessionGuard = FakeSessionGuard()
   @BindValue @JvmField val events: EventRepository = FakeEventRepository()
   @BindValue @JvmField val verificationStore: VerificationStore = MemoryVerificationStore()
   @BindValue @JvmField val verificationClock: VerificationClock = VerificationClock { 1000 }
