@@ -1,6 +1,7 @@
 // Contributors: OpenAI Codex (reconciled the shared logout callback on rebase, #125).
 // Contributors: OpenAI Codex (preserve association entry and offline retry, #125).
 // Contributors: OpenAI Codex (association-specific invalid email feedback, #125).
+// Contributors: OpenAI Codex (approved association shell handoff, #140).
 // Contributors: OpenAI Codex (association email validation feedback, #125).
 // Contributors: Claude (Log out from the app-start error, through the shared activity logout that
 // clears the cache first, #208).
@@ -147,6 +148,7 @@ private enum class AuthDestination {
   PendingAssociation,
   SignedIn,
   AssociationSetup,
+  Association,
 }
 
 /** Saves the signed-out back stack as the destinations' names. */
@@ -221,6 +223,10 @@ fun AuthFlow(
     associationSetupContent: @Composable (() -> Unit, () -> Unit) -> Unit = { back, saved ->
       AssociationSetupRoute(back, saved)
     },
+    associationContent: @Composable (Boolean, () -> Unit) -> Unit = { verified, done ->
+      if (verified) AppShell(accountType = AccountType.ASSOCIATION, onLoggedOut = done)
+      else PendingAssociationApp(onLoggedOut = done)
+    },
     signedInContent: @Composable (() -> Unit) -> Unit = { done ->
       AppShell(
           onLoggedOut = done,
@@ -290,6 +296,7 @@ fun AuthFlow(
                 startDestination != StartDestination.VerifyEmail) ||
             destination == AuthDestination.Loading ||
             destination == AuthDestination.SignedIn ||
+            destination == AuthDestination.Association ||
             destination == AuthDestination.PendingAssociation
     ) {
       val target =
@@ -299,7 +306,7 @@ fun AuthFlow(
             StartDestination.VerifyEmail -> AuthDestination.VerifyEmail
             StartDestination.ProfileSetup -> AuthDestination.ProfileSetup
             StartDestination.AssociationSetup -> AuthDestination.AssociationSetup
-            StartDestination.AssociationMain -> AuthDestination.SignedIn
+            StartDestination.AssociationMain -> AuthDestination.Association
             StartDestination.Main -> AuthDestination.SignedIn
             StartDestination.PendingAssociation -> AuthDestination.PendingAssociation
             StartDestination.Error -> AuthDestination.Error
@@ -372,7 +379,8 @@ fun AuthFlow(
   BackHandler(
       destination != AuthDestination.Welcome &&
           destination != AuthDestination.SignedIn &&
-          destination != AuthDestination.PendingAssociation
+          destination != AuthDestination.PendingAssociation &&
+          destination != AuthDestination.Association
   ) {
     when (destination) {
       AuthDestination.SignUp,
@@ -489,6 +497,7 @@ fun AuthFlow(
     }
     AuthDestination.AssociationSetup ->
         associationSetupContent(associationCallbacks.back, associationCallbacks.saved)
+    AuthDestination.Association -> associationContent(true, afterLogout)
     AuthDestination.SignedIn -> signedInContent(afterLogout)
     AuthDestination.PendingAssociation -> pendingAssociationContent(afterLogout)
   }
