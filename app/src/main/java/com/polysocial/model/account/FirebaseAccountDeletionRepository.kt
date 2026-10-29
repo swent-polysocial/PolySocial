@@ -2,10 +2,10 @@
 // Khellaf (reviewed and revised).
 package com.polysocial.model.account
 
-import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
+import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.functions.FirebaseFunctionsException
 import com.google.firebase.functions.FirebaseFunctionsException.Code
@@ -18,8 +18,9 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
 
 /**
- * How long a deletion may take before it counts as a [AccountDeletionResult.NetworkError]: a bit
- * more than the callable's own 70-second client timeout, so the SDK normally answers first.
+ * How long a deletion (sending pending writes, then the call) may take before it counts as a
+ * [AccountDeletionResult.NetworkError]: a bit more than the callable's own 70-second client
+ * timeout, so the SDK normally answers first.
  */
 internal const val ACCOUNT_DELETION_TIMEOUT_MILLIS = 80_000L
 
@@ -41,32 +42,31 @@ internal const val ACCOUNT_DELETION_TIMEOUT_MILLIS = 80_000L
  * longer exists, an earlier attempt already deleted the account and only its answer was lost, so
  * this returns [AccountDeletionResult.Deleted] (deletion policy, #201).
  *
- * Firebase is resolved on the first call, so constructing this class (for example by Hilt) never
- * touches the SDK. Nothing about the user or the failure is logged.
+ * Before calling, it waits for Firestore's pending writes
+ * ([FirebaseFirestore.waitForPendingWrites]) and returns [AccountDeletionResult.NetworkError]
+ * without calling if they can't be sent. An ID token stays valid for up to an hour after the Auth
+ * user is deleted, and the rules let an owner create their own `users/{uid}`, so a write queued
+ * before the deletion and sent after it would recreate a profile that no account owns.
+ *
+ * Firebase is resolved on the first call, and [firestore] (the session's database, see
+ * `FirestoreSession`) on each call, so constructing this class (for example by Hilt) never touches
+ * the SDK. Nothing about the user or the failure is logged.
  */
 class FirebaseAccountDeletionRepository(
     authProvider: () -> FirebaseAuth,
     functionsProvider: () -> FirebaseFunctions,
+    private val firestore: () -> FirebaseFirestore,
 ) : AccountDeletionRepository {
   private val auth by lazy(authProvider)
   private val functions by lazy(functionsProvider)
 
-  constructor() :
-      this(
-          { FirebaseAuth.getInstance() },
-          { FirebaseFunctions.getInstance(FirebaseApp.getInstance(), ACCOUNT_DELETION_REGION) },
-      )
-
   override suspend fun deleteAccount(): AccountDeletionResult {
     return try {
       if (auth.currentUser == null) return AccountDeletionResult.NotSignedIn
-      // The SDK's task can stay pending forever (a connection lost mid-answer), so bound the wait.
-      val answer =
-          withTimeout(ACCOUNT_DELETION_TIMEOUT_MILLIS) {
-            functions.getHttpsCallable(DELETE_ACCOUNT_FUNCTION).call().await().getData()
-          }
-      if ((answer as? Map<*, *>)?.get("deleted") == true) AccountDeletionResult.Deleted
-      else AccountDeletionResult.UnexpectedError
+      // Both steps can stay pending forever (offline, or a connection lost mid-answer).
+      withTimeout(ACCOUNT_DELETION_TIMEOUT_MILLIS) {
+        if (savePendingWrites()) callFunction() else AccountDeletionResult.NetworkError
+      }
     } catch (_: TimeoutCancellationException) {
       // Our timeout, unless the caller was cancelled at the same moment.
       currentCoroutineContext().ensureActive()
@@ -80,6 +80,28 @@ class FirebaseAccountDeletionRepository(
     } catch (error: Exception) {
       clientFailure(error)
     }
+  }
+
+  /**
+   * Waits until Firestore has sent this user's queued writes. Returns false if it can't (no
+   * connection, or the session's database is blocked by a cache clear), so nothing is deleted.
+   */
+  private suspend fun savePendingWrites(): Boolean =
+      try {
+        firestore().waitForPendingWrites().await()
+        true
+      } catch (_: CancellationException) {
+        // Our timeout or the caller's cancellation propagates; a cancelled SDK task is a failure.
+        currentCoroutineContext().ensureActive()
+        false
+      } catch (_: Exception) {
+        false
+      }
+
+  private suspend fun callFunction(): AccountDeletionResult {
+    val answer = functions.getHttpsCallable(DELETE_ACCOUNT_FUNCTION).call().await().getData()
+    return if ((answer as? Map<*, *>)?.get("deleted") == true) AccountDeletionResult.Deleted
+    else AccountDeletionResult.UnexpectedError
   }
 
   /** Maps an error the function (or the SDK's HTTP layer) reported. */

@@ -11,6 +11,8 @@ import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.functions.FirebaseFunctionsException
 import com.google.firebase.functions.FirebaseFunctionsException.Code
@@ -19,8 +21,10 @@ import com.google.firebase.functions.HttpsCallableResult
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.mockk.verifyOrder
 import java.io.IOException
 import java.util.concurrent.ExecutionException
+import javax.inject.Provider
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -47,7 +51,9 @@ class FirebaseAccountDeletionRepositoryTest {
       mockk<FirebaseFunctions> {
         every { getHttpsCallable(DELETE_ACCOUNT_FUNCTION) } returns callable
       }
-  private val repository = FirebaseAccountDeletionRepository({ auth }, { functions })
+  private val database =
+      mockk<FirebaseFirestore> { every { waitForPendingWrites() } returns Tasks.forResult(null) }
+  private val repository = FirebaseAccountDeletionRepository({ auth }, { functions }, { database })
 
   private fun functionReturns(task: Task<HttpsCallableResult>) {
     every { callable.call() } returns task
@@ -113,6 +119,7 @@ class FirebaseAccountDeletionRepositoryTest {
               functionsResolved = true
               functions
             },
+            { database },
         )
 
     assertEquals(AccountDeletionResult.NotSignedIn, repository.deleteAccount())
@@ -215,6 +222,56 @@ class FirebaseAccountDeletionRepositoryTest {
   }
 
   @Test
+  fun pendingWritesAreSentBeforeTheFunctionIsCalled() = runTest {
+    functionAnswers(mapOf("deleted" to true))
+
+    assertEquals(AccountDeletionResult.Deleted, repository.deleteAccount())
+    verifyOrder {
+      database.waitForPendingWrites()
+      callable.call()
+    }
+  }
+
+  @Test
+  fun pendingWritesNotSent_returnsNetworkErrorWithoutCalling() = runTest {
+    functionAnswers(mapOf("deleted" to true))
+    for (failure in
+        listOf<Task<Void>>(
+            Tasks.forException(
+                FirebaseFirestoreException("test", FirebaseFirestoreException.Code.UNAVAILABLE)
+            ),
+            Tasks.forCanceled(),
+        )) {
+      every { database.waitForPendingWrites() } returns failure
+
+      assertEquals(AccountDeletionResult.NetworkError, repository.deleteAccount())
+    }
+    verify(exactly = 0) { callable.call() }
+  }
+
+  @Test
+  fun pendingWritesNeverSent_returnsNetworkErrorWithoutCalling() = runTest {
+    every { database.waitForPendingWrites() } returns TaskCompletionSource<Void>().task
+
+    assertEquals(AccountDeletionResult.NetworkError, repository.deleteAccount())
+    assertEquals(ACCOUNT_DELETION_TIMEOUT_MILLIS, currentTime)
+    verify(exactly = 0) { callable.call() }
+  }
+
+  @Test
+  fun databaseBlockedByACacheClear_returnsNetworkErrorWithoutCalling() = runTest {
+    val repository =
+        FirebaseAccountDeletionRepository(
+            { auth },
+            { functions },
+            { throw IllegalStateException("Firestore cache cleanup must finish before access") },
+        )
+
+    assertEquals(AccountDeletionResult.NetworkError, repository.deleteAccount())
+    verify(exactly = 0) { callable.call() }
+  }
+
+  @Test
   fun noAnswerInTime_returnsNetworkError() = runTest {
     // A connection lost after the headers leaves the SDK's task pending forever.
     functionReturns(TaskCompletionSource<HttpsCallableResult>().task)
@@ -262,7 +319,10 @@ class FirebaseAccountDeletionRepositoryTest {
   @Test
   fun hiltBinding_isTheFirebaseRepositoryAndDoesNotTouchFirebaseUntilUsed() {
     // No FirebaseApp is initialized here, so resolving Firebase while constructing would throw.
-    val bound = AccountDeletionModule.accountDeletionRepository()
+    val bound =
+        AccountDeletionModule.accountDeletionRepository(
+            Provider { throw AssertionError("Firestore resolved at construction") }
+        )
 
     assertTrue(bound is FirebaseAccountDeletionRepository)
   }
