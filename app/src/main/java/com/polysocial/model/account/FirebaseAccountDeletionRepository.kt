@@ -6,6 +6,7 @@ import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.functions.FirebaseFunctions
 import com.google.firebase.functions.FirebaseFunctionsException
 import com.google.firebase.functions.FirebaseFunctionsException.Code
@@ -48,7 +49,8 @@ internal const val ACCOUNT_DELETION_TIMEOUT_MILLIS = 80_000L
  *
  * Before calling, it waits for Firestore's pending writes
  * ([FirebaseFirestore.waitForPendingWrites]) and returns [AccountDeletionResult.NetworkError]
- * without calling if they can't be sent. An ID token stays valid for up to an hour after the Auth
+ * without calling if they can't be sent ([AccountDeletionResult.UnexpectedError] if the session's
+ * database is blocked by a cache clear). An ID token stays valid for up to an hour after the Auth
  * user is deleted, and the rules let an owner create their own `users/{uid}`, so a write queued
  * before the deletion and sent after it would recreate a profile that no account owns.
  *
@@ -68,9 +70,7 @@ class FirebaseAccountDeletionRepository(
     return try {
       if (auth.currentUser == null) return AccountDeletionResult.NotSignedIn
       // Both steps can stay pending forever (offline, or a connection lost mid-answer).
-      withTimeout(ACCOUNT_DELETION_TIMEOUT_MILLIS) {
-        if (savePendingWrites()) callFunction() else AccountDeletionResult.NetworkError
-      }
+      withTimeout(ACCOUNT_DELETION_TIMEOUT_MILLIS) { pendingWritesFailure() ?: callFunction() }
     } catch (_: TimeoutCancellationException) {
       // Our timeout, unless the caller was cancelled at the same moment.
       currentCoroutineContext().ensureActive()
@@ -87,19 +87,23 @@ class FirebaseAccountDeletionRepository(
   }
 
   /**
-   * Waits until Firestore has sent this user's queued writes. Returns false if it can't (no
-   * connection, or the session's database is blocked by a cache clear), so nothing is deleted.
+   * Waits until Firestore has sent this user's queued writes. Returns null once they are sent, or
+   * the result to return without deleting anything.
    */
-  private suspend fun savePendingWrites(): Boolean =
+  private suspend fun pendingWritesFailure(): AccountDeletionResult? =
       try {
         firestore().waitForPendingWrites().await()
-        true
+        null
       } catch (_: CancellationException) {
         // Our timeout or the caller's cancellation propagates; a cancelled SDK task is a failure.
         currentCoroutineContext().ensureActive()
-        false
+        AccountDeletionResult.NetworkError
+      } catch (_: FirebaseFirestoreException) {
+        AccountDeletionResult.NetworkError
       } catch (_: Exception) {
-        false
+        // For example the session's database, blocked until a failed cache clear succeeds: a retry
+        // can't help, so this is not a network error.
+        AccountDeletionResult.UnexpectedError
       }
 
   private suspend fun callFunction(): AccountDeletionResult {
