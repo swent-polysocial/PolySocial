@@ -2,7 +2,10 @@
 package com.polysocial.ui.association
 
 import android.graphics.Bitmap
+import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.SoftwareKeyboardController
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.lifecycle.SavedStateHandle
@@ -21,6 +24,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class AssociationSetupDeviceTest {
   @get:Rule val compose = createComposeRule()
+  private var keyboard: SoftwareKeyboardController? = null
 
   @Test
   fun formValidationAndOfflineRetryKeepTheAssociationDetails() {
@@ -32,7 +36,11 @@ class AssociationSetupDeviceTest {
         }
     val model = AssociationSetupViewModel(auth, profiles, associations, SavedStateHandle())
     var completions = 0
-    compose.setContent { PolySocialTheme { AssociationSetupRoute({}, { completions++ }, model) } }
+    compose.setContent {
+      val controller = LocalSoftwareKeyboardController.current
+      SideEffect { keyboard = controller }
+      PolySocialTheme { AssociationSetupRoute({}, { completions++ }, model) }
+    }
     compose.onNodeWithTag(AssociationSetupTags.Submit).performScrollTo().performClick()
     assertTrue(profiles.createdProfiles.isEmpty())
     for (field in
@@ -61,7 +69,7 @@ class AssociationSetupDeviceTest {
         .performTextInput("https://example.org")
     compose.onNodeWithTag(AssociationSetupTags.Back).performScrollTo()
     compose.onNodeWithTag(AssociationSetupTags.Initials).assertTextEquals("EC")
-    androidx.test.espresso.Espresso.closeSoftKeyboard()
+    hideKeyboard()
     val notice =
         compose
             .onNodeWithTag(AssociationSetupTags.ReviewNotice)
@@ -87,8 +95,15 @@ class AssociationSetupDeviceTest {
     assertEquals("https://example.org", associations.createdAssociations.last().website)
   }
 
+  private fun hideKeyboard() {
+    compose.runOnIdle {
+      requireNotNull(keyboard) { "Compose keyboard controller is required" }.hide()
+    }
+    compose.waitForIdle()
+  }
+
   private fun capture(name: String) {
-    androidx.test.espresso.Espresso.closeSoftKeyboard()
+    hideKeyboard()
     compose.waitForIdle()
     val context = InstrumentationRegistry.getInstrumentation().targetContext
     val directory =
