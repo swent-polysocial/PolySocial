@@ -8,7 +8,6 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 
 - **Association signup foundation (#125):** signup takes the existing account type, defaulting to student. Associations accept a valid email on any domain and omit the personal name. The controller records a private local email digest before remote signup; checked disk commits run off-main and block signup on failure. This same-device routing hint stores no raw email/password and grants no permissions. Setup/navigation follow separately; #127 owns pending UI and #208 owns login.
 
-
 - **Password recovery (#164):** the owner keeps email enumeration protection enabled. Request resets directly through `AuthRepository`; never fetch providers by email. All accepted requests show conditional inbox guidance, including unknown and Google-only addresses. The request preserves the auth session and login form. Firebase handles password choice on its hosted action page.
 - **Privacy notice (#103):** Profile exposes a read-only Privacy & data entry alongside confirmed logout (#109). The app shell supplies its destination to `ProfileRoute`; a standalone profile without that destination hides the entry. The summary and dated full notice are bundled and need no data query, so they remain usable offline. Export, in-app deletion and attendance-based matching show an unavailable Snackbar; the switch remains Off and writes no consent. Collection/access text describes this build; #121 and #123 must update it when attendance or reminders are enabled. Mehdi authorized explicit prototype draft wording while contact/provider details are pending. `privacy_contact_email` stays empty until supplied; Hilt provides the configured address and contact service to each notice entry's ViewModel, which opens a user-controlled email draft when configured, and otherwise explains the missing address/client. No account data is added. Feedback effects must key both text and owner callback: replacing a ViewModel with the same message otherwise dismisses the previous owner.
 
@@ -199,9 +198,6 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 ## Decision log
 
-- 2026-10-29 · Split #125 into signup persistence, setup saving, setup UI, and auth routing, each with its own tests/coverage gate. ([#125](https://github.com/swent-polysocial/PolySocial/issues/125))
-
-
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 
 - 2026-10-29 · Shared UI parts live once in `ui/common` (`FormParts.kt`: `FieldLabel`, `OfflineBanner`, `ErrorBanner`, `PrimaryButton`, next to `LoadingState`, `ErrorState` and `StateButton`): reuse or extend them instead of copying a field label, banner or button into a screen (M1 coach feedback). ([#251](https://github.com/swent-polysocial/PolySocial/issues/251))
@@ -209,6 +205,8 @@ Newest first, one line each, with a link. Remove a line once its content lives i
 - 2026-10-29 · Whichever association shell merges first (#247 or #261) stays; the other adapts on rebase. ([#247](https://github.com/swent-polysocial/PolySocial/pull/247#issuecomment-6494141103))
 - 2026-10-28 · An association an admin hasn't verified yet opens its own pending app (Events with the review steps, Map closed until verified, Organization with its details and Log out); a verified one keeps the students' app until #140, which plugs its tabs into the shared `AssociationShell`. ([#127](https://github.com/swent-polysocial/PolySocial/issues/127))
 - 2026-10-28 · Students (unverified ones too) delete their account through a `deleteAccount` Cloud Function that removes `users/{uid}` then the Auth user, retry-safe; their events are kept, associations stay admin-assisted, a `SessionGuard` clears the cache on any UID change (#198), and unverified accounts are deleted after 7 days (#149). ([#201](https://github.com/swent-polysocial/PolySocial/issues/201))
+- 2026-10-29 · Split #125 into signup persistence, setup saving, setup UI, and auth routing, each with its own tests/coverage gate. ([#125](https://github.com/swent-polysocial/PolySocial/issues/125))
+
 - 2026-10-28 · [#168 review](https://github.com/swent-polysocial/PolySocial/pull/168): Google progress stays beside the Google action while password actions are locked; clarify the Activity lifetime and the unverified device rotation case.
 
 - 2026-10-27 · [#165 review](https://github.com/swent-polysocial/PolySocial/pull/165): a private config without a Web OAuth client fails compilation; CI Google sign-in awaits the stable signing key already tracked in #137.

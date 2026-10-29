@@ -30,6 +30,7 @@ class AssociationSignUpViewModelTest {
     val cleared = mutableListOf<String>()
     var failure: Exception? = null
     var gate: CompletableDeferred<Unit>? = null
+    var clearFailure: Exception? = null
 
     override suspend fun remember(email: String) {
       gate?.await()
@@ -40,6 +41,7 @@ class AssociationSignUpViewModelTest {
     override suspend fun contains(email: String) = email in remembered
 
     override suspend fun clear(email: String) {
+      clearFailure?.let { throw it }
       cleared += email
       remembered.remove(email)
     }
@@ -164,7 +166,7 @@ class AssociationSignUpViewModelTest {
                   this@AssociationSignUpViewModelTest.user.copy(email = "student@epfl.ch")
               )
         }
-    val store = Store()
+    val store = Store().apply { clearFailure = IOException("storage unavailable") }
     val vm = SignUpViewModel(fake, store)
     fill(vm, AccountType.STUDENT)
     vm.update(SignUpField.FullName, "Test Student")
@@ -173,7 +175,9 @@ class AssociationSignUpViewModelTest {
     advanceUntilIdle()
     assertEquals(AccountType.STUDENT, fake.lastSignUpAccountType)
     assertTrue(store.remembered.isEmpty())
-    assertEquals(listOf("student@epfl.ch"), store.cleared)
+    assertTrue(store.cleared.isEmpty())
+    assertEquals(1, fake.signUpCalls)
+    assertTrue(vm.uiState.value.status is SignUpStatus.SignedUp)
     vm.reset(AccountType.ASSOCIATION)
     assertEquals(AccountType.ASSOCIATION, vm.uiState.value.form.accountType)
     vm.reset()

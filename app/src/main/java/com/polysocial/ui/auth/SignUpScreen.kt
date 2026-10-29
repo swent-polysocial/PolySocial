@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (association-specific invalid email feedback, #125).
 // Contributors: OpenAI Codex (association email validation feedback, #125).
 // Contributors: OpenAI Codex (fresh signed-out forms, shared reset action and Welcome after
 // logout, #109).
@@ -860,6 +861,7 @@ private fun FieldError.text(): String =
 
 private fun SignUpResult.Failure.message(): Int =
     when (this) {
+      SignUpResult.InvalidEmail -> R.string.association_invalid_email
       SignUpResult.InvalidDomain -> R.string.signup_invalid_domain
       SignUpResult.AlreadyInUse -> R.string.signup_duplicate_email
       SignUpResult.NetworkError -> R.string.signup_network_error

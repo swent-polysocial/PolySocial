@@ -26,6 +26,7 @@ import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
 import com.polysocial.model.auth.*
+import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.user.*
 import com.polysocial.resources.C
 import com.polysocial.ui.auth.*
@@ -55,7 +56,7 @@ class AuthFlowTest {
   private val user = AuthUser("test-uid", "test.student@epfl.ch", true, "Test Student")
   private val auth = FakeAuthRepository()
   private val profiles = FakeUserProfileRepository()
-  private val signUp = SignUpViewModel(auth)
+  private val signUp = SignUpViewModel(auth, EmptyAssociationSignupStore)
   private val login = LoginViewModel(auth)
   private val profileSetup = ProfileSetupViewModel(auth, profiles)
   private val welcome = com.polysocial.ui.auth.WelcomeViewModel(auth)
@@ -315,7 +316,7 @@ class AuthFlowTest {
       }
     }
     compose.onNodeWithTag("logout_current_forms").assertIsDisplayed()
-    val replacementSignUp = SignUpViewModel(auth)
+    val replacementSignUp = SignUpViewModel(auth, EmptyAssociationSignupStore)
     val replacementLogin = LoginViewModel(auth)
     replacementSignUp.update(SignUpField.FullName, "Previous Student")
     replacementLogin.onEmailChange(user.email)

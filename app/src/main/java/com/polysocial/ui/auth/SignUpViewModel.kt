@@ -9,7 +9,6 @@ import androidx.lifecycle.viewModelScope
 import com.polysocial.model.auth.AssociationSignupStore
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.auth.AuthUser
-import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.auth.FieldError
 import com.polysocial.model.auth.SignUpField
 import com.polysocial.model.auth.SignUpForm
@@ -54,7 +53,7 @@ class SignUpViewModel
 @Inject
 constructor(
     private val repository: AuthRepository,
-    private val associationSignup: AssociationSignupStore = EmptyAssociationSignupStore,
+    private val associationSignup: AssociationSignupStore,
 ) : ViewModel() {
   private val mutableState = MutableStateFlow(SignUpUiState())
   val uiState = mutableState.asStateFlow()
@@ -107,7 +106,8 @@ constructor(
           try {
             if (state.form.accountType == AccountType.ASSOCIATION)
                 associationSignup.remember(state.form.email)
-            else associationSignup.clear(state.form.email)
+            else if (associationSignup.contains(state.form.email))
+                associationSignup.clear(state.form.email)
             repository.signUp(
                 state.form.fullName.trim(),
                 state.form.email.trim(),

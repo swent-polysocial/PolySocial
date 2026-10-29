@@ -10,6 +10,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
 import com.polysocial.model.auth.*
+import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.user.UserProfileRepository
 import com.polysocial.ui.auth.*
 import com.polysocial.ui.login.LoginScreenTestTags
@@ -37,7 +38,7 @@ class PasswordRecoveryScreenTest {
     val profiles = mockk<UserProfileRepository>()
     val start = AppStartViewModel(auth, profiles)
     val profileStep = ProfileSetupViewModel(auth, profiles)
-    val signup = SignUpViewModel(auth)
+    val signup = SignUpViewModel(auth, EmptyAssociationSignupStore)
     val login = LoginViewModel(auth)
     val recovery = PasswordRecoveryViewModel(auth)
     val verification =

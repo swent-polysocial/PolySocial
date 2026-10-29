@@ -14,6 +14,7 @@ import androidx.compose.ui.test.performClick
 import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.auth.AuthUser
+import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.auth.SignUpField
 import com.polysocial.model.auth.VerificationClock
@@ -44,7 +45,7 @@ class VerificationNavigationTest {
   private val repository = FakeAuthRepository(user)
   private val store =
       MemoryVerificationStore().apply { timings[user.uid] = VerificationTiming(1000, 46_000) }
-  private val signup = SignUpViewModel(repository)
+  private val signup = SignUpViewModel(repository, EmptyAssociationSignupStore)
   private val login = LoginViewModel(repository)
   private var start = AppStartViewModel(repository, FakeUserProfileRepository())
   private val welcome = com.polysocial.ui.auth.WelcomeViewModel(repository)

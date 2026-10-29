@@ -33,6 +33,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.auth.AuthUser
+import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.auth.SendVerificationResult
 import com.polysocial.model.auth.SignUpField
 import com.polysocial.model.auth.VerificationClock
@@ -120,7 +121,7 @@ class VerifyEmailScreenTest {
     coEvery { profiles.getProfile(user.uid) } returns ProfileResult.NotFound
     start = AppStartViewModel(repository, profiles)
     vm = VerifyEmailViewModel(repository, store, VerificationClock { now })
-    signup = SignUpViewModel(repository)
+    signup = SignUpViewModel(repository, EmptyAssociationSignupStore)
     login = LoginViewModel(repository)
   }
 

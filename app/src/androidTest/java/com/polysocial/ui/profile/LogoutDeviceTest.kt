@@ -12,6 +12,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.auth.*
+import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.firebase.*
 import com.polysocial.model.user.*
 import com.polysocial.model.user.AccountType
@@ -87,7 +88,7 @@ class LogoutDeviceTest {
       }
 
   private fun launch() {
-    val signup = SignUpViewModel(auth)
+    val signup = SignUpViewModel(auth, EmptyAssociationSignupStore)
     val login = LoginViewModel(auth)
     val start = AppStartViewModel(auth, profiles)
     val profileSetup = ProfileSetupViewModel(auth, profiles)
