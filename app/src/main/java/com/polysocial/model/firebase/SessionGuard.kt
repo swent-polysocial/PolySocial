@@ -31,8 +31,8 @@ interface SessionGuard {
   /**
    * Makes the cache safe for [uid] (`null` when signed out) and suspends until it is. Await it
    * before the first read for an account. Returns [SessionGuardResult.CleanupFailed] if the clear
-   * fails or times out; database access then stays blocked, and calling it again retries the
-   * clear. The caller's cancellation propagates once a started clear has finished.
+   * fails or times out; database access then stays blocked, and calling it again retries the clear.
+   * The caller's cancellation propagates once a started clear has finished.
    */
   suspend fun ensureSession(uid: String?): SessionGuardResult
 }
@@ -45,19 +45,19 @@ interface SessionGuard {
  *
  * **No double clear on logout.** Explicit logout (and any flow that clears before signing out)
  * calls [SessionCache.clear], then signs out. The resulting A → null change finds the cache already
- * empty ([FirestoreSession.blockUnlessEmpty] returns false: cleared in this process and not reopened
- * since), so the guard only records the new UID. Firestore access between that clear and the
- * sign-out reopens the cache, and the guard then clears again: safe, only slower.
+ * empty ([FirestoreSession.blockUnlessEmpty] returns false: cleared in this process and not
+ * reopened since), so the guard only records the new UID. Firestore access between that clear and
+ * the sign-out reopens the cache, and the guard then clears again: safe, only slower.
  *
  * **When access is blocked.** On a change, [FirestoreSession.blockUnlessEmpty] runs synchronously,
- * before the suspending clear, so every later `FirestoreSession.database` access fails (repositories
- * map it to their typed errors) until a clear succeeds. The new UID is stored only after that
- * success, so a failed or interrupted clear is retried by the next [ensureSession] call (app start's
- * Retry) or on the next launch. App start awaits [ensureSession] before its profile read, the first
- * read of every sign-in, so that path is covered whatever order Firebase reports the change in.
- * Changes while the app shell is shown are caught through [AuthSessionSource]. A read that resolved
- * the database before the change was detected is not stopped, but the clear terminates the
- * instance it uses.
+ * before the suspending clear, so every later `FirestoreSession.database` access fails
+ * (repositories map it to their typed errors) until a clear succeeds. The new UID is stored only
+ * after that success, so a failed or interrupted clear is retried by the next [ensureSession] call
+ * (app start's Retry) or on the next launch. App start awaits [ensureSession] before its profile
+ * read, the first read of every sign-in, so that path is covered whatever order Firebase reports
+ * the change in. Changes while the app shell is shown are caught through [AuthSessionSource]. A
+ * read that resolved the database before the change was detected is not stopped, but the clear
+ * terminates the instance it uses.
  */
 @Singleton
 class FirestoreSessionGuard

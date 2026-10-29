@@ -40,8 +40,7 @@ object AuthModule {
 
   @Provides fun authSessionSource(): AuthSessionSource = FirebaseAuthSessionSource()
 
-  @Provides
-  fun sessionOwnerStore(store: PreferencesSessionOwnerStore): SessionOwnerStore = store
+  @Provides fun sessionOwnerStore(store: PreferencesSessionOwnerStore): SessionOwnerStore = store
 
   @Provides fun sessionGuard(guard: FirestoreSessionGuard): SessionGuard = guard
 }
