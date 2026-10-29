@@ -6,6 +6,7 @@
 <!-- Contributors: OpenAI Codex (bundled Profile privacy notice and unavailable actions, #103). -->
 
 <!-- Contributors: OpenAI Codex (CI APK download, installation and Mapbox setup instructions, #137). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the Cloud Functions section, #206; Mohamed Khellaf (reviewed and revised). -->
 
 # PolySocial
 
@@ -58,7 +59,7 @@ Signed-out users see Welcome on launch. Unverified sessions reopen Verify Email;
 ## Tech stack
 
 - **Kotlin** and **Jetpack Compose** (Material 3), **MVVM** with `StateFlow` UI state; dependency injection with **Hilt**
-- **Firebase:** Authentication, Cloud Firestore (with offline persistence), Cloud Storage for photos, Local Emulator Suite for tests
+- **Firebase:** Authentication, Cloud Firestore (with offline persistence), Cloud Storage for photos, Cloud Functions (account deletion), Local Emulator Suite for tests
 - **Maps:** Mapbox Maps SDK and its Compose extension; **Nominatim / OpenStreetMap** for geocoding
 - **Device:** GPS (one-off location), CameraX + ML Kit for QR codes, WorkManager for reminders
 - **Quality:** JUnit, Robolectric, Kaspresso, JaCoCo coverage, SonarCloud, ktfmt, GitHub Actions CI
@@ -156,6 +157,36 @@ firebase emulators:exec --project demo-polysocial --only firestore,auth "gradlew
 ```
 
 `-Pemulator` runs **only** the emulator tests, in place of the regular instrumented tests, so run `./gradlew connectedCheck` separately for those. Without the flag, `connectedCheck` skips the emulator tests. `-Pemulator=all` runs both, which is what CI does inside `firebase emulators:exec`. The tests reach the host machine at `10.0.2.2`, which only works from an Android emulator, not from a physical device.
+
+## Cloud Functions
+
+Server code lives in `firebase/functions` (plain JavaScript, Node.js 22, region `europe-west6`). Today it has one callable function, **`deleteAccount`**: it deletes the signed-in user's private profile `users/{uid}`, then their Firebase Auth user, and returns `{ deleted: true }` only once both are gone. It refuses a sign-in older than 5 minutes (`failed-precondition`, details `recent-login-required`) and association accounts (`failed-precondition`, details `association`: they ask the PolySocial team through the privacy contact). Each step can be retried safely. Events the user created are kept. The Admin SDK bypasses the Security Rules, so the function itself checks who may delete what.
+
+Install the packages once (Node.js 22 or newer), then run the unit tests, which use fakes and need no emulator:
+
+```bash
+npm ci --prefix firebase/functions
+node firebase/functions/deleteAccountHandler.test.js
+```
+
+The emulator test calls the function over HTTP, like the app, with the Auth, Firestore and Functions emulators:
+
+```bash
+firebase emulators:exec --project demo-polysocial --only firestore,auth,functions "node firebase/functions/deleteAccount.emulator.test.js"
+```
+
+The Functions emulator runs the function with your installed Node.js and warns if it isn't version 22; the tests still run.
+
+**Deploying is manual.** After a change to `firebase/functions` reaches `main`, a teammate with access to the Firebase project deploys it (`firebase login` first). Cloud Functions need the Blaze plan, which the project uses, with its budget alert:
+
+```bash
+npm ci --prefix firebase/functions
+firebase deploy --only functions --project <project-id>
+```
+
+Keep `--only functions`: a plain `firebase deploy` would also deploy the Security Rules and indexes. The app calls the function in `europe-west6`; if the region changes, change it in both `firebase/functions/deleteAccountHandler.js` (`REGION`) and the app.
+
+**Not in CI yet:** CI runs neither the function's unit tests nor the Functions emulator, and doesn't deploy. Adding them needs a workflow change, which needs team approval, so run both commands above locally and paste their output in any PR that changes `firebase/functions`.
 
 ## Project links
 
