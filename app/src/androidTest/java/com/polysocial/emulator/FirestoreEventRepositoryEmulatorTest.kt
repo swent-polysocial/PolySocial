@@ -4,6 +4,7 @@
 // (updateEvent and deleteEvent against the rules, #130; an association's own events against the
 // rules, #132); Franciszek Najda (reviewed #130).
 // OpenAI Codex (Google sign-in contract in the event-test fixture, #106).
+// Claude Opus 5.5 (private event detail and offline cache tests, #209).
 package com.polysocial.emulator
 
 import android.content.Context
@@ -23,6 +24,7 @@ import com.polysocial.model.event.DeleteEventResult
 import com.polysocial.model.event.EVENTS_COLLECTION
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
+import com.polysocial.model.event.EventResult
 import com.polysocial.model.event.FirestoreEventRepository
 import com.polysocial.model.event.OwnEventsResult
 import com.polysocial.model.event.PublicEventsResult
@@ -39,6 +41,7 @@ import java.time.Instant
 import java.time.ZoneOffset
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
@@ -86,6 +89,17 @@ class FirestoreEventRepositoryEmulatorTest {
       withTimeout(TIMEOUT_MS) {
         repository.getUpcomingPublicEvents(WINDOW_DAYS).first {
           it !is PublicEventsResult.Events || !it.fromCache
+        }
+      }
+
+  /**
+   * The first answer of [FirestoreEventRepository.getEvent] that doesn't come from the cache: the
+   * event from the server, or [EventResult.NotFound]. Fails after [TIMEOUT_MS].
+   */
+  private suspend fun serverEvent(id: String): EventResult =
+      withTimeout(TIMEOUT_MS) {
+        repository.getEvent(id).first {
+          it is EventResult.NotFound || (it is EventResult.Found && !it.fromCache)
         }
       }
 
@@ -170,6 +184,52 @@ class FirestoreEventRepositoryEmulatorTest {
     }
 
     assertEquals(listOf(emptyList<String>(), listOf("public")), seen)
+  }
+
+  @Test
+  fun getEvent_aPrivateEventIsReadByItsAllowedStudentAndNotFoundForAnyoneElse() = runBlocking {
+    val uid = signInStudent()
+    seed("privateReadable", privateEvent(uid, startsIn = Duration.ofHours(1)))
+    seed("privateOther", privateEvent(MEMBER_UID, startsIn = Duration.ofHours(1)))
+
+    val readable = serverEvent("privateReadable")
+    assertTrue("Expected the event, got $readable", readable is EventResult.Found)
+    assertEquals("privateReadable", (readable as EventResult.Found).event.id)
+    // Denied, it looks exactly like an event that doesn't exist: nothing about it is revealed.
+    assertEquals(EventResult.NotFound, serverEvent("privateOther"))
+    assertEquals(EventResult.NotFound, serverEvent("missing"))
+  }
+
+  @Test
+  fun offline_aCachedPrivateEventStaysOutOfThePublicEvents() = runBlocking {
+    val uid = signInStudent()
+    seed("privateReadable", privateEvent(uid, startsIn = Duration.ofHours(1)))
+    seed("public", publicEvent(startsIn = Duration.ofHours(2)))
+    // As in the app: the map shows the public events while the student has the private event's
+    // detail open. The listeners stay open so the in-memory cache keeps both events.
+    val publicResults = Channel<PublicEventsResult>(Channel.UNLIMITED)
+    val detailResults = Channel<EventResult>(Channel.UNLIMITED)
+    val map = launch {
+      repository.getUpcomingPublicEvents(WINDOW_DAYS).collect(publicResults::send)
+    }
+    val detail = launch { repository.getEvent("privateReadable").collect(detailResults::send) }
+    val offline =
+        try {
+          awaitServerResult(publicResults) { "public" in it }
+          withTimeout(TIMEOUT_MS) {
+            detailResults.receiveAsFlow().first { it is EventResult.Found && !it.fromCache }
+          }
+          whileOffline(emulator.firestore.collection(EVENTS_COLLECTION).document("public")) {
+            withTimeout(TIMEOUT_MS) { repository.getUpcomingPublicEvents(WINDOW_DAYS).first() }
+          }
+        } finally {
+          map.cancel()
+          detail.cancel()
+        }
+
+    assertTrue("Expected cached events, got $offline", offline is PublicEventsResult.Events)
+    assertTrue((offline as PublicEventsResult.Events).fromCache)
+    assertEquals(listOf("public"), offline.ids())
   }
 
   @Test
