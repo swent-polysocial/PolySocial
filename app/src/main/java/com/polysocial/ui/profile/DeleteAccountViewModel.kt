@@ -55,12 +55,16 @@ enum class DeleteAccountError {
   Unexpected,
 }
 
-/** The Delete account sheet's state; [password] is kept in memory only, never saved. */
+/**
+ * The Delete account sheet's state; [password] is kept in memory only, never saved. [deleted] tells
+ * whether the server confirmed the deletion, so a lost session's cleanup never claims it.
+ */
 data class DeleteAccountUiState(
     val step: DeleteAccountStep = DeleteAccountStep.Hidden,
     val methods: Set<SignInMethod> = emptySet(),
     val password: String = "",
     val error: DeleteAccountError? = null,
+    val deleted: Boolean = false,
 ) {
   /** Something runs: every action is ignored and the sheet can't be dismissed. */
   val busy: Boolean
@@ -89,13 +93,14 @@ data class DeleteAccountUiState(
  *    ignored while it runs. A sign-in too old for the server returns to step 2; an association is
  *    refused ([DeleteAccountStep.NotAllowed]) and pointed to the privacy contact; other failures
  *    offer [retry], which is safe because the server steps are idempotent.
- * 4. On success: clear the Firestore cache ([SessionCache.clear]), the account's resend cooldowns
- *    ([VerificationStore.clear]), then sign out ([AuthRepository.logOut]), and report
+ * 4. On success: clear the Firestore cache first ([SessionCache.clear]), then the account's resend
+ *    cooldowns ([VerificationStore.clear]), then sign out ([AuthRepository.logOut]), and report
  *    [DeleteAccountStep.Done] so the screen opens Welcome. A failed clear blocks with [retry], as
  *    logout does (#156), since the next account must not see this one's cache.
  *
- * A lost session ([ReauthResult.NotSignedIn], [AccountDeletionResult.NotSignedIn]) takes logout's
- * path: clear the cache, sign out, Welcome. Caller cancellation propagates.
+ * A lost session ([ReauthResult.NotSignedIn], [AccountDeletionResult.NotSignedIn]; for example an
+ * earlier attempt deleted the account but its answer was lost) runs the same cleanup and opens
+ * Welcome, without claiming the account was deleted. Caller cancellation propagates.
  */
 @HiltViewModel
 class DeleteAccountViewModel
@@ -112,9 +117,6 @@ constructor(
 
   /** The account being deleted, read before anything signs it out. */
   private var uid: String? = null
-
-  /** Whether the pending cleanup follows a deletion (also clears the resend cooldowns). */
-  private var deleted = false
 
   /** Opens the consequences; ignored while the sheet is already open. */
   fun request() {
@@ -133,7 +135,7 @@ constructor(
     if (state.value.step != DeleteAccountStep.Confirm) return
     val user = auth.currentUser()
     if (user == null) {
-      clearSession(afterDeletion = false)
+      clearSession(deleted = false)
       return
     }
     if (!network.isOnline()) {
@@ -179,7 +181,7 @@ constructor(
             state.value = state.value.copy(step = DeleteAccountStep.Deleting, error = null)
             viewModelScope.launch { delete() }
           }
-      DeleteAccountStep.CleanupFailed -> clearSession(deleted)
+      DeleteAccountStep.CleanupFailed -> clearSession(state.value.deleted)
       else -> Unit
     }
   }
@@ -208,7 +210,7 @@ constructor(
         }
         ReauthResult.WrongPassword -> backToReauth(DeleteAccountError.WrongPassword)
         ReauthResult.Cancelled -> backToReauth(null)
-        ReauthResult.NotSignedIn -> clearSession(afterDeletion = false)
+        ReauthResult.NotSignedIn -> clearSession(deleted = false)
         ReauthResult.NetworkError -> backToReauth(DeleteAccountError.Network)
         ReauthResult.UnexpectedError -> backToReauth(DeleteAccountError.Unexpected)
       }
@@ -226,8 +228,8 @@ constructor(
           AccountDeletionResult.UnexpectedError
         }
     when (result) {
-      AccountDeletionResult.Deleted -> clearSession(afterDeletion = true)
-      AccountDeletionResult.NotSignedIn -> clearSession(afterDeletion = false)
+      AccountDeletionResult.Deleted -> clearSession(deleted = true)
+      AccountDeletionResult.NotSignedIn -> clearSession(deleted = false)
       AccountDeletionResult.RecentLoginRequired -> backToReauth(DeleteAccountError.SignInAgain)
       AccountDeletionResult.NotAllowed ->
           state.value = state.value.copy(step = DeleteAccountStep.NotAllowed, error = null)
@@ -237,26 +239,26 @@ constructor(
   }
 
   /**
-   * Clears this device's data, then signs out; reports [DeleteAccountStep.Done] only after both.
+   * Clears the cache first, so nothing this session still writes can reach Firestore, then the
+   * account's resend cooldowns, then signs out. Reports [DeleteAccountStep.Done] only after all
+   * three; [deleted] is whether the server confirmed the deletion.
    */
-  private fun clearSession(afterDeletion: Boolean) {
-    deleted = afterDeletion
-    state.value = DeleteAccountUiState(step = DeleteAccountStep.Clearing)
+  private fun clearSession(deleted: Boolean) {
+    state.value = DeleteAccountUiState(step = DeleteAccountStep.Clearing, deleted = deleted)
     viewModelScope.launch {
       try {
         if (cache.clear() != CacheClearResult.Cleared) {
-          cleanupFailed()
+          cleanupFailed(deleted)
           return@launch
         }
-        val account = uid
-        if (afterDeletion && account != null) verification.clear(account)
+        uid?.let { verification.clear(it) }
         auth.logOut()
-        state.value = DeleteAccountUiState(step = DeleteAccountStep.Done)
+        state.value = DeleteAccountUiState(step = DeleteAccountStep.Done, deleted = deleted)
       } catch (cancelled: CancellationException) {
-        cleanupFailed()
+        cleanupFailed(deleted)
         throw cancelled
       } catch (_: Exception) {
-        cleanupFailed()
+        cleanupFailed(deleted)
       }
     }
   }
@@ -269,7 +271,7 @@ constructor(
     state.update { it.copy(step = DeleteAccountStep.DeleteFailed, error = error) }
   }
 
-  private fun cleanupFailed() {
-    state.value = DeleteAccountUiState(step = DeleteAccountStep.CleanupFailed)
+  private fun cleanupFailed(deleted: Boolean) {
+    state.value = DeleteAccountUiState(step = DeleteAccountStep.CleanupFailed, deleted = deleted)
   }
 }

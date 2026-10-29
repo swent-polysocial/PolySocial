@@ -43,5 +43,6 @@
     <string name="delete_account_association_body">Association accounts are deleted by the PolySocial team, not in the app. Contact the team privately and they will delete it.</string>
     <string name="delete_account_close">Close</string>
     <string name="delete_account_cleanup_title">Your account is deleted</string>
+    <string name="delete_account_cleanup_session_title">Finish signing out</string>
     <string name="delete_account_cleanup_error">This device\'s data couldn\'t be cleared. Try again before continuing.</string>
 </resources>

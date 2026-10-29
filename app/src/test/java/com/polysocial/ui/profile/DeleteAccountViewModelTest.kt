@@ -155,6 +155,7 @@ class DeleteAccountViewModelTest {
         assertEquals("fictional-password", fakeAuth.lastReauthPassword)
         assertEquals(1, deletion.calls)
         assertEquals(DeleteAccountStep.Done, step)
+        assertEquals(true, vm.uiState.value.deleted)
         assertEquals(listOf("cache", "verification:${student.uid}", "logOut"), events)
         assertNull(fakeAuth.user)
         assertNull(memory.timings[student.uid])
@@ -239,7 +240,7 @@ class DeleteAccountViewModelTest {
       }
 
   @Test
-  fun lostSessionDuringReauthSignsOutWithoutDeletingOrClearingCooldowns() =
+  fun lostSessionDuringReauthRunsTheCleanupWithoutClaimingDeletion() =
       runTest(main.dispatcher) {
         memory.timings[student.uid] = VerificationTiming(1, 2)
         fakeAuth.reauthResult = ReauthResult.NotSignedIn
@@ -248,9 +249,29 @@ class DeleteAccountViewModelTest {
         vm.submitPassword()
         runCurrent()
         assertEquals(DeleteAccountStep.Done, step)
+        assertEquals(false, vm.uiState.value.deleted)
         assertEquals(0, deletion.calls)
-        assertEquals(listOf("cache", "logOut"), events)
-        assertEquals(VerificationTiming(1, 2), memory.timings[student.uid])
+        assertEquals(listOf("cache", "verification:${student.uid}", "logOut"), events)
+        assertNull(memory.timings[student.uid])
+      }
+
+  @Test
+  fun lostSessionCleanupFailureBlocksWithoutClaimingDeletion() =
+      runTest(main.dispatcher) {
+        cacheResult = CacheClearResult.UnexpectedError
+        fakeAuth.reauthResult = ReauthResult.NotSignedIn
+        openReauth()
+        vm.onPasswordChange("fictional-password")
+        vm.submitPassword()
+        runCurrent()
+        assertEquals(DeleteAccountStep.CleanupFailed, step)
+        assertEquals(false, vm.uiState.value.deleted)
+        cacheResult = CacheClearResult.Cleared
+        vm.retry()
+        runCurrent()
+        assertEquals(DeleteAccountStep.Done, step)
+        assertEquals(false, vm.uiState.value.deleted)
+        assertEquals(0, deletion.calls)
       }
 
   @Test
@@ -274,7 +295,8 @@ class DeleteAccountViewModelTest {
         vm.submitPassword()
         runCurrent()
         assertEquals(DeleteAccountStep.Done, step)
-        assertEquals(listOf("cache", "logOut"), events)
+        assertEquals(false, vm.uiState.value.deleted)
+        assertEquals(listOf("cache", "verification:${student.uid}", "logOut"), events)
       }
 
   @Test
@@ -485,6 +507,7 @@ class DeleteAccountViewModelTest {
         vm.submitPassword()
         runCurrent()
         assertEquals(DeleteAccountStep.CleanupFailed, step)
+        assertEquals(true, vm.uiState.value.deleted)
         assertTrue(!vm.uiState.value.dismissible)
         assertNotNull("not signed out while the cache is dirty", fakeAuth.user)
         assertEquals(0, fakeAuth.logOutCalls)
