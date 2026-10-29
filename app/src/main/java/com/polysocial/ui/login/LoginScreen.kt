@@ -4,7 +4,8 @@
 // redirecting, after review); OpenAI Codex (GPT-6.1 Sol, medium; official Google button artwork;
 // lock navigation actions during login and verification handoffs);
 // OpenAI Codex (recovery navigation and shared email field for #164).
-// Contributors: Claude (the shared field label, #251).
+// Contributors: Claude (the shared field label, #251; accounts helper line and account-neutral
+// email label for associations, #208).
 package com.polysocial.ui.login
 
 import androidx.activity.compose.BackHandler
@@ -84,6 +85,7 @@ import kotlinx.coroutines.launch
 object LoginScreenTestTags {
   const val SCREEN = "login_screen"
   const val BACK = "login_back"
+  const val ACCOUNTS_HINT = "login_accounts_hint"
   const val GOOGLE = "login_google"
   const val GOOGLE_LOADING = "login_google_loading"
   const val EMAIL = "login_email"
@@ -209,7 +211,14 @@ fun LoginContent(
           Text(stringResource(R.string.login_title), style = typography.headlineMedium, color = Ink)
           Spacer(Modifier.height(6.dp))
           Text(stringResource(R.string.login_subtitle), style = typography.bodyLarge, color = Ink2)
-          Spacer(Modifier.height(20.5.dp))
+          // Who logs in with which email: 11 sp on an 18 dp line, right above the Google button.
+          Spacer(Modifier.height(2.5.dp))
+          Text(
+              stringResource(R.string.login_accounts_hint),
+              style = typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 18.sp),
+              color = Ink2,
+              modifier = Modifier.testTag(LoginScreenTestTags.ACCOUNTS_HINT),
+          )
           GoogleSignInButton(
               tag = LoginScreenTestTags.GOOGLE,
               onClick = onGoogle,
