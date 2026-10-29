@@ -1,6 +1,6 @@
 // Contributors: Claude (shared error state from the Figma "Tab · couldn't load" and "App start ·
 // couldn't load profile" frames, #74; scrolling and heading after review; its Retry button moved to
-// the shared StateButton, #194).
+// the shared StateButton, #194); Claude (optional secondary link, for Log out at app start, #208).
 package com.polysocial.ui.common
 
 import androidx.compose.foundation.background
@@ -43,10 +43,18 @@ import com.polysocial.ui.theme.exact
  * Full-screen error state shared by every screen whose content couldn't load: the offline icon, a
  * [title], a [message] and a Retry button that calls [onRetry]. Centred and sized as in the Figma
  * "Tab · couldn't load" and "App start · couldn't load profile" frames. It scrolls when the screen
- * is too short (landscape with large text), so Retry stays reachable.
+ * is too short (landscape with large text), so Retry stays reachable. With [secondaryLabel] and
+ * [onSecondary], a text link under Retry offers another way out (app start's Log out, #208).
  */
 @Composable
-fun ErrorState(title: String, message: String, onRetry: () -> Unit, modifier: Modifier = Modifier) {
+fun ErrorState(
+    title: String,
+    message: String,
+    onRetry: () -> Unit,
+    modifier: Modifier = Modifier,
+    secondaryLabel: String? = null,
+    onSecondary: (() -> Unit)? = null,
+) {
   // Figma's texts use the font's own line height ("auto"), not the type scale's fixed one.
   val typography = MaterialTheme.typography
   BoxWithConstraints(modifier.fillMaxSize().testTag(C.Tag.error_state)) {
@@ -90,6 +98,9 @@ fun ErrorState(title: String, message: String, onRetry: () -> Unit, modifier: Mo
           onRetry,
           Modifier.testTag(C.Tag.error_retry),
       )
+      if (secondaryLabel != null && onSecondary != null) {
+        TextLink(secondaryLabel, onSecondary, Modifier.testTag(C.Tag.error_secondary))
+      }
     }
   }
 }

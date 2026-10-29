@@ -1,3 +1,4 @@
+// Contributors: Claude (Log out from the app-start error, #208).
 // Contributors: OpenAI Codex (fresh signed-out forms, shared reset action and Welcome after
 // logout, #109).
 // Contributors: OpenAI Codex (Google startup, shared profile callbacks and integration for #107).
@@ -348,6 +349,8 @@ fun AuthFlow(
             message = stringResource(R.string.app_start_error_message),
             onRetry = startViewModel::refresh,
             modifier = Modifier.background(Bg),
+            secondaryLabel = stringResource(R.string.app_start_log_out),
+            onSecondary = startViewModel::logOut,
         )
     AuthDestination.ProfileSetup ->
         profileContent(

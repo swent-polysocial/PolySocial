@@ -7,7 +7,7 @@
 // Back handoffs and verification/profile integration); Claude (signed-in shell without Hilt, #105;
 // signed-out back stack, profile step, sign-out and Figma start states, #74; sign-out from
 // anywhere and from Verify Email, form resets and rotation cases after review); Claude Opus 5.5
-// (testing agent: generic save error tests, #142).
+// (testing agent: generic save error tests, #142); Claude (Log out from the start error, #208).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -807,6 +807,27 @@ class AuthFlowTest {
     compose.onNodeWithTag(C.Tag.error_retry).assertTextEquals(string(R.string.retry)).performClick()
     compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
     assertEquals(2, profiles.getProfileCalls)
+  }
+
+  @Test
+  fun startErrorLogOut_signsOutAndShowsWelcome() {
+    auth.user = user
+    profiles.getProfileResult = ProfileResult.NetworkError
+    launch()
+    compose.onNodeWithTag(C.Tag.error_state).assertIsDisplayed()
+
+    // The way out when Retry keeps failing (#208).
+    compose
+        .onNodeWithTag(C.Tag.error_secondary)
+        .assertTextEquals(string(R.string.app_start_log_out))
+        .performClick()
+    compose.waitForIdle()
+
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.error_state).assertDoesNotExist()
+    assertEquals(1, auth.logOutCalls)
+    assertNull(auth.currentUser())
+    assertEquals(1, profiles.getProfileCalls)
   }
 
   @Test

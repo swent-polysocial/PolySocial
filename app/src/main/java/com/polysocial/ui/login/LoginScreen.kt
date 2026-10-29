@@ -5,7 +5,7 @@
 // lock navigation actions during login and verification handoffs);
 // OpenAI Codex (recovery navigation and shared email field for #164).
 // Contributors: Claude (the shared field label, #251; accounts helper line and account-neutral
-// email label for associations, #208).
+// email label for associations; the shared TextLink, #208).
 package com.polysocial.ui.login
 
 import androidx.activity.compose.BackHandler
@@ -54,11 +54,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -68,6 +66,7 @@ import com.polysocial.model.auth.GoogleSignInResult
 import com.polysocial.ui.auth.GoogleAuthErrorScreen
 import com.polysocial.ui.auth.GoogleSignInButton
 import com.polysocial.ui.common.FieldLabel
+import com.polysocial.ui.common.TextLink
 import com.polysocial.ui.theme.Accent
 import com.polysocial.ui.theme.AccentText
 import com.polysocial.ui.theme.Bg
@@ -292,15 +291,11 @@ fun LoginContent(
                 }
             if (error != null) ErrorMessage(error, Modifier.padding(top = 5.5.dp))
           }
-          Text(
+          TextLink(
               stringResource(R.string.login_forgot_password),
-              style = typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-              color = AccentText,
-              textDecoration = TextDecoration.Underline,
-              modifier =
-                  Modifier.align(Alignment.End)
-                      .clickable(enabled = !fieldsLocked, onClick = onForgotPassword)
-                      .testTag(LoginScreenTestTags.FORGOT_PASSWORD),
+              onClick = onForgotPassword,
+              enabled = !fieldsLocked,
+              modifier = Modifier.align(Alignment.End).testTag(LoginScreenTestTags.FORGOT_PASSWORD),
           )
           if (state.status == LoginStatus.Unverified) {
             Spacer(Modifier.height(23.4.dp))
@@ -321,14 +316,11 @@ fun LoginContent(
                 style = typography.bodyMedium,
                 color = Ink2,
             )
-            Text(
+            TextLink(
                 stringResource(R.string.login_create_account),
-                style = typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                color = AccentText,
-                textDecoration = TextDecoration.Underline,
-                modifier =
-                    Modifier.clickable(enabled = !fieldsLocked, onClick = onCreateAccount)
-                        .testTag(LoginScreenTestTags.CREATE_ACCOUNT),
+                onClick = onCreateAccount,
+                enabled = !fieldsLocked,
+                modifier = Modifier.testTag(LoginScreenTestTags.CREATE_ACCOUNT),
             )
           }
           Spacer(Modifier.height(41.4.dp))

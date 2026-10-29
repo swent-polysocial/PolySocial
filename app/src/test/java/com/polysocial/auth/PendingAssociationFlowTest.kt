@@ -297,6 +297,28 @@ class PendingAssociationFlowTest {
   }
 
   @Test
+  fun aNonEpflAccountStuckOnTheStartError_logsOut_andAStudentThenLogsInNormally() {
+    profiles.getProfileResult = ProfileResult.NotFound
+    signedOutLaunch()
+    logInFromWelcome("club@example.org")
+    compose.onNodeWithTag(C.Tag.error_state).assertIsDisplayed()
+
+    compose.onNodeWithTag(C.Tag.error_secondary).performClick()
+    compose.waitForIdle()
+    assertEquals(1, auth.logOutCalls)
+    assertEquals(null, auth.currentUser())
+
+    // The reset form takes the new email alone: a leftover one would be prefixed to it.
+    auth.logInResult =
+        LogInResult.Success(AuthUser("student-uid", "test.student@epfl.ch", isEmailVerified = true))
+    logInFromWelcome("test.student@epfl.ch")
+
+    assertEquals("test.student@epfl.ch", auth.lastLogInEmail)
+    compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.error_state).assertDoesNotExist()
+  }
+
+  @Test
   fun aNonEpflAccountWithAStudentProfile_neverOpensTheStudentsApp() {
     profiles.getProfileResult = profile(AccountType.STUDENT)
 
