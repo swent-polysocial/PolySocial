@@ -1,5 +1,6 @@
 // Contributors: OpenAI Codex (sign-up validation and association mailbox policy, #125);
 // Claude (the full name’s limit, #143).
+// Contributors: Claude (shared the exact EPFL check from FirebaseAuthRepository, #208).
 package com.polysocial.model.auth
 
 import com.polysocial.model.user.AccountType
@@ -12,6 +13,12 @@ fun isEpflEmail(email: String): Boolean =
             RegexOption.IGNORE_CASE,
         )
         .matches(email.trim())
+
+/**
+ * [isEpflEmail] with the Security Rules' case-sensitive `@epfl.ch` ending: the rules only grant
+ * student access to such an email, so Google sign-in and app-start routing use this check.
+ */
+fun isExactEpflEmail(email: String): Boolean = isEpflEmail(email) && email.endsWith("@epfl.ch")
 
 enum class SignUpField {
   FullName,
