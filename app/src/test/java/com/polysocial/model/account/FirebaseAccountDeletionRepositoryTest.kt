@@ -52,33 +52,21 @@ class FirebaseAccountDeletionRepositoryTest {
 
   private fun functionFails(error: Exception) = functionReturns(Tasks.forException(error))
 
-  // Both constructors are `internal` in Kotlin but public on the JVM; the SDK creates real objects,
-  // so the tests use real ones rather than mocks.
-  private fun callableResult(data: Any?): HttpsCallableResult =
-      HttpsCallableResult::class.java.getConstructor(Any::class.java).newInstance(data)
+  // The SDK's constructors are Kotlin-internal, so the tests stub the values the repository reads.
+  private fun callableResult(answer: Any?): HttpsCallableResult =
+      mockk(relaxed = true) { every { getData() } returns answer }
 
   /** A function error as the SDK makes it: with a cause only for a failed connection. */
   private fun functionError(
       code: Code,
       details: Any? = null,
       cause: Throwable? = null,
-  ): FirebaseFunctionsException {
-    val type = FirebaseFunctionsException::class.java
-    return if (cause == null) {
-      type
-          .getConstructor(String::class.java, Code::class.java, Any::class.java)
-          .newInstance("test", code, details)
-    } else {
-      type
-          .getConstructor(
-              String::class.java,
-              Code::class.java,
-              Any::class.java,
-              Throwable::class.java,
-          )
-          .newInstance("test", code, details, cause)
-    }
-  }
+  ): FirebaseFunctionsException =
+      mockk(relaxed = true) {
+        every { this@mockk.code } returns code
+        every { this@mockk.details } returns details
+        every { this@mockk.cause } returns cause
+      }
 
   /** Asserts the result for each failure, so a table reads as the mapping it checks. */
   private suspend fun assertFailures(cases: List<Pair<Exception, AccountDeletionResult>>) {

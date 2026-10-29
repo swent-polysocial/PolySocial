@@ -51,7 +51,7 @@ class FirebaseAccountDeletionRepository(
   override suspend fun deleteAccount(): AccountDeletionResult {
     return try {
       if (auth.currentUser == null) return AccountDeletionResult.NotSignedIn
-      val answer = functions.getHttpsCallable(DELETE_ACCOUNT_FUNCTION).call().await().data
+      val answer = functions.getHttpsCallable(DELETE_ACCOUNT_FUNCTION).call().await().getData()
       if ((answer as? Map<*, *>)?.get("deleted") == true) AccountDeletionResult.Deleted
       else AccountDeletionResult.UnexpectedError
     } catch (_: CancellationException) {
