@@ -39,6 +39,7 @@
     <string name="delete_account_hide_password">Hide password</string>
     <string name="delete_account_continue">Continue</string>
     <string name="delete_account_wrong_password">Wrong password. Try again.</string>
+    <string name="delete_account_too_many_attempts">Too many attempts. Try again later.</string>
     <string name="delete_account_google_cancelled">Sign-in cancelled. Nothing was changed.</string>
     <string name="delete_account_confirm_again_password">Please confirm your password again.</string>
     <string name="delete_account_confirm_again_google">Please confirm it\'s you again.</string>
