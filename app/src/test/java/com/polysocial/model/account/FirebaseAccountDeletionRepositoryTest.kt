@@ -259,7 +259,7 @@ class FirebaseAccountDeletionRepositoryTest {
   }
 
   @Test
-  fun databaseBlockedByACacheClear_returnsNetworkErrorWithoutCalling() = runTest {
+  fun databaseBlockedByACacheClear_returnsUnexpectedErrorWithoutCalling() = runTest {
     val repository =
         FirebaseAccountDeletionRepository(
             { auth },
@@ -267,7 +267,7 @@ class FirebaseAccountDeletionRepositoryTest {
             { throw IllegalStateException("Firestore cache cleanup must finish before access") },
         )
 
-    assertEquals(AccountDeletionResult.NetworkError, repository.deleteAccount())
+    assertEquals(AccountDeletionResult.UnexpectedError, repository.deleteAccount())
     verify(exactly = 0) { callable.call() }
   }
 
