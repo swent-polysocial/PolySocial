@@ -6,8 +6,6 @@
 // CI, #159; unit tests in parallel forks and coverage of sharded device tests, #192; fakes shared
 // with instrumented tests and Hilt in instrumented tests, #136);
 // OpenAI Codex (sign-up test dependencies, review cleanup and Android UI-test MockK binding).
-// Contributors: Claude (Fable 5.1, Anthropic) drafted the Firebase Functions dependency for #206;
-// Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (Opus 5.5, Anthropic) made unit tests rerun when the Cloud Function source
 // changes, #206; Mohamed Khellaf (reviewed and revised).
 import java.util.Properties
@@ -213,8 +211,6 @@ dependencies {
   implementation(libs.googleid)
   implementation(libs.firebase.auth)
   implementation(libs.firebase.firestore)
-  // Calls the deleteAccount Cloud Function (#206)
-  implementation(libs.firebase.functions)
   // Task.await() for Firebase calls in coroutines
   implementation(libs.kotlinx.coroutines.play.services)
 
