@@ -17,6 +17,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
@@ -129,12 +130,20 @@ fun OrganizationScreen(
               Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
                 Text(
                     association.name,
-                    style = MaterialTheme.typography.titleLarge,
+                    style =
+                        MaterialTheme.typography.titleLarge.copy(
+                            fontSize = 19.sp,
+                            lineHeight = 24.sp,
+                        ),
                     fontWeight = FontWeight.ExtraBold,
                 )
                 Text(
                     stringResource(association.type.label()),
-                    style = MaterialTheme.typography.bodySmall,
+                    style =
+                        MaterialTheme.typography.bodySmall.copy(
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Normal,
+                        ),
                     color = Ink2,
                 )
                 Surface(shape = RoundedCornerShape(12.dp), color = InfoSoft) {
@@ -153,6 +162,7 @@ fun OrganizationScreen(
                         stringResource(R.string.organization_verified),
                         Modifier.testTag(OrganizationTags.Verified),
                         style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
                         color = Info,
                     )
                   }
