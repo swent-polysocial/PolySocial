@@ -6,6 +6,9 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 
 ## Current state
 
+- **Association setup saving (#125):** the plain form enforces #126's name/about/type/HTTPS limits. Its UID-scoped ViewModel saves the private association account before the public identity, rejects existing student accounts, and recovers duplicate creates after a lost response. Input survives retries and saved-state restoration for the same UID. The app never writes the verification flag. The presentation and startup handoff follow separately; pending editing stays with #127.
+
+
 - **Association signup foundation (#125):** signup takes the existing account type, defaulting to student. Associations accept a valid email on any domain and omit the personal name. The controller records a private local email digest before remote signup; checked disk commits run off-main and block signup on failure. This same-device routing hint stores no raw email/password and grants no permissions. Setup/navigation follow separately; #127 owns pending UI and #208 owns login.
 
 - **Password recovery (#164):** the owner keeps email enumeration protection enabled. Request resets directly through `AuthRepository`; never fetch providers by email. All accepted requests show conditional inbox guidance, including unknown and Google-only addresses. The request preserves the auth session and login form. Firebase handles password choice on its hosted action page.
