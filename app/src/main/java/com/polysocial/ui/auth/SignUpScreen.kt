@@ -65,8 +65,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
 import com.polysocial.model.auth.*
-import com.polysocial.model.user.MAX_DISPLAY_NAME_LENGTH
 import com.polysocial.model.user.AccountType
+import com.polysocial.model.user.MAX_DISPLAY_NAME_LENGTH
 import com.polysocial.ui.association.AssociationSetupRoute
 import com.polysocial.ui.association.PendingAssociationApp
 import com.polysocial.ui.common.ErrorState
