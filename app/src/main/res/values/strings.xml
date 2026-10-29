@@ -1,3 +1,4 @@
+<!-- Contributors: OpenAI Codex (association setup form copy, #125). -->
 <!-- Contributors: OpenAI Codex (association email validation, #125). -->
 <!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42; Create Event texts, #46; "+" button, #110; app bar actions, #84); OpenAI Codex (Google and welcome copy). OpenAI Codex (sign-up form, startup integration, name hint and unused-title cleanup; Mapbox integration and setup, #50; location permission and distance text, #51). Claude (Retry, app-start loading and error texts, #74; Edit event texts, #131; map association name, #128; Create Event organizer row, #134). -->
 <!-- Contributors: OpenAI Codex (verification screen and failure messages for #31). Claude (full name limit message, #143; as a plural after review). -->
@@ -245,4 +246,21 @@
     <string name="google_unexpected_error">Google sign-in couldn\'t finish. Try again, or go back and log in with your EPFL email.</string>
     <string name="google_try_again">Try again</string>
     <string name="association_invalid_email">Enter a valid email address.</string>
+    <string name="association_setup_title">Set up your association</string>
+    <string name="association_setup_description">You’ll be its first admin. Your association must be reviewed before publishing events.</string>
+    <string name="association_initials">Association initials</string>
+    <string name="association_initials_description">From your name · shown on events</string>
+    <string name="association_name">Name</string>
+    <string name="association_type">Type</string>
+    <string name="association_about">About</string>
+    <string name="association_website">Website · optional</string>
+    <string name="association_submit">Submit for review</string>
+    <string name="association_saving">Submitting…</string>
+    <string name="association_setup_network">Couldn’t save your association. Check your connection and try again. Your entries are kept.</string>
+    <string name="association_setup_error">Couldn’t save your association. Try again or go back to sign out.</string>
+    <string name="association_required">This field is required.</string>
+    <string name="association_too_long">This field exceeds its character limit.</string>
+    <string name="association_website_invalid">Enter a valid https:// website (at most 200 characters).</string>
+    <string name="association_review_notice">We review every association before it can publish events.</string>
+    <string name="association_setup_back">Back and sign out</string>
 </resources>
