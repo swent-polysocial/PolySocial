@@ -1,5 +1,5 @@
 // Contributors: Claude (wrote these tests for the shared loading and error states, #74; scrolling
-// and heading after review; the spinner's Figma drawing).
+// and heading after review; the spinner's Figma drawing); Claude (optional Log out link, #208).
 package com.polysocial.ui.common
 
 import android.app.Application
@@ -15,6 +15,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isHeading
@@ -138,6 +139,42 @@ class StateScreensTest {
     composeTestRule.onNodeWithTag(C.Tag.error_retry).performScrollTo().assertIsDisplayed()
     composeTestRule.onNodeWithTag(C.Tag.error_retry).performClick()
     assertEquals(1, retries)
+  }
+
+  @Test
+  fun errorState_withoutASecondaryAction_showsNoLink() {
+    composeTestRule.setContent {
+      PolySocialTheme { ErrorState(title = "Couldn't load", message = "Try again.", onRetry = {}) }
+    }
+
+    composeTestRule.onNodeWithTag(C.Tag.error_retry).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.error_secondary).assertDoesNotExist()
+  }
+
+  @Test
+  fun errorState_secondaryLink_sits10dpUnderRetry_andCallsBackOncePerTap() {
+    var retries = 0
+    var secondary = 0
+    composeTestRule.setContent {
+      PolySocialTheme {
+        ErrorState(
+            title = "Couldn't load your profile",
+            message = "Check your connection and try again.",
+            onRetry = { retries++ },
+            secondaryLabel = "Log out",
+            onSecondary = { secondary++ },
+        )
+      }
+    }
+
+    val link = composeTestRule.onNodeWithTag(C.Tag.error_secondary)
+    link.assertIsDisplayed().assertTextEquals("Log out")
+    // Figma "App start · couldn't load profile" (490:26): the stack's 10 dp spacing under Retry.
+    val retry = composeTestRule.onNodeWithTag(C.Tag.error_retry).getUnclippedBoundsInRoot()
+    assertEquals(10f, (link.getUnclippedBoundsInRoot().top - retry.bottom).value, 0.01f)
+    link.performClick()
+    assertEquals(1, secondary)
+    assertEquals(0, retries)
   }
 
   private fun string(id: Int) =
