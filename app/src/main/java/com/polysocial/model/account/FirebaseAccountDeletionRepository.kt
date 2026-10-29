@@ -38,9 +38,13 @@ internal const val ACCOUNT_DELETION_TIMEOUT_MILLIS = 80_000L
  * - anything else (`internal`, `not-found` when the function is not deployed, an unknown answer) →
  *   [AccountDeletionResult.UnexpectedError].
  *
- * Before calling, the SDK refreshes the user's ID token. If Firebase answers that the user no
- * longer exists, an earlier attempt already deleted the account and only its answer was lost, so
- * this returns [AccountDeletionResult.Deleted] (deletion policy, #201).
+ * The SDK sends the cached ID token and refreshes it only once it has expired (after about an
+ * hour), so a retry a few minutes after an attempt whose answer was lost reuses the old token and
+ * the function itself finds the account gone. If a refresh does run and Firebase answers that the
+ * user no longer exists (`ERROR_USER_NOT_FOUND`), an earlier attempt already deleted the account,
+ * so this returns [AccountDeletionResult.Deleted] (deletion policy, #201). On that error, and on a
+ * disabled user or a revoked session, the SDK also signs the user out locally, so
+ * `FirebaseAuth.currentUser` is null afterwards: the caller captures the uid before starting.
  *
  * Before calling, it waits for Firestore's pending writes
  * ([FirebaseFirestore.waitForPendingWrites]) and returns [AccountDeletionResult.NetworkError]
@@ -122,8 +126,8 @@ class FirebaseAccountDeletionRepository(
       }
 
   /**
-   * Maps a failure before the request was sent, mostly the ID-token refresh. The SDK wraps it (in
-   * an `ExecutionException`), so look through the causes.
+   * Maps a failure before the request was sent, mostly refreshing an expired ID token. The SDK
+   * wraps it (in an `ExecutionException`), so look through the causes.
    */
   private fun clientFailure(error: Exception): AccountDeletionResult {
     val causes = error.causes()

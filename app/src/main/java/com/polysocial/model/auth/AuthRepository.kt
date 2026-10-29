@@ -7,6 +7,8 @@
 // OpenAI Codex (password recovery contract for #164).
 // Contributors: Claude (Fable 5.1, Anthropic) drafted the re-authentication contract for #206;
 // Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) documented the local sign-out on a missing account,
+// #206; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.model.auth
 
 import android.content.Context
@@ -106,12 +108,21 @@ interface AuthRepository {
    */
   fun currentSignInMethods(): Set<SignInMethod>
 
-  /** Confirms the signed-in user's password before a sensitive operation such as deletion. */
+  /**
+   * Confirms the signed-in user's password before a sensitive operation such as deletion.
+   *
+   * If the account no longer exists, is disabled or its session was revoked, Firebase signs the
+   * user out locally and this returns [ReauthResult.NotSignedIn]; `currentUser()` is null
+   * afterwards, so a caller that needs the uid captures it first. During account deletion,
+   * `NotSignedIn` after an attempt whose answer was lost means the account is gone: run the same
+   * local cleanup as after a deletion.
+   */
   suspend fun reauthenticateWithPassword(password: String): ReauthResult
 
   /**
    * Confirms the signed-in user with the Google picker, like [signInWithGoogle]; the context is
-   * held only while the picker is open.
+   * held only while the picker is open. A missing, disabled or revoked account signs the user out
+   * locally and returns [ReauthResult.NotSignedIn], as for [reauthenticateWithPassword].
    */
   suspend fun reauthenticateWithGoogle(context: Context): ReauthResult
 }
