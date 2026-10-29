@@ -4,6 +4,8 @@
 // student's organizer row, #134; a fake registration repository, #131).
 // Contributors: Claude (Opus 5.5, Anthropic) bound a fake session guard and its parts,
 // #198; Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) added the account deletion step, #207; Mohamed Khellaf
+// (reviewed and revised).
 package com.polysocial.endtoend
 
 import androidx.activity.compose.setContent
@@ -36,6 +38,9 @@ import androidx.compose.ui.test.performTextInput
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.MainActivity
+import com.polysocial.model.account.AccountDeletionModule
+import com.polysocial.model.account.AccountDeletionRepository
+import com.polysocial.model.account.FakeAccountDeletionRepository
 import com.polysocial.model.association.AssociationModule
 import com.polysocial.model.association.AssociationRepository
 import com.polysocial.model.association.FakeAssociationRepository
@@ -59,8 +64,11 @@ import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.EventModule
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.FakeEventRepository
+import com.polysocial.model.firebase.CacheClearResult
 import com.polysocial.model.firebase.FakeSessionGuard
 import com.polysocial.model.firebase.FakeSessionOwnerStore
+import com.polysocial.model.firebase.FirebaseModule
+import com.polysocial.model.firebase.SessionCache
 import com.polysocial.model.firebase.SessionGuard
 import com.polysocial.model.firebase.SessionOwnerStore
 import com.polysocial.model.geocoding.FakeGeocodingService
@@ -93,6 +101,7 @@ import com.polysocial.ui.map.MapRenderStatus
 import com.polysocial.ui.map.MapRoute
 import com.polysocial.ui.map.MapTags
 import com.polysocial.ui.navigation.AppShell
+import com.polysocial.ui.profile.DeleteAccountTags
 import com.polysocial.ui.profile.ProfileSetupTestTags
 import com.polysocial.ui.theme.PolySocialTheme
 import dagger.hilt.android.testing.BindValue
@@ -109,6 +118,7 @@ import java.time.format.DateTimeFormatterBuilder
 import java.time.format.FormatStyle
 import java.util.Locale
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -128,6 +138,8 @@ import org.junit.runner.RunWith
  *    (#111).
  * 7. The new event appears in the Events list and its detail opens (#105, #112).
  * 8. Map tab: both events have a marker, and tapping the new one opens its preview (#50, #94).
+ * 9. Profile → Privacy & data → Delete account: confirm, re-enter the password, and the app returns
+ *    to Welcome with the cache cleared and the student signed out (#207).
  *
  * Every data source is a fake bound through Hilt (no Firebase, no network, no real user data), the
  * clock is fixed, and the location comes from [FakeLocationService]. Mapbox draws its markers
@@ -137,10 +149,12 @@ import org.junit.runner.RunWith
  */
 @HiltAndroidTest
 @UninstallModules(
+    AccountDeletionModule::class,
     AssociationModule::class,
     AuthModule::class,
     ClockModule::class,
     EventModule::class,
+    FirebaseModule::class,
     GeocodingModule::class,
     LocationModule::class,
     NetworkModule::class,
@@ -159,6 +173,8 @@ class M1EndToEndTest {
       }
   private val fakeEvents = FakeEventRepository(currentUid = UID, now = NOW).apply { seed(PARTY) }
   private val fakeProfiles = FakeUserProfileRepository()
+  private val fakeDeletion = FakeAccountDeletionRepository()
+  private var cacheClears = 0
 
   @BindValue @JvmField val auth: AuthRepository = fakeAuth
   @BindValue @JvmField val events: EventRepository = fakeEvents
@@ -173,6 +189,16 @@ class M1EndToEndTest {
   @BindValue @JvmField val sessionOwner: SessionOwnerStore = FakeSessionOwnerStore()
   @BindValue @JvmField val verificationStore: VerificationStore = InMemoryVerificationStore()
   @BindValue @JvmField val network: NetworkMonitor = AlwaysOnline
+  @BindValue @JvmField val deletion: AccountDeletionRepository = fakeDeletion
+  @BindValue
+  @JvmField
+  val cache: SessionCache =
+      object : SessionCache {
+        override suspend fun clear(): CacheClearResult {
+          cacheClears++
+          return CacheClearResult.Cleared
+        }
+      }
   // The permission was already asked once and refused, so no system dialog interrupts the test.
   @BindValue
   @JvmField
@@ -195,6 +221,7 @@ class M1EndToEndTest {
     createPublicEvent()
     findTheNewEvent()
     seeEventsOnTheMap()
+    deleteTheAccount()
   }
 
   private fun signUp() {
@@ -324,6 +351,25 @@ class M1EndToEndTest {
     node(MapTags.marker(created.id)).performClick()
     await(MapTags.PREVIEW)
     node(MapTags.TITLE).assertTextContains(NEW_TITLE)
+  }
+
+  private fun deleteTheAccount() {
+    node(C.Tag.nav_item_profile).performClick()
+    await(C.Tag.profile_privacy_entry)
+    node(C.Tag.profile_privacy_entry).performClick()
+    await(C.Tag.privacy_delete)
+    node(C.Tag.privacy_delete).performScrollTo().performClick()
+    await(DeleteAccountTags.Confirm)
+    node(DeleteAccountTags.Confirm).performScrollTo().performClick()
+    await(DeleteAccountTags.Password)
+    type(DeleteAccountTags.Password, PASSWORD)
+    node(DeleteAccountTags.Confirm).performScrollTo().performClick()
+
+    await(WelcomeTags.Screen)
+    assertEquals(PASSWORD, fakeAuth.lastReauthPassword)
+    assertEquals(1, fakeDeletion.calls)
+    assertEquals(1, cacheClears)
+    assertNull(fakeAuth.user)
   }
 
   /**
