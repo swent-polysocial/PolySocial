@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Contributors: Claude (profile step texts from the Figma "First proposal revamped" frames, #34; generic save error, #142). -->
 <!-- Contributors: OpenAI Codex (logout dialog copy and consistent failure wording, #109). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the Delete account texts, #207; Mohamed Khellaf (reviewed and revised). -->
 <resources>
     <string name="profile_back">Back</string>
     <string name="profile_step">Step 1 of 2</string>
@@ -22,4 +23,25 @@
     <string name="profile_log_out_question">Are you sure you want to log out?</string>
     <string name="profile_log_out_cancel">Cancel</string>
     <string name="profile_log_out_error">Couldn\'t finish logging out. Try again before continuing.</string>
+    <string name="delete_account_title">Delete your account?</string>
+    <string name="delete_account_body">Your profile and your sign-in are deleted. Events you created stay up, and other students\' registrations to them stay valid. This can\'t be undone.</string>
+    <string name="delete_account_confirm">Delete account</string>
+    <string name="delete_account_cancel">Cancel</string>
+    <string name="delete_account_reauth_title">Confirm it\'s you</string>
+    <string name="delete_account_reauth_password">Enter your password to delete your account.</string>
+    <string name="delete_account_reauth_google">Continue with Google to delete your account.</string>
+    <string name="delete_account_reauth_both">Enter your password or continue with Google to delete your account.</string>
+    <string name="delete_account_reauthenticating">Checking it\'s you…</string>
+    <string name="delete_account_deleting">Deleting your account…</string>
+    <string name="delete_account_clearing">Clearing this device…</string>
+    <string name="delete_account_offline">You\'re offline, so nothing was changed. Try again once you\'re back online.</string>
+    <string name="delete_account_wrong_password">Wrong password. Try again.</string>
+    <string name="delete_account_sign_in_again">For your security, sign in again to delete your account.</string>
+    <string name="delete_account_network">Couldn\'t reach PolySocial. Check your connection and try again.</string>
+    <string name="delete_account_unexpected">Something went wrong. Try again.</string>
+    <string name="delete_account_association_title">Ask the team to delete it</string>
+    <string name="delete_account_association_body">Association accounts are deleted by the PolySocial team, not in the app. Contact the team privately and they will delete it.</string>
+    <string name="delete_account_close">Close</string>
+    <string name="delete_account_cleanup_title">Your account is deleted</string>
+    <string name="delete_account_cleanup_error">This device\'s data couldn\'t be cleared. Try again before continuing.</string>
 </resources>

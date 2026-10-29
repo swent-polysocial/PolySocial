@@ -1,5 +1,7 @@
 // Contributors: Claude (shared from the copies in Create Event, Log in, Profile setup, Events and
 // Event detail, #251; modifiers, and the location picker's button, after review).
+// Contributors: Claude (Opus 5.5, Anthropic) added PrimaryButton's color for Delete account's red
+// button, #207; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.ui.common
 
 import androidx.annotation.StringRes
@@ -22,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -125,7 +128,8 @@ fun ErrorBanner(
 /**
  * Figma's dark 52 dp pill button: greyed out when it can't be used, with a spinner while [loading].
  * [tag] is its test tag. [textStyle] lets a screen keep its own measured variant of the label
- * style, for example one rendered exactly as in Figma.
+ * style, for example one rendered exactly as in Figma. [color] replaces the dark fill, for example
+ * with Accent for a destructive action.
  */
 @Composable
 fun PrimaryButton(
@@ -135,6 +139,7 @@ fun PrimaryButton(
     loading: Boolean = false,
     modifier: Modifier = Modifier,
     textStyle: TextStyle = MaterialTheme.typography.titleSmall,
+    color: Color = Ink,
     onClick: () -> Unit,
 ) {
   val greyed = !enabled && !loading
@@ -143,7 +148,7 @@ fun PrimaryButton(
           .fillMaxWidth()
           .height(PRIMARY_BUTTON_HEIGHT)
           .clip(MaterialTheme.shapes.large)
-          .background(if (greyed) Disabled else Ink)
+          .background(if (greyed) Disabled else color)
           .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
           .testTag(tag),
       horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),

@@ -1,5 +1,7 @@
 // Contributors: OpenAI Codex (Profile privacy entry, dated offline notice, Figma UI and contact,
 // #103).
+// Contributors: Claude (Opus 5.5, Anthropic) connected Delete account to its flow, #207; Mohamed
+// Khellaf (reviewed and revised).
 package com.polysocial.ui.profile
 
 import androidx.annotation.DrawableRes
@@ -35,10 +37,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -74,24 +78,57 @@ fun ProfilePrivacyEntry(onOpenPrivacy: () -> Unit, modifier: Modifier = Modifier
   )
 }
 
-/** Navigation boundary for the read-only privacy screen; no backend or device access is needed. */
+/**
+ * Navigation boundary for the privacy screen. The notice needs no backend or device access; Delete
+ * account opens its sheet (#207), and [onAccountDeleted] leaves the app for Welcome once the
+ * account is deleted and this device is cleared.
+ */
 @Composable
 fun PrivacyRoute(
     onBack: () -> Unit,
     onFullNotice: () -> Unit,
+    onAccountDeleted: () -> Unit,
     viewModel: PrivacyViewModel = hiltViewModel(),
+    deleteViewModel: DeleteAccountViewModel = hiltViewModel(),
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
+  val deleteState by deleteViewModel.uiState.collectAsStateWithLifecycle()
+  val deleted by rememberUpdatedState(onAccountDeleted)
+  LaunchedEffect(deleteState.step) { if (deleteState.step == DeleteAccountStep.Done) deleted() }
+  val context = LocalContext.current
+  val subject = stringResource(R.string.privacy_contact_subject)
+  val actions =
+      remember(viewModel, deleteViewModel, context, subject) {
+        DeleteAccountActions(
+            onConfirm = deleteViewModel::confirm,
+            onCancel = {
+              viewModel.onContactMessageDismissed()
+              deleteViewModel.cancel()
+            },
+            onPasswordChange = deleteViewModel::onPasswordChange,
+            onSubmitPassword = deleteViewModel::submitPassword,
+            onGoogle = { deleteViewModel.continueWithGoogle(context) },
+            onRetry = deleteViewModel::retry,
+            onContact = { viewModel.onContactRequested(subject) },
+        )
+      }
   PrivacyScreen(
       state,
       onBack,
       onFullNotice,
       viewModel::onUnavailableAction,
       viewModel::onMessageDismissed,
+      deleteViewModel::request,
   )
+  if (deleteState.step != DeleteAccountStep.Hidden) {
+    DeleteAccountSheet(deleteState, state.contactMessage, actions)
+  }
 }
 
-/** Notice summary with unavailable actions that do not change consent or collect any new data. */
+/**
+ * Notice summary with unavailable actions that do not change consent or collect any new data, and
+ * the Delete account entry ([onDeleteAccount]).
+ */
 @Composable
 fun PrivacyScreen(
     state: PrivacyUiState,
@@ -99,6 +136,7 @@ fun PrivacyScreen(
     onFullNotice: () -> Unit,
     onUnavailableAction: () -> Unit,
     onMessageDismissed: () -> Unit,
+    onDeleteAccount: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
   val unavailable = stringResource(R.string.privacy_unavailable)
@@ -189,7 +227,7 @@ fun PrivacyScreen(
             R.string.privacy_delete,
             R.drawable.privacy_delete,
             C.Tag.privacy_delete,
-            onUnavailableAction,
+            onDeleteAccount,
             color = AccentText,
             showChevron = false,
         )
