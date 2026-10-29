@@ -1,6 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) wrote these tests for #206, then rewrote them against
-// a
-// local HTTP server for the plain HTTPS call; Mohamed Khellaf (reviewed and revised).
+// a local HTTP server for the plain HTTPS call; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.model.account
 
 import com.google.android.gms.tasks.Task
@@ -20,6 +19,7 @@ import java.net.InetSocketAddress
 import java.util.Collections
 import javax.inject.Provider
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
@@ -59,13 +59,14 @@ class FirebaseAccountDeletionRepositoryTest {
   private fun repository(
       baseUrl: String = server.url,
       readTimeoutMillis: Int = READ_TIMEOUT_MILLIS,
+      ioDispatcher: CoroutineDispatcher = Dispatchers.Unconfined,
       firestore: () -> FirebaseFirestore = { database },
   ) =
       FirebaseAccountDeletionRepository(
           authProvider = { auth },
           firestore = firestore,
           baseUrl = { baseUrl },
-          ioDispatcher = Dispatchers.Unconfined,
+          ioDispatcher = ioDispatcher,
           readTimeoutMillis = readTimeoutMillis,
       )
 
@@ -279,6 +280,27 @@ class FirebaseAccountDeletionRepositoryTest {
 
       assertEquals(AccountDeletionResult.NetworkError, repository().deleteAccount())
     }
+    assertEquals(0, server.requests.size)
+  }
+
+  @Test
+  fun slowAnswer_isStillUsed() = runTest {
+    // On a real IO thread the test scheduler is idle while the server answers, so virtual time
+    // jumps past the 80 s bound as if the function had taken that long: the answer is still used.
+    server.answer = Answer(200, DELETED, delayMillis = 300)
+
+    assertEquals(
+        AccountDeletionResult.Deleted,
+        repository(ioDispatcher = Dispatchers.IO).deleteAccount(),
+    )
+  }
+
+  @Test
+  fun tokenNeverFetched_returnsNetworkErrorAtTheTimeout() = runTest {
+    tokenReturns(TaskCompletionSource<GetTokenResult>().task)
+
+    assertEquals(AccountDeletionResult.NetworkError, repository().deleteAccount())
+    assertEquals(ACCOUNT_DELETION_TIMEOUT_MILLIS, currentTime)
     assertEquals(0, server.requests.size)
   }
 
