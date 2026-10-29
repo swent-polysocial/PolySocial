@@ -141,6 +141,20 @@ class AssociationAuthFlowTest {
                 }
               }
             },
+            pendingAssociationContent = { done ->
+              Column(Modifier.testTag("association_destination")) {
+                Text("Association handoff", Modifier.testTag("association_destination_kind"))
+                TextButton(
+                    {
+                      auth.logOut()
+                      done()
+                    },
+                    Modifier.testTag("association_logout"),
+                ) {
+                  Text("Log out")
+                }
+              }
+            },
             signedInContent = { Text("Student app", Modifier.testTag("student_destination")) },
         )
       }
