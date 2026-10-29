@@ -180,16 +180,18 @@ class AssociationOnboardingDeviceTest {
         .performTextInput("https://example.org")
     compose.onNodeWithTag(AssociationSetupTags.Submit).performScrollTo().performClick()
     compose.waitUntil(5000) {
-      compose.onAllNodesWithTag(ProfileTags.Logout).fetchSemanticsNodes().isNotEmpty()
+      compose.onAllNodesWithTag(AssociationTags.UNDER_REVIEW).fetchSemanticsNodes().isNotEmpty()
     }
-    compose.onNodeWithTag(ProfileTags.Logout).assertIsDisplayed()
+    compose.onNodeWithTag(AssociationTags.UNDER_REVIEW).assertIsDisplayed()
+    compose.onNodeWithTag(AssociationTags.NAV_ORGANIZATION).performClick()
+    compose.onNodeWithTag(AssociationTags.LOG_OUT).assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.app_shell).assertDoesNotExist()
     assertEquals(listOf("users", "association"), writes)
     assertEquals(AccountType.ASSOCIATION, privateProfiles.createdProfiles.single().accountType)
     assertFalse(privateProfiles.createdProfiles.single().isAssociationVerified)
     assertEquals("Example Club", identities.createdAssociations.single().name)
     assertEquals("https://example.org", identities.createdAssociations.single().website)
-    compose.onNodeWithTag(ProfileTags.Logout).performClick()
+    compose.onNodeWithTag(AssociationTags.LOG_OUT).performClick()
     compose.onNodeWithTag(ProfileTags.Confirm).performClick()
     compose.waitUntil(5000) {
       compose.onAllNodesWithTag(WelcomeTags.Screen).fetchSemanticsNodes().isNotEmpty()
