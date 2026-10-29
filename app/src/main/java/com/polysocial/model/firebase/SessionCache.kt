@@ -1,3 +1,5 @@
+// Contributors: Claude (Fable 5.1, Anthropic) drafted the clean-cache tracking and guard blocking,
+// #198; Mohamed Khellaf (reviewed and revised).
 // Contributors: OpenAI Codex (logout cache reset boundary and cancellation/thread safety, #156).
 package com.polysocial.model.firebase
 
@@ -42,6 +44,28 @@ class FirestoreSession(private val provider: () -> FirebaseFirestore) : SessionC
   private var cleanupRequired = false
   private var terminated = false
   private var current: FirebaseFirestore? = null
+  /**
+   * True once a [clear] succeeded in this process and no instance was opened since, so the
+   * persisted cache is known to be empty. A fresh process starts `false`: its disk cache may hold
+   * the previous account's documents even though no instance is open yet.
+   */
+  private var empty = false
+
+  /** True while access is blocked: cleanup was requested and has not succeeded yet. */
+  val isBlocked: Boolean
+    get() = synchronized(stateLock) { cleanupRequired }
+
+  /**
+   * Blocks [database] until the next successful [clear], unless the persisted cache is known to be
+   * empty (cleared in this process and not reopened since). Runs synchronously, so a session guard
+   * can block access the moment it detects another account, before its suspending [clear] starts.
+   * Returns whether a [clear] is needed.
+   */
+  fun blockUnlessEmpty(): Boolean =
+      synchronized(stateLock) {
+        if (!empty) cleanupRequired = true
+        !empty
+      }
 
   /**
    * Resolve per repository operation. During cleanup or after failed persistence removal, fail
@@ -52,7 +76,11 @@ class FirestoreSession(private val provider: () -> FirebaseFirestore) : SessionC
     get() =
         synchronized(stateLock) {
           check(!cleanupRequired) { "Firestore cache cleanup must finish before access" }
-          current ?: provider().also { current = it }
+          current
+              ?: provider().also {
+                current = it
+                empty = false
+              }
         }
 
   override suspend fun clear(): CacheClearResult = cleanupLock.withLock {
@@ -65,6 +93,7 @@ class FirestoreSession(private val provider: () -> FirebaseFirestore) : SessionC
                 synchronized(stateLock) {
                   val instance = current ?: provider().also { current = it }
                   cleanupRequired = true
+                  empty = false
                   instance
                 }
             withTimeout(10_000) {
@@ -78,6 +107,7 @@ class FirestoreSession(private val provider: () -> FirebaseFirestore) : SessionC
               current = null
               terminated = false
               cleanupRequired = false
+              empty = true
             }
             CacheClearResult.Cleared
           } catch (cancelled: CancellationException) {
