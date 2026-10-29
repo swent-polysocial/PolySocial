@@ -1,6 +1,8 @@
 // Contributors: Claude (Firestore emulator test setup, #117; timeouts and the port in the error
 // after an adversarial test review; geopoints and nulls in admin writes after review; admin
 // existence check, #126).
+// Contributors: Claude (Opus 5.5, Anthropic) let a test sign in on its own Firebase app, #198;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.emulator
 
 import android.net.Uri
@@ -63,9 +65,14 @@ class FirebaseEmulator : ExternalResource() {
   /**
    * Creates an account for [email], marks its email as verified (as clicking the link in the
    * verification email would) and signs it in. The ID token is refreshed, so the Security Rules see
-   * `email_verified == true`.
+   * `email_verified == true`. A test with its own [FirebaseApp] (connected to the same emulators)
+   * passes that app's [auth].
    */
-  suspend fun signInVerifiedUser(email: String, password: String = TEST_PASSWORD): FirebaseUser {
+  suspend fun signInVerifiedUser(
+      email: String,
+      password: String = TEST_PASSWORD,
+      auth: FirebaseAuth = this.auth,
+  ): FirebaseUser {
     val uid = auth.createUserWithEmailAndPassword(email, password).await().user!!.uid
     request(
         "POST",
@@ -223,12 +230,12 @@ class FirebaseEmulator : ExternalResource() {
     const val PROJECT_ID = "demo-polysocial"
 
     /** The host machine, as seen from an Android emulator. */
-    private const val HOST = "10.0.2.2"
-    private const val FIRESTORE_PORT = 8080
-    private const val AUTH_PORT = 9099
+    const val HOST = "10.0.2.2"
+    const val FIRESTORE_PORT = 8080
+    const val AUTH_PORT = 9099
     private const val FIRESTORE_URL = "http://$HOST:$FIRESTORE_PORT"
     private const val AUTH_URL = "http://$HOST:$AUTH_PORT"
-    private const val TEST_PASSWORD = "fictional-password-1"
+    const val TEST_PASSWORD = "fictional-password-1"
     private const val API_WITH_LOCAL_NETWORK_PERMISSION = 37
     private const val TIMEOUT_MS = 10_000
     private const val HTTP_NOT_FOUND = 404
