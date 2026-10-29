@@ -1,5 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the account deletion flow through the real
-// routes, #207; Mohamed Khellaf (reviewed and revised).
+// routes and the lost-session case, #207; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.ui.profile
 
 import androidx.compose.ui.test.assertIsDisplayed
@@ -23,6 +23,7 @@ import com.polysocial.model.auth.AuthModule
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
+import com.polysocial.model.auth.ReauthResult
 import com.polysocial.model.auth.VerificationClock
 import com.polysocial.model.auth.VerificationStore
 import com.polysocial.model.auth.VerificationTiming
@@ -130,5 +131,25 @@ class DeleteAccountInjectionTest {
     assertEquals(VerificationTiming(), runBlocking { memory.read(student.uid) })
     compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
     assertTrue(compose.activity.isFinishing)
+  }
+
+  @Test
+  fun lostSessionOpensWelcomeWithoutSayingTheAccountWasDeleted() {
+    fakeAuth.reauthResult = ReauthResult.NotSignedIn
+    compose.onNodeWithTag(C.Tag.nav_item_profile).performClick()
+    compose.onNodeWithTag(C.Tag.profile_privacy_entry).performClick()
+    compose.onNodeWithTag(C.Tag.privacy_delete).performScrollTo().performClick()
+    compose.onNodeWithTag(DeleteAccountTags.Confirm).performScrollTo().performClick()
+    compose.onNodeWithTag(DeleteAccountTags.Password).performTextInput("fictional-password")
+    compose.onNodeWithTag(DeleteAccountTags.Continue).performScrollTo().performClick()
+
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.delete_account_done))
+        .assertDoesNotExist()
+    compose.onNodeWithTag(C.Tag.app_shell).assertDoesNotExist()
+    assertEquals(0, fakeDeletion.calls)
+    assertEquals(1, clears)
+    assertEquals(1, fakeAuth.logOutCalls)
   }
 }
