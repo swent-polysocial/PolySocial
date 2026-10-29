@@ -1,24 +1,55 @@
-// Contributors: OpenAI Codex (approved association tabs and session cleanup integration, #140).
+// Contributors: OpenAI Codex (association activity recreation, navigation and logout regression,
+// #140).
 package com.polysocial.auth
 
-import android.graphics.Bitmap
-import androidx.compose.ui.test.*
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
 import com.polysocial.MainActivity
-import com.polysocial.model.association.*
-import com.polysocial.model.auth.*
-import com.polysocial.model.event.*
-import com.polysocial.model.firebase.*
-import com.polysocial.model.user.*
+import com.polysocial.model.association.Association
+import com.polysocial.model.association.AssociationModule
+import com.polysocial.model.association.AssociationRepository
+import com.polysocial.model.association.AssociationResult
+import com.polysocial.model.association.AssociationType
+import com.polysocial.model.association.FakeAssociationRepository
+import com.polysocial.model.auth.AssociationSignupStore
+import com.polysocial.model.auth.AuthModule
+import com.polysocial.model.auth.AuthRepository
+import com.polysocial.model.auth.AuthUser
+import com.polysocial.model.auth.EmptyAssociationSignupStore
+import com.polysocial.model.auth.FakeAuthRepository
+import com.polysocial.model.auth.VerificationClock
+import com.polysocial.model.auth.VerificationStore
+import com.polysocial.model.auth.VerificationTiming
+import com.polysocial.model.event.EventModule
+import com.polysocial.model.event.EventRepository
+import com.polysocial.model.event.FakeEventRepository
+import com.polysocial.model.firebase.CacheClearResult
+import com.polysocial.model.firebase.FirebaseModule
+import com.polysocial.model.firebase.SessionCache
+import com.polysocial.model.user.AccountType
+import com.polysocial.model.user.FakeUserProfileRepository
+import com.polysocial.model.user.ProfileResult
+import com.polysocial.model.user.UserProfile
+import com.polysocial.model.user.UserProfileModule
+import com.polysocial.model.user.UserProfileRepository
 import com.polysocial.resources.C
-import com.polysocial.ui.association.*
-import com.polysocial.ui.auth.*
+import com.polysocial.ui.association.OrganizationTags
+import com.polysocial.ui.auth.WelcomeTags
 import com.polysocial.ui.profile.ProfileTags
-import dagger.hilt.android.testing.*
-import java.io.File
-import org.junit.Assert.*
+import dagger.hilt.android.testing.BindValue
+import dagger.hilt.android.testing.HiltAndroidRule
+import dagger.hilt.android.testing.HiltAndroidTest
+import dagger.hilt.android.testing.UninstallModules
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -98,60 +129,49 @@ class AssociationTabsDeviceTest {
   @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
 
   @Test
-  fun approvedAssociationUsesRealOrganizationPrivacyAndLogoutWithoutStudentScreens() {
+  fun privacyAndOrganizationSurviveActivityRecreationThenLogoutResetsTheSession() {
     compose.waitUntil(5000) {
       compose.onAllNodesWithTag(C.Tag.app_shell).fetchSemanticsNodes().isNotEmpty()
     }
-    compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
-    compose.onNodeWithTag(C.Tag.nav_item_chats).assertDoesNotExist()
-    compose.onNodeWithTag(C.Tag.nav_item_profile).assertDoesNotExist()
-    compose.onNodeWithTag(C.Tag.nav_item_map).performClick()
+    compose.onNodeWithTag(C.Tag.nav_item_organization).performClick()
     compose.waitUntil(5000) {
-      compose.onAllNodesWithTag(C.Tag.screen_map).fetchSemanticsNodes().isNotEmpty()
-    }
-    compose.onNodeWithText("Map — coming soon").assertIsDisplayed()
-    compose.onNodeWithTag("nav_item_organization").performClick()
-    compose.waitUntil(5000) {
-      compose.onAllNodesWithText(identity.name).fetchSemanticsNodes().isNotEmpty()
+      compose.onAllNodesWithTag(OrganizationTags.Verified).fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithText(identity.name).assertIsDisplayed()
-    compose.onNodeWithTag(OrganizationTags.Verified).assertIsDisplayed()
-    capture("organization")
-    compose.onNodeWithTag(OrganizationTags.Members).performScrollTo().performClick()
-    compose.onNodeWithText("Not available yet").assertIsDisplayed()
-    capture("organization-unavailable")
+    val readsBeforePrivacy = identities.requestedUids.toList()
     compose.onNodeWithTag(C.Tag.profile_privacy_entry).performScrollTo().performClick()
     compose.onNodeWithTag(C.Tag.privacy_screen).assertIsDisplayed()
-    compose.onNodeWithTag(C.Tag.privacy_full_notice).performScrollTo().performClick()
-    compose.onNodeWithTag(C.Tag.privacy_notice_screen).assertIsDisplayed()
-    compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
+
+    // Exercise the real Activity saved state and retained navigation ViewModel stores.
+    compose.activityRule.scenario.recreate()
+    compose.waitUntil(5000) {
+      compose.onAllNodesWithTag(C.Tag.privacy_screen).fetchSemanticsNodes().isNotEmpty()
+    }
     compose.onNodeWithTag(C.Tag.privacy_screen).assertIsDisplayed()
     compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
-    compose.onNodeWithTag(OrganizationTags.Screen).assertIsDisplayed()
+    compose.waitUntil(5000) {
+      compose.onAllNodesWithTag(OrganizationTags.Verified).fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onNodeWithTag(C.Tag.nav_item_organization).assertIsSelected()
+    compose.onNodeWithTag(C.Tag.nav_item_chats).assertDoesNotExist()
+    compose.onNodeWithTag(C.Tag.nav_item_profile).assertDoesNotExist()
+    compose.onNodeWithText(identity.name).performScrollTo().assertIsDisplayed()
+    assertEquals(
+        "Returning to Organization reuses this account's loaded identity",
+        readsBeforePrivacy,
+        identities.requestedUids,
+    )
+
     compose.onNodeWithTag(ProfileTags.Logout).performScrollTo().performClick()
-    capture("organization-logout")
     compose.onNodeWithTag(ProfileTags.Confirm).performClick()
     compose.waitUntil(5000) {
       compose.onAllNodesWithTag(WelcomeTags.Screen).fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.app_shell).assertDoesNotExist()
     assertEquals(1, clears)
     assertEquals(1, fakeAuth.logOutCalls)
     assertNull(fakeAuth.currentUser())
     assertTrue(identities.requestedUids.all { it == user.uid })
-    compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
-    assertTrue(compose.activity.isFinishing)
-  }
-
-  private fun capture(name: String) {
-    compose.waitForIdle()
-    val context = InstrumentationRegistry.getInstrumentation().targetContext
-    val folder =
-        File(requireNotNull(context.getExternalFilesDir(null)), "pr-screenshots").apply { mkdirs() }
-    val screenshot =
-        requireNotNull(InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot())
-    File(folder, "$name.png").outputStream().use {
-      assertTrue(screenshot.compress(Bitmap.CompressFormat.PNG, 100, it))
-    }
   }
 }

@@ -14,6 +14,8 @@
 // deletion, #207; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.ui.navigation
 
+import android.net.Uri
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -145,7 +147,7 @@ fun AppShell(
     },
     mapContent: @Composable (onViewDetails: (String) -> Unit, onCreateEvent: () -> Unit) -> Unit =
         { onDetails, onCreateEvent ->
-          if (accountType == AccountType.ASSOCIATION) TabRootScreen(Tab.MAP)
+          if (accountType == AccountType.ASSOCIATION) AssociationMapUnavailable()
           else MapRoute(onDetails, onCreateEvent = onCreateEvent)
         },
     createEventContent: @Composable (CreateEventNavigation) -> Unit = { navigation ->
@@ -223,11 +225,7 @@ fun AppShell(
       topBar = {
         if (showBars && !onEventDetail && destination?.route != Tab.MAP.rootRoute)
             AppBar(
-                title =
-                    stringResource(
-                        if (association && currentTab == Tab.PROFILE) R.string.tab_organization
-                        else currentTab.label
-                    ),
+                title = stringResource(currentTab.presentation(association).label),
                 action = action,
                 // A double tap must not open the screen twice.
                 onAction = {
@@ -463,26 +461,19 @@ private fun BottomNavBar(
     NavigationBar(modifier = Modifier.testTag(C.Tag.bottom_nav)) {
       tabs.forEach { tab ->
         val selected = tab == currentTab
+        val presentation = tab.presentation(association)
         NavigationBarItem(
             selected = selected,
             onClick = { onTabSelected(tab) },
             icon = {
               Icon(
-                  painter =
-                      painterResource(
-                          if (association && tab == Tab.PROFILE) R.drawable.ic_organization
-                          else tab.icon
-                      ),
+                  painter = painterResource(presentation.icon),
                   contentDescription = null,
               )
             },
             label = {
               Text(
-                  text =
-                      stringResource(
-                          if (association && tab == Tab.PROFILE) R.string.tab_organization
-                          else tab.label
-                      ),
+                  text = stringResource(presentation.label),
                   style = MaterialTheme.typography.labelSmall,
                   fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
               )
@@ -493,13 +484,27 @@ private fun BottomNavBar(
                     unselectedIconColor = Ink3,
                     unselectedTextColor = Ink3,
                 ),
-            modifier =
-                Modifier.testTag(
-                    if (association && tab == Tab.PROFILE) "nav_item_organization"
-                    else tab.navItemTag
-                ),
+            modifier = Modifier.testTag(presentation.tag),
         )
       }
     }
+  }
+}
+
+/** Explains the separate association-map integration without querying student events. */
+@Composable
+private fun AssociationMapUnavailable() {
+  Column(
+      Modifier.fillMaxSize().padding(20.dp).testTag(C.Tag.screen_map),
+      verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
+  ) {
+    Text(
+        stringResource(R.string.association_map_unavailable_title),
+        style = MaterialTheme.typography.headlineSmall,
+    )
+    Text(
+        stringResource(R.string.association_map_unavailable_message),
+        style = MaterialTheme.typography.bodyLarge,
+    )
   }
 }
