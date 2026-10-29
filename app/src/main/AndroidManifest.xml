@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Contributors: Claude (registered the Hilt application class, #70; network state permission for the online check; network security config that debug builds override, #117); OpenAI Codex (GPT-6.1 Sol Medium; removed activity labels to inherit the PolySocial app name; enabled keyboard resizing for the auth forms; foreground location permissions, #51). -->
+<!-- Contributors: Claude (registered the Hilt application class, #70; network state permission for the online check; network security config that debug builds override, #117); OpenAI Codex (GPT-6.1 Sol Medium; removed activity labels to inherit the PolySocial app name; enabled keyboard resizing for the auth forms; foreground location permissions, #51); Claude (Opus 5.5, Anthropic; turned off messaging auto-init, #206) and Mohamed Khellaf (reviewed and revised). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
@@ -34,6 +34,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- firebase-functions pulls in firebase-iid, which would otherwise register an
+             Installation ID and messaging token at every app start although the app sends no
+             notifications. With auto-init off, the token is only fetched when the deleteAccount
+             callable runs (#206). -->
+        <meta-data
+            android:name="firebase_messaging_auto_init_enabled"
+            android:value="false" />
     </application>
 
 </manifest>
