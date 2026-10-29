@@ -1,3 +1,4 @@
+<!-- Contributors: Claude Opus 5.5 (attendees schema, rules and capacity question, #121). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the account deletion decision, its deletion/failure matrix and the related open questions (#201); Mohamed Khellaf (reviewed and revised). -->
 <!-- Contributors: OpenAI Codex (Google authentication architecture, Firebase-managed linking clarification and review cleanup for #106; preserved contributor acknowledgments during rebase); Claude (the shared UI parts, #251). -->
 <!-- Contributors: OpenAI Codex (removed obsolete Google collision UI, #107). -->
@@ -210,7 +211,7 @@ This is the design to build against, not a claim that every component is already
 | Pin and place search (#111) | Create Event → picker ViewModel; confirm coordinates and place name | Geocoding service interface and fake; reuse `LocationService` for optional centering and the isolated Mapbox renderer | Nominatim is the approved search provider: submitted searches only, custom User-Agent, caching and at most 1 request/second. Failed/offline search retains the pin; denied location opens on Lausanne. |
 | Event detail (#112) | Shared detail ViewModel, category styles, local date/time and one-off distance | `EventRepository.getEvent(id)` is a live `Flow`, decoded by hand with `eventFromFirestore` | Existing event read rules; deleted or unreadable is not found, network errors offer Retry, cached content remains visible offline. Optional `locationName` describes the chosen event venue, not a location history. |
 | Filtering (#114, #115) | `EventFilter` + pure `filterEvents(events, filter, userLocation)`; Events / Map ViewModels | Filter already loaded `getUpcomingPublicEvents` results | No new Firestore query or index. Case/accent-insensitive title search; categories OR, criteria AND; clock-injected date range [start, end); missing location ignores the distance criterion. |
-| Attendance (#121, #122) | Detail: register/cancel; pure capacity checks coordinated by its ViewModel | `RegistrationRepository.register(eventId)`, `cancel(eventId)`, `observeMyRegistrations()`; Firestore implementation + fake | Planned `events/{eventId}/attendees/{uid}`. Register is idempotent; full events are refused atomically; offline writes fail instead of queuing. Schema and capacity enforcement still need the confirmation below. |
+| Attendance (#121, #122) | Detail: register/cancel; pure capacity checks coordinated by its ViewModel | `RegistrationRepository.register(eventId)`, `cancel(eventId)`, `observeMyRegistrations()`; Firestore implementation + fake | `events/{eventId}/attendees/{uid}` (`uid`, `registeredAt`); own registrations through a collection-group query on `uid`. Register and cancel are idempotent; offline writes fail instead of queuing. Refusing full events needs the capacity decision below. |
 | Reminder (#120, #123) | Registered student's explicit opt-in; pure start minus 1 hour calculation | `ReminderScheduler` interface + fake; WorkManager only in its implementation | Unique work per event on the device, no new Firestore collection or FCM. No scheduling once the reminder time has passed; denial restores Off. Off/cancel/logout removes work; notification taps open shared detail. |
 | Privacy / logout (#103, #108, #109) | Profile entry, dated offline notice and unbuilt-action Snackbar; logout confirmation | Notice requires no new data access; logout uses `AuthRepository.logOut()` | Notice describes only collected data and actual access. Export and attendance-based matching remain unavailable, and in-app deletion until #207 (policy: decision 15). The private manual-deletion contact, also the associations' deletion route, must be confirmed. Cache isolation on any UID change follows #198 (decision 15). |
 
@@ -352,7 +353,7 @@ flowchart LR
   users["users/{uid}<br/>private"]:::s1
   pub["publicProfiles/{uid}<br/>visible to others"]:::pb
   events["events/{eventId}"]:::s1
-  reg["events/{eventId}/attendees/{uid}<br/>planned #121"]:::s1
+  reg["events/{eventId}/attendees/{uid}<br/>#121"]:::s1
   reminders["Device reminder state<br/>WorkManager, #123"]:::s1
   photos["photos"]:::pb
   groups["groups/{groupId}"]:::pb
@@ -381,7 +382,7 @@ flowchart LR
 | `events/{eventId}` | `title`, `description`, `category`, `location`, `locationName?` (#112), `startTime`, `endTime?`, `capacity?`, `isPrivate`, `createdBy`, `organizerIds`, `allowedUids`, `isAssociationEvent` | 🟩 #45 |
 | `associations/{uid}` | `name` (1–60), `type` (`ASSOCIATION`, `COMMISSION`, `CLUB`, `EPFL_UNIT`), `about` (1–1000), `website?` (`https://`, at most 200), `createdAt`. Document ID = the association account's UID | 🟩 #126 |
 | `publicProfiles/{uid}` | `username`, `displayName`, `section`, `year`, `interests` (always visible), `visibility` (public or private), `bio` | 🟦 new issue |
-| `events/{eventId}/attendees/{uid}` | student document ID and registration metadata (exact schema to confirm) | 🟩 S2 #121; no separate top-level registrations collection |
+| `events/{eventId}/attendees/{uid}` | student UID as document ID; `uid` (same UID, for the collection-group query) and server-set `registeredAt` | 🟩 S2 #121; no separate top-level registrations collection |
 | Device reminder state | event ID, title and start time for a local notification; unique work, opt-in | 🟩 S2 #123; no Firestore collection |
 | `matchRequests/{id}` | `eventId`, `fromUid`, `toUid`, `status` | 🟦 #26, #27 |
 | `groups/{groupId}` + `members`, `messages`, `checkIns` | `eventId`, `capacity` · `senderId`, `text`, `createdAt` · `method` (gps or qr). A one-to-one chat is a two-member group | 🟦 #14, #22, #25 |
@@ -393,7 +394,7 @@ flowchart LR
 
 ## 6. Security Rules
 
-Rules live in `firebase/firestore/firestore.rules` and are tested against the Firebase Local Emulator Suite. **Main today** allows each account's own `users/{uid}` (#35), an association's own `associations/{uid}` and students' reads of verified ones (#126), plus public/private and own-association event reads (#52). Event writes and every subcollection, including attendees, remain denied until their reviewed rules land. The rows below describe the planned policy as well as the current reads; this documentation does not grant access.
+Rules live in `firebase/firestore/firestore.rules` and are tested against the Firebase Local Emulator Suite. **Main today** allows each account's own `users/{uid}` (#35), an association's own `associations/{uid}` and students' reads of verified ones (#126), plus public/private and own-association event reads (#52). Event writes (#47) and attendees (#121) have their rules; every other subcollection remains denied until its reviewed rules land. The rows below describe the planned policy as well as the current reads; this documentation does not grant access.
 
 | Collection | Read | Create | Update / delete | Issue | Status |
 |---|---|---|---|---|---|
@@ -404,7 +405,7 @@ Rules live in `firebase/firestore/firestore.rules` and are tested against the Fi
 | `associations/{uid}` | its owner (an association account, pending or verified); EPFL students only once an admin has verified it (a denied read looks missing); never another association; no list | owner only, once, exactly the fields above with `createdAt` = server time | owner only; `createdAt` fixed, and `name` and `type` fixed once verified; delete by an admin only | #126 | 🟩 S3 |
 | `events/{id}`, public | any EPFL user | any EPFL user or verified association, `createdBy == auth.uid` and in `organizerIds`. `isAssociationEvent` only for a verified association | organizers only | #47, #52 | 🟩 S1 |
 | `events/{id}`, private | `auth.uid in allowedUids` (organizers, members, approved match requesters) | as above | organizers only | #52, #23 | 🟩 S1 |
-| `events/{eventId}/attendees/{uid}` | own attendance; attendee list only for the event's organizers | verified EPFL student, own UID, readable event; no association registration | student deletes only own document; no writes to another student's attendance | #121 | 🟩 S2 planned; currently denied |
+| `events/{eventId}/attendees/{uid}` | own attendance; attendee list only for the event's organizers | verified EPFL student, own UID, readable event; no association registration | student deletes only own document, even once the event is gone; no writes to another student's attendance; nobody updates one | #121 | 🟩 in place (capacity not checked yet) |
 | `publicProfiles/{uid}` | any EPFL user. Fields beyond the public set only for public profiles or approved connections | owner only | owner only | new issue | 🟦 PB |
 | `groups/**`, `messages` | group members only | members, rate-limit ready | sender only | #25 | 🟦 PB |
 | `matchRequests` | sender and recipient | sender | recipient responds | #26, #27 | 🟦 PB |
@@ -474,7 +475,7 @@ How each failure behaves:
 - **Association members and event drafts:** Figma has them, but there is no data model yet. How does an association find and add a student as a member, and what can each role do? Drafts are not in the `Event` model.
 - **Association validation shared between stacks (#125, #127):** setup (#256) and Edit details (#248) would validate the same fields twice, with different website checks. Proposed: whichever merges first owns it, and the other reuses it. Lucas [answered](https://github.com/swent-polysocial/PolySocial/pull/256#issuecomment-6498630706) that #256's `AssociationValidation.kt` owns it and #248 reuses it; open until #248 confirms.
 - **Events without an end time:** `endTime` is optional, but check-in and Find my group only work during the event. Which time window applies when it is not set?
-- **Attendance schema/capacity (#121):** confirm `events/{eventId}/attendees/{uid}` and its fields before implementation. How can a student's registration atomically enforce capacity while other attendees and event writes remain organizer-only? Agree the transaction/rules design without widening private reads or organizer write access.
+- **Attendance capacity (#121):** the schema is decided (see the attendees row above). Refusing a full event atomically needs a counter on the event that a student may change by exactly ±1 with their own attendee document, which widens the organizer-only event update rule. The team decides whether to allow it before the second #121 PR.
 - **Logout/reminders (#109, #123):** confirm account-scoped reminder cancellation on logout and account deletion before another account enters; cache isolation is decided (#198, decision 15).
 - **Association account deletion (#201):** associations can't delete their own `users/{uid}` (#161), and the deletion flow refuses them with the privacy contact. Who deletes an association account, its `associations/{uid}` and its events, and how, is not decided.
 - **Year field values:** the profile step offers BA1–BA6 and MA1–MA4 under "Year" (as in Figma and #34), but these are EPFL semesters, and there is no option for exchange or PhD students. Rename to "Semester" and/or add options?
