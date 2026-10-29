@@ -1,7 +1,7 @@
 // Contributors: OpenAI Codex (preserve association entry and offline retry, #125).
 // Contributors: OpenAI Codex (adapted pending flow to startup recovery).
 // Contributors: Claude (wrote these tests, #127; logging in again in the same activity, after a
-// review, #127).
+// review, #127); Claude (association log in, non-EPFL accounts that are not associations, #208).
 // Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
 // Mohamed Khellaf (reviewed and revised).
 package com.polysocial.auth
@@ -16,6 +16,8 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.association.AssociationResult
@@ -23,6 +25,7 @@ import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.auth.FakeAuthRepository
+import com.polysocial.model.auth.LogInResult
 import com.polysocial.model.auth.VerificationClock
 import com.polysocial.model.firebase.CacheClearResult
 import com.polysocial.model.firebase.FakeSessionGuard
@@ -38,10 +41,14 @@ import com.polysocial.ui.association.PendingAssociationApp
 import com.polysocial.ui.association.PendingAssociationViewModel
 import com.polysocial.ui.auth.AuthFlow
 import com.polysocial.ui.auth.SignUpViewModel
+import com.polysocial.ui.auth.VerifyEmailTags
 import com.polysocial.ui.auth.VerifyEmailViewModel
 import com.polysocial.ui.auth.WelcomeTags
 import com.polysocial.ui.auth.WelcomeViewModel
+import com.polysocial.ui.login.LoginScreenTestTags
 import com.polysocial.ui.login.LoginViewModel
+import com.polysocial.ui.login.UNVERIFIED_REDIRECT_DELAY_MS
+import com.polysocial.ui.profile.ProfileSetupTestTags
 import com.polysocial.ui.profile.ProfileSetupViewModel
 import com.polysocial.ui.profile.ProfileTags
 import com.polysocial.ui.profile.ProfileViewModel
@@ -55,7 +62,9 @@ import org.junit.runner.RunWith
 /**
  * App start for association accounts (#127): an association an admin hasn't verified yet always
  * opens its pending app, never the students' one; a verified association and a student open the
- * students' app; logging out of the pending app returns to Welcome.
+ * students' app; logging out of the pending app returns to Welcome. Associations log in through the
+ * same Log in screen with any email (#208), and a non-EPFL account that is not an association never
+ * reaches the student profile step or the students' app.
  */
 @RunWith(AndroidJUnit4::class)
 class PendingAssociationFlowTest {
@@ -262,6 +271,90 @@ class PendingAssociationFlowTest {
         listOf("club-uid", "club-uid", "other-uid", "other-uid"),
         associations.requestedUids,
     )
+  }
+
+  private fun logInFromWelcome(email: String) {
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    compose.onNodeWithTag(WelcomeTags.LogIn).performScrollTo().performClick()
+    compose.onNodeWithTag(LoginScreenTestTags.EMAIL).performTextInput(email)
+    compose.onNodeWithTag(LoginScreenTestTags.PASSWORD).performTextInput("password1")
+    compose.onNodeWithTag(LoginScreenTestTags.LOG_IN).performScrollTo().performClick()
+    compose.waitForIdle()
+  }
+
+  private fun signedOutLaunch(logInAs: AuthUser = user) {
+    auth.user = null
+    auth.logInResult = LogInResult.Success(logInAs)
+    launch()
+  }
+
+  @Test
+  fun aPendingAssociation_logsInWithItsOwnEmail_andOpensItsPendingApp() {
+    profiles.getProfileResult = profile(AccountType.ASSOCIATION)
+    signedOutLaunch()
+
+    logInFromWelcome("club@example.org")
+
+    compose.onNodeWithTag(AssociationTags.SHELL).assertIsDisplayed()
+    compose.onNodeWithTag(STUDENT_APP).assertDoesNotExist()
+    assertEquals("club@example.org", auth.lastLogInEmail)
+    assertEquals(1, auth.logInCalls)
+  }
+
+  @Test
+  fun anAssociationWithAnUnverifiedEmail_goesThroughVerifyEmail_withoutReadingItsProfile() {
+    profiles.getProfileResult = profile(AccountType.ASSOCIATION)
+    signedOutLaunch(logInAs = user.copy(isEmailVerified = false))
+
+    logInFromWelcome("club@example.org")
+    // Log in shows its "not verified" banner for a moment before handing over.
+    compose.mainClock.advanceTimeBy(UNVERIFIED_REDIRECT_DELAY_MS)
+    compose.waitForIdle()
+
+    compose.onNodeWithTag(VerifyEmailTags.Screen).assertIsDisplayed()
+    compose.onNodeWithTag(AssociationTags.SHELL).assertDoesNotExist()
+    assertEquals(0, profiles.getProfileCalls)
+  }
+
+  @Test
+  fun loggingOutOfThePendingApp_thenLoggingInAgain_reopensThePendingApp() {
+    profiles.getProfileResult = profile(AccountType.ASSOCIATION)
+    signedOutLaunch()
+    logInFromWelcome("club@example.org")
+    compose.onNodeWithTag(AssociationTags.NAV_ORGANIZATION).performClick()
+    compose.onNodeWithTag(AssociationTags.LOG_OUT).performClick()
+    compose.onNodeWithTag(ProfileTags.Confirm).performClick()
+    compose.waitForIdle()
+
+    logInFromWelcome("club@example.org")
+
+    compose.onNodeWithTag(AssociationTags.SHELL).assertIsDisplayed()
+    compose.onNodeWithTag(STUDENT_APP).assertDoesNotExist()
+    assertEquals(1, auth.logOutCalls)
+    assertEquals(2, auth.logInCalls)
+  }
+
+  @Test
+  fun aNonEpflAccountWithoutAProfile_resumesAssociationSetup_neverTheStudentProfileStepOrApp() {
+    profiles.getProfileResult = ProfileResult.NotFound
+    signedOutLaunch()
+
+    logInFromWelcome("club@example.org")
+
+    // Association setup opens in the pending app until #259 wires its own screen.
+    compose.onNodeWithTag(AssociationTags.SHELL).assertIsDisplayed()
+    compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertDoesNotExist()
+    compose.onNodeWithTag(STUDENT_APP).assertDoesNotExist()
+  }
+
+  @Test
+  fun aNonEpflAccountWithAStudentProfile_neverOpensTheStudentsApp() {
+    profiles.getProfileResult = profile(AccountType.STUDENT)
+
+    launch()
+
+    compose.onNodeWithTag(C.Tag.error_retry).assertIsDisplayed()
+    compose.onNodeWithTag(STUDENT_APP).assertDoesNotExist()
   }
 
   private companion object {

@@ -2,7 +2,7 @@
 // Contributors: OpenAI Codex (late profile completion cannot reopen a signed-out session, #107).
 // Contributors: Claude Opus 5.5 (wrote these tests; refresh after Log in; full profile fixture,
 // #34); Claude (log out and the created profile; Verify Email opened in-session, #74; routing
-// of association accounts, #127).
+// of association accounts, #127; non-EPFL accounts that are not associations, #208).
 // Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start and tested
 // waiting for it, #198; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.ui.start
@@ -486,8 +486,11 @@ class AppStartViewModelTest {
           )
       )
 
-  private fun routeOf(profile: ProfileResult): StartDestination {
-    auth.user = verified
+  private fun routeOf(
+      profile: ProfileResult,
+      sessionEmail: String = verified.email,
+  ): StartDestination {
+    auth.user = verified.copy(email = sessionEmail)
     profiles.getProfileResult = profile
     val viewModel =
         AppStartViewModel(
@@ -692,5 +695,58 @@ class AppStartViewModelTest {
 
     assertEquals(StartDestination.Login, viewModel.destination.value)
     assertEquals(0, profiles.getProfileCalls)
+  }
+
+  private val nonEpfl = "club@example.org"
+
+  @Test
+  fun aNonEpflAccountWithoutAProfile_resumesAssociationSetup_neverTheStudentProfileStep() {
+    // Without a profile, a non-EPFL session must not become a student (#208); it finishes its
+    // association setup instead (#125).
+    assertEquals(
+        StartDestination.AssociationSetup,
+        routeOf(ProfileResult.NotFound, sessionEmail = nonEpfl),
+    )
+  }
+
+  @Test
+  fun aNonEpflAccountWithAStudentProfile_routesToError_neverToTheMainApp() {
+    assertEquals(StartDestination.Error, routeOf(found, sessionEmail = nonEpfl))
+  }
+
+  @Test
+  fun aNonEpflPendingAssociation_routesToItsPendingApp() {
+    assertEquals(
+        StartDestination.PendingAssociation,
+        routeOf(association(verified = false), sessionEmail = nonEpfl),
+    )
+  }
+
+  @Test
+  fun anEpflPendingAssociation_routesToItsPendingApp() {
+    assertEquals(
+        StartDestination.PendingAssociation,
+        routeOf(
+            association(verified = false, email = "club@epfl.ch"),
+            sessionEmail = "club@epfl.ch",
+        ),
+    )
+  }
+
+  @Test
+  fun aNonEpflVerifiedAssociation_routesToItsOwnApp() {
+    assertEquals(
+        StartDestination.AssociationMain,
+        routeOf(association(verified = true), sessionEmail = nonEpfl),
+    )
+  }
+
+  @Test
+  fun anEpflStudent_keepsTheMainAppAndTheProfileStep() {
+    assertEquals(StartDestination.Main, routeOf(found, sessionEmail = "test.student@epfl.ch"))
+    assertEquals(
+        StartDestination.ProfileSetup,
+        routeOf(ProfileResult.NotFound, sessionEmail = "test.student@epfl.ch"),
+    )
   }
 }
