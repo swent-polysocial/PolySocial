@@ -1,5 +1,8 @@
 // Contributors: OpenAI Codex (privacy navigation, unavailable actions, font scaling and render QA,
 // #103; privacy and confirmed logout integration after rebase).
+// Contributors: Claude (Opus 5.5, Anthropic) replaced the unavailable deletion with its sheet,
+// #207;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.ui.profile
 
 import android.content.Context
@@ -284,7 +287,9 @@ class PrivacyScreenTest {
     first.onUnavailableAction()
     second.onUnavailableAction()
     val current = mutableStateOf(first)
-    rule.activity.setContent { PolySocialTheme { PrivacyRoute({}, {}, viewModel = current.value) } }
+    rule.activity.setContent {
+      PolySocialTheme { PrivacyRoute({}, {}, {}, viewModel = current.value) }
+    }
     rule.onNodeWithText(text(R.string.privacy_unavailable)).assertIsDisplayed()
     rule.runOnIdle { current.value = second }
     rule.onNodeWithText(text(R.string.privacy_unavailable)).assertIsDisplayed()
@@ -303,8 +308,16 @@ class PrivacyScreenTest {
   @Test fun downloadExplainsThatExportIsUnavailable() = checkUnavailable(C.Tag.privacy_download)
 
   @Test
-  fun deletionExplainsThatItIsUnavailableWithoutOpeningAnotherScreen() =
-      checkUnavailable(C.Tag.privacy_delete)
+  fun deletionOpensItsConfirmationAndCancelReturnsToPrivacy() {
+    openFromProfile()
+    rule.onNodeWithTag(C.Tag.privacy_delete).performScrollTo().performClick()
+    rule.onNodeWithTag(DeleteAccountTags.Sheet).assertIsDisplayed()
+    rule.onNodeWithText(text(R.string.delete_account_body)).assertIsDisplayed()
+    rule.onNodeWithText(text(R.string.privacy_unavailable)).assertDoesNotExist()
+    rule.onNodeWithTag(DeleteAccountTags.Cancel).performClick()
+    rule.onNodeWithTag(DeleteAccountTags.Sheet).assertDoesNotExist()
+    rule.onNodeWithTag(C.Tag.privacy_screen).assertIsDisplayed()
+  }
 
   @Test
   fun matchingStaysOffAndExplainsThatItIsUnavailable() = checkUnavailable(C.Tag.privacy_matching)
@@ -313,6 +326,7 @@ class PrivacyScreenTest {
   fun largeFontsKeepPrivacyActionsReachable() {
     var backCalls = 0
     var noticeCalls = 0
+    var deleteCalls = 0
     rule.activity.setContent {
       CompositionLocalProvider(LocalDensity provides Density(1f, 1.8f)) {
         PolySocialTheme {
@@ -322,6 +336,7 @@ class PrivacyScreenTest {
               { noticeCalls++ },
               {},
               {},
+              { deleteCalls++ },
               modifier = Modifier.requiredSize(360.dp, 800.dp),
           )
         }
@@ -329,7 +344,8 @@ class PrivacyScreenTest {
     }
     rule.onNodeWithTag(C.Tag.privacy_full_notice).performScrollTo().performClick()
     org.junit.Assert.assertEquals(1, noticeCalls)
-    rule.onNodeWithTag(C.Tag.privacy_delete).performScrollTo().assertIsDisplayed()
+    rule.onNodeWithTag(C.Tag.privacy_delete).performScrollTo().performClick()
+    org.junit.Assert.assertEquals(1, deleteCalls)
     rule.onNodeWithTag(C.Tag.privacy_back).performScrollTo().performClick()
     org.junit.Assert.assertEquals(1, backCalls)
   }
@@ -341,7 +357,7 @@ class PrivacyScreenTest {
     rule.activity.setContent {
       PolySocialTheme {
         Box(Modifier.requiredSize(360.dp, 800.dp)) {
-          PrivacyScreen(PrivacyUiState(), {}, {}, {}, {})
+          PrivacyScreen(PrivacyUiState(), {}, {}, {}, {}, {})
         }
       }
     }

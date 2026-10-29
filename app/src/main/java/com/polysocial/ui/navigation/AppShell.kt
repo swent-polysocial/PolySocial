@@ -7,6 +7,8 @@
 // enter transition, #131 review; Edit and Cancel event from the detail, #131).
 // Contributors: OpenAI Codex (map route and detail placeholder, #50).
 // Contributors: OpenAI Codex (Profile privacy navigation and full-screen notices, #103).
+// Contributors: Claude (Opus 5.5, Anthropic) left the app through logout's reset after account
+// deletion, #207; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.ui.navigation
 
 import android.net.Uri
@@ -106,7 +108,9 @@ data class EventDetailNavigation(
  * shows the upcoming events (a verified association's own events instead, #132) and the Map tab the
  * event map, both with the "+" button that opens Create Event inside the tab, full screen; the
  * Profile provides logout and Chats shows a loading state, then a placeholder until their feature
- * is built. The map uses floating overlays instead of the app bar.
+ * is built. Logout and account deletion (Profile → Privacy & data) clear every tab's stack, then
+ * call `onLoggedOut`, or `onAccountDeleted` once the server confirmed a deletion (#207). The map
+ * uses floating overlays instead of the app bar.
  *
  * Each tab's graph also holds the event detail ([Tab.eventDetailRoute]), so an event opened from a
  * tab keeps that tab selected and Back returns to it. The detail has its own header and action bar
@@ -153,6 +157,7 @@ fun AppShell(
       EditEventScreen(onClose = onClose)
     },
     onLoggedOut: () -> Unit = {},
+    onAccountDeleted: () -> Unit = onLoggedOut,
     profileContent: @Composable (() -> Unit) -> Unit = { done ->
       ProfileRoute(
           onLoggedOut = done,
@@ -184,6 +189,13 @@ fun AppShell(
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
   val eventCancelled = stringResource(R.string.event_cancelled)
+  // Logout and account deletion (#207) leave the app the same way: every tab's saved and active
+  // stack is cleared, so Back can't return, then the auth flow opens Welcome.
+  val leaveApp = { then: () -> Unit ->
+    Tab.entries.forEach { navController.clearBackStack(it.route) }
+    navController.popBackStack(Tab.EVENTS.route, inclusive = true)
+    then()
+  }
 
   Scaffold(
       modifier = modifier.testTag(C.Tag.app_shell),
@@ -242,12 +254,7 @@ fun AppShell(
                       modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp, 20.dp),
                   )
                 }
-                Tab.PROFILE ->
-                    profileContent {
-                      Tab.entries.forEach { navController.clearBackStack(it.route) }
-                      navController.popBackStack(Tab.EVENTS.route, inclusive = true)
-                      onLoggedOut()
-                    }
+                Tab.PROFILE -> profileContent { leaveApp(onLoggedOut) }
                 else -> TabRootScreen(tab)
               }
             }
@@ -303,6 +310,9 @@ fun AppShell(
               PrivacyRoute(
                   onBack = { navController.popBackStack() },
                   onFullNotice = { navController.navigate(tab.privacyNoticeRoute) },
+                  onSessionEnded = { deleted ->
+                    leaveApp(if (deleted) onAccountDeleted else onLoggedOut)
+                  },
               )
             }
             composable(tab.privacyNoticeRoute) {

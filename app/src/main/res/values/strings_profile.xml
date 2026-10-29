@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Contributors: Claude (profile step texts from the Figma "First proposal revamped" frames, #34; generic save error, #142). -->
 <!-- Contributors: OpenAI Codex (logout dialog copy and consistent failure wording, #109). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the Delete account texts, #207; Mohamed Khellaf (reviewed and revised). -->
 <resources>
     <string name="profile_back">Back</string>
     <string name="profile_step">Step 1 of 2</string>
@@ -22,4 +23,36 @@
     <string name="profile_log_out_question">Are you sure you want to log out?</string>
     <string name="profile_log_out_cancel">Cancel</string>
     <string name="profile_log_out_error">Couldn\'t finish logging out. Try again before continuing.</string>
+    <string name="delete_account_title">Delete your account?</string>
+    <string name="delete_account_body">Your profile and sign-in are deleted. Events you created stay, without your name. This can\'t be undone.</string>
+    <string name="delete_account_confirm">Delete account</string>
+    <string name="delete_account_cancel">Cancel</string>
+    <string name="delete_account_offline">You\'re offline. Connect to the internet to delete your account.</string>
+    <string name="delete_account_ok">OK</string>
+    <string name="delete_account_password_title">Confirm your password</string>
+    <string name="delete_account_password_body">For your safety, enter the password of %1$s.</string>
+    <string name="delete_account_google_title">Confirm it\'s you</string>
+    <string name="delete_account_google_body">For your safety, continue with the Google account %1$s.</string>
+    <string name="delete_account_both_body">For your safety, enter the password of %1$s or continue with Google.</string>
+    <string name="delete_account_password_placeholder">Password</string>
+    <string name="delete_account_show_password">Show password</string>
+    <string name="delete_account_hide_password">Hide password</string>
+    <string name="delete_account_continue">Continue</string>
+    <string name="delete_account_wrong_password">Wrong password. Try again.</string>
+    <string name="delete_account_too_many_attempts">Too many attempts. Try again later.</string>
+    <string name="delete_account_google_cancelled">Sign-in cancelled. Nothing was changed.</string>
+    <string name="delete_account_confirm_again_password">Please confirm your password again.</string>
+    <string name="delete_account_confirm_again_google">Please confirm it\'s you again.</string>
+    <string name="delete_account_reauth_failed">Couldn\'t confirm it\'s you. Check your connection and try again.</string>
+    <string name="delete_account_unexpected">Something went wrong. Try again.</string>
+    <string name="delete_account_deleting">Deleting your account…</string>
+    <string name="delete_account_failed_title">Couldn\'t delete your account</string>
+    <string name="delete_account_failed_body">Check your connection and try again.</string>
+    <string name="delete_account_association_title">Contact the PolySocial team</string>
+    <string name="delete_account_association_body">Association accounts are deleted by the PolySocial team, not in the app. Your account is unchanged.</string>
+    <string name="delete_account_close">Close</string>
+    <string name="delete_account_cleanup_title">Couldn\'t clear this device</string>
+    <string name="delete_account_cleanup_deleted">Your account was deleted, but we couldn\'t clear this device\'s data.</string>
+    <string name="delete_account_cleanup_session">We couldn\'t clear this device\'s data. Try again before continuing.</string>
+    <string name="delete_account_done">Account deleted</string>
 </resources>
