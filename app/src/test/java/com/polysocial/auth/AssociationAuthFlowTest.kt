@@ -155,7 +155,20 @@ class AssociationAuthFlowTest {
                 }
               }
             },
-            signedInContent = { Text("Student app", Modifier.testTag("student_destination")) },
+            signedInContent = { done ->
+              Column {
+                Text("Student app", Modifier.testTag("student_destination"))
+                TextButton(
+                    {
+                      auth.logOut()
+                      done()
+                    },
+                    Modifier.testTag("signed_in_logout"),
+                ) {
+                  Text("Log out")
+                }
+              }
+            },
         )
       }
     }
@@ -283,8 +296,8 @@ class AssociationAuthFlowTest {
     login.onEmailChange("previous@example.org")
     login.onPasswordChange("previous1")
     launch()
-    compose.onNodeWithTag("association_destination_kind").assertTextEquals("Approved association")
-    compose.onNodeWithTag("association_logout").performClick()
+    compose.onNodeWithTag("student_destination").assertIsDisplayed()
+    compose.onNodeWithTag("signed_in_logout").performClick()
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
     assertNull(auth.user)
     assertEquals("", signup.uiState.value.form.email)
