@@ -1,6 +1,7 @@
 // Contributors: OpenAI Codex (association tab graphs and retained stack isolation, #140).
 package com.polysocial.ui.navigation
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.Modifier
@@ -50,8 +51,13 @@ class AssociationAppShellTest {
               }
             },
             eventDetailContent = { navigation ->
-              TextButton(navigation.onBack, Modifier.testTag("detail_back")) {
-                Text("Fixture detail")
+              Column {
+                TextButton(navigation.onBack, Modifier.testTag("detail_back")) {
+                  Text("Fixture detail")
+                }
+                TextButton(navigation.onCancelled, Modifier.testTag("cancel_event")) {
+                  Text("Cancel fixture")
+                }
               }
             },
             organizationContent = { done, _ ->
@@ -75,6 +81,15 @@ class AssociationAppShellTest {
     compose.onNodeWithTag(C.Tag.nav_item_profile).assertDoesNotExist()
     compose.onNodeWithTag(TabAction.EDIT_PROFILE.tag).assertDoesNotExist()
     compose.runOnIdle { assertNull(nav.graph.findNode(Tab.CHATS.route)) }
+  }
+
+  @Test
+  fun cancelledEventReturnsToEventsAndShowsConfirmation() {
+    show()
+    compose.onNodeWithTag("open_event").performClick()
+    compose.onNodeWithTag("cancel_event").performClick()
+    compose.onNodeWithTag("open_event").assertIsDisplayed()
+    compose.onNodeWithText("Event cancelled", substring = true).assertIsDisplayed()
   }
 
   @Test

@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (preserved navigation, logout and pending edits on rebase, #140).
 // Contributors: OpenAI Codex (session-scoped Organization loading through the shared logout
 // controller, #140).
 // Contributors: OpenAI Codex (confirmation and logout state, #109).
@@ -99,7 +100,17 @@ constructor(
     }
   }
 
-  private fun clearOrganization() {
+  /** Shows saved pending edits without a second read; ignores results from a previous account. */
+  fun onOrganizationSaved(association: Association) {
+    val user = auth.currentUser()
+    if (user?.uid != association.uid || !user.isEmailVerified) return
+    clearOrganization()
+    organizationUid = user.uid
+    organizationState.value = OrganizationUiState.Ready(association)
+  }
+
+  /** Forget session-scoped association data when its app exits after logout. */
+  fun clearOrganization() {
     organizationGeneration++
     organizationRead?.cancel()
     organizationRead = null
