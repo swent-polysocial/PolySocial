@@ -1,5 +1,5 @@
 // Contributors: Claude (shared from the copies in Create Event, Log in, Profile setup, Events and
-// Event detail, #251).
+// Event detail, #251; modifiers after review).
 package com.polysocial.ui.common
 
 import androidx.annotation.StringRes
@@ -91,9 +91,16 @@ fun secondaryTextStyle(): TextStyle =
  * otherwise the error icon, then [title] in bold and [message]. [tag] is its test tag.
  */
 @Composable
-fun ErrorBanner(title: String, message: String, offline: Boolean, tag: String) {
+fun ErrorBanner(
+    title: String,
+    message: String,
+    offline: Boolean,
+    tag: String,
+    modifier: Modifier = Modifier,
+) {
   Row(
-      Modifier.fillMaxWidth()
+      modifier
+          .fillMaxWidth()
           .background(AccentSoft, RoundedCornerShape(14.dp))
           .padding(14.dp)
           .testTag(tag),
@@ -125,11 +132,13 @@ fun PrimaryButton(
     enabled: Boolean,
     tag: String,
     loading: Boolean = false,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
   val greyed = !enabled && !loading
   Row(
-      Modifier.fillMaxWidth()
+      modifier
+          .fillMaxWidth()
           .height(PRIMARY_BUTTON_HEIGHT)
           .clip(MaterialTheme.shapes.large)
           .background(if (greyed) Disabled else Ink)
