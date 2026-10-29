@@ -1,5 +1,7 @@
 // Contributors: Claude (Fable 5.1, Anthropic) drafted the account deletion contract; Mohamed
 // Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) documented the local sign-out and the uid to capture,
+// #206; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.model.account
 
 /** Outcome of [AccountDeletionRepository.deleteAccount]. */
@@ -32,6 +34,10 @@ sealed interface AccountDeletionResult {
  * [AccountDeletionResult.Deleted] only once both steps are done, or when the account turns out to
  * be already gone; clearing the local cache and signing out stay with the caller. Caller
  * cancellation propagates.
+ *
+ * When Firebase finds the account gone, disabled or its session revoked, it signs the user out
+ * locally, so `currentUser` is null afterwards: capture the uid (for the local cleanup) before
+ * starting the flow.
  */
 interface AccountDeletionRepository {
   suspend fun deleteAccount(): AccountDeletionResult
