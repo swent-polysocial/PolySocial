@@ -140,7 +140,6 @@ class M1EndToEndTest {
   @BindValue
   @JvmField
   val associationSignupStore: AssociationSignupStore = EmptyAssociationSignupStore
-  @BindValue @JvmField val associations: AssociationRepository = FakeAssociationRepository()
 
   private val fakeAuth =
       FakeAuthRepository().apply {
