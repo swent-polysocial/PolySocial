@@ -4,6 +4,7 @@ package com.polysocial.model.reminder
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.work.testing.TestListenableWorkerBuilder
 import com.polysocial.model.event.EventModule
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.FakeEventRepository
@@ -14,6 +15,7 @@ import dagger.hilt.android.testing.HiltAndroidTest
 import dagger.hilt.android.testing.HiltTestApplication
 import dagger.hilt.android.testing.UninstallModules
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -38,5 +40,17 @@ class ReminderWorkerInjectionTest {
             .eventRepository()
 
     assertSame(events, repository)
+  }
+
+  @Test
+  fun workManager_createsTheWorkerWithItsDefaultConstructor() {
+    hilt.inject()
+    val context = ApplicationProvider.getApplicationContext<Context>()
+
+    // No worker factory: WorkManager's own (Context, WorkerParameters) path, as in the app, which
+    // gets the repository through the entry point.
+    val worker = TestListenableWorkerBuilder<ReminderWorker>(context).build()
+
+    assertTrue(worker is ReminderWorker)
   }
 }
