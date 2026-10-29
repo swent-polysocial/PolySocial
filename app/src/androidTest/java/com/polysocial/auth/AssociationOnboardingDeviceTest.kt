@@ -126,11 +126,17 @@ class AssociationOnboardingDeviceTest {
         .performTextInput("password1")
     capture("association-signup", closeKeyboard = true)
     compose.onNodeWithTag(SignUpTags.Submit).performScrollTo().performClick()
+    compose.waitUntil(5000) {
+      compose.onAllNodesWithTag(VerifyEmailTags.Screen).fetchSemanticsNodes().isNotEmpty()
+    }
     compose.onNodeWithTag(VerifyEmailTags.Screen).assertIsDisplayed()
     capture("association-verify-email")
     assertTrue(privateProfiles.createdProfiles.isEmpty())
     compose.runOnIdle { fakeAuth.verificationResult = VerificationResult.Verified }
     compose.onNodeWithTag(VerifyEmailTags.Continue).performScrollTo().performClick()
+    compose.waitUntil(5000) {
+      compose.onAllNodesWithTag(AssociationSetupTags.Screen).fetchSemanticsNodes().isNotEmpty()
+    }
     compose.onNodeWithTag(AssociationSetupTags.Screen).assertIsDisplayed()
     compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertDoesNotExist()
     compose
@@ -150,6 +156,9 @@ class AssociationOnboardingDeviceTest {
         .performScrollTo()
         .performTextInput("https://example.org")
     compose.onNodeWithTag(AssociationSetupTags.Submit).performScrollTo().performClick()
+    compose.waitUntil(5000) {
+      compose.onAllNodesWithTag(ProfileTags.Logout).fetchSemanticsNodes().isNotEmpty()
+    }
     compose.onNodeWithTag(ProfileTags.Logout).assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.app_shell).assertDoesNotExist()
     assertEquals(listOf("users", "association"), writes)
@@ -159,6 +168,9 @@ class AssociationOnboardingDeviceTest {
     assertEquals("https://example.org", identities.createdAssociations.single().website)
     compose.onNodeWithTag(ProfileTags.Logout).performClick()
     compose.onNodeWithTag(ProfileTags.Confirm).performClick()
+    compose.waitUntil(5000) {
+      compose.onAllNodesWithTag(WelcomeTags.Screen).fetchSemanticsNodes().isNotEmpty()
+    }
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
     assertEquals(1, clears)
     assertEquals(1, fakeAuth.logOutCalls)
