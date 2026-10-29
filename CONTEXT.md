@@ -186,6 +186,7 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 
+- 2026-10-29 · Shared UI parts live once in `ui/common` (`FormParts.kt`: `FieldLabel`, `OfflineBanner`, `ErrorBanner`, `PrimaryButton`, next to `LoadingState`, `ErrorState` and `StateButton`): reuse or extend them instead of copying a field label, banner or button into a screen (M1 coach feedback). ([#251](https://github.com/swent-polysocial/PolySocial/issues/251))
 - 2026-10-29 · Associations write an empty `displayName`; whichever of #258 / #247 merges first owns `PendingAssociation`. ([#256](https://github.com/swent-polysocial/PolySocial/pull/256#issuecomment-6498630706), [#258](https://github.com/swent-polysocial/PolySocial/pull/258#issuecomment-6498750262))
 - 2026-10-29 · Whichever association shell merges first (#247 or #261) stays; the other adapts on rebase. ([#247](https://github.com/swent-polysocial/PolySocial/pull/247#issuecomment-6494141103))
 
