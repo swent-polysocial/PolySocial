@@ -1,3 +1,4 @@
+<!-- Contributors: OpenAI Codex (Organization tab and own-identity states, #140). -->
 <!-- Contributors: OpenAI Codex (association auth and privacy copy, #125). -->
 <!-- Contributors: OpenAI Codex (association setup form copy, #125). -->
 <!-- Contributors: OpenAI Codex (association email validation, #125). -->
@@ -270,4 +271,12 @@
     <string name="association_account_description">Use your association’s email, on any domain. We’ll send a verification link.</string>
     <string name="association_email">Association email</string>
     <string name="association_signup_password_hint">At least 8 characters, including a number.</string>
+    <string name="tab_organization">Organization</string>
+    <string name="organization_verified">Verified association</string>
+    <string name="organization_members">Members &amp; roles</string>
+    <string name="organization_qr">Entrance QR codes</string>
+    <string name="organization_reports">Reported content</string>
+    <string name="organization_loading">Loading your organization…</string>
+    <string name="organization_error_title">Couldn’t load your organization</string>
+    <string name="organization_error_message">Check your connection and try again.</string>
 </resources>
