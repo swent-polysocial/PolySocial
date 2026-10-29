@@ -23,11 +23,15 @@ import com.polysocial.model.event.FakeEventRepository
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.currentTime
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -251,6 +255,21 @@ class ReminderWorkerTest {
     run(balelec.copy(eventId = "e2").toWorkData(), repository = reading(emptyFlow()))
 
     assertEquals(2, notifications.size)
+  }
+
+  @Test
+  fun aWorkerStoppedWhileCheckingTheEvent_staysCancelledAndPostsNothing() = runTest {
+    // For example WorkManager stops the work because its constraints no longer hold.
+    val neverAnswers = flow<EventResult> { awaitCancellation() }
+    val work = launch { run(balelec.toWorkData(), repository = reading(neverAnswers)) }
+    advanceTimeBy(1_000)
+    runCurrent()
+
+    work.cancel()
+    work.join()
+
+    assertTrue(work.isCancelled)
+    assertTrue(notifications.isEmpty())
   }
 
   @Test
