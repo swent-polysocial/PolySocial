@@ -1,7 +1,15 @@
+// Contributors: OpenAI Codex (shared form length constants, #125).
 // Contributors: Claude (association model and repository contract, #126).
 package com.polysocial.model.association
 
 import java.time.Instant
+
+/** Maximum stored association name length, in UTF-16 units. */
+const val MAX_ASSOCIATION_NAME_LENGTH = 60
+/** Maximum stored association description length, in UTF-16 units. */
+const val MAX_ASSOCIATION_ABOUT_LENGTH = 1000
+/** Maximum stored optional website length, in UTF-16 units. */
+const val MAX_ASSOCIATION_WEBSITE_LENGTH = 200
 
 /** The kinds of organization in the Figma "Association setup" frame, stored by [name]. */
 enum class AssociationType {

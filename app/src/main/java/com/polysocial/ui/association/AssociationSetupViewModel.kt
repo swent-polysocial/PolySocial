@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.polysocial.model.association.AssociationRepository
 import com.polysocial.model.association.AssociationType
 import com.polysocial.model.association.CreateAssociationResult
+import com.polysocial.model.association.UpdateAssociationResult
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.user.AccountType
@@ -39,8 +40,8 @@ data class AssociationSetupUiState(
 
 /**
  * Saves the private association account before its public identity, as #126's rules require.
- * Retries preserve the form; a lost create response is recovered through AlreadyExists. Only
- * noncredential form values are restored, and only for the same authenticated UID.
+ * Retries preserve the form; AlreadyExists updates the identity with the latest submitted values.
+ * Only noncredential form values are restored, and only for the same authenticated UID.
  */
 @HiltViewModel
 class AssociationSetupViewModel
@@ -67,11 +68,11 @@ constructor(
   }
 
   fun update(field: AssociationSetupField, value: String) {
+    if (field == AssociationSetupField.Type) return
     edit(field) { form ->
       when (field) {
         AssociationSetupField.Name -> form.copy(name = value)
-        AssociationSetupField.Type ->
-            form.copy(type = AssociationType.entries.firstOrNull { it.name == value })
+        AssociationSetupField.Type -> form
         AssociationSetupField.About -> form.copy(about = value)
         AssociationSetupField.Website -> form.copy(website = value)
       }
@@ -120,27 +121,32 @@ constructor(
           is ProfileResult.Found -> accountFailure(current)
           ProfileResult.NetworkError -> AssociationSetupFailure.Network
           ProfileResult.UnexpectedError -> AssociationSetupFailure.Unexpected
-          ProfileResult.NotFound -> createAccount(user, form)
+          ProfileResult.NotFound -> createAccount(user)
         }
     if (accountFailure != null) return accountFailure
     if (!sameSession(user.uid)) return AssociationSetupFailure.NotSignedIn
     return when (associations.createAssociation(form.association(user.uid))) {
-      CreateAssociationResult.Created,
-      CreateAssociationResult.AlreadyExists -> null
+      CreateAssociationResult.Created -> null
+      CreateAssociationResult.AlreadyExists -> {
+        if (!sameSession(user.uid)) return AssociationSetupFailure.NotSignedIn
+        when (associations.updateAssociation(form.association(user.uid))) {
+          UpdateAssociationResult.Updated -> null
+          UpdateAssociationResult.NetworkError -> AssociationSetupFailure.Network
+          UpdateAssociationResult.NotFound,
+          UpdateAssociationResult.UnexpectedError -> AssociationSetupFailure.Unexpected
+        }
+      }
       CreateAssociationResult.NetworkError -> AssociationSetupFailure.Network
       CreateAssociationResult.UnexpectedError -> AssociationSetupFailure.Unexpected
     }
   }
 
-  private suspend fun createAccount(
-      user: AuthUser,
-      form: AssociationSetupForm,
-  ): AssociationSetupFailure? {
+  private suspend fun createAccount(user: AuthUser): AssociationSetupFailure? {
     val profile =
         UserProfile(
             uid = user.uid,
             email = user.email,
-            displayName = form.name.trim(),
+            displayName = "",
             section = "",
             year = "",
             accountType = AccountType.ASSOCIATION,
