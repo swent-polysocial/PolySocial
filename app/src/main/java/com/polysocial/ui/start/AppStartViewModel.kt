@@ -4,7 +4,7 @@
 // Contributors: Claude (app-start routing for #32; refresh after Log in, not while loading; log
 // out and the created profile; Verify Email opened in-session, #74; an association an admin
 // hasn't verified yet opens its pending app, #127; a non-EPFL account that is not an association
-// fails closed, #208).
+// fails closed, with the rules' exact @epfl.ch check, #208).
 // Contributors: Claude (Opus 5.5, Anthropic) awaited the session guard before the profile read,
 // #198; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.ui.start
@@ -17,6 +17,7 @@ import com.polysocial.model.auth.AssociationSignupStore
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.isEpflEmail
+import com.polysocial.model.auth.isExactEpflEmail
 import com.polysocial.model.firebase.SessionGuard
 import com.polysocial.model.firebase.SessionGuardResult
 import com.polysocial.model.user.AccountType
@@ -80,7 +81,9 @@ enum class SignupMarkerCleanup {
  * Restores student and association entry from the verified account and its persisted profile.
  * Missing non-EPFL profiles resume association setup; only EPFL accounts need the local signup
  * marker to distinguish unfinished association setup from the student profile step. Unverified
- * accounts enter Verify Email before reading protected profiles.
+ * accounts enter Verify Email before reading protected profiles. The student profile step and the
+ * students' app also need an exact `@epfl.ch` session email, as the Security Rules check it
+ * (lowercase domain, #208); any other non-association session gets [StartDestination.Error].
  *
  * Before the first profile read, it waits for [sessions] to make the offline cache safe for the
  * account (#198): a different account than the cache was filled for clears it first. A failed clear
@@ -187,7 +190,8 @@ constructor(
                             ) {
                               _accountType.value = AccountType.ASSOCIATION
                               StartDestination.AssociationSetup
-                            } else StartDestination.ProfileSetup
+                            } else if (isExactEpflEmail(user.email)) StartDestination.ProfileSetup
+                            else StartDestination.Error
                         ProfileResult.NetworkError,
                         ProfileResult.UnexpectedError -> StartDestination.Error
                       }
@@ -202,7 +206,7 @@ constructor(
 
   private suspend fun resolveProfile(user: AuthUser, profile: UserProfile): StartDestination {
     if (profile.accountType != AccountType.ASSOCIATION) {
-      return if (isEpflEmail(user.email)) StartDestination.Main else StartDestination.Error
+      return if (isExactEpflEmail(user.email)) StartDestination.Main else StartDestination.Error
     }
     _accountType.value = AccountType.ASSOCIATION
     clearSignupMarker(user.email)
