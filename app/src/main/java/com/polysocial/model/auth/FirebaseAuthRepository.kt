@@ -9,6 +9,7 @@
 // #206; Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (Opus 5.5, Anthropic) removed the unreachable user-mismatch branch and
 // reported too many re-authentication attempts, #206; Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (moved the exact EPFL check to SignUpValidation to share it, #208).
 package com.polysocial.model.auth
 
 import android.content.Context
@@ -271,10 +272,6 @@ private constructor(
   override fun logOut() = auth.signOut()
 
   override fun currentUser(): AuthUser? = auth.currentUser?.snapshot()
-
-  /** Matches the rules' lowercase domain as well as the shared mailbox validation. */
-  private fun isExactEpflEmail(email: String): Boolean =
-      isEpflEmail(email) && email.endsWith("@epfl.ch")
 
   private fun FirebaseUser.snapshot() =
       AuthUser(
