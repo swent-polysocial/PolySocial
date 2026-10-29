@@ -1,5 +1,7 @@
 // Contributors: OpenAI Codex (privacy availability state and private contact draft coordination,
 // #103).
+// Contributors: Claude (Opus 5.5, Anthropic) moved in-app deletion out of the unavailable actions,
+// #207; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.ui.profile
 
 import androidx.lifecycle.ViewModel
@@ -34,7 +36,7 @@ constructor(
   private val _uiState = MutableStateFlow(PrivacyUiState())
   val uiState = _uiState.asStateFlow()
 
-  /** Request the shared not-available message for export, matching or in-app deletion. */
+  /** Request the shared not-available message for export or matching. */
   fun onUnavailableAction() {
     _uiState.update { it.copy(showUnavailable = true) }
   }
