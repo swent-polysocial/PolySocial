@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (Opus 5.5, Anthropic) converted the Figma "Delete account" icon, #207; Mohamed Khellaf (reviewed and revised). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="18dp" android:height="18dp" android:viewportWidth="18" android:viewportHeight="18">
+    <path android:pathData="M16.5 9C16.5 13.1421 13.1421 16.5 9 16.5C4.85786 16.5 1.5 13.1421 1.5 9C1.5 4.85786 4.85786 1.5 9 1.5C13.1421 1.5 16.5 4.85786 16.5 9Z"
+        android:strokeColor="#5D5D68"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M9 12V9"
+        android:strokeColor="#5D5D68"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M9 6H9.0075"
+        android:strokeColor="#5D5D68"
+        android:strokeWidth="1.5"
+        android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>
