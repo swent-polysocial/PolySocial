@@ -365,8 +365,10 @@ class M1EndToEndTest {
         AuthFlow(
             viewModel = hiltViewModel<SignUpViewModel>(),
             onExit = {},
-            signedInContent = {
+            // Logout and account deletion leave the app through `done`, as in MainActivity.
+            signedInContent = { done ->
               AppShell(
+                  onLoggedOut = done,
                   mapContent = { onViewDetails, onCreateEvent ->
                     MapRoute(
                         onViewDetails,
@@ -376,7 +378,7 @@ class M1EndToEndTest {
                           FakeMapRenderer(events, onSelect, onStatus)
                         },
                     )
-                  }
+                  },
               )
             },
         )
