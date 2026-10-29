@@ -8,7 +8,8 @@
 // signed-out back stack, profile step, sign-out and Figma start states, #74; sign-out from
 // anywhere and from Verify Email, form resets and rotation cases after review); Claude Opus 5.5
 // (testing agent: generic save error tests, #142); Claude (the full name's limit, written
-// test-first, #143); Claude (Log out from the start error, #208).
+// test-first, #143); Claude (Log out from the start error, with
+// the cache cleared first, #208).
 // Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
 // Mohamed Khellaf (reviewed and revised).
 package com.polysocial.auth
@@ -64,6 +65,18 @@ class AuthFlowTest {
   private val login = LoginViewModel(auth)
   private val profileSetup = ProfileSetupViewModel(auth, profiles)
   private val welcome = com.polysocial.ui.auth.WelcomeViewModel(auth)
+
+  /** Who was signed in at each cache clear: a clear after the sign-out would record null. */
+  private val clearedWhileSignedInAs = mutableListOf<AuthUser?>()
+  private var clearResult = com.polysocial.model.firebase.CacheClearResult.Cleared
+  private val cache =
+      object : com.polysocial.model.firebase.SessionCache {
+        override suspend fun clear(): com.polysocial.model.firebase.CacheClearResult {
+          clearedWhileSignedInAs += auth.currentUser()
+          return clearResult
+        }
+      }
+  private val logout = com.polysocial.ui.profile.ProfileViewModel(auth, cache)
   private val restoration = StateRestorationTester(compose)
 
   private var exits = 0
@@ -110,6 +123,7 @@ class AuthFlowTest {
             verification,
             profileStep,
             welcomeViewModel = welcome,
+            logoutViewModel = logout,
         ) {
           AppShell(
               eventsContent = { TabRootScreen(Tab.EVENTS) },
@@ -948,18 +962,49 @@ class AuthFlowTest {
     launch()
     compose.onNodeWithTag(C.Tag.error_state).assertIsDisplayed()
 
-    // The way out when Retry keeps failing (#208).
+    // The way out when Retry keeps failing (#208), confirmed like every other logout.
     compose
         .onNodeWithTag(C.Tag.error_secondary)
         .assertTextEquals(string(R.string.app_start_log_out))
         .performClick()
+    compose.onNodeWithTag(com.polysocial.ui.profile.ProfileTags.Dialog).assertIsDisplayed()
+    assertEquals(0, auth.logOutCalls)
+    assertTrue(clearedWhileSignedInAs.isEmpty())
+    compose.onNodeWithTag(com.polysocial.ui.profile.ProfileTags.Confirm).performClick()
     compose.waitForIdle()
 
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.error_state).assertDoesNotExist()
+    // The previous session's cache is cleared once, before the sign-out (#109).
+    assertEquals(listOf<AuthUser?>(user), clearedWhileSignedInAs)
     assertEquals(1, auth.logOutCalls)
     assertNull(auth.currentUser())
     assertEquals(1, profiles.getProfileCalls)
+  }
+
+  @Test
+  fun startErrorLogOut_whenTheCacheCantBeCleared_staysSignedIn_andRetryLogsOut() {
+    auth.user = user
+    profiles.getProfileResult = ProfileResult.NetworkError
+    clearResult = com.polysocial.model.firebase.CacheClearResult.UnexpectedError
+    launch()
+    compose.onNodeWithTag(C.Tag.error_secondary).performClick()
+    compose.onNodeWithTag(com.polysocial.ui.profile.ProfileTags.Confirm).performClick()
+    compose.waitForIdle()
+
+    compose.onNodeWithTag(com.polysocial.ui.profile.ProfileTags.Error).assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.error_state).assertExists()
+    compose.onNodeWithTag(WelcomeTags.Screen).assertDoesNotExist()
+    assertEquals(0, auth.logOutCalls)
+    assertEquals(user, auth.currentUser())
+
+    clearResult = com.polysocial.model.firebase.CacheClearResult.Cleared
+    compose.onNodeWithTag(com.polysocial.ui.profile.ProfileTags.Confirm).performClick()
+    compose.waitForIdle()
+
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    assertEquals(listOf<AuthUser?>(user, user), clearedWhileSignedInAs)
+    assertEquals(1, auth.logOutCalls)
   }
 
   @Test
