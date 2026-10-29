@@ -3,10 +3,12 @@
 // #42; placeholder Events root without Hilt, #105; map stub given the "+" action, #110).
 // Contributors: OpenAI Codex (map tab chrome, detail routes and injected tab regression tests,
 // #50).
+// Contributors: Claude (the map's Details open the event detail, #112, after the M1 coach review).
 package com.polysocial.ui.navigation
 
 import android.content.Context
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.Modifier
@@ -29,6 +31,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
 import com.polysocial.resources.C
+import com.polysocial.ui.event.detail.EventDetailViewModel
 import com.polysocial.ui.theme.PolySocialTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
@@ -66,10 +69,25 @@ class AppShellTest {
             eventsContent = {
               Box(Modifier.testTag("injected_events_content")) { TabRootScreen(Tab.EVENTS) }
             },
+            eventDetailContent = { navigation ->
+              TextButton(navigation.onBack, Modifier.testTag(FAKE_DETAIL)) { Text("Back") }
+            },
             mapContent = { details, _ ->
               Box(Modifier.testTag(C.Tag.screen_map)) {
-                TextButton({ details("event/one") }, Modifier.testTag("fake_map_details")) {
-                  Text("Open test event")
+                Column {
+                  TextButton({ details("event/one") }, Modifier.testTag("fake_map_details")) {
+                    Text("Open test event")
+                  }
+                  // A double tap: both taps reach the map before the detail opens.
+                  TextButton(
+                      {
+                        details("event/one")
+                        details("event/one")
+                      },
+                      Modifier.testTag("fake_map_details_twice"),
+                  ) {
+                    Text("Open test event twice")
+                  }
                 }
               }
             },
@@ -98,7 +116,9 @@ class AppShellTest {
   @Test
   fun logoutClearsActiveAndSavedStacksOnTheSameController() {
     composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).performClick()
-    composeTestRule.onNodeWithTag("fake_map_details").performClick()
+    // A deeper Map screen that keeps the bottom bar (the event detail hides it), so the test can
+    // switch tabs and leave it in Map's saved stack.
+    composeTestRule.runOnIdle { navController.navigate(Tab.MAP.detailRoute) }
     val mapEntry = composeTestRule.runOnIdle { navController.currentBackStackEntry!!.id }
     composeTestRule.onNodeWithTag(Tab.CHATS.navItemTag).performClick()
     composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).performClick()
@@ -121,44 +141,33 @@ class AppShellTest {
   }
 
   @Test
-  fun mapDetailsPlaceholderKeepsMapSelectedAndReturnsToMap() {
+  fun mapDetails_openTheEventDetail_insideTheMapTab_andBackReturnsToTheMap() {
     composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).performClick()
     composeTestRule.onNodeWithTag("fake_map_details").performClick()
-    composeTestRule.onNodeWithTag("event_detail_placeholder").assertIsDisplayed()
-    composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).assertIsSelected()
-    composeTestRule.onNodeWithTag(C.Tag.app_bar_title).assertTextEquals(label(Tab.MAP))
+
+    // The real event detail, as from the Events tab (#112).
+    composeTestRule.onNodeWithTag(FAKE_DETAIL).assertIsDisplayed()
     composeTestRule.runOnIdle {
-      assertEquals(
-          "event/one",
-          navController.currentBackStackEntry?.arguments?.getString("eventId"),
-      )
+      val entry = navController.currentBackStackEntry!!
+      assertEquals(Tab.MAP.eventDetailRoute, entry.destination.route)
+      assertEquals("event/one", entry.arguments?.getString(EventDetailViewModel.EVENT_ID_ARG))
     }
-    composeTestRule.onNodeWithTag("event_detail_back").performClick()
+    composeTestRule.onNodeWithTag(FAKE_DETAIL).performClick()
     assertOnTab(Tab.MAP)
   }
 
   @Test
-  fun selectedMapEventDetailSurvivesSwitchingTabsAndRetappingMap() {
+  fun aSecondTapOnDetails_opensTheEventDetailOnce() {
     composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).performClick()
-    composeTestRule.onNodeWithTag("fake_map_details").performClick()
-    val entryId = composeTestRule.runOnIdle { navController.currentBackStackEntry?.id }
+    composeTestRule.onNodeWithTag("fake_map_details_twice").performClick()
+    composeTestRule.onNodeWithTag(FAKE_DETAIL).assertIsDisplayed()
 
-    composeTestRule.onNodeWithTag(Tab.CHATS.navItemTag).performClick()
-    composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).performClick()
-    composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).performClick()
-
-    composeTestRule.onNodeWithTag("event_detail_placeholder").assertIsDisplayed()
-    composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).assertIsSelected()
-    composeTestRule.onNodeWithTag(C.Tag.app_bar_title).assertTextEquals(label(Tab.MAP))
-    composeTestRule.runOnIdle {
-      assertEquals(entryId, navController.currentBackStackEntry?.id)
-      assertEquals(
-          "event/one",
-          navController.currentBackStackEntry?.arguments?.getString("eventId"),
-      )
-    }
-    composeTestRule.onNodeWithTag("event_detail_back").performClick()
+    // One Back is enough: the detail was opened once, not stacked on itself.
+    composeTestRule.onNodeWithTag(FAKE_DETAIL).performClick()
     assertOnTab(Tab.MAP)
+    composeTestRule.runOnIdle {
+      assertEquals(Tab.MAP.rootRoute, navController.currentBackStackEntry?.destination?.route)
+    }
   }
 
   @Test
@@ -171,7 +180,7 @@ class AppShellTest {
     composeTestRule.onNodeWithTag("injected_events_content").assertIsDisplayed()
     composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).performClick()
     composeTestRule.onNodeWithTag("fake_map_details").performClick()
-    composeTestRule.onNodeWithTag(C.Tag.event_detail_placeholder).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(FAKE_DETAIL).assertIsDisplayed().performClick()
 
     composeTestRule.onNodeWithTag(Tab.EVENTS.navItemTag).performClick()
 
@@ -212,5 +221,9 @@ class AppShellTest {
       }
       assertOnTab(tab)
     }
+  }
+
+  private companion object {
+    const val FAKE_DETAIL = "fake_event_detail"
   }
 }

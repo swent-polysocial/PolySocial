@@ -15,7 +15,6 @@ import androidx.compose.ui.test.performClick
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.polysocial.resources.C
 import com.polysocial.ui.theme.PolySocialTheme
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -50,16 +49,11 @@ class TabBackStackTest {
   private fun select(tab: Tab) = composeTestRule.onNodeWithTag(tab.navItemTag).performClick()
 
   private fun openDetail(tab: Tab) {
-    composeTestRule.runOnIdle {
-      navController.navigate(
-          if (tab == Tab.MAP) "${tab.detailRoute}/synthetic-event" else tab.detailRoute
-      )
-    }
+    composeTestRule.runOnIdle { navController.navigate(tab.detailRoute) }
     composeTestRule.onNodeWithTag(detailTag(tab)).assertIsDisplayed()
   }
 
-  private fun detailTag(tab: Tab) =
-      if (tab == Tab.MAP) C.Tag.event_detail_placeholder else tab.detailTag
+  private fun detailTag(tab: Tab) = tab.detailTag
 
   private fun pressBack() {
     composeTestRule.runOnIdle { composeTestRule.activity.onBackPressedDispatcher.onBackPressed() }
