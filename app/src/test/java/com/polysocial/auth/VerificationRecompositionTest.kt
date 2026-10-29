@@ -18,6 +18,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.auth.FakeAuthRepository
@@ -66,7 +67,12 @@ class VerificationRecompositionTest {
             auth,
             SignUpViewModel(auth, EmptyAssociationSignupStore),
             LoginViewModel(auth),
-            AppStartViewModel(auth, FakeUserProfileRepository()),
+            AppStartViewModel(
+                auth,
+                FakeUserProfileRepository(),
+                associationSignup = EmptyAssociationSignupStore,
+                associations = FakeAssociationRepository(),
+            ),
             VerifyEmailViewModel(auth, store, VerificationClock { 100_000 }),
             com.polysocial.ui.auth.WelcomeViewModel(auth),
             com.polysocial.ui.profile.ProfileSetupViewModel(auth, FakeUserProfileRepository()),

@@ -31,6 +31,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
+import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.EmptyAssociationSignupStore
@@ -119,7 +120,13 @@ class VerifyEmailScreenTest {
     coEvery { repository.sendVerificationEmail() } returns SendVerificationResult.Sent
     coEvery { repository.reloadAndCheckVerified() } returns VerificationResult.Unverified
     coEvery { profiles.getProfile(user.uid) } returns ProfileResult.NotFound
-    start = AppStartViewModel(repository, profiles)
+    start =
+        AppStartViewModel(
+            repository,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     vm = VerifyEmailViewModel(repository, store, VerificationClock { now })
     signup = SignUpViewModel(repository, EmptyAssociationSignupStore)
     login = LoginViewModel(repository)
@@ -194,7 +201,13 @@ class VerifyEmailScreenTest {
     every { repository.currentUser() } returns user.copy(isEmailVerified = true)
     coEvery { profiles.getProfile(user.uid) } returns
         ProfileResult.Found(UserProfile(user.uid, user.email, "Test Student", "IN", "BA1"))
-    start = AppStartViewModel(repository, profiles)
+    start =
+        AppStartViewModel(
+            repository,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     vm = VerifyEmailViewModel(repository, store, VerificationClock { now })
     flow()
     compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()

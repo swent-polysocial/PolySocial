@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (association onboarding destinations and fail-closed routing, #125).
+// Contributors: OpenAI Codex (association onboarding, restored setup and non-blocking marker
+// cleanup, #125).
 // Contributors: Claude (app-start routing for #32; refresh after Log in, not while loading; log
 // out and the created profile; Verify Email opened in-session, #74; an association an admin
 // hasn't verified yet opens its pending app, #127).
@@ -11,13 +12,13 @@ import com.polysocial.model.association.AssociationResult
 import com.polysocial.model.auth.AssociationSignupStore
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.auth.AuthUser
-import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.auth.isEpflEmail
 import com.polysocial.model.user.AccountType
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.UserProfile
 import com.polysocial.model.user.UserProfileRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.io.IOException
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -37,8 +38,10 @@ sealed interface StartDestination {
   /** Verified, but no profile yet: the profile step after verification (#34). */
   data object ProfileSetup : StartDestination
 
+  /** Verified association whose own setup document is missing. */
   data object AssociationSetup : StartDestination
 
+  /** Verified association, routed to its own shell (#140). */
   data object AssociationMain : StartDestination
 
   data object Main : StartDestination
@@ -53,11 +56,18 @@ sealed interface StartDestination {
   data object Error : StartDestination
 }
 
+/** Outcome of removing a redundant device-local signup marker after the account type is durable. */
+enum class SignupMarkerCleanup {
+  NotRequired,
+  Cleared,
+  RetryNeeded,
+}
+
 /**
- * Decides the start destination: no user → Log in; unverified → Verify Email; verified → load the
- * profile once, then the main app, the pending association app for an association an admin hasn't
- * verified yet, or the profile step when the profile is missing. The account type decides, never
- * the email: an association with an `@epfl.ch` email is still an association (#161).
+ * Restores student and association entry from the verified account and its persisted profile.
+ * Missing non-EPFL profiles resume association setup; only EPFL accounts need the local signup
+ * marker to distinguish unfinished association setup from the student profile step. Unverified
+ * accounts enter Verify Email before reading protected profiles.
  */
 @HiltViewModel
 class AppStartViewModel
@@ -65,8 +75,8 @@ class AppStartViewModel
 constructor(
     private val auth: AuthRepository,
     private val profiles: UserProfileRepository,
-    private val associationSignup: AssociationSignupStore = EmptyAssociationSignupStore,
-    private val associations: AssociationRepository? = null,
+    private val associationSignup: AssociationSignupStore,
+    private val associations: AssociationRepository,
 ) : ViewModel() {
   private val _destination = MutableStateFlow<StartDestination>(StartDestination.Loading)
   val destination: StateFlow<StartDestination> = _destination.asStateFlow()
@@ -75,7 +85,12 @@ constructor(
   private var profileRead: Job? = null
 
   private val _accountType = MutableStateFlow(AccountType.STUDENT)
+  /** Account kind used by Verify Email before the private profile exists. */
   val accountType: StateFlow<AccountType> = _accountType.asStateFlow()
+
+  private val _signupMarkerCleanup = MutableStateFlow(SignupMarkerCleanup.NotRequired)
+  /** A failed housekeeping write is retried on the next refresh without blocking account access. */
+  val signupMarkerCleanup: StateFlow<SignupMarkerCleanup> = _signupMarkerCleanup.asStateFlow()
 
   init {
     resolve()
@@ -123,13 +138,15 @@ constructor(
   private fun resolve() {
     _destination.value = StartDestination.Loading
     _accountType.value = AccountType.STUDENT
+    _signupMarkerCleanup.value = SignupMarkerCleanup.NotRequired
     val user = auth.currentUser()
     when {
       user == null -> _destination.value = StartDestination.Login
       !user.isEmailVerified -> profileRead = viewModelScope.launch {
             try {
               _accountType.value =
-                  if (associationSignup.contains(user.email)) AccountType.ASSOCIATION
+                  if (!isEpflEmail(user.email) || associationSignup.contains(user.email))
+                      AccountType.ASSOCIATION
                   else AccountType.STUDENT
               _destination.value = StartDestination.VerifyEmail
             } catch (cancelled: CancellationException) {
@@ -144,10 +161,10 @@ constructor(
                   when (val result = profiles.getProfile(user.uid)) {
                     is ProfileResult.Found -> resolveProfile(user, result.profile)
                     ProfileResult.NotFound ->
-                        if (associationSignup.contains(user.email))
-                            StartDestination.AssociationSetup
-                        else if (isEpflEmail(user.email)) StartDestination.ProfileSetup
-                        else StartDestination.Error
+                        if (!isEpflEmail(user.email) || associationSignup.contains(user.email)) {
+                          _accountType.value = AccountType.ASSOCIATION
+                          StartDestination.AssociationSetup
+                        } else StartDestination.ProfileSetup
                     ProfileResult.NetworkError,
                     ProfileResult.UnexpectedError -> StartDestination.Error
                   }
@@ -164,14 +181,30 @@ constructor(
     if (profile.accountType != AccountType.ASSOCIATION) {
       return if (isEpflEmail(user.email)) StartDestination.Main else StartDestination.Error
     }
-    associationSignup.clear(user.email)
-    return when (associations?.getAssociation(user.uid)) {
+    _accountType.value = AccountType.ASSOCIATION
+    clearSignupMarker(user.email)
+    return when (associations.getAssociation(user.uid)) {
       is AssociationResult.Found ->
           if (profile.isAssociationVerified) StartDestination.AssociationMain
           else StartDestination.PendingAssociation
       AssociationResult.NotFound -> StartDestination.AssociationSetup
-      else -> StartDestination.Error
+      AssociationResult.NetworkError,
+      AssociationResult.UnexpectedError -> StartDestination.Error
     }
+  }
+
+  private suspend fun clearSignupMarker(email: String) {
+    _signupMarkerCleanup.value =
+        try {
+          associationSignup.clear(email)
+          SignupMarkerCleanup.Cleared
+        } catch (cancelled: CancellationException) {
+          throw cancelled
+        } catch (_: IOException) {
+          SignupMarkerCleanup.RetryNeeded
+        } catch (_: Exception) {
+          SignupMarkerCleanup.RetryNeeded
+        }
   }
 }
 

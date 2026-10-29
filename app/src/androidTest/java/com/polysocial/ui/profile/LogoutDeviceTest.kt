@@ -11,6 +11,7 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
 import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.firebase.*
@@ -90,7 +91,13 @@ class LogoutDeviceTest {
   private fun launch() {
     val signup = SignUpViewModel(auth, EmptyAssociationSignupStore)
     val login = LoginViewModel(auth)
-    val start = AppStartViewModel(auth, profiles)
+    val start =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     val profileSetup = ProfileSetupViewModel(auth, profiles)
     val welcome = com.polysocial.ui.auth.WelcomeViewModel(auth)
     compose.setContent {

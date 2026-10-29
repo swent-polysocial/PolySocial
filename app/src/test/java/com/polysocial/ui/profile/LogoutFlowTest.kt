@@ -13,6 +13,7 @@ import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.auth.MemoryVerificationStore
+import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
 import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.firebase.*
@@ -70,7 +71,13 @@ class LogoutFlowTest {
   private val welcome = com.polysocial.ui.auth.WelcomeViewModel(auth)
 
   private fun launch() {
-    val start = AppStartViewModel(auth, profiles)
+    val start =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     val profileSetup = ProfileSetupViewModel(auth, profiles)
     restoration.setContent {
       PolySocialTheme {

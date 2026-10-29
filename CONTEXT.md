@@ -6,6 +6,8 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 
 ## Current state
 
+- **Association startup recovery (#258 review):** an existing private profile remains authoritative. With no profile, non-EPFL accounts resume association setup even after reinstall; only EPFL accounts need the same-device marker to disambiguate student and association setup. This exception changes no backend access. Marker cleanup after durable association typing is housekeeping: a failed write reports `RetryNeeded` and retries on refresh without blocking pending/verified entry. #247 and this stack retain the agreed merge-order contract for `PendingAssociation`.
+
 - **Setup copy (#257 review):** Lucas confirmed keeping the current review-focused description; Figma’s first-admin/invite sentence awaits a team update because the membership model is undecided. The form matches the reviewed geometry and exposes a dedicated wrong-account sign-out message.
 
 - **Association setup review (#256):** the association name lives only in `associations/{uid}`; the private profile has an empty `displayName`, compatible with the 50-character student limit. A retry whose create already succeeded updates the identity with the latest submitted values. `model/association/AssociationValidation.kt` owns shared form validation and repository constants own the limits; #248 reuses them when rebased. Websites require HTTPS with a host and valid port, as #125 requires a valid URL.

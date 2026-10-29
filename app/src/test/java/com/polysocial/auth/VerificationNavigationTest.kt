@@ -13,6 +13,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.auth.FakeAuthRepository
@@ -47,7 +48,13 @@ class VerificationNavigationTest {
       MemoryVerificationStore().apply { timings[user.uid] = VerificationTiming(1000, 46_000) }
   private val signup = SignUpViewModel(repository, EmptyAssociationSignupStore)
   private val login = LoginViewModel(repository)
-  private var start = AppStartViewModel(repository, FakeUserProfileRepository())
+  private var start =
+      AppStartViewModel(
+          repository,
+          FakeUserProfileRepository(),
+          associationSignup = EmptyAssociationSignupStore,
+          associations = FakeAssociationRepository(),
+      )
   private val welcome = com.polysocial.ui.auth.WelcomeViewModel(repository)
   private val profile =
       com.polysocial.ui.profile.ProfileSetupViewModel(repository, FakeUserProfileRepository())
@@ -95,7 +102,13 @@ class VerificationNavigationTest {
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
     assertNull(repository.currentUser())
     assertEquals(1, repository.logOutCalls)
-    start = AppStartViewModel(repository, FakeUserProfileRepository())
+    start =
+        AppStartViewModel(
+            repository,
+            FakeUserProfileRepository(),
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     verification = model()
     restoration.emulateSavedInstanceStateRestore()
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()

@@ -10,6 +10,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
+import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.EmptyAssociationSignupStore
@@ -60,7 +61,13 @@ class GoogleSignInScreenTest {
     if (existing)
         coEvery { profiles.getProfile(demo.uid) } returns
             ProfileResult.Found(UserProfile(demo.uid, demo.email, "Demo Student", "IN", "BA1"))
-    val start = AppStartViewModel(auth, profiles)
+    val start =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     val signup = SignUpViewModel(auth, EmptyAssociationSignupStore)
     val login = LoginViewModel(auth)
     val welcome = WelcomeViewModel(auth)

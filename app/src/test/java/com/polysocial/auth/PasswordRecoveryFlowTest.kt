@@ -9,6 +9,7 @@ import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
+import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
 import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.user.FakeUserProfileRepository
@@ -37,7 +38,13 @@ class PasswordRecoveryFlowTest {
   private val welcome = com.polysocial.ui.auth.WelcomeViewModel(auth)
 
   private fun launch() {
-    val start = AppStartViewModel(auth, FakeUserProfileRepository())
+    val start =
+        AppStartViewModel(
+            auth,
+            FakeUserProfileRepository(),
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     val verification =
         VerifyEmailViewModel(auth, MemoryVerificationStore(), VerificationClock { 1000 })
     val profileStep = ProfileSetupViewModel(auth, FakeUserProfileRepository())
