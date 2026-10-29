@@ -1,4 +1,5 @@
-// Contributors: Claude Opus 5.5 (wrote these tests, #123; late reminder title after review).
+// Contributors: Claude Opus 5.5 (wrote these tests, #123; late reminder title after review;
+// deleted events, #130).
 package com.polysocial.model.reminder
 
 import android.Manifest
@@ -13,9 +14,20 @@ import androidx.work.ListenableWorker
 import androidx.work.WorkerFactory
 import androidx.work.WorkerParameters
 import androidx.work.testing.TestListenableWorkerBuilder
+import com.polysocial.model.event.Coordinates
+import com.polysocial.model.event.Event
+import com.polysocial.model.event.EventCategory
+import com.polysocial.model.event.EventRepository
+import com.polysocial.model.event.EventResult
+import com.polysocial.model.event.FakeEventRepository
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -42,15 +54,39 @@ class ReminderWorkerTest {
           "Satellite, EPFL",
       )
 
+  private val events = FakeEventRepository()
+
+  private fun stored(id: String) =
+      Event(
+          id = id,
+          title = balelec.title,
+          description = "",
+          category = EventCategory.PARTY,
+          location = Coordinates(46.52, 6.57),
+          startTime = balelec.startTime,
+          isPrivate = false,
+      )
+
+  /** [events], except that [getEvent] returns [reads]. */
+  private fun reading(reads: Flow<EventResult>): EventRepository =
+      object : EventRepository by events {
+        override fun getEvent(id: String) = reads
+      }
+
   private val notifications
     get() = shadowOf(context.getSystemService(NotificationManager::class.java)).allNotifications
 
   @Before
-  fun allowNotifications() {
+  fun allowNotificationsAndStoreTheEvents() {
     shadowOf(context as Application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
+    events.seed(stored("e1"), stored("e2"))
   }
 
-  private suspend fun run(data: Data, at: Instant = reminderDue): ListenableWorker.Result {
+  private suspend fun run(
+      data: Data,
+      at: Instant = reminderDue,
+      repository: EventRepository = events,
+  ): ListenableWorker.Result {
     val clock = Clock.fixed(at, zurich)
     val worker =
         TestListenableWorkerBuilder<ReminderWorker>(context)
@@ -61,7 +97,7 @@ class ReminderWorkerTest {
                       appContext: Context,
                       workerClassName: String,
                       workerParameters: WorkerParameters,
-                  ) = ReminderWorker(appContext, workerParameters, clock)
+                  ) = ReminderWorker(appContext, workerParameters, repository, clock)
                 }
             )
             .build()
@@ -150,6 +186,71 @@ class ReminderWorkerTest {
 
     assertEquals(ListenableWorker.Result.success(), run(balelec.toWorkData()))
     assertTrue(notifications.isEmpty())
+  }
+
+  @Test
+  fun aDeletedEvent_isNotNotified() = runTest {
+    events.events.clear()
+
+    assertEquals(ListenableWorker.Result.success(), run(balelec.toWorkData()))
+    assertTrue(notifications.isEmpty())
+  }
+
+  @Test
+  fun anEventTheStudentCanNoLongerRead_isNotNotified() = runTest {
+    // For example a private event they were removed from: the read is denied.
+    events.deniedIds += "e1"
+
+    run(balelec.toWorkData())
+
+    assertTrue(notifications.isEmpty())
+  }
+
+  @Test
+  fun anEventTheServerDeletedAfterTheCachedCopy_isNotNotified() = runTest {
+    val reads = flowOf(EventResult.Found(stored("e1"), fromCache = true), EventResult.NotFound)
+
+    run(balelec.toWorkData(), repository = reading(reads))
+
+    assertTrue(notifications.isEmpty())
+  }
+
+  @Test
+  fun offline_aCachedEventIsNotifiedAfterTheTimeout() = runTest {
+    events.readFromCache = true
+
+    run(balelec.toWorkData())
+
+    assertEquals(EVENT_CHECK_TIMEOUT.inWholeMilliseconds, currentTime)
+    assertEquals("Balélec warm-up starts in 1 h", notifications.single().title())
+  }
+
+  @Test
+  fun offline_anEventTheCacheDoesNotHold_isStillNotified() = runTest {
+    // The reminder was scheduled from a read the cache has since dropped: it must not be lost.
+    events.readFromCache = true
+    events.events.clear()
+
+    run(balelec.toWorkData())
+
+    assertEquals(1, notifications.size)
+  }
+
+  @Test
+  fun theServerConfirmingTheEvent_notifiesWithoutWaiting() = runTest {
+    run(balelec.toWorkData())
+
+    assertEquals(0L, currentTime)
+    assertEquals(1, notifications.size)
+  }
+
+  @Test
+  fun aFailedOrEndedRead_stillNotifies() = runTest {
+    val failing = flow<EventResult> { throw IllegalStateException("read failed") }
+    run(balelec.toWorkData(), repository = reading(failing))
+    run(balelec.copy(eventId = "e2").toWorkData(), repository = reading(emptyFlow()))
+
+    assertEquals(2, notifications.size)
   }
 
   @Test

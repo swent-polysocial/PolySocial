@@ -1,5 +1,5 @@
 // Contributors: Claude Opus 5.5 (reminder worker and notification, from the Figma frame
-// "Reminder · system notification", #123; time left after review).
+// "Reminder · system notification", #123; time left after review; skipping deleted events, #130).
 package com.polysocial.model.reminder
 
 import android.Manifest
@@ -16,9 +16,19 @@ import androidx.work.Data
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.polysocial.R
+import com.polysocial.model.event.EventRepository
+import com.polysocial.model.event.EventResult
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
 import java.time.Clock
 import java.time.Instant
 import java.time.format.DateTimeFormatter
+import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 
 private const val KEY_EVENT_ID = "eventId"
 private const val KEY_TITLE = "title"
@@ -30,6 +40,9 @@ internal const val REMINDER_CHANNEL_ID = "event_reminders"
 
 /** One notification per event: it is posted under the event ID as its tag, with this ID. */
 internal const val REMINDER_NOTIFICATION_ID = 1
+
+/** How long the worker waits for the server's answer about the event before trusting the cache. */
+internal val EVENT_CHECK_TIMEOUT = 10.seconds
 
 private val timeFormat = DateTimeFormatter.ofPattern("HH:mm")
 private val dateFormat = DateTimeFormatter.ofPattern("EEE d MMM")
@@ -56,19 +69,58 @@ internal fun eventReminderFrom(data: Data): EventReminder? {
 }
 
 /**
+ * False only if [events] says the event [eventId] is gone: deleted, or no longer readable by the
+ * signed-in student (see [EventResult.NotFound]).
+ *
+ * The server's answer decides. If it doesn't come within [EVENT_CHECK_TIMEOUT] (offline), the
+ * latest cached answer does, and an event the cache doesn't hold counts as still there, so a
+ * reminder still fires offline. A read that fails unexpectedly also keeps the reminder: a late
+ * cancellation is better than a reminder the student never gets.
+ */
+internal suspend fun eventStillExists(events: EventRepository, eventId: String): Boolean {
+  var latest: EventResult? = null
+  val confirmed =
+      try {
+        withTimeoutOrNull(EVENT_CHECK_TIMEOUT) {
+          events.getEvent(eventId).first { result ->
+            latest = result
+            result is EventResult.NotFound || (result is EventResult.Found && !result.fromCache)
+          }
+        }
+      } catch (e: CancellationException) {
+        throw e
+      } catch (_: Exception) {
+        // The flow ended without an answer or failed: keep the reminder (see above).
+        null
+      }
+  return (confirmed ?: latest) !is EventResult.NotFound
+}
+
+/** Gives [ReminderWorker], which WorkManager creates itself, the app's [EventRepository]. */
+@EntryPoint
+@InstallIn(SingletonComponent::class)
+internal interface ReminderWorkerEntryPoint {
+  fun eventRepository(): EventRepository
+}
+
+/**
  * Posts an event's reminder: the title says the event starts in 1 h (or the time actually left, see
  * [timeLeft]), and the text gives its day, time and place, as in the Figma frame "Reminder · system
  * notification". Tapping it opens the app.
  *
- * Nothing is posted if the event has already started (the device was off when the reminder was due)
- * or if the student doesn't allow notifications. WorkManager creates this worker with the device's
- * clock; tests pass a fixed one through a worker factory.
+ * Nothing is posted if the event has already started (the device was off when the reminder was
+ * due), if the student doesn't allow notifications, or if the event was deleted (see
+ * [eventStillExists]). WorkManager creates this worker with the device's clock and the app's
+ * [EventRepository]; tests pass a fixed clock and a fake repository through a worker factory.
  */
 class ReminderWorker
 @JvmOverloads
 constructor(
     context: Context,
     params: WorkerParameters,
+    private val events: EventRepository =
+        EntryPointAccessors.fromApplication(context, ReminderWorkerEntryPoint::class.java)
+            .eventRepository(),
     private val clock: Clock = Clock.systemDefaultZone(),
 ) : CoroutineWorker(context, params) {
 
@@ -76,6 +128,7 @@ constructor(
     val reminder = eventReminderFrom(inputData) ?: return Result.failure()
     if (!clock.instant().isBefore(reminder.startTime)) return Result.success()
     if (!canPostNotifications()) return Result.success()
+    if (!eventStillExists(events, reminder.eventId)) return Result.success()
     val notifications = NotificationManagerCompat.from(applicationContext)
     notifications.createNotificationChannel(
         NotificationChannelCompat.Builder(
