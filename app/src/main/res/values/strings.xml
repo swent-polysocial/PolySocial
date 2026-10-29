@@ -4,6 +4,7 @@
 <!-- Contributors: OpenAI Codex (verification screen and failure messages for #31). Claude (full name limit message, #143; as a plural after review). -->
 <!-- Contributors: OpenAI Codex (current-build privacy summary and full notice, #103). -->
 <!-- Contributors: OpenAI Codex (Google authentication errors; removed collision copy for #107). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) updated the privacy notice for in-app account deletion, #207; Mohamed Khellaf (reviewed and revised). -->
 <resources>
     <string name="app_start_loading">Loading your profile…</string>
     <string name="app_start_error_title">Couldn\'t load your profile</string>
@@ -212,7 +213,7 @@
     <string name="privacy_matching_unavailable">Not available yet</string>
     <string name="privacy_download">Download my data</string>
     <string name="privacy_full_notice">Full privacy notice</string>
-    <string name="privacy_updated">Updated 15 October 2026</string>
+    <string name="privacy_updated">Updated 29 October 2026</string>
     <string name="privacy_delete">Delete account</string>
     <string name="privacy_unavailable">Not available yet.</string>
     <string name="privacy_dismiss">Dismiss</string>
@@ -227,9 +228,9 @@
     <string name="privacy_notice_attendance_title">Attendance, reminders and future features</string>
     <string name="privacy_notice_attendance_body">This build does not store attendance or schedule reminders. Registration and reminders need an updated notice when enabled: organizers will see event registrations, and optional reminder data will stay on the device for local notifications. Attendance-based matching, chats, photo albums, data export and in-app account deletion are not available yet. The matching switch stays Off and does not change any consent setting.</string>
     <string name="privacy_notice_device_title">Data kept on your device</string>
-    <string name="privacy_notice_device_body">Firebase keeps previously loaded data in its device cache for offline use. Mapbox may cache map resources. The app remembers whether location permission has been requested, without storing coordinates in that preference. Event search and filter selections can survive screen or process recreation; location coordinates stay in memory only. Verification resend deadlines are stored as timestamps under an account identifier, retained across sign-out and cleared after successful verification. Account and event data in Firebase are not automatically deleted by leaving a screen.</string>
-    <string name="privacy_notice_deletion_title">Requesting deletion</string>
-    <string name="privacy_notice_deletion_body">In-app deletion and data export are not available yet. To ask for account and data deletion, contact the PolySocial project team privately. Do not publish your account details in a public GitHub issue.</string>
+    <string name="privacy_notice_device_body">Firebase keeps previously loaded data in its device cache for offline use. Mapbox may cache map resources. The app remembers whether location permission has been requested, without storing coordinates in that preference. Event search and filter selections can survive screen or process recreation; location coordinates stay in memory only. Verification resend deadlines are stored as timestamps under an account identifier, retained across sign-out and cleared after successful verification or account deletion. Deleting your account also clears the Firebase device cache. Account and event data in Firebase are not automatically deleted by leaving a screen.</string>
+    <string name="privacy_notice_deletion_title">Deleting your account</string>
+    <string name="privacy_notice_deletion_body">Students can delete their account in Privacy &amp; data after confirming their password or Google sign-in. This deletes your private profile and your sign-in, then clears this device\'s cache and resend timing. Events you created stay up and keep your account identifier as organizer, so other students\' registrations stay valid. Association accounts are deleted by the PolySocial project team: contact the team privately. Data export is not available yet. Do not publish your account details in a public GitHub issue.</string>
     <string name="privacy_notice_draft_title">Draft details to be confirmed</string>
     <string name="privacy_notice_draft_body">This is a school project prototype. The team is confirming the responsible contact, its private deletion address, and the countries of processing and transfer safeguards for Firebase and Mapbox. These details are not established yet and will replace this draft section. No specific country or safeguard is claimed here.</string>
     <string name="privacy_contact_team">Contact the team privately</string>
