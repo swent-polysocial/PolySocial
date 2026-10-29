@@ -4,9 +4,11 @@ package com.polysocial.ui.profile
 
 import android.content.Context
 import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -15,6 +17,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -168,6 +171,11 @@ class DeleteAccountSheetTest {
     tap(DeleteAccountTags.Confirm)
     rule
         .onNodeWithTag(DeleteAccountTags.PasswordVisibility)
+        .assertWidthIsAtLeast(48.dp)
+        .assertHeightIsAtLeast(48.dp)
+    rule.onNodeWithTag(DeleteAccountTags.Cancel).assertHeightIsAtLeast(48.dp)
+    rule
+        .onNodeWithTag(DeleteAccountTags.PasswordVisibility)
         .assertContentDescriptionEquals(text(R.string.delete_account_show_password))
         .performClick()
     rule
@@ -254,6 +262,7 @@ class DeleteAccountSheetTest {
     reauthWithPassword()
     title(R.string.delete_account_association_title)
     rule.onNodeWithText(text(R.string.delete_account_association_body)).assertIsDisplayed()
+    rule.onNodeWithTag(DeleteAccountTags.Contact).assertHeightIsAtLeast(48.dp)
     tap(DeleteAccountTags.Contact)
     rule
         .onNodeWithTag(DeleteAccountTags.ContactMessage)
