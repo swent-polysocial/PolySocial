@@ -409,6 +409,24 @@ class AssociationAuthFlowTest {
   }
 
   @Test
+  fun switchingSignupAccountTypeInBothDirectionsResetsThePreviousDraft() {
+    launch()
+    compose.onNodeWithTag(WelcomeTags.SignUp).performScrollTo().performClick()
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.FullName)).performTextInput("Test Student")
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.Email)).performTextInput("student@epfl.ch")
+    pressBack()
+
+    openAssociationForm()
+    assertEquals("", signup.uiState.value.form.email)
+    pressBack()
+
+    compose.onNodeWithTag(WelcomeTags.SignUp).performScrollTo().performClick()
+    assertEquals(AccountType.STUDENT, signup.uiState.value.form.accountType)
+    assertEquals("", signup.uiState.value.form.email)
+    assertEquals("", signup.uiState.value.form.fullName)
+  }
+
+  @Test
   fun recreatedAssociationSetupStillCompletesThePendingHandoff() {
     auth.user = user.copy(isEmailVerified = true)
     launch()
