@@ -7,6 +7,8 @@ import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -14,6 +16,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
+import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
 import com.polysocial.auth.MemoryVerificationStore
@@ -303,5 +306,28 @@ class DeleteAccountSheetTest {
     rule.waitForIdle()
     assertEquals(0, deletion.calls)
     assertEquals(listOf(false), ended)
+  }
+
+  @Test
+  fun backAndScrimDoNotDismissWhileDeleting() {
+    val gate = CompletableDeferred<Unit>()
+    deletion.gate = gate
+    open()
+    reauthWithPassword()
+    rule.onNodeWithTag(DeleteAccountTags.Progress).assertIsDisplayed()
+    Espresso.pressBackUnconditionally()
+    rule.onNode(hasClickAction() and hasContentDescription(SCRIM)).performClick()
+    rule.waitForIdle()
+    rule.onNodeWithTag(DeleteAccountTags.Sheet).assertIsDisplayed()
+    rule.onNodeWithTag(DeleteAccountTags.Progress).assertIsDisplayed()
+    assertEquals(DeleteAccountStep.Deleting, viewModel.uiState.value.step)
+    rule.runOnIdle { gate.complete(Unit) }
+    rule.waitForIdle()
+    assertEquals(listOf(true), ended)
+  }
+
+  private companion object {
+    /** Material 3's description of the bottom sheet's scrim ("Close sheet"). */
+    const val SCRIM = "Close sheet"
   }
 }

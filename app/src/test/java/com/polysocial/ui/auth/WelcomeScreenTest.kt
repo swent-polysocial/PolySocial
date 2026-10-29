@@ -1,11 +1,15 @@
 // Contributors: OpenAI Codex (Google action regression for #107).
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; tested welcome actions, placeholders and
 // scrolling in a short window, landscape action visibility and privacy-copy regression).
+// Contributors: Claude (Opus 5.5, Anthropic) tested the one-off "Account deleted" message, #207;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.ui.auth
 
 import android.app.Application
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -15,11 +19,15 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
+import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.ui.theme.PolySocialTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -99,5 +107,36 @@ class WelcomeScreenTest {
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
     assertEquals(0, signUps)
     assertEquals(0, logins)
+  }
+
+  @Test
+  fun accountDeletedIsShownOnceAndNotAfterReturning() {
+    val welcome = WelcomeViewModel(FakeAuthRepository())
+    val showWelcome = mutableStateOf(true)
+    welcome.onAccountDeleted()
+    assertTrue(welcome.accountDeleted.value)
+    val deletedText = message(R.string.delete_account_done)
+    compose.setContent {
+      PolySocialTheme {
+        val deleted by welcome.accountDeleted.collectAsStateWithLifecycle()
+        if (showWelcome.value) {
+          WelcomeScreen(
+              onSignUp = {},
+              onLogIn = {},
+              message = if (deleted) deletedText else null,
+              onMessageShown = welcome::onAccountDeletedShown,
+          )
+        }
+      }
+    }
+    compose.onNodeWithText(deletedText).assertIsDisplayed()
+
+    compose.runOnIdle { showWelcome.value = false }
+    compose.waitForIdle()
+    assertFalse(welcome.accountDeleted.value)
+    compose.runOnIdle { showWelcome.value = true }
+
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    compose.onNodeWithText(deletedText).assertDoesNotExist()
   }
 }
