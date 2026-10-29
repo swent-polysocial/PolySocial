@@ -9,6 +9,8 @@
 // anywhere and from Verify Email, form resets and rotation cases after review); Claude Opus 5.5
 // (testing agent: generic save error tests, #142); Claude (the full name's limit, written
 // test-first, #143).
+// Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -28,6 +30,7 @@ import com.polysocial.R
 import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
 import com.polysocial.model.auth.EmptyAssociationSignupStore
+import com.polysocial.model.firebase.FakeSessionGuard
 import com.polysocial.model.user.*
 import com.polysocial.resources.C
 import com.polysocial.ui.auth.*
@@ -88,6 +91,7 @@ class AuthFlowTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     val verification =
         VerifyEmailViewModel(auth, MemoryVerificationStore(), VerificationClock { 1000 }).also {
@@ -151,6 +155,7 @@ class AuthFlowTest {
                 profiles,
                 associationSignup = EmptyAssociationSignupStore,
                 associations = FakeAssociationRepository(),
+                sessions = FakeSessionGuard(),
             )
         )
     val verification = verificationModel()
@@ -183,6 +188,7 @@ class AuthFlowTest {
               profiles,
               associationSignup = EmptyAssociationSignupStore,
               associations = FakeAssociationRepository(),
+              sessions = FakeSessionGuard(),
           )
     }
     compose.onNodeWithTag(VerifyEmailTags.Screen).assertIsDisplayed()
@@ -206,6 +212,7 @@ class AuthFlowTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     val currentVerification = mutableStateOf(verificationModel())
     val currentProfile = mutableStateOf(profileSetup)
@@ -270,6 +277,7 @@ class AuthFlowTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     val current = mutableStateOf(previous)
     val verification = verificationModel()
@@ -303,6 +311,7 @@ class AuthFlowTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     compose.runOnIdle { current.value = replacement }
     compose.onNodeWithTag("logout").assertIsDisplayed()
@@ -333,6 +342,7 @@ class AuthFlowTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     val verification = verificationModel()
     val currentSignUp = mutableStateOf(signUp)
@@ -398,6 +408,7 @@ class AuthFlowTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     val verification = verificationModel()
     val currentStart = mutableStateOf(start)
@@ -431,6 +442,7 @@ class AuthFlowTest {
               profiles,
               associationSignup = EmptyAssociationSignupStore,
               associations = FakeAssociationRepository(),
+              sessions = FakeSessionGuard(),
           )
     }
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
@@ -455,6 +467,7 @@ class AuthFlowTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     val verification = verificationModel()
     compose.setContent {
@@ -495,6 +508,7 @@ class AuthFlowTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     val verification = verificationModel()
     compose.setContent {

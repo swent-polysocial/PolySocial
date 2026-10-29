@@ -1,6 +1,8 @@
 // Contributors: OpenAI Codex (cold-start, recreation and verification Back sign-out regression
 // tests for #31).
 // Contributors: OpenAI Codex (preserved offline ViewModel injection after PR #168 rebase).
+// Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.auth
 
 import androidx.compose.ui.test.assertCountEquals
@@ -20,6 +22,7 @@ import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.auth.SignUpField
 import com.polysocial.model.auth.VerificationClock
 import com.polysocial.model.auth.VerificationTiming
+import com.polysocial.model.firebase.FakeSessionGuard
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.ui.auth.AuthFlow
 import com.polysocial.ui.auth.SignUpTags
@@ -54,6 +57,7 @@ class VerificationNavigationTest {
           FakeUserProfileRepository(),
           associationSignup = EmptyAssociationSignupStore,
           associations = FakeAssociationRepository(),
+          sessions = FakeSessionGuard(),
       )
   private val welcome = com.polysocial.ui.auth.WelcomeViewModel(repository)
   private val profile =
@@ -108,6 +112,7 @@ class VerificationNavigationTest {
             FakeUserProfileRepository(),
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     verification = model()
     restoration.emulateSavedInstanceStateRestore()

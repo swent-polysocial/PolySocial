@@ -1,5 +1,7 @@
 // Contributors: OpenAI Codex (offline Google navigation, generic failure recovery and layout tests
 // for #107, including progress placement and pending-attempt state restoration).
+// Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -18,6 +20,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
 import com.polysocial.model.auth.EmptyAssociationSignupStore
+import com.polysocial.model.firebase.FakeSessionGuard
 import com.polysocial.model.user.*
 import com.polysocial.ui.auth.*
 import com.polysocial.ui.login.LoginScreenTestTags
@@ -66,6 +69,7 @@ class GoogleAuthFlowTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     restore.setContent {
       PolySocialTheme {

@@ -2,6 +2,8 @@
 // Contributors: OpenAI Codex (adapted pending flow to startup recovery).
 // Contributors: Claude (wrote these tests, #127; logging in again in the same activity, after a
 // review, #127).
+// Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -23,6 +25,7 @@ import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.auth.VerificationClock
 import com.polysocial.model.firebase.CacheClearResult
+import com.polysocial.model.firebase.FakeSessionGuard
 import com.polysocial.model.firebase.SessionCache
 import com.polysocial.model.user.AccountType
 import com.polysocial.model.user.FakeUserProfileRepository
@@ -92,7 +95,14 @@ class PendingAssociationFlowTest {
   private lateinit var start: AppStartViewModel
 
   private fun launch() {
-    start = AppStartViewModel(auth, profiles, EmptyAssociationSignupStore, associations)
+    start =
+        AppStartViewModel(
+            auth,
+            profiles,
+            EmptyAssociationSignupStore,
+            associations,
+            sessions = FakeSessionGuard(),
+        )
     val verification =
         VerifyEmailViewModel(auth, MemoryVerificationStore(), VerificationClock { 1000 })
     val signUp = SignUpViewModel(auth, EmptyAssociationSignupStore)

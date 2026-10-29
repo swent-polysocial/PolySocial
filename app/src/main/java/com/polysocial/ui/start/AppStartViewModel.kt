@@ -4,6 +4,8 @@
 // Contributors: Claude (app-start routing for #32; refresh after Log in, not while loading; log
 // out and the created profile; Verify Email opened in-session, #74; an association an admin
 // hasn't verified yet opens its pending app, #127).
+// Contributors: Claude (Opus 5.5, Anthropic) awaited the session guard before the profile read,
+// #198; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.ui.start
 
 import androidx.lifecycle.ViewModel
@@ -14,6 +16,8 @@ import com.polysocial.model.auth.AssociationSignupStore
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.isEpflEmail
+import com.polysocial.model.firebase.SessionGuard
+import com.polysocial.model.firebase.SessionGuardResult
 import com.polysocial.model.user.AccountType
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.UserProfile
@@ -69,6 +73,10 @@ enum class SignupMarkerCleanup {
  * Missing non-EPFL profiles resume association setup; only EPFL accounts need the local signup
  * marker to distinguish unfinished association setup from the student profile step. Unverified
  * accounts enter Verify Email before reading protected profiles.
+ *
+ * Before the first profile read, it waits for [sessions] to make the offline cache safe for the
+ * account (#198): a different account than the cache was filled for clears it first. A failed clear
+ * shows [StartDestination.Error], and its Retry ([refresh]) tries the clear again before reading.
  */
 @HiltViewModel
 class AppStartViewModel
@@ -78,6 +86,7 @@ constructor(
     private val profiles: UserProfileRepository,
     private val associationSignup: AssociationSignupStore,
     private val associations: AssociationRepository,
+    private val sessions: SessionGuard,
 ) : ViewModel() {
   private val _destination = MutableStateFlow<StartDestination>(StartDestination.Loading)
   val destination: StateFlow<StartDestination> = _destination.asStateFlow()
@@ -159,16 +168,21 @@ constructor(
       else -> profileRead = viewModelScope.launch {
             _destination.value =
                 try {
-                  when (val result = profiles.getProfile(user.uid)) {
-                    is ProfileResult.Found -> resolveProfile(user, result.profile)
-                    ProfileResult.NotFound ->
-                        if (!isEpflEmail(user.email) || associationSignup.contains(user.email)) {
-                          _accountType.value = AccountType.ASSOCIATION
-                          StartDestination.AssociationSetup
-                        } else StartDestination.ProfileSetup
-                    ProfileResult.NetworkError,
-                    ProfileResult.UnexpectedError -> StartDestination.Error
-                  }
+                  if (sessions.ensureSession(user.uid) == SessionGuardResult.CleanupFailed)
+                      StartDestination.Error
+                  else
+                      when (val result = profiles.getProfile(user.uid)) {
+                        is ProfileResult.Found -> resolveProfile(user, result.profile)
+                        ProfileResult.NotFound ->
+                            if (
+                                !isEpflEmail(user.email) || associationSignup.contains(user.email)
+                            ) {
+                              _accountType.value = AccountType.ASSOCIATION
+                              StartDestination.AssociationSetup
+                            } else StartDestination.ProfileSetup
+                        ProfileResult.NetworkError,
+                        ProfileResult.UnexpectedError -> StartDestination.Error
+                      }
                 } catch (cancelled: CancellationException) {
                   throw cancelled
                 } catch (_: Exception) {
