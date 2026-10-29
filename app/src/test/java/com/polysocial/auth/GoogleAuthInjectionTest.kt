@@ -7,6 +7,7 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.MainActivity
 import com.polysocial.R
+import com.polysocial.model.association.*
 import com.polysocial.model.auth.*
 import com.polysocial.model.user.*
 import com.polysocial.ui.auth.*
@@ -25,11 +26,12 @@ import org.robolectric.annotation.Config
 
 /** Exercises the production Hilt entry path; only external repositories are replaced. */
 @HiltAndroidTest
-@UninstallModules(AuthModule::class, UserProfileModule::class)
+@UninstallModules(AuthModule::class, UserProfileModule::class, AssociationModule::class)
 @Config(application = HiltTestApplication::class)
 @RunWith(AndroidJUnit4::class)
 class GoogleAuthInjectionTest {
   @BindValue @JvmField val signupStore: AssociationSignupStore = EmptyAssociationSignupStore
+  @BindValue @JvmField val associations: AssociationRepository = FakeAssociationRepository()
   private val auth = FakeAuthRepository()
   private val profiles = FakeUserProfileRepository()
   @BindValue @JvmField val authBinding: AuthRepository = auth
