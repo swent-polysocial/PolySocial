@@ -1,5 +1,5 @@
 // Contributors: Claude (association names read once and shared by the event screens, #128; an
-// account switch during a read, after a test audit).
+// account switch during a read, after a test audit; the account-switch note, after a review).
 package com.polysocial.model.association
 
 import com.polysocial.model.auth.AuthRepository
@@ -23,6 +23,10 @@ import kotlinx.coroutines.sync.withLock
  * association wait for each other, and only the first one reads it. Only names are kept, and only
  * for the account that read them ([AuthRepository.currentUser]): another account sees none of them
  * and reads them again.
+ *
+ * [names] checks the account when a collector starts and on each new name, not when the account
+ * changes. This is enough because the account only changes through logout, which clears every tab's
+ * back stack, so the screens collecting [names] are rebuilt for the next account.
  */
 @Singleton
 class CachedAssociationNames
