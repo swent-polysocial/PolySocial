@@ -1,5 +1,5 @@
-// Contributors: Claude (Opus 5.5, Anthropic) wrote this test, #198; Mohamed Khellaf (reviewed and
-// revised).
+// Contributors: Claude (Opus 5.5, Anthropic) wrote this test and restarted the session for real
+// after review, #198; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.model.firebase
 
 import android.app.Application
@@ -24,7 +24,8 @@ import org.robolectric.annotation.Config
 /**
  * The guard against a real Firestore disk cache, offline (like [FirestoreCacheResetTest]): a
  * document student A left in the cache is gone before student B can read, while A's cache survives
- * a restart of A's own session. No backend is reached and nothing is written to one.
+ * a restart of A's own session. Each restart opens a new session over the same disk cache, so no
+ * in-memory "just cleared" state carries over. No backend is reached and nothing is written to one.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(application = Application::class)
@@ -44,9 +45,7 @@ class SessionGuardCacheTest {
                   .build(),
               "session-guard-cache-test",
           )
-      val session = FirestoreSession {
-        FirebaseFirestore.getInstance(app).apply { useEmulator("127.0.0.1", 8080) }
-      }
+      var session = newSession(app)
       val owner = PreferencesSessionOwnerStore(context)
       try {
         assertEquals(SessionGuardResult.Ready, guard(owner, session).ensureSession(STUDENT_A))
@@ -54,10 +53,12 @@ class SessionGuardCacheTest {
         assertTrue(cachedProfileExists(session, STUDENT_A))
 
         // Same account after a restart: the cache stays for offline use.
+        session = restart(app, session)
         assertEquals(SessionGuardResult.Ready, guard(owner, session).ensureSession(STUDENT_A))
         assertTrue(cachedProfileExists(session, STUDENT_A))
 
-        // Another account: cleared before it can read.
+        // Another account after a restart: cleared before it can read.
+        session = restart(app, session)
         assertEquals(SessionGuardResult.Ready, guard(owner, session).ensureSession(STUDENT_B))
         assertFalse(cachedProfileExists(session, STUDENT_A))
         assertEquals(STUDENT_B, owner.read())
@@ -69,7 +70,19 @@ class SessionGuardCacheTest {
     }
   }
 
-  /** A new guard each time, as after a process restart: only the stored owner remains. */
+  private fun newSession(app: FirebaseApp) = FirestoreSession {
+    FirebaseFirestore.getInstance(app).apply { useEmulator("127.0.0.1", 8080) }
+  }
+
+  /**
+   * As if the process ended: the open instance is stopped without clearing its disk cache, and a
+   * new session and guard start over it, with only the stored owner remembered.
+   */
+  private suspend fun restart(app: FirebaseApp, previous: FirestoreSession): FirestoreSession {
+    previous.database.terminate().await()
+    return newSession(app)
+  }
+
   private fun guard(owner: SessionOwnerStore, session: FirestoreSession) =
       FirestoreSessionGuard(FakeAuthSessionSource(), owner, session)
 
