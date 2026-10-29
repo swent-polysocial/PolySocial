@@ -453,6 +453,7 @@ Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after re
 - **Events without an end time:** `endTime` is optional, but check-in and Find my group only work during the event. Which time window applies when it is not set?
 - **Attendance schema/capacity (#121):** confirm `events/{eventId}/attendees/{uid}` and its fields before implementation. How can a student's registration atomically enforce capacity while other attendees and event writes remain organizer-only? Agree the transaction/rules design without widening private reads or organizer write access.
 - **Logout/reminders (#109, #123):** confirm account-scoped reminder cancellation and cache isolation before another account enters.
+- **Non-EPFL account without a profile (#208):** it gets the generic "Couldn't load your profile" error (Retry can't help; Log out is the way out). Once #125 lands, it is an association whose setup write failed and should route to association setup (#258).
 - **Year field values:** the profile step offers BA1–BA6 and MA1–MA4 under "Year" (as in Figma and #34), but these are EPFL semesters, and there is no option for exchange or PhD students. Rename to "Semester" and/or add options?
 
 ## 8. Backlog traceability
