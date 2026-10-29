@@ -6,7 +6,6 @@ import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -55,6 +54,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.polysocial.R
 import com.polysocial.model.auth.SignInMethod
+import com.polysocial.ui.auth.GoogleSignInButton
 import com.polysocial.ui.common.FieldLabel
 import com.polysocial.ui.common.PrimaryButton
 import com.polysocial.ui.login.LoginField
@@ -173,7 +173,9 @@ private fun ConfirmContent(state: DeleteAccountUiState, actions: DeleteAccountAc
 
 /**
  * Figma "password", "wrong password", "Google", "Google cancelled", "session expired" and
- * "deleting": confirming it's you with the account's sign-in methods, then the progress.
+ * "deleting": confirming it's you with the account's sign-in methods, then the progress. Figma's
+ * outlined "Continue with Google" is the app's official Google button ([GoogleSignInButton]), as
+ * Welcome and Log in use, to keep Google's unchanged branding.
  */
 @Composable
 private fun ReauthContent(state: DeleteAccountUiState, actions: DeleteAccountActions) {
@@ -229,7 +231,7 @@ private fun ReauthContent(state: DeleteAccountUiState, actions: DeleteAccountAct
           actions.onSubmitPassword,
       )
     }
-    if (google) GoogleButton(actions.onGoogle)
+    if (google) GoogleSignInButton(DeleteAccountTags.Google, actions.onGoogle)
   }
   SecondaryButton(R.string.delete_account_cancel, enabled = !state.busy, actions.onCancel)
 }
@@ -461,29 +463,6 @@ private fun Progress() {
   )
 }
 
-/** Figma's outlined "Continue with Google" button, with Google's G logo. */
-@Composable
-private fun GoogleButton(onClick: () -> Unit) {
-  Row(
-      Modifier.fillMaxWidth()
-          .height(52.dp)
-          .clip(RoundedCornerShape(26.dp))
-          .background(Bg)
-          .border(1.dp, GOOGLE_BORDER, RoundedCornerShape(26.dp))
-          .clickable(role = Role.Button, onClick = onClick)
-          .testTag(DeleteAccountTags.Google),
-      horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
-      verticalAlignment = Alignment.CenterVertically,
-  ) {
-    Image(painterResource(R.drawable.ic_google_logo), null, Modifier.size(20.dp))
-    Text(
-        stringResource(R.string.delete_account_google),
-        style = MaterialTheme.typography.titleSmall,
-        color = Ink,
-    )
-  }
-}
-
 /** The Cancel event sheet's "Keep event" style: a plain pill, faded while it can't be used. */
 @Composable
 private fun SecondaryButton(@StringRes text: Int, enabled: Boolean, onClick: () -> Unit) {
@@ -502,6 +481,3 @@ private fun SecondaryButton(@StringRes text: Int, enabled: Boolean, onClick: () 
 
 /** Figma's pale red behind the sheet's icon, as on the Cancel event sheet. */
 private val ICON_BACKGROUND = Color(0xFFFCE7E8)
-
-/** Google's outline grey for its neutral sign-in button, as in the Figma frame. */
-private val GOOGLE_BORDER = Color(0xFF747775)
