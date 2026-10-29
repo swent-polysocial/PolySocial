@@ -6,6 +6,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
@@ -121,23 +122,6 @@ class AssociationAuthFlowTest {
                     Modifier.testTag("association_setup_saved"),
                 ) {
                   Text("Save setup")
-                }
-              }
-            },
-            associationContent = { verified, done ->
-              Column(Modifier.testTag("association_destination")) {
-                Text(
-                    if (verified) "Approved association" else "Association handoff",
-                    Modifier.testTag("association_destination_kind"),
-                )
-                TextButton(
-                    {
-                      auth.logOut()
-                      done()
-                    },
-                    Modifier.testTag("association_logout"),
-                ) {
-                  Text("Log out")
                 }
               }
             },
@@ -297,6 +281,8 @@ class AssociationAuthFlowTest {
     login.onPasswordChange("previous1")
     launch()
     compose.onNodeWithTag("student_destination").assertIsDisplayed()
+    restoration.emulateSavedInstanceStateRestore()
+    compose.onNodeWithTag("student_destination").assertIsDisplayed()
     compose.onNodeWithTag("signed_in_logout").performClick()
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
     assertNull(auth.user)
@@ -366,6 +352,74 @@ class AssociationAuthFlowTest {
     compose.onNodeWithTag(SignUpTags.input(SignUpField.Email)).assertTextContains(user.email)
     assertEquals("password1", signup.uiState.value.form.password)
     assertEquals(AccountType.ASSOCIATION, signup.uiState.value.form.accountType)
+  }
+
+  @Test
+  fun reopeningStudentSignupKeepsDraftButSwitchingToAssociationClearsIt() {
+    launch()
+    compose.onNodeWithTag(WelcomeTags.SignUp).performScrollTo().performClick()
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.FullName)).performTextInput("Test Student")
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.Email)).performTextInput("student@epfl.ch")
+    pressBack()
+    compose.onNodeWithTag(WelcomeTags.SignUp).performScrollTo().performClick()
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.FullName)).assertTextContains("Test Student")
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.Email)).assertTextContains("student@epfl.ch")
+    pressBack()
+    openAssociationForm()
+    assertEquals(AccountType.ASSOCIATION, signup.uiState.value.form.accountType)
+    assertEquals("", signup.uiState.value.form.fullName)
+    assertEquals("", signup.uiState.value.form.email)
+    assertEquals("", signup.uiState.value.form.password)
+    assertEquals(0, auth.signUpCalls)
+  }
+
+  @Test
+  fun recreatedAssociationSetupStillCompletesThePendingHandoff() {
+    auth.user = user.copy(isEmailVerified = true)
+    launch()
+    compose.onNodeWithTag("association_setup_handoff").assertIsDisplayed()
+    restoration.emulateSavedInstanceStateRestore()
+    compose.onNodeWithTag("association_setup_saved").performClick()
+    compose.onNodeWithTag("association_destination_kind").assertTextEquals("Association handoff")
+    assertEquals(1, setupCompletions)
+    assertEquals(0, auth.logOutCalls)
+  }
+
+  @Test
+  fun setupBackUsesTheCurrentStartupOwnerAfterReplacement() {
+    val firstAuth = FakeAuthRepository(user.copy(uid = "first-uid", isEmailVerified = true))
+    val secondAuth = FakeAuthRepository(user.copy(uid = "second-uid", isEmailVerified = true))
+    val first = AppStartViewModel(firstAuth, FakeUserProfileRepository(), signupStore, associations)
+    val second =
+        AppStartViewModel(secondAuth, FakeUserProfileRepository(), signupStore, associations)
+    val current = mutableStateOf(first)
+    compose.setContent {
+      PolySocialTheme {
+        AuthFlow(
+            viewModel = signup,
+            onExit = {},
+            loginViewModel = login,
+            welcomeViewModel = welcome,
+            startViewModel = current.value,
+            verificationViewModel = verification,
+            profileSetupViewModel = profileSetup,
+            associationSetupContent = { back, _ ->
+              TextButton(back, Modifier.testTag("replacement_setup_back")) { Text("Back") }
+            },
+        )
+      }
+    }
+    compose.onNodeWithTag("replacement_setup_back").assertIsDisplayed()
+    compose.runOnIdle { current.value = second }
+    compose.onNodeWithTag("replacement_setup_back").performClick()
+    compose.waitForIdle()
+    assertNotNull(firstAuth.user)
+    assertNull(secondAuth.user)
+    ViewModelStore().apply {
+      put("first", first)
+      put("second", second)
+      clear()
+    }
   }
 
   @Test

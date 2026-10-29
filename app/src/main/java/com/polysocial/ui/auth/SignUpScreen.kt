@@ -80,7 +80,6 @@ import com.polysocial.ui.login.LoginScreen
 import com.polysocial.ui.login.LoginViewModel
 import com.polysocial.ui.navigation.AppShell
 import com.polysocial.ui.profile.ActivityLogout
-import com.polysocial.ui.profile.ProfileRoute
 import com.polysocial.ui.profile.ProfileSetupScreen
 import com.polysocial.ui.profile.ProfileSetupViewModel
 import com.polysocial.ui.profile.ProfileViewModel
@@ -147,7 +146,6 @@ private enum class AuthDestination {
   PendingAssociation,
   SignedIn,
   AssociationSetup,
-  Association,
 }
 
 /** Saves the signed-out back stack as the destinations' names. */
@@ -222,9 +220,6 @@ fun AuthFlow(
     associationSetupContent: @Composable (() -> Unit, () -> Unit) -> Unit = { back, saved ->
       AssociationSetupRoute(back, saved)
     },
-    associationContent: @Composable (Boolean, () -> Unit) -> Unit = { _, done ->
-      ProfileRoute(onLoggedOut = done)
-    },
     signedInContent: @Composable (() -> Unit) -> Unit = { done ->
       AppShell(
           onLoggedOut = done,
@@ -236,7 +231,7 @@ fun AuthFlow(
       )
     },
 ) {
-  val associationCallbacks = AssociationSetupCallbacks(startViewModel)
+  val associationCallbacks = remember(startViewModel) { AssociationSetupCallbacks(startViewModel) }
   val profileCallbacks =
       ProfileSetupCallbacks(welcomeViewModel, loginViewModel, viewModel, startViewModel)
   val welcomeState by welcomeViewModel.uiState.collectAsStateWithLifecycle()
@@ -376,8 +371,7 @@ fun AuthFlow(
   BackHandler(
       destination != AuthDestination.Welcome &&
           destination != AuthDestination.SignedIn &&
-          destination != AuthDestination.PendingAssociation &&
-          destination != AuthDestination.Association
+          destination != AuthDestination.PendingAssociation
   ) {
     when (destination) {
       AuthDestination.SignUp,
@@ -494,7 +488,6 @@ fun AuthFlow(
     }
     AuthDestination.AssociationSetup ->
         associationSetupContent(associationCallbacks.back, associationCallbacks.saved)
-    AuthDestination.Association -> associationContent(true, afterLogout)
     AuthDestination.SignedIn -> signedInContent(afterLogout)
     AuthDestination.PendingAssociation -> pendingAssociationContent(afterLogout)
   }
