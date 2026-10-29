@@ -22,10 +22,12 @@ import com.polysocial.model.account.FakeAccountDeletionRepository
 import com.polysocial.model.association.AssociationModule
 import com.polysocial.model.association.AssociationRepository
 import com.polysocial.model.association.FakeAssociationRepository
+import com.polysocial.model.auth.AssociationSignupStore
 import com.polysocial.model.auth.AuthModule
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.auth.AuthSessionSource
 import com.polysocial.model.auth.AuthUser
+import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.auth.FakeAuthSessionSource
 import com.polysocial.model.auth.ReauthResult
@@ -99,6 +101,7 @@ class DeleteAccountInjectionTest {
   @BindValue @JvmField val sessionSource: AuthSessionSource = FakeAuthSessionSource()
   @BindValue @JvmField val sessionOwner: SessionOwnerStore = FakeSessionOwnerStore()
   @BindValue @JvmField val auth: AuthRepository = fakeAuth
+  @BindValue @JvmField val associationSignup: AssociationSignupStore = EmptyAssociationSignupStore
   @BindValue @JvmField val deletion: AccountDeletionRepository = fakeDeletion
   @BindValue @JvmField val events: EventRepository = FakeEventRepository()
   @BindValue @JvmField val registrations: RegistrationRepository = FakeRegistrationRepository()
