@@ -4,7 +4,7 @@
 // associations/{uid}, #126; displayName limit, written test-first, #143);
 // OpenAI Codex (public/private event read rules, #52); Claude Opus 5.5 (event write rules, #47;
 // badge and locationName checks after review; isStudent for writes after #161; organizers
-// stay allowed readers after review).
+// stay allowed readers after review; event registrations, #121).
 rules_version = '2';
 
 service cloud.firestore {
@@ -69,7 +69,7 @@ service cloud.firestore {
           && hasValidDisplayName();
     }
 
-    // No recursive match grants access to event subcollections. Private queries also need
+    // Of the event subcollections, only attendees (below) is reachable. Private queries also need
     // isPrivate == true and allowedUids array-contains auth.uid; public queries need
     // isPrivate == false.
     match /events/{eventId} {
@@ -152,6 +152,53 @@ service cloud.firestore {
               .hasAny(['createdBy', 'isAssociationEvent']);
 
       allow delete: if canWriteEvents() && isOrganizer();
+
+      // A student's registration for this event (#121), keyed by the student's UID, with that UID
+      // again in `uid` (for the collection-group query below) and the server time in
+      // `registeredAt`. A student registers only themselves, for an event they can read (the
+      // same check as the event's read rule), and can always remove their own registration, even
+      // once the event is deleted or no longer readable. The event's organizers read its
+      // registrations, to count its attendees. Nobody updates one. The capacity isn't checked
+      // yet: that needs a team decision on how a student may count attendees.
+      match /attendees/{uid} {
+        function event() {
+          return /databases/$(database)/documents/events/$(eventId);
+        }
+
+        function isSelf() {
+          return isStudent() && request.auth.uid == uid;
+        }
+
+        function canReadEvent() {
+          return exists(event())
+              && (get(event()).data.isPrivate == false
+                  || (get(event()).data.isPrivate == true
+                      && get(event()).data.allowedUids.hasAny([request.auth.uid])));
+        }
+
+        // A missing organizerIds (events written before #47) gives no organizer.
+        function isEventOrganizer() {
+          return canWriteEvents()
+              && exists(event())
+              && get(event()).data.get('organizerIds', []).hasAny([request.auth.uid]);
+        }
+
+        allow get: if isSelf() || isEventOrganizer();
+        allow list: if isEventOrganizer();
+        allow create: if isSelf()
+            && canReadEvent()
+            && request.resource.data.keys().hasOnly(['uid', 'registeredAt'])
+            && request.resource.data.uid == uid
+            && request.resource.data.registeredAt == request.time;
+        allow delete: if isSelf();
+      }
+    }
+
+    // A student's own registrations across events (#121), for My events and "I'm going": the
+    // collection-group query `attendees where uid == <their UID>`. Rules aren't filters, so a
+    // query that doesn't constrain uid to the caller is denied.
+    match /{path=**}/attendees/{uid} {
+      allow list: if isStudent() && resource.data.uid == request.auth.uid;
     }
 
     // An association's public profile (#126), keyed by the association account's UID. Its
