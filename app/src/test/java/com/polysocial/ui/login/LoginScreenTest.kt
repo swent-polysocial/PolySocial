@@ -2,7 +2,8 @@
 // Contributors: Claude Opus 5.5 (wrote these tests; eye icon label, exact redirect delay,
 // compact-height scrolling and locked fields while redirecting after review); OpenAI Codex
 // (GPT-6.1 Sol, medium; checked the official Google button label and placeholder behavior);
-// OpenAI Codex (enabled recovery action regression for #164).
+// OpenAI Codex (enabled recovery action regression for #164); Claude (accounts helper line and
+// email label for associations, #208).
 package com.polysocial.ui.login
 
 import android.app.Application
@@ -17,6 +18,8 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
@@ -451,5 +454,34 @@ class LoginScreenTest {
     setContent(filled)
 
     composeTestRule.onNodeWithText(string(R.string.login_email_placeholder)).assertDoesNotExist()
+  }
+
+  @Test
+  fun accountsHint_explainsBothAccountKinds_underTheSubtitle() {
+    setContent(LoginUiState())
+
+    node(LoginScreenTestTags.ACCOUNTS_HINT)
+        .assertIsDisplayed()
+        .assertTextEquals("Students use @epfl.ch; associations use their own email.")
+    composeTestRule.onNodeWithText(string(R.string.login_subtitle)).assertIsDisplayed()
+    // Figma "Log in" (216:1173): the line starts 2.5 dp under the subtitle (y 127.5 → 130) and the
+    // Google button starts right under it (y 148). Robolectric's text heights differ from a
+    // device, so the gaps are checked, not the absolute positions.
+    val subtitle =
+        composeTestRule.onNodeWithText(string(R.string.login_subtitle)).getUnclippedBoundsInRoot()
+    val hint = node(LoginScreenTestTags.ACCOUNTS_HINT).getUnclippedBoundsInRoot()
+    val google = node(LoginScreenTestTags.GOOGLE).getUnclippedBoundsInRoot()
+    assertEquals(2.5f, (hint.top - subtitle.bottom).value, 0.01f)
+    assertEquals(0f, (google.top - hint.bottom).value, 0.01f)
+  }
+
+  @Test
+  fun emailLabel_isAccountNeutral_whileThePlaceholderKeepsTheStudentExample() {
+    // Figma labels the field "Email": associations log in here with their own address (#208).
+    setContent(LoginUiState())
+
+    composeTestRule.onNodeWithText("Email").assertIsDisplayed()
+    composeTestRule.onNodeWithText("EPFL email").assertDoesNotExist()
+    composeTestRule.onNodeWithText("name@epfl.ch").assertIsDisplayed()
   }
 }

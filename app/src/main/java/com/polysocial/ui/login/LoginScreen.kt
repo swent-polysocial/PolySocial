@@ -4,7 +4,8 @@
 // redirecting, after review); OpenAI Codex (GPT-6.1 Sol, medium; official Google button artwork;
 // lock navigation actions during login and verification handoffs);
 // OpenAI Codex (recovery navigation and shared email field for #164).
-// Contributors: Claude (the shared field label, #251).
+// Contributors: Claude (the shared field label, #251; accounts helper line and account-neutral
+// email label for associations; the shared TextLink, #208).
 package com.polysocial.ui.login
 
 import androidx.activity.compose.BackHandler
@@ -53,11 +54,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -67,6 +66,7 @@ import com.polysocial.model.auth.GoogleSignInResult
 import com.polysocial.ui.auth.GoogleAuthErrorScreen
 import com.polysocial.ui.auth.GoogleSignInButton
 import com.polysocial.ui.common.FieldLabel
+import com.polysocial.ui.common.TextLink
 import com.polysocial.ui.theme.Accent
 import com.polysocial.ui.theme.AccentText
 import com.polysocial.ui.theme.Bg
@@ -84,6 +84,7 @@ import kotlinx.coroutines.launch
 object LoginScreenTestTags {
   const val SCREEN = "login_screen"
   const val BACK = "login_back"
+  const val ACCOUNTS_HINT = "login_accounts_hint"
   const val GOOGLE = "login_google"
   const val GOOGLE_LOADING = "login_google_loading"
   const val EMAIL = "login_email"
@@ -209,7 +210,14 @@ fun LoginContent(
           Text(stringResource(R.string.login_title), style = typography.headlineMedium, color = Ink)
           Spacer(Modifier.height(6.dp))
           Text(stringResource(R.string.login_subtitle), style = typography.bodyLarge, color = Ink2)
-          Spacer(Modifier.height(20.5.dp))
+          // Who logs in with which email: 11 sp on an 18 dp line, right above the Google button.
+          Spacer(Modifier.height(2.5.dp))
+          Text(
+              stringResource(R.string.login_accounts_hint),
+              style = typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 18.sp),
+              color = Ink2,
+              modifier = Modifier.testTag(LoginScreenTestTags.ACCOUNTS_HINT),
+          )
           GoogleSignInButton(
               tag = LoginScreenTestTags.GOOGLE,
               onClick = onGoogle,
@@ -283,15 +291,11 @@ fun LoginContent(
                 }
             if (error != null) ErrorMessage(error, Modifier.padding(top = 5.5.dp))
           }
-          Text(
+          TextLink(
               stringResource(R.string.login_forgot_password),
-              style = typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-              color = AccentText,
-              textDecoration = TextDecoration.Underline,
-              modifier =
-                  Modifier.align(Alignment.End)
-                      .clickable(enabled = !fieldsLocked, onClick = onForgotPassword)
-                      .testTag(LoginScreenTestTags.FORGOT_PASSWORD),
+              onClick = onForgotPassword,
+              enabled = !fieldsLocked,
+              modifier = Modifier.align(Alignment.End).testTag(LoginScreenTestTags.FORGOT_PASSWORD),
           )
           if (state.status == LoginStatus.Unverified) {
             Spacer(Modifier.height(23.4.dp))
@@ -312,14 +316,11 @@ fun LoginContent(
                 style = typography.bodyMedium,
                 color = Ink2,
             )
-            Text(
+            TextLink(
                 stringResource(R.string.login_create_account),
-                style = typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                color = AccentText,
-                textDecoration = TextDecoration.Underline,
-                modifier =
-                    Modifier.clickable(enabled = !fieldsLocked, onClick = onCreateAccount)
-                        .testTag(LoginScreenTestTags.CREATE_ACCOUNT),
+                onClick = onCreateAccount,
+                enabled = !fieldsLocked,
+                modifier = Modifier.testTag(LoginScreenTestTags.CREATE_ACCOUNT),
             )
           }
           Spacer(Modifier.height(41.4.dp))

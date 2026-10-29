@@ -1,3 +1,5 @@
+// Contributors: Claude (Log out from the app-start error, through the shared activity logout that
+// clears the cache first, #208).
 // Contributors: OpenAI Codex (fresh signed-out forms, shared reset action and Welcome after
 // logout, #109).
 // Contributors: OpenAI Codex (Google startup, shared profile callbacks and integration for #107).
@@ -60,13 +62,16 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
 import com.polysocial.model.auth.*
 import com.polysocial.ui.association.PendingAssociationApp
+import com.polysocial.ui.common.ErrorAction
 import com.polysocial.ui.common.ErrorState
 import com.polysocial.ui.common.LoadingState
 import com.polysocial.ui.login.LoginScreen
 import com.polysocial.ui.login.LoginViewModel
 import com.polysocial.ui.navigation.AppShell
+import com.polysocial.ui.profile.ActivityLogout
 import com.polysocial.ui.profile.ProfileSetupScreen
 import com.polysocial.ui.profile.ProfileSetupViewModel
+import com.polysocial.ui.profile.ProfileViewModel
 import com.polysocial.ui.start.AppStartViewModel
 import com.polysocial.ui.start.StartDestination
 import com.polysocial.ui.theme.Bg
@@ -164,14 +169,17 @@ private class ProfileSetupCallbacks(
  * and Log in link to each other). Leaving the signed-out screens clears the stack, so Back from
  * Verify Email or the app never returns to a form that would redirect again.
  *
- * Back on the profile step signs out through [AppStartViewModel.logOut]. Profile logout (#109)
- * clears the cache and signs out before invoking the signed-out callback. Both paths reset the
- * retained auth screen state and return to Welcome with an empty stack.
+ * Back on the profile step signs out through [AppStartViewModel.logOut]. Profile logout (#109) and
+ * the app-start error's Log out (#208) clear the cache and sign out before invoking the signed-out
+ * callback. All these paths reset the retained auth screen state and return to Welcome with an
+ * empty stack.
  *
  * @param signedInContent the app once the user is signed in. Tests replace it, because the real
  *   [AppShell] needs Hilt.
  * @param pendingAssociationContent the app of an association an admin hasn't verified yet (#127),
  *   given what to do once it has logged out. Tests replace it too.
+ * @param logoutViewModel the logout of the app-start error's Log out link (#208); the activity's by
+ *   default, shared with the pending association app. Tests that reach the error pass one.
  */
 @Composable
 fun AuthFlow(
@@ -186,6 +194,7 @@ fun AuthFlow(
       ProfileSetupScreen(onBack, onSaved, viewModel = profileSetupViewModel)
     },
     recoveryViewModel: PasswordRecoveryViewModel? = null,
+    logoutViewModel: ProfileViewModel? = null,
     pendingAssociationContent: @Composable (() -> Unit) -> Unit = { done ->
       PendingAssociationApp(onLoggedOut = done)
     },
@@ -342,13 +351,19 @@ fun AuthFlow(
   when (destination) {
     AuthDestination.Loading ->
         LoadingState(stringResource(R.string.app_start_loading), Modifier.background(Bg))
-    AuthDestination.Error ->
-        ErrorState(
-            title = stringResource(R.string.app_start_error_title),
-            message = stringResource(R.string.app_start_error_message),
-            onRetry = startViewModel::refresh,
-            modifier = Modifier.background(Bg),
-        )
+    AuthDestination.Error -> {
+      val logout = logoutViewModel ?: hiltViewModel<ProfileViewModel>()
+      ErrorState(
+          title = stringResource(R.string.app_start_error_title),
+          message = stringResource(R.string.app_start_error_message),
+          onRetry = startViewModel::refresh,
+          modifier = Modifier.background(Bg),
+          secondaryAction =
+              ErrorAction(stringResource(R.string.app_start_log_out), logout::requestLogout),
+      )
+      // Like the signed-in apps: the cache is cleared, then the account signed out (#109).
+      ActivityLogout(logout, ::loggedOut)
+    }
     AuthDestination.ProfileSetup ->
         profileContent(
             {

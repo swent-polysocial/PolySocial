@@ -1,5 +1,6 @@
 // Contributors: Claude (wrote these tests for the shared loading and error states, #74; scrolling
-// and heading after review; the spinner's Figma drawing).
+// and heading after review; the spinner's Figma drawing); Claude (optional Log out link and its
+// touch area, #208).
 package com.polysocial.ui.common
 
 import android.app.Application
@@ -7,14 +8,21 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isHeading
@@ -23,6 +31,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
@@ -140,6 +149,71 @@ class StateScreensTest {
     assertEquals(1, retries)
   }
 
+  @Test
+  fun errorState_withoutASecondaryAction_showsNoLink() {
+    composeTestRule.setContent {
+      PolySocialTheme { ErrorState(title = "Couldn't load", message = "Try again.", onRetry = {}) }
+    }
+
+    composeTestRule.onNodeWithTag(C.Tag.error_retry).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(C.Tag.error_secondary).assertDoesNotExist()
+  }
+
+  @Test
+  fun errorState_secondaryLink_sits10dpUnderRetry_andCallsBackOncePerTap() {
+    var retries = 0
+    var secondary = 0
+    composeTestRule.setContent {
+      PolySocialTheme {
+        ErrorState(
+            title = "Couldn't load your profile",
+            message = "Check your connection and try again.",
+            onRetry = { retries++ },
+            secondaryAction = ErrorAction("Log out") { secondary++ },
+        )
+      }
+    }
+
+    val link = composeTestRule.onNodeWithTag(C.Tag.error_secondary)
+    link.assertIsDisplayed().assertTextEquals("Log out").assert(hasRole(Role.Button))
+    // Figma "App start · couldn't load profile" (490:26): the text sits the stack's 10 dp under
+    // Retry. Its 48 dp touch area takes all of that gap above the text and the rest below it,
+    // so it starts at Retry's bottom edge and never covers Retry.
+    val retry = composeTestRule.onNodeWithTag(C.Tag.error_retry).getUnclippedBoundsInRoot()
+    val touch = link.getUnclippedBoundsInRoot()
+    assertTrue(touch.top >= retry.bottom)
+    assertEquals(10f, (touch.top + 10.dp - retry.bottom).value, 0.01f)
+    assertTrue(touch.bottom - touch.top >= 48.dp)
+    link.performClick()
+    assertEquals(1, secondary)
+    assertEquals(0, retries)
+  }
+
+  @Test
+  fun errorState_aTapOnRetrysBottomEdge_retriesInsteadOfOpeningTheLink() {
+    var retries = 0
+    var secondary = 0
+    composeTestRule.setContent {
+      PolySocialTheme {
+        ErrorState(
+            title = "Couldn't load your profile",
+            message = "Check your connection and try again.",
+            onRetry = { retries++ },
+            secondaryAction = ErrorAction("Log out") { secondary++ },
+        )
+      }
+    }
+
+    composeTestRule.onNodeWithTag(C.Tag.error_retry).performTouchInput {
+      click(Offset(centerX, bottom - 1f))
+    }
+
+    assertEquals(1, retries)
+    assertEquals(0, secondary)
+  }
+
   private fun string(id: Int) =
       ApplicationProvider.getApplicationContext<Application>().getString(id)
+
+  private fun hasRole(role: Role) = SemanticsMatcher.expectValue(SemanticsProperties.Role, role)
 }

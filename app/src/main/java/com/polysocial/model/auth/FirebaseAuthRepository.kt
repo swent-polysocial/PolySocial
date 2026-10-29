@@ -4,6 +4,7 @@
 // (GPT-6.1 Sol, medium; sign-up and display-name integration; verification delivery and
 // token refresh for #31);
 // OpenAI Codex (enumeration-protected password recovery and failure handling for #164).
+// Contributors: Claude (moved the exact EPFL check to SignUpValidation to share it, #208).
 package com.polysocial.model.auth
 
 import android.content.Context
@@ -198,10 +199,6 @@ private constructor(
   override fun logOut() = auth.signOut()
 
   override fun currentUser(): AuthUser? = auth.currentUser?.snapshot()
-
-  /** Matches the rules' lowercase domain as well as the shared mailbox validation. */
-  private fun isExactEpflEmail(email: String): Boolean =
-      isEpflEmail(email) && email.endsWith("@epfl.ch")
 
   private fun FirebaseUser.snapshot() =
       AuthUser(
