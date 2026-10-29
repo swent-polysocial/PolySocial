@@ -19,11 +19,13 @@ const DETAILS = Object.freeze({
   ASSOCIATION: "association",
 });
 
-// gRPC status codes of a Firestore call worth retrying: DEADLINE_EXCEEDED and UNAVAILABLE.
-const TRANSIENT_GRPC_CODES = new Set([4, 14]);
+// gRPC status codes of a Firestore call worth retrying: DEADLINE_EXCEEDED, ABORTED (the
+// transaction lost to a concurrent write too many times) and UNAVAILABLE.
+const TRANSIENT_GRPC_CODES = new Set([4, 10, 14]);
 // The same as strings, plus the Admin SDK's network errors and Node's socket errors.
 const TRANSIENT_CODES = new Set([
   "deadline-exceeded",
+  "aborted",
   "unavailable",
   "app/network-error",
   "app/network-timeout",
