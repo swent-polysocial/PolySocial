@@ -1,4 +1,4 @@
-// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review).
+// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121).
 const { after, before, beforeEach, test } = require("node:test");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
@@ -1646,4 +1646,208 @@ test("a subcollection of an associations/{uid} is denied, even to its owner", as
   const db = associationDb("club");
   await assertFails(getDoc(doc(db, "associations/club/members/u1")));
   await assertFails(setDoc(doc(db, "associations/club/members/u1"), { role: "admin" }));
+});
+
+// ---- events/{eventId}/attendees/{uid} (#121) ----
+
+/** A registration as the app writes it: the student's UID and the server time. */
+function registration(uid) {
+  return { uid, registeredAt: serverTimestamp() };
+}
+
+/** Stores [uid]'s registration for events/[eventId], bypassing the rules. */
+async function seedAttendee(eventId, uid) {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), `events/${eventId}/attendees/${uid}`), {
+      uid, registeredAt: Timestamp.fromMillis(1_790_000_000_000),
+    });
+  });
+}
+
+/** u2 created "managed", u5 co-organizes it, u3 may only read it; u1 and u3 are registered. */
+async function seedManagedEventWithAttendees() {
+  await seedManagedEvent();
+  await seedAttendee("managed", "u1");
+  await seedAttendee("managed", "u3");
+}
+
+/** Fails unless [ids], sorted, are [expected]. */
+function expectIds(ids, expected) {
+  const sorted = [...ids].sort();
+  if (JSON.stringify(sorted) !== JSON.stringify(expected)) {
+    throw new Error(`Expected ${JSON.stringify(expected)}, got ${JSON.stringify(sorted)}`);
+  }
+}
+
+test("a student registers for a public event in a transaction, as the app does", async () => {
+  const db = studentDb("u1");
+  const attendee = doc(db, "events/e1/attendees/u1");
+  await assertSucceeds(runTransaction(db, async (transaction) => {
+    await transaction.get(doc(db, "events/e1"));
+    await transaction.get(attendee);
+    transaction.set(attendee, registration("u1"));
+  }));
+  await assertSucceeds(getDoc(attendee));
+});
+
+for (const uid of ["u2", "u3"]) {
+  test(`a student allowed in a private event (${uid}) can register for it`, async () => {
+    await assertSucceeds(
+      setDoc(doc(studentDb(uid), `events/private/attendees/${uid}`), registration(uid)),
+    );
+  });
+}
+
+test("a student can't register for a private event they aren't allowed in", async () => {
+  await assertFails(setDoc(doc(studentDb("u1"), "events/private/attendees/u1"), registration("u1")));
+});
+
+test("a student can't register for an event that doesn't exist", async () => {
+  await assertFails(setDoc(doc(studentDb("u1"), "events/missing/attendees/u1"), registration("u1")));
+});
+
+test("a student can't register another student", async () => {
+  const db = studentDb("u1");
+  await assertFails(setDoc(doc(db, "events/e1/attendees/u3"), registration("u3")));
+  await assertFails(setDoc(doc(db, "events/e1/attendees/u3"), registration("u1")));
+  await assertFails(setDoc(doc(db, "events/e1/attendees/u1"), registration("u3")));
+});
+
+for (const [name, data] of [
+  ["no uid", { registeredAt: serverTimestamp() }],
+  ["no registeredAt", { uid: "u1" }],
+  ["a registeredAt the client chose", { uid: "u1", registeredAt: Timestamp.fromMillis(0) }],
+  ["another field", { ...registration("u1"), displayName: "Student One" }],
+]) {
+  test(`a registration with ${name} is denied`, async () => {
+    await assertFails(setDoc(doc(studentDb("u1"), "events/e1/attendees/u1"), data));
+  });
+}
+
+test("nobody can change a registration, not even its student", async () => {
+  await seedAttendee("e1", "u1");
+  const db = studentDb("u1");
+  await assertFails(updateDoc(doc(db, "events/e1/attendees/u1"), {
+    registeredAt: serverTimestamp(),
+  }));
+  await assertFails(setDoc(doc(db, "events/e1/attendees/u1"), registration("u1")));
+});
+
+for (const [name, uid, db] of [
+  ["a verified association", "verifiedClub", () => associationDb("verifiedClub")],
+  ["an unverified association", "club", () => associationDb("club")],
+  ["an unverified @epfl.ch user", "u1", () => firestoreAs("student@epfl.ch", false, "u1")],
+  ["a signed-out user", "u1", () => env.unauthenticatedContext().firestore()],
+]) {
+  test(`${name} can't register or read registrations`, async () => {
+    await seedAttendee("e1", "u1");
+    await assertFails(setDoc(doc(db(), `events/e1/attendees/${uid}`), registration(uid)));
+    await assertFails(setDoc(doc(db(), `events/clubPublic/attendees/${uid}`), registration(uid)));
+    await assertFails(getDoc(doc(db(), "events/e1/attendees/u1")));
+    await assertFails(getDocs(query(collectionGroup(db(), "attendees"), where("uid", "==", uid))));
+  });
+}
+
+test("an @epfl.ch association can't register as a student", async () => {
+  await seedEpflAssociation("epflClub", true);
+  await assertFails(setDoc(
+    doc(epflAssociationDb("epflClub"), "events/e1/attendees/epflClub"), registration("epflClub"),
+  ));
+});
+
+test("a student can cancel their own registration, and cancel again", async () => {
+  await seedAttendee("e1", "u1");
+  const db = studentDb("u1");
+  await assertSucceeds(deleteDoc(doc(db, "events/e1/attendees/u1")));
+  await assertSucceeds(deleteDoc(doc(db, "events/e1/attendees/u1")));
+});
+
+test("a student can cancel in a transaction, as the app does", async () => {
+  await seedAttendee("e1", "u1");
+  const db = studentDb("u1");
+  await assertSucceeds(runTransaction(db, async (transaction) => {
+    transaction.delete(doc(db, "events/e1/attendees/u1"));
+  }));
+});
+
+test("a student can still cancel once the event is deleted or no longer readable", async () => {
+  await seedAttendee("gone", "u1");
+  await seedEvent("closed", eventBy("u2", { isPrivate: true }));
+  await seedAttendee("closed", "u1");
+  const db = studentDb("u1");
+  await assertSucceeds(deleteDoc(doc(db, "events/gone/attendees/u1")));
+  await assertSucceeds(deleteDoc(doc(db, "events/closed/attendees/u1")));
+});
+
+test("a student can't cancel another student's registration, even as an organizer", async () => {
+  await seedManagedEventWithAttendees();
+  await assertFails(deleteDoc(doc(studentDb("u3"), "events/managed/attendees/u1")));
+  await assertFails(deleteDoc(doc(studentDb("u2"), "events/managed/attendees/u1")));
+});
+
+test("a student reads their own registration, before and after it exists", async () => {
+  const db = studentDb("u1");
+  await assertSucceeds(getDoc(doc(db, "events/e1/attendees/u1")));
+  await seedAttendee("e1", "u1");
+  await assertSucceeds(getDoc(doc(db, "events/e1/attendees/u1")));
+});
+
+test("a student can't read another student's registration or the attendee list", async () => {
+  await seedManagedEventWithAttendees();
+  const db = studentDb("u3");
+  const attendees = collection(db, "events/managed/attendees");
+  await assertFails(getDoc(doc(db, "events/managed/attendees/u1")));
+  await assertFails(getDocs(attendees));
+  await assertFails(getDocs(query(attendees, where("uid", "==", "u1"))));
+  // Filtered to their own UID, the list holds only their own registration.
+  const mine = await assertSucceeds(getDocs(query(attendees, where("uid", "==", "u3"))));
+  expectIds(mine.docs.map((attendee) => attendee.id), ["u3"]);
+});
+
+for (const [role, uid] of [["creator", "u2"], ["co-organizer", "u5"]]) {
+  test(`the event's ${role} reads its attendee list`, async () => {
+    await seedManagedEventWithAttendees();
+    const db = studentDb(uid);
+    const attendees = await assertSucceeds(getDocs(collection(db, "events/managed/attendees")));
+    expectIds(attendees.docs.map((attendee) => attendee.id), ["u1", "u3"]);
+    await assertSucceeds(getDoc(doc(db, "events/managed/attendees/u1")));
+  });
+}
+
+test("an organizer can't read another event's attendee list", async () => {
+  await seedManagedEventWithAttendees();
+  await seedAttendee("e1", "u1");
+  await assertFails(getDocs(collection(studentDb("u5"), "events/e1/attendees")));
+});
+
+test("a verified association reads the attendee list of its own event only", async () => {
+  await seedEvent("clubEvent", eventBy("verifiedClub", { isAssociationEvent: true }));
+  await seedAttendee("clubEvent", "u1");
+  await seedManagedEventWithAttendees();
+  const db = associationDb("verifiedClub");
+  await assertSucceeds(getDocs(collection(db, "events/clubEvent/attendees")));
+  await assertFails(getDocs(collection(db, "events/managed/attendees")));
+});
+
+test("an unverified association can't read its own event's attendee list", async () => {
+  await seedEvent("pendingEvent", eventBy("club", { isAssociationEvent: true }));
+  await seedAttendee("pendingEvent", "u1");
+  await assertFails(getDocs(collection(associationDb("club"), "events/pendingEvent/attendees")));
+});
+
+test("a student lists their own registrations across events", async () => {
+  await seedManagedEventWithAttendees();
+  await seedAttendee("e1", "u1");
+  await seedAttendee("e1", "u2");
+  const mine = await assertSucceeds(
+    getDocs(query(collectionGroup(studentDb("u1"), "attendees"), where("uid", "==", "u1"))),
+  );
+  expectIds(mine.docs.map((attendee) => attendee.ref.parent.parent.id), ["e1", "managed"]);
+});
+
+test("a student can't list other students' registrations across events", async () => {
+  await seedAttendee("e1", "u2");
+  const db = studentDb("u1");
+  await assertFails(getDocs(collectionGroup(db, "attendees")));
+  await assertFails(getDocs(query(collectionGroup(db, "attendees"), where("uid", "==", "u2"))));
 });
