@@ -1,5 +1,6 @@
 // Contributors: OpenAI Codex (permission launcher and foreground location lifecycle for #51).
-// Contributors: Claude (passes the "+" action to the map screen, #110).
+// Contributors: Claude (passes the "+" action to the map screen, #110; the search and filters,
+// #116).
 package com.polysocial.ui.map
 
 import android.Manifest
@@ -97,5 +98,15 @@ fun MapRoute(
       onCreateEvent = onCreateEvent,
       tokenConfigured = tokenConfigured,
       renderer = renderer,
+      filters =
+          MapFilterActions(
+              onSearchChange = viewModel::setSearch,
+              onSelectDate = viewModel::selectDate,
+              onToggleCategory = viewModel::toggleCategory,
+              onSelectDistance = viewModel::selectDistance,
+              onClearFilters = viewModel::clearFilters,
+              onClearAll = viewModel::clearSearchAndFilters,
+          ),
+      today = viewModel.today,
   )
 }

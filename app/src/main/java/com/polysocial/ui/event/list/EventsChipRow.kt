@@ -1,6 +1,6 @@
 // Contributors: Claude (the Events tab's filter chips from the Figma "Events · date chips" and
 // "Events · active filters" frames, a picked day, and the chip shared with the Filters sheet,
-// #115).
+// #115; the row without *All* for the Map tab, #116).
 package com.polysocial.ui.event.list
 
 import androidx.annotation.DrawableRes
@@ -25,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -49,7 +50,9 @@ private data class FilterChip(
 /**
  * Figma's chip row under the search: *All*, then the filters that are on (dark, with an ×, tapping
  * one removes it), then the quick filters that are off. *All* is on when no chip filter is, and
- * tapping it clears them all, the search included, as decided in #113.
+ * tapping it clears them all, the search included, as decided in #113. The Map's row has no *All*
+ * ([showAll] false, Figma "Map"): its "No matching events" card clears them instead. Over the map,
+ * the chips that are off are filled with [offFill] so they stay readable on the tiles.
  */
 @Composable
 fun EventsChipRow(
@@ -59,6 +62,8 @@ fun EventsChipRow(
     onClearFilters: () -> Unit,
     onSelectDistance: (Int?) -> Unit,
     modifier: Modifier = Modifier,
+    showAll: Boolean = true,
+    offFill: Color = Color.Transparent,
 ) {
   val quickDates =
       listOf(
@@ -114,7 +119,9 @@ fun EventsChipRow(
       horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
     items(
-        listOf(all) + chips.filter { it.isActive } + chips.filterNot { it.isActive },
+        listOfNotNull(all.takeIf { showAll }) +
+            chips.filter { it.isActive } +
+            chips.filterNot { it.isActive },
         { it.key },
     ) { chip ->
       EventsChip(
@@ -123,6 +130,7 @@ fun EventsChipRow(
           onClick = chip.onClick,
           tag = EventsTags.chip(chip.key),
           removable = chip.isActive && chip.key != ALL,
+          offFill = offFill,
       )
     }
   }
@@ -143,10 +151,12 @@ internal fun EventsChip(
     role: Role = Role.Checkbox,
     @DrawableRes leadingIcon: Int? = null,
     enabled: Boolean = true,
+    offFill: Color = Color.Transparent,
 ) {
   val shape = RoundedCornerShape(18.dp)
   val colors =
-      if (selected) Modifier.background(Ink, shape) else Modifier.border(1.dp, Border, shape)
+      if (selected) Modifier.background(Ink, shape)
+      else Modifier.background(offFill, shape).border(1.dp, Border, shape)
   val content = if (selected) Bg else Ink
   Row(
       modifier =
