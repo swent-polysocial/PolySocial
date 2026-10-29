@@ -1,5 +1,6 @@
 // Contributors: OpenAI Codex (verified EPFL Google sign-in; Firebase-managed account linking;
 // exact-domain validation).
+// Contributors: OpenAI Codex (association signup contract, #125).
 // Contributors: Claude (logIn, logOut and currentUser for #32); OpenAI Codex
 // (GPT-6.1 Sol, medium; sign-up and display-name integration; verification delivery and
 // token refresh for #31);
@@ -19,6 +20,7 @@ import com.google.firebase.auth.FirebaseAuthWeakPasswordException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GoogleAuthProvider
 import com.google.firebase.auth.UserProfileChangeRequest
+import com.polysocial.model.user.AccountType
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -88,12 +90,16 @@ private constructor(
       fullName: String,
       email: String,
       password: String,
+      accountType: AccountType,
   ): SignUpResult {
-    if (!isEpflEmail(email)) return SignUpResult.InvalidDomain
+    if (accountType == AccountType.STUDENT && !isEpflEmail(email)) return SignUpResult.InvalidDomain
+    if (accountType == AccountType.ASSOCIATION && !isRecoveryEmail(email))
+        return SignUpResult.InvalidDomain
     return try {
       val user =
           auth.createUserWithEmailAndPassword(email.trim(), password).await().user
               ?: return SignUpResult.UnexpectedError
+      if (accountType == AccountType.ASSOCIATION) return SignUpResult.Success(user.snapshot())
       try {
         user
             .updateProfile(

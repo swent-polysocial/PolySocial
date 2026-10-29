@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (keep association onboarding dependencies fake in Hilt tests, #125).
 // Contributors: OpenAI Codex (offline Hilt recovery routing and real activity recreation, #164).
 package com.polysocial.auth
 
@@ -5,7 +6,12 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.MainActivity
+import com.polysocial.model.association.AssociationModule
+import com.polysocial.model.association.AssociationRepository
+import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
+import com.polysocial.model.auth.AssociationSignupStore
+import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.user.*
 import com.polysocial.ui.auth.*
 import com.polysocial.ui.login.LoginScreenTestTags
@@ -17,10 +23,15 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
 @HiltAndroidTest
-@UninstallModules(AuthModule::class, UserProfileModule::class)
+@UninstallModules(AssociationModule::class, AuthModule::class, UserProfileModule::class)
 @Config(application = HiltTestApplication::class)
 @RunWith(AndroidJUnit4::class)
 class PasswordRecoveryInjectionTest {
+  @BindValue
+  @JvmField
+  val associationSignupStore: AssociationSignupStore = EmptyAssociationSignupStore
+  @BindValue @JvmField val associations: AssociationRepository = FakeAssociationRepository()
+
   private val auth = FakeAuthRepository()
   @BindValue @JvmField val authBinding: AuthRepository = auth
   @BindValue @JvmField val verificationStore: VerificationStore = MemoryVerificationStore()

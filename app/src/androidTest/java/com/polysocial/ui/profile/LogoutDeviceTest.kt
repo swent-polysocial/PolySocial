@@ -1,4 +1,5 @@
 // Contributors: OpenAI Codex (inject Google entry state after #107 rebase).
+// Contributors: OpenAI Codex (association signup contract, #125).
 // Contributors: OpenAI Codex (device logout proof with fakes and verification wiring, #109).
 // Contributors: OpenAI Codex (Google sign-in contract compatibility during #106 rebase).
 package com.polysocial.ui.profile
@@ -13,6 +14,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.auth.*
 import com.polysocial.model.firebase.*
 import com.polysocial.model.user.*
+import com.polysocial.model.user.AccountType
 import com.polysocial.resources.C
 import com.polysocial.ui.auth.*
 import com.polysocial.ui.login.LoginViewModel
@@ -60,6 +62,7 @@ class LogoutDeviceTest {
             fullName: String,
             email: String,
             password: String,
+            accountType: AccountType,
         ): SignUpResult = error("Unexpected signup in this test")
       }
   private val profiles =

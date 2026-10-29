@@ -1,4 +1,5 @@
 // Contributors: OpenAI Codex (Google sign-in fake for #106).
+// Contributors: OpenAI Codex (association signup contract, #125).
 // Contributors: Claude (test fake for #32); Claude Opus 5.5 (recorded the logIn arguments,
 // added the logIn gate); OpenAI Codex (GPT-6.1 Sol, medium; extended the existing fake to
 // the sign-up contract with submission controls and added verification controls for #31);
@@ -6,6 +7,7 @@
 package com.polysocial.model.auth
 
 import android.content.Context
+import com.polysocial.model.user.AccountType
 import kotlinx.coroutines.CompletableDeferred
 
 /**
@@ -34,6 +36,9 @@ class FakeAuthRepository(var user: AuthUser? = null) : AuthRepository {
   var signUpCalls = 0
     private set
 
+  var lastSignUpAccountType: AccountType? = null
+    private set
+
   var lastSignUpFullName: String? = null
     private set
 
@@ -43,8 +48,9 @@ class FakeAuthRepository(var user: AuthUser? = null) : AuthRepository {
   var lastSignUpPassword: String? = null
     private set
 
-  override suspend fun signUp(fullName: String, email: String, password: String): SignUpResult {
+  override suspend fun signUp(fullName: String, email: String, password: String, accountType: AccountType): SignUpResult {
     signUpCalls++
+    lastSignUpAccountType = accountType
     lastSignUpFullName = fullName
     lastSignUpEmail = email
     lastSignUpPassword = password
