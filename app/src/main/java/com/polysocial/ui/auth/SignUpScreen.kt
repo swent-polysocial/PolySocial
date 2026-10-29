@@ -235,7 +235,7 @@ fun AuthFlow(
       )
     },
 ) {
-  val associationCallbacks = remember(startViewModel) { AssociationSetupCallbacks(startViewModel) }
+  val associationCallbacks = AssociationSetupCallbacks(startViewModel)
   val profileCallbacks =
       ProfileSetupCallbacks(welcomeViewModel, loginViewModel, viewModel, startViewModel)
   val welcomeState by welcomeViewModel.uiState.collectAsStateWithLifecycle()
@@ -366,7 +366,7 @@ fun AuthFlow(
     // other.
     startViewModel.onVerificationNeeded()
   }
-  fun loggedOut() {
+  val afterLogout = {
     resetSessionState()
     destination = AuthDestination.Welcome
     startViewModel.refresh()
@@ -453,12 +453,10 @@ fun AuthFlow(
             verificationState,
             onBack = backFromVerification,
             onChangeAddress = {
+              val currentSignup = latestSignUpViewModel.uiState.value
+              // A retained startup hint can belong to an earlier signup on this device.
               val accountType =
-                  if (
-                      latestSignUpViewModel.uiState.value.form.accountType ==
-                          AccountType.ASSOCIATION
-                  )
-                      AccountType.ASSOCIATION
+                  if (currentSignup.status is SignUpStatus.SignedUp) currentSignup.form.accountType
                   else startViewModel.accountType.value
               latestVerificationViewModel.changeAddress()
               resetSessionState()
@@ -493,10 +491,11 @@ fun AuthFlow(
       }
       PasswordRecoveryRoute(recovery, onBack = ::back)
     }
-    AuthDestination.SignedIn -> signedInContent(::loggedOut)
-    AuthDestination.PendingAssociation -> pendingAssociationContent(::loggedOut)
-    AuthDestination.AssociationSetup -> associationSetupContent(associationCallbacks.back, associationCallbacks.saved)
-    AuthDestination.Association -> associationContent(true, ::loggedOut)
+    AuthDestination.AssociationSetup ->
+        associationSetupContent(associationCallbacks.back, associationCallbacks.saved)
+    AuthDestination.Association -> associationContent(true, afterLogout)
+    AuthDestination.SignedIn -> signedInContent(afterLogout)
+    AuthDestination.PendingAssociation -> pendingAssociationContent(afterLogout)
   }
 }
 
