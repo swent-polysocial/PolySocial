@@ -1,15 +1,19 @@
-// Contributors: Claude (wrote these tests, #251).
+// Contributors: Claude (wrote these tests, #251; modifier tests after review).
 package com.polysocial.ui.common
 
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -85,5 +89,24 @@ class FormPartsTest {
     compose.onNodeWithTag("loading").assertIsNotEnabled().assertTextEquals("Saving…").performClick()
 
     assertEquals(0, clicks)
+  }
+
+  @Test
+  fun errorBanner_andPrimaryButton_applyTheModifierTheyAreGiven() {
+    show {
+      Column {
+        ErrorBanner(
+            "Couldn't save",
+            "Try again.",
+            false,
+            "error",
+            Modifier.width(200.dp).testTag("errorOuter"),
+        )
+        PrimaryButton("Save", true, "button", modifier = Modifier.width(150.dp)) {}
+      }
+    }
+
+    compose.onNodeWithTag("errorOuter").assertWidthIsEqualTo(200.dp)
+    compose.onNodeWithTag("button").assertWidthIsEqualTo(150.dp).assertHeightIsEqualTo(52.dp)
   }
 }
