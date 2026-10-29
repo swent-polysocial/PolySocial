@@ -1,6 +1,7 @@
 // Contributors: Claude (state of the Events tab's list, #105; offline only when the device is,
 // after review; search and filters, and the one-off location and its permission for the distance
-// filter, #115; the names of the associations whose events it lists, #128).
+// filter, #115; the names of the associations whose events it lists, #128; the selection's saved
+// state moved next to it, #116).
 package com.polysocial.ui.event.list
 
 import androidx.lifecycle.SavedStateHandle
@@ -20,7 +21,6 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
 import java.time.LocalDate
 import java.time.ZoneId
-import java.time.format.DateTimeParseException
 import javax.inject.Inject
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
@@ -270,10 +270,7 @@ constructor(
   private fun location() = _uiState.value.location
 
   private fun select(selection: EventSelection) {
-    savedState[KEY_SEARCH] = selection.search
-    savedState[KEY_CATEGORIES] = ArrayList(selection.categories.map { it.name })
-    savedState[KEY_DATE] = selection.date.saved()
-    savedState[KEY_DISTANCE] = selection.maxDistanceMeters
+    selection.saveTo(savedState, SAVED_PREFIX)
     show(selection, location())
     when {
       selection.maxDistanceMeters != null && location() == EventsLocationState.NotRead ->
@@ -312,23 +309,12 @@ constructor(
   }
 
   private fun locationOff() {
-    savedState[KEY_DISTANCE] = null
-    show(selection().copy(maxDistanceMeters = null), EventsLocationState.Off)
+    val selection = selection().copy(maxDistanceMeters = null)
+    selection.saveTo(savedState, SAVED_PREFIX)
+    show(selection, EventsLocationState.Off)
   }
 
-  private fun restoreSelection() =
-      EventSelection(
-          search = savedState.get<String>(KEY_SEARCH).orEmpty(),
-          categories =
-              savedState
-                  .get<ArrayList<String>>(KEY_CATEGORIES)
-                  .orEmpty()
-                  .mapNotNull { name -> EventCategory.entries.firstOrNull { it.name == name } }
-                  .toSet(),
-          date = restoreDate(savedState.get<String>(KEY_DATE)),
-          maxDistanceMeters =
-              savedState.get<Int>(KEY_DISTANCE)?.takeIf { it in DISTANCE_CHOICES_METERS },
-      )
+  private fun restoreSelection() = restoreEventSelection(savedState, SAVED_PREFIX)
 
   private fun observeEvents() {
     observation?.cancel()
@@ -382,34 +368,8 @@ constructor(
   /** Events from the repository, and whether they are an offline copy. */
   private class Loaded(val events: List<Event>, val isOffline: Boolean)
 
-  /** The date choice as text for the saved state: its name, or the picked day (ISO 8601). */
-  private fun DateChoice.saved(): String =
-      when (this) {
-        DateChoice.Any -> "ANY"
-        DateChoice.Today -> "TODAY"
-        DateChoice.ThisWeek -> "THIS_WEEK"
-        is DateChoice.Day -> date.toString()
-      }
-
-  /** The opposite of [saved]; anything it doesn't recognize means any day. */
-  private fun restoreDate(saved: String?): DateChoice =
-      when (saved) {
-        null,
-        "ANY" -> DateChoice.Any
-        "TODAY" -> DateChoice.Today
-        "THIS_WEEK" -> DateChoice.ThisWeek
-        else ->
-            try {
-              DateChoice.Day(LocalDate.parse(saved))
-            } catch (_: DateTimeParseException) {
-              DateChoice.Any
-            }
-      }
-
   private companion object {
-    const val KEY_SEARCH = "events_search"
-    const val KEY_CATEGORIES = "events_categories"
-    const val KEY_DATE = "events_date"
-    const val KEY_DISTANCE = "events_distance"
+    /** The saved-state keys start with it (`events_search`…), as before #116. */
+    const val SAVED_PREFIX = "events"
   }
 }
