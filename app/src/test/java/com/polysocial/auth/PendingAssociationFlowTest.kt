@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (preserve association entry and offline retry, #125).
 // Contributors: OpenAI Codex (adapted pending flow to startup recovery).
 // Contributors: Claude (wrote these tests, #127; logging in again in the same activity, after a
 // review, #127).
@@ -12,11 +13,9 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.polysocial.R
 import com.polysocial.model.association.AssociationResult
 import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.AuthUser
@@ -29,6 +28,7 @@ import com.polysocial.model.user.AccountType
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.UserProfile
+import com.polysocial.resources.C
 import com.polysocial.ui.association.AssociationTags
 import com.polysocial.ui.association.PendingAssociationApp
 import com.polysocial.ui.association.PendingAssociationViewModel
@@ -141,12 +141,44 @@ class PendingAssociationFlowTest {
 
     launch()
 
-    compose
-        .onNodeWithText(compose.activity.getString(R.string.app_start_error_title))
-        .assertIsDisplayed()
-    compose.onNodeWithTag(STUDENT_APP).assertDoesNotExist()
+    compose.onNodeWithTag(STUDENT_APP).assertIsDisplayed()
     compose.onNodeWithTag(AssociationTags.SHELL).assertDoesNotExist()
     assertEquals(1, associations.requestedUids.size)
+  }
+
+  @Test
+  fun incompleteAssociation_canLogOutFromPendingApp() {
+    profiles.getProfileResult = profile(AccountType.ASSOCIATION)
+    associations.getAssociationResult = AssociationResult.NotFound
+    launch()
+    compose.onNodeWithTag(AssociationTags.NAV_ORGANIZATION).performClick()
+    compose.onNodeWithTag(AssociationTags.LOG_OUT).performClick()
+    compose.onNodeWithTag(ProfileTags.Confirm).performClick()
+    compose.waitForIdle()
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+  }
+
+  @Test
+  fun pendingAssociationOffline_canRetryItsIdentityRead() {
+    profiles.getProfileResult = profile(AccountType.ASSOCIATION)
+    associations.getAssociationResult = AssociationResult.NetworkError
+    launch()
+    compose.onNodeWithTag(AssociationTags.NAV_ORGANIZATION).performClick()
+    compose.onNodeWithTag(AssociationTags.LOG_OUT).assertIsDisplayed()
+    compose.onNodeWithTag(AssociationTags.LOAD_ERROR).assertIsDisplayed()
+    associations.getAssociationResult =
+        AssociationResult.Found(
+            com.polysocial.model.association.Association(
+                "club-uid",
+                "Test Club",
+                com.polysocial.model.association.AssociationType.CLUB,
+                "A fictional club for tests.",
+            )
+        )
+    compose.onNodeWithTag(C.Tag.error_retry).performClick()
+    compose
+        .onNodeWithTag(AssociationTags.NAME, useUnmergedTree = true)
+        .assertTextEquals("Test Club")
   }
 
   @Test
