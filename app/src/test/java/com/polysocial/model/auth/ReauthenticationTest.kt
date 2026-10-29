@@ -10,6 +10,7 @@ import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.FirebaseNetworkException
+import com.google.firebase.FirebaseTooManyRequestsException
 import com.google.firebase.auth.AuthCredential
 import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
@@ -147,10 +148,18 @@ class ReauthenticationTest {
   }
 
   @Test
+  fun tooManyAttempts_isReportedForBothMethods() = runTest {
+    reauthFails(FirebaseTooManyRequestsException("test"))
+
+    assertEquals(ReauthResult.TooManyAttempts, repository.reauthenticateWithPassword("secret"))
+    assertEquals(ReauthResult.TooManyAttempts, repository.reauthenticateWithGoogle(context))
+  }
+
+  @Test
   fun otherFailures_returnUnexpectedError() = runTest {
     for (error in
         listOf(
-            FirebaseAuthException("ERROR_TOO_MANY_REQUESTS", "test"),
+            FirebaseAuthException("ERROR_INTERNAL_ERROR", "test"),
             IllegalStateException("test"),
         )) {
       reauthFails(error)
