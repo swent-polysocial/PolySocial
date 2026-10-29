@@ -1,9 +1,8 @@
-// Contributors: Claude (Opus 5.5, Anthropic) wrote these tests for #206; Mohamed Khellaf (reviewed
-// and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) wrote these tests for #206, then rewrote them against
+// a
+// local HTTP server for the plain HTTPS call; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.model.account
 
-import android.app.Application
-import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.android.gms.tasks.Tasks
@@ -11,230 +10,264 @@ import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.GetTokenResult
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
-import com.google.firebase.functions.FirebaseFunctions
-import com.google.firebase.functions.FirebaseFunctionsException
-import com.google.firebase.functions.FirebaseFunctionsException.Code
-import com.google.firebase.functions.HttpsCallableReference
-import com.google.firebase.functions.HttpsCallableResult
+import com.sun.net.httpserver.HttpServer
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.verify
-import io.mockk.verifyOrder
-import java.io.IOException
-import java.util.concurrent.ExecutionException
+import java.net.InetSocketAddress
+import java.util.Collections
 import javax.inject.Provider
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.robolectric.annotation.Config
+import org.robolectric.RobolectricTestRunner
 
+/**
+ * Tests [FirebaseAccountDeletionRepository] against a local HTTP server (the JDK's `HttpServer` on
+ * 127.0.0.1) answering like the callable function, so no request leaves the machine. Robolectric is
+ * needed for Android's `org.json`. The request runs on [Dispatchers.Unconfined], inline on the test
+ * thread, so it takes no virtual time (see `NominatimGeocodingServiceTest`).
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
-@RunWith(AndroidJUnit4::class)
-@Config(manifest = Config.NONE, application = Application::class, sdk = [34])
+@RunWith(RobolectricTestRunner::class)
 class FirebaseAccountDeletionRepositoryTest {
-  private val user = mockk<FirebaseUser>()
+  private val server = LocalFunction()
+
+  @After fun stopServer() = server.stop()
+
+  private val tokenResult = mockk<GetTokenResult> { every { token } returns TOKEN }
+  private val user =
+      mockk<FirebaseUser> { every { getIdToken(false) } returns Tasks.forResult(tokenResult) }
   private val auth = mockk<FirebaseAuth> { every { currentUser } returns user }
-  private val callable = mockk<HttpsCallableReference>()
-  private val functions =
-      mockk<FirebaseFunctions> {
-        every { getHttpsCallable(DELETE_ACCOUNT_FUNCTION) } returns callable
-      }
   private val database =
       mockk<FirebaseFirestore> { every { waitForPendingWrites() } returns Tasks.forResult(null) }
-  private val repository = FirebaseAccountDeletionRepository({ auth }, { functions }, { database })
 
-  private fun functionReturns(task: Task<HttpsCallableResult>) {
-    every { callable.call() } returns task
-  }
-
-  private fun functionAnswers(data: Any?) = functionReturns(Tasks.forResult(callableResult(data)))
-
-  private fun functionFails(error: Exception) = functionReturns(Tasks.forException(error))
-
-  // The SDK's constructors are Kotlin-internal, so the tests stub the values the repository reads.
-  private fun callableResult(answer: Any?): HttpsCallableResult =
-      mockk(relaxed = true) { every { getData() } returns answer }
-
-  /** A function error as the SDK makes it: with a cause only for a failed connection. */
-  private fun functionError(
-      code: Code,
-      details: Any? = null,
-      cause: Throwable? = null,
-  ): FirebaseFunctionsException =
-      mockk(relaxed = true) {
-        every { this@mockk.code } returns code
-        every { this@mockk.details } returns details
-        every { this@mockk.cause } returns cause
-      }
-
-  /** Asserts the result for each failure, so a table reads as the mapping it checks. */
-  private suspend fun assertFailures(cases: List<Pair<Exception, AccountDeletionResult>>) {
-    for ((error, expected) in cases) {
-      functionFails(error)
-      assertEquals(error.toString(), expected, repository.deleteAccount())
-    }
-  }
-
-  @Test
-  fun deletedAnswer_returnsDeleted() = runTest {
-    functionAnswers(mapOf("deleted" to true))
-
-    assertEquals(AccountDeletionResult.Deleted, repository.deleteAccount())
-    verify(exactly = 1) { callable.call() }
-  }
-
-  @Test
-  fun anyOtherAnswer_isNotReportedAsDeleted() = runTest {
-    for (answer in listOf(null, emptyMap<String, Any>(), mapOf("deleted" to false), "deleted")) {
-      functionAnswers(answer)
-
-      assertEquals(
-          answer.toString(),
-          AccountDeletionResult.UnexpectedError,
-          repository.deleteAccount(),
+  private fun repository(
+      baseUrl: String = server.url,
+      readTimeoutMillis: Int = READ_TIMEOUT_MILLIS,
+      firestore: () -> FirebaseFirestore = { database },
+  ) =
+      FirebaseAccountDeletionRepository(
+          authProvider = { auth },
+          firestore = firestore,
+          baseUrl = { baseUrl },
+          ioDispatcher = Dispatchers.Unconfined,
+          readTimeoutMillis = readTimeoutMillis,
       )
+
+  private fun tokenFails(error: Exception) = tokenReturns(Tasks.forException(error))
+
+  private fun tokenReturns(task: Task<GetTokenResult>) {
+    every { user.getIdToken(false) } returns task
+  }
+
+  /** Asserts the result for each answer, so a table reads as the mapping it checks. */
+  private suspend fun assertAnswers(cases: List<Pair<Answer, AccountDeletionResult>>) {
+    for ((answer, expected) in cases) {
+      server.answer = answer
+      assertEquals(answer.toString(), expected, repository().deleteAccount())
     }
   }
 
-  @Test
-  fun nobodySignedIn_returnsNotSignedInWithoutCallingTheFunction() = runTest {
-    every { auth.currentUser } returns null
-    var functionsResolved = false
-    val repository =
-        FirebaseAccountDeletionRepository(
-            { auth },
-            {
-              functionsResolved = true
-              functions
-            },
-            { database },
-        )
+  // ---------- The request ----------
 
-    assertEquals(AccountDeletionResult.NotSignedIn, repository.deleteAccount())
-    assertEquals(false, functionsResolved)
+  @Test
+  fun deletion_postsTheCallableRequestWithTheUsersToken() = runTest {
+    server.answer = Answer(200, DELETED)
+
+    assertEquals(AccountDeletionResult.Deleted, repository().deleteAccount())
+
+    val request = server.requests.single()
+    assertEquals("POST", request.method)
+    assertEquals("/$DELETE_ACCOUNT_FUNCTION", request.path)
+    assertEquals("Bearer $TOKEN", request.authorization)
+    assertEquals("application/json", request.contentType)
+    assertEquals("""{"data":{}}""", request.body)
+  }
+
+  @Test
+  fun productionUrl_isTheFunctionsDefaultUrlInItsRegion() {
+    assertEquals(
+        "https://europe-west6-polysocial-test.cloudfunctions.net",
+        deleteAccountBaseUrl("polysocial-test"),
+    )
+    for (missing in listOf(null, "", " ")) {
+      assertThrows(IllegalStateException::class.java) { deleteAccountBaseUrl(missing) }
+    }
+  }
+
+  // ---------- Answers ----------
+
+  @Test
+  fun anyOtherSuccessAnswer_isNotReportedAsDeleted() = runTest {
+    assertAnswers(
+        listOf(
+                """{"result":{"deleted":false}}""",
+                """{"result":{"deleted":"true"}}""",
+                """{"result":null}""",
+                "{}",
+                "<html>not json</html>",
+                "",
+            )
+            .map { Answer(200, it) to AccountDeletionResult.UnexpectedError }
+    )
   }
 
   @Test
   fun functionRefusals_mapToTheirResults() = runTest {
-    assertFailures(
+    assertAnswers(
         listOf(
-            functionError(Code.UNAUTHENTICATED) to AccountDeletionResult.NotSignedIn,
-            functionError(Code.FAILED_PRECONDITION, "recent-login-required") to
+            Answer(401, error("UNAUTHENTICATED")) to AccountDeletionResult.NotSignedIn,
+            Answer(400, error("FAILED_PRECONDITION", "recent-login-required")) to
                 AccountDeletionResult.RecentLoginRequired,
-            functionError(Code.FAILED_PRECONDITION, "association") to
+            Answer(400, error("FAILED_PRECONDITION", "association")) to
                 AccountDeletionResult.NotAllowed,
-            functionError(Code.FAILED_PRECONDITION, "something-new") to
+            Answer(400, error("FAILED_PRECONDITION", "something-new")) to
                 AccountDeletionResult.UnexpectedError,
-            functionError(Code.FAILED_PRECONDITION) to AccountDeletionResult.UnexpectedError,
+            Answer(400, error("FAILED_PRECONDITION")) to AccountDeletionResult.UnexpectedError,
         )
     )
   }
 
   @Test
   fun transientFunctionFailures_returnNetworkError() = runTest {
-    assertFailures(
+    assertAnswers(
         listOf(
-            functionError(Code.UNAVAILABLE) to AccountDeletionResult.NetworkError,
-            functionError(Code.DEADLINE_EXCEEDED) to AccountDeletionResult.NetworkError,
-            // How the SDK reports a request that could not reach the server.
-            functionError(Code.INTERNAL, cause = IOException("no route")) to
-                AccountDeletionResult.NetworkError,
+            Answer(503, error("UNAVAILABLE")) to AccountDeletionResult.NetworkError,
+            Answer(504, error("DEADLINE_EXCEEDED")) to AccountDeletionResult.NetworkError,
         )
     )
   }
 
   @Test
   fun otherFunctionFailures_returnUnexpectedError() = runTest {
-    assertFailures(
+    assertAnswers(
         listOf(
-            functionError(Code.INTERNAL) to AccountDeletionResult.UnexpectedError,
-            // The function is not deployed (or not in this region).
-            functionError(Code.NOT_FOUND) to AccountDeletionResult.UnexpectedError,
-            functionError(Code.PERMISSION_DENIED) to AccountDeletionResult.UnexpectedError,
-            functionError(Code.UNKNOWN) to AccountDeletionResult.UnexpectedError,
-        )
+                Answer(500, error("INTERNAL")),
+                // The function is not deployed (or not in this region).
+                Answer(404, error("NOT_FOUND")),
+                Answer(404, ""),
+                Answer(500, "<html>Server Error</html>"),
+                Answer(500, """{"error":"internal"}"""),
+                Answer(403, error("PERMISSION_DENIED")),
+            )
+            .map { it to AccountDeletionResult.UnexpectedError }
+    )
+  }
+
+  // ---------- Connection ----------
+
+  @Test
+  fun unreachableServer_returnsNetworkError() = runTest {
+    val closed = LocalFunction()
+    val url = closed.url
+    closed.stop()
+
+    assertEquals(AccountDeletionResult.NetworkError, repository(baseUrl = url).deleteAccount())
+  }
+
+  @Test
+  fun noAnswerBeforeTheReadTimeout_returnsNetworkError() = runTest {
+    server.answer = Answer(200, DELETED, delayMillis = 2_000)
+
+    assertEquals(
+        AccountDeletionResult.NetworkError,
+        repository(readTimeoutMillis = 200).deleteAccount(),
     )
   }
 
   @Test
-  fun userAlreadyGoneWhenRefreshingTheToken_returnsDeleted() = runTest {
-    val missingUser = FirebaseAuthInvalidUserException("ERROR_USER_NOT_FOUND", "test")
-    assertFailures(
-        listOf(
-            // The SDK fetches the token in Tasks.whenAll, which wraps the failure.
-            ExecutionException("1 out of 2 underlying tasks failed", missingUser) to
-                AccountDeletionResult.Deleted,
-            missingUser to AccountDeletionResult.Deleted,
-        )
+  fun malformedBaseUrl_returnsUnexpectedError() = runTest {
+    assertEquals(
+        AccountDeletionResult.UnexpectedError,
+        repository(baseUrl = "not a url").deleteAccount(),
     )
+  }
+
+  // ---------- Who is signed in, and their token ----------
+
+  @Test
+  fun nobodySignedIn_returnsNotSignedInWithoutARequest() = runTest {
+    every { auth.currentUser } returns null
+
+    assertEquals(AccountDeletionResult.NotSignedIn, repository().deleteAccount())
+    assertEquals(0, server.requests.size)
+  }
+
+  @Test
+  fun userAlreadyGoneWhenRefreshingTheToken_returnsDeletedWithoutARequest() = runTest {
+    tokenFails(FirebaseAuthInvalidUserException("ERROR_USER_NOT_FOUND", "test"))
+
+    assertEquals(AccountDeletionResult.Deleted, repository().deleteAccount())
+    assertEquals(0, server.requests.size)
   }
 
   @Test
   fun disabledOrRevokedUser_isNotReportedAsDeleted() = runTest {
-    assertFailures(
-        listOf("ERROR_USER_DISABLED", "ERROR_USER_TOKEN_EXPIRED", "ERROR_INVALID_USER_TOKEN").map {
-          ExecutionException("test", FirebaseAuthInvalidUserException(it, "test")) to
-              AccountDeletionResult.NotSignedIn
-        }
-    )
+    for (code in
+        listOf("ERROR_USER_DISABLED", "ERROR_USER_TOKEN_EXPIRED", "ERROR_INVALID_USER_TOKEN")) {
+      tokenFails(FirebaseAuthInvalidUserException(code, "test"))
+
+      assertEquals(code, AccountDeletionResult.NotSignedIn, repository().deleteAccount())
+    }
+    assertEquals(0, server.requests.size)
   }
 
   @Test
-  fun connectionFailuresBeforeTheCall_returnNetworkError() = runTest {
-    assertFailures(
-        listOf(
-            ExecutionException("test", FirebaseNetworkException("offline")) to
-                AccountDeletionResult.NetworkError,
-            FirebaseNetworkException("offline") to AccountDeletionResult.NetworkError,
-            IOException("offline") to AccountDeletionResult.NetworkError,
-        )
-    )
-  }
+  fun tokenFetchFailures_mapWithoutARequest() = runTest {
+    tokenFails(FirebaseNetworkException("offline"))
+    assertEquals(AccountDeletionResult.NetworkError, repository().deleteAccount())
 
-  @Test
-  fun unknownClientFailure_returnsUnexpectedError() = runTest {
-    assertFailures(
-        listOf(
-            IllegalStateException("test") to AccountDeletionResult.UnexpectedError,
-            ExecutionException("test", IllegalStateException("test")) to
-                AccountDeletionResult.UnexpectedError,
-        )
-    )
+    tokenFails(IllegalStateException("test"))
+    assertEquals(AccountDeletionResult.UnexpectedError, repository().deleteAccount())
+
+    every { tokenResult.token } returns null
+    tokenReturns(Tasks.forResult(tokenResult))
+    assertEquals(AccountDeletionResult.UnexpectedError, repository().deleteAccount())
+
+    assertEquals(0, server.requests.size)
   }
 
   @Test
   fun cancelledSdkTaskWhileTheCallerRuns_returnsUnexpectedError() = runTest {
-    functionReturns(Tasks.forCanceled())
+    tokenReturns(Tasks.forCanceled())
 
-    assertEquals(AccountDeletionResult.UnexpectedError, repository.deleteAccount())
+    assertEquals(AccountDeletionResult.UnexpectedError, repository().deleteAccount())
+  }
+
+  // ---------- Pending writes ----------
+
+  @Test
+  fun pendingWritesAreSentBeforeTheRequest() = runTest {
+    server.answer = Answer(200, DELETED)
+    var requestsWhenWaiting = -1
+    every { database.waitForPendingWrites() } answers
+        {
+          requestsWhenWaiting = server.requests.size
+          Tasks.forResult(null)
+        }
+
+    assertEquals(AccountDeletionResult.Deleted, repository().deleteAccount())
+    assertEquals(0, requestsWhenWaiting)
+    assertEquals(1, server.requests.size)
   }
 
   @Test
-  fun pendingWritesAreSentBeforeTheFunctionIsCalled() = runTest {
-    functionAnswers(mapOf("deleted" to true))
-
-    assertEquals(AccountDeletionResult.Deleted, repository.deleteAccount())
-    verifyOrder {
-      database.waitForPendingWrites()
-      callable.call()
-    }
-  }
-
-  @Test
-  fun pendingWritesNotSent_returnsNetworkErrorWithoutCalling() = runTest {
-    functionAnswers(mapOf("deleted" to true))
+  fun pendingWritesNotSent_returnsNetworkErrorWithoutARequest() = runTest {
     for (failure in
         listOf<Task<Void>>(
             Tasks.forException(
@@ -244,63 +277,41 @@ class FirebaseAccountDeletionRepositoryTest {
         )) {
       every { database.waitForPendingWrites() } returns failure
 
-      assertEquals(AccountDeletionResult.NetworkError, repository.deleteAccount())
+      assertEquals(AccountDeletionResult.NetworkError, repository().deleteAccount())
     }
-    verify(exactly = 0) { callable.call() }
+    assertEquals(0, server.requests.size)
   }
 
   @Test
-  fun pendingWritesNeverSent_returnsNetworkErrorWithoutCalling() = runTest {
+  fun pendingWritesNeverSent_returnsNetworkErrorAtTheTimeout() = runTest {
     every { database.waitForPendingWrites() } returns TaskCompletionSource<Void>().task
 
-    assertEquals(AccountDeletionResult.NetworkError, repository.deleteAccount())
+    assertEquals(AccountDeletionResult.NetworkError, repository().deleteAccount())
     assertEquals(ACCOUNT_DELETION_TIMEOUT_MILLIS, currentTime)
-    verify(exactly = 0) { callable.call() }
+    assertEquals(0, server.requests.size)
   }
 
   @Test
-  fun databaseBlockedByACacheClear_returnsUnexpectedErrorWithoutCalling() = runTest {
-    val repository =
-        FirebaseAccountDeletionRepository(
-            { auth },
-            { functions },
-            { throw IllegalStateException("Firestore cache cleanup must finish before access") },
-        )
+  fun databaseBlockedByACacheClear_returnsUnexpectedErrorWithoutARequest() = runTest {
+    val blocked = repository {
+      throw IllegalStateException("Firestore cache cleanup must finish before access")
+    }
 
-    assertEquals(AccountDeletionResult.UnexpectedError, repository.deleteAccount())
-    verify(exactly = 0) { callable.call() }
+    assertEquals(AccountDeletionResult.UnexpectedError, blocked.deleteAccount())
+    assertEquals(0, server.requests.size)
   }
 
-  @Test
-  fun noAnswerInTime_returnsNetworkError() = runTest {
-    // A connection lost after the headers leaves the SDK's task pending forever.
-    functionReturns(TaskCompletionSource<HttpsCallableResult>().task)
-
-    assertEquals(AccountDeletionResult.NetworkError, repository.deleteAccount())
-    assertEquals(ACCOUNT_DELETION_TIMEOUT_MILLIS, currentTime)
-  }
-
-  @Test
-  fun answerJustBeforeTheTimeout_isUsed() = runTest {
-    val pending = TaskCompletionSource<HttpsCallableResult>()
-    functionReturns(pending.task)
-    val deletion = async { repository.deleteAccount() }
-
-    advanceTimeBy(ACCOUNT_DELETION_TIMEOUT_MILLIS - 1)
-    pending.setResult(callableResult(mapOf("deleted" to true)))
-
-    assertEquals(AccountDeletionResult.Deleted, deletion.await())
-  }
+  // ---------- Cancellation and wiring ----------
 
   @Test
   fun callerCancellation_propagates() = runTest {
-    val pending = TaskCompletionSource<HttpsCallableResult>()
-    functionReturns(pending.task)
+    val pending = TaskCompletionSource<Void>()
+    every { database.waitForPendingWrites() } returns pending.task
     var result: AccountDeletionResult? = null
     var cancellationReachedCaller = false
     val deletion = launch {
       try {
-        result = repository.deleteAccount()
+        result = repository().deleteAccount()
       } catch (cancelled: CancellationException) {
         cancellationReachedCaller = true
         throw cancelled
@@ -309,11 +320,12 @@ class FirebaseAccountDeletionRepositoryTest {
     runCurrent()
 
     deletion.cancel()
-    pending.setResult(callableResult(mapOf("deleted" to true)))
+    pending.setResult(null)
     runCurrent()
 
     assertNull(result)
     assertTrue(cancellationReachedCaller)
+    assertEquals(0, server.requests.size)
   }
 
   @Test
@@ -325,5 +337,64 @@ class FirebaseAccountDeletionRepositoryTest {
         )
 
     assertTrue(bound is FirebaseAccountDeletionRepository)
+  }
+
+  private fun runTest(block: suspend TestScope.() -> Unit) =
+      kotlinx.coroutines.test.runTest { block() }
+
+  /** What the local function answers; [delayMillis] holds the answer back. */
+  private data class Answer(val status: Int, val body: String, val delayMillis: Long = 0)
+
+  private data class Received(
+      val method: String,
+      val path: String,
+      val authorization: String?,
+      val contentType: String?,
+      val body: String,
+  )
+
+  /** A local server standing in for the callable function. */
+  private class LocalFunction {
+    private val http = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+    @Volatile var answer = Answer(200, DELETED)
+    val requests: MutableList<Received> = Collections.synchronizedList(mutableListOf())
+
+    val url: String
+      get() = "http://127.0.0.1:${http.address.port}"
+
+    init {
+      http.createContext("/") { exchange ->
+        requests +=
+            Received(
+                method = exchange.requestMethod,
+                path = exchange.requestURI.path,
+                authorization = exchange.requestHeaders.getFirst("Authorization"),
+                contentType = exchange.requestHeaders.getFirst("Content-Type"),
+                body = exchange.requestBody.bufferedReader().use { it.readText() },
+            )
+        val current = answer
+        if (current.delayMillis > 0) Thread.sleep(current.delayMillis)
+        val bytes = current.body.toByteArray()
+        // -1 sends no body at all, as a bare 404 from the frontend would.
+        exchange.sendResponseHeaders(
+            current.status,
+            if (bytes.isEmpty()) -1 else bytes.size.toLong(),
+        )
+        if (bytes.isNotEmpty()) exchange.responseBody.use { it.write(bytes) } else exchange.close()
+      }
+      http.start()
+    }
+
+    fun stop() = http.stop(0)
+  }
+
+  private companion object {
+    const val TOKEN = "test-id-token"
+    const val DELETED = """{"result":{"deleted":true}}"""
+
+    fun error(status: String, details: String? = null): String {
+      val detailsField = details?.let { ""","details":"$it"""" }.orEmpty()
+      return """{"error":{"message":"test","status":"$status"$detailsField}}"""
+    }
   }
 }
