@@ -1,5 +1,5 @@
-// Contributors: OpenAI Codex (association onboarding, recreation and session-boundary UI tests,
-// #125).
+// Contributors: OpenAI Codex (association onboarding, recreation, session-boundary and validation
+// UI tests, #125).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -354,6 +354,25 @@ class AssociationAuthFlowTest {
         .performTextInput("invalid.example.org")
     compose.onNodeWithTag(SignUpTags.error(SignUpField.Email)).assertIsDisplayed()
     compose.onNodeWithText("Enter a valid email address.").assertExists()
+    compose.onNodeWithTag(SignUpTags.Submit).performScrollTo().assertIsNotEnabled()
+    assertEquals(0, auth.signUpCalls)
+  }
+
+  @Test
+  fun associationPasswordMismatchShowsTheFieldErrorAndPreventsCreation() {
+    launch()
+    openAssociationForm()
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.Email)).performTextInput(user.email)
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.Password)).performTextInput("password1")
+    compose
+        .onNodeWithTag(SignUpTags.input(SignUpField.ConfirmPassword))
+        .performScrollTo()
+        .performTextInput("password2")
+
+    compose
+        .onNodeWithTag(SignUpTags.error(SignUpField.ConfirmPassword))
+        .performScrollTo()
+        .assertTextContains("Passwords don't match.")
     compose.onNodeWithTag(SignUpTags.Submit).performScrollTo().assertIsNotEnabled()
     assertEquals(0, auth.signUpCalls)
   }
