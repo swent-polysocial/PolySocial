@@ -1,5 +1,7 @@
 // Contributors: OpenAI Codex (offline signup-store binding after association rebase, #125).
 // Contributors: OpenAI Codex (offline real-activity Google recovery and profile routing for #107).
+// Contributors: Claude (Opus 5.5, Anthropic) bound a fake session guard and its parts,
+// #198; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.auth
 
 import androidx.compose.ui.test.*
@@ -9,6 +11,10 @@ import com.polysocial.MainActivity
 import com.polysocial.R
 import com.polysocial.model.association.*
 import com.polysocial.model.auth.*
+import com.polysocial.model.firebase.FakeSessionGuard
+import com.polysocial.model.firebase.FakeSessionOwnerStore
+import com.polysocial.model.firebase.SessionGuard
+import com.polysocial.model.firebase.SessionOwnerStore
 import com.polysocial.model.user.*
 import com.polysocial.ui.auth.*
 import com.polysocial.ui.login.LoginScreenTestTags
@@ -37,6 +43,10 @@ class GoogleAuthInjectionTest {
   @BindValue @JvmField val authBinding: AuthRepository = auth
   @BindValue @JvmField val profileBinding: UserProfileRepository = profiles
   @BindValue @JvmField val verificationStore: VerificationStore = MemoryVerificationStore()
+  @BindValue @JvmField val sessionGuard: SessionGuard = FakeSessionGuard()
+  // PolySocialApp injects the real guard, which needs these too, though nothing starts it here.
+  @BindValue @JvmField val sessionSource: AuthSessionSource = FakeAuthSessionSource()
+  @BindValue @JvmField val sessionOwner: SessionOwnerStore = FakeSessionOwnerStore()
   @BindValue @JvmField val verificationClock: VerificationClock = VerificationClock { 1000 }
   @get:Rule(order = 0) val hilt = HiltAndroidRule(this)
   @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()

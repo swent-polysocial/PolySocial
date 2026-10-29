@@ -1,6 +1,8 @@
 // Contributors: OpenAI Codex (keep association onboarding dependencies fake in Hilt tests, #125).
 // Contributors: OpenAI Codex (Hilt logout and verification wiring with offline fakes, #109).
 // Contributors: Claude (fake association repository for the association names, #128).
+// Contributors: Claude (Opus 5.5, Anthropic) bound a fake session guard and its parts,
+// #198; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.ui.profile
 
 import androidx.compose.ui.test.*
@@ -47,6 +49,10 @@ class LogoutInjectionTest {
   private var cleanup = CacheClearResult.UnexpectedError
   private var clears = 0
   @BindValue @JvmField val verificationStore: VerificationStore = MemoryVerificationStore()
+  @BindValue @JvmField val sessionGuard: SessionGuard = FakeSessionGuard()
+  // PolySocialApp injects the real guard, which needs these too, though nothing starts it here.
+  @BindValue @JvmField val sessionSource: AuthSessionSource = FakeAuthSessionSource()
+  @BindValue @JvmField val sessionOwner: SessionOwnerStore = FakeSessionOwnerStore()
   @BindValue @JvmField val verificationClock: VerificationClock = VerificationClock { 1000 }
   @BindValue @JvmField val auth: AuthRepository = fakeAuth
   @BindValue @JvmField val events: EventRepository = FakeEventRepository()
