@@ -4,12 +4,12 @@
 // list, #105; "+" button and Create Event navigation from the Events and Map tabs, #110; app bar
 // actions, #84; event detail route, #112; "View event" opens the event detail, #211; the
 // association's Events tab, #132; Edit event route, #131; closing it during its
-// enter transition, #131 review; Edit and Cancel event from the detail, #131).
+// enter transition, #131 review; Edit and Cancel event from the detail, #131; the map's Details
+// open the event detail, #112, after the M1 coach review).
 // Contributors: OpenAI Codex (map route and detail placeholder, #50).
 // Contributors: OpenAI Codex (Profile privacy navigation and full-screen notices, #103).
 package com.polysocial.ui.navigation
 
-import android.net.Uri
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -32,7 +32,6 @@ import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -229,7 +228,11 @@ fun AppShell(
               when (tab) {
                 Tab.MAP ->
                     mapContent(
-                        { id -> navController.navigate(mapDetailRoute(id)) },
+                        // The event detail, as from the Events tab (#112); a second tap during the
+                        // transition is ignored.
+                        { id ->
+                          if (entry.isResumed) navController.navigate(tab.eventDetailRoute(id))
+                        },
                         openCreateEvent,
                     )
                 Tab.EVENTS -> {
@@ -252,28 +255,7 @@ fun AppShell(
               }
             }
           }
-          if (tab == Tab.MAP) {
-            composable(
-                "${tab.detailRoute}/{eventId}",
-                arguments = listOf(navArgument("eventId") { type = NavType.StringType }),
-            ) {
-              Column(Modifier.padding(20.dp).testTag(C.Tag.event_detail_placeholder)) {
-                Text(
-                    stringResource(R.string.event_detail_title),
-                    style = MaterialTheme.typography.titleLarge,
-                )
-                Text(stringResource(R.string.event_detail_placeholder))
-                TextButton(
-                    onClick = { navController.popBackStack() },
-                    modifier = Modifier.testTag(C.Tag.event_detail_back),
-                ) {
-                  Text(stringResource(R.string.event_detail_back))
-                }
-              }
-            }
-          } else {
-            composable(tab.detailRoute) { PlaceholderDetailScreen(tab) }
-          }
+          composable(tab.detailRoute) { PlaceholderDetailScreen(tab) }
           if (tab in createEventTabs) {
             composable(tab.createEventRoute) {
               // Each action runs once: a second tap while leaving would pop the screen below.
@@ -365,9 +347,6 @@ fun AppShell(
 private fun NavHostController.openCreatedEvent(tab: Tab, eventId: String) {
   navigate(tab.eventDetailRoute(eventId)) { popUpTo(tab.createEventRoute) { inclusive = true } }
 }
-
-/** The Map tab's placeholder detail for [eventId] (its route takes the id, unlike the others). */
-private fun mapDetailRoute(eventId: String) = "${Tab.MAP.detailRoute}/${Uri.encode(eventId)}"
 
 /**
  * True while this destination is the one on screen. A second tap during the transition, when the

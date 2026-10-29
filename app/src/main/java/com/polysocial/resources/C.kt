@@ -1,7 +1,8 @@
 // Contributors: Claude (app shell and tab test tags, #41; loading state tag, #43; Create Event
 // tags, #46; "+" button, #110; app bar action tags, #84; error state tags, #74; Create Event
 // organizer row tags, #134).
-// Contributors: OpenAI Codex (map event-detail tags, #50).
+// Contributors: OpenAI Codex (map event-detail tags, #50); Claude (removed them once the map opened
+// the event detail, #112).
 // Contributors: OpenAI Codex (Profile privacy navigation and action tags, #103).
 package com.polysocial.resources
 
@@ -16,8 +17,6 @@ object C {
     const val app_bar_title = "app_bar_title"
     const val bottom_nav = "bottom_nav"
     const val loading_state = "loading_state"
-    const val event_detail_placeholder = "event_detail_placeholder"
-    const val event_detail_back = "event_detail_back"
     const val error_state = "error_state"
     const val error_retry = "error_retry"
     const val profile_privacy_entry = "profile_privacy_entry"
