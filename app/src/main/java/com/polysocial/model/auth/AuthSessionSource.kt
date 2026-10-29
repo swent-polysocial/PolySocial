@@ -1,8 +1,5 @@
-// Contributors: Claude (Fable 5.1, Anthropic) drafted the auth state source, #198; Mohamed Khellaf
-// (reviewed and revised).
-// Contributors: Claude (Opus 5.5, Anthropic) ended the flow when Firebase Auth is unavailable,
-// #198;
-// Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Fable 5.1, Anthropic) drafted the auth state source and Claude (Opus 5.5)
+// ended the flow when Firebase Auth is unavailable, #198; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.model.auth
 
 import com.google.firebase.auth.FirebaseAuth
