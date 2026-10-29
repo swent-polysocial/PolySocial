@@ -9,6 +9,8 @@ package com.polysocial.auth
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
@@ -121,6 +123,9 @@ class PendingAssociationFlowTest {
             welcomeViewModel = welcome,
             // The students' app needs Hilt; these tests only check which app opens.
             signedInContent = { Box(Modifier.fillMaxSize().testTag(STUDENT_APP)) },
+            associationSetupContent = { back, _ ->
+              TextButton(back, Modifier.testTag("setup_back")) { Text("Back and sign out") }
+            },
             pendingAssociationContent = { done ->
               PendingAssociationApp(
                   onLoggedOut = done,
@@ -157,13 +162,11 @@ class PendingAssociationFlowTest {
   }
 
   @Test
-  fun incompleteAssociation_canLogOutFromPendingApp() {
+  fun incompleteAssociation_canLogOutFromSetup() {
     profiles.getProfileResult = profile(AccountType.ASSOCIATION)
     associations.getAssociationResult = AssociationResult.NotFound
     launch()
-    compose.onNodeWithTag(AssociationTags.NAV_ORGANIZATION).performClick()
-    compose.onNodeWithTag(AssociationTags.LOG_OUT).performClick()
-    compose.onNodeWithTag(ProfileTags.Confirm).performClick()
+    compose.onNodeWithTag("setup_back").performClick()
     compose.waitForIdle()
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
   }
