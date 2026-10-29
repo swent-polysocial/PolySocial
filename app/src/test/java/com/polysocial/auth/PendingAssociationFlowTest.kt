@@ -1,5 +1,6 @@
 // Contributors: Claude (wrote these tests, #127; logging in again in the same activity, after a
-// review, #127); Claude (association log in, non-EPFL accounts that are not associations, #208).
+// review, #127); Claude (association log in, non-EPFL accounts that are not associations;
+// Log out from the start error, with the cache cleared first, #208).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -77,9 +78,14 @@ class PendingAssociationFlowTest {
               )
           )
       )
+  /** Who was signed in at each cache clear: a clear after the sign-out would record null. */
+  private val clearedWhileSignedInAs = mutableListOf<AuthUser?>()
   private val cache =
       object : SessionCache {
-        override suspend fun clear() = CacheClearResult.Cleared
+        override suspend fun clear(): CacheClearResult {
+          clearedWhileSignedInAs += auth.currentUser()
+          return CacheClearResult.Cleared
+        }
       }
 
   private fun profile(type: AccountType, verified: Boolean = false) =
@@ -105,6 +111,8 @@ class PendingAssociationFlowTest {
     val login = LoginViewModel(auth)
     val profileStep = ProfileSetupViewModel(auth, profiles)
     val welcome = WelcomeViewModel(auth)
+    // One activity-scoped logout ViewModel, shared by the start error and the pending app.
+    val logout = ProfileViewModel(auth, cache)
     compose.setContent {
       PolySocialTheme {
         AuthFlow(
@@ -115,13 +123,14 @@ class PendingAssociationFlowTest {
             verificationViewModel = verification,
             profileSetupViewModel = profileStep,
             welcomeViewModel = welcome,
+            logoutViewModel = logout,
             // The students' app needs Hilt; these tests only check which app opens.
             signedInContent = { Box(Modifier.fillMaxSize().testTag(STUDENT_APP)) },
             pendingAssociationContent = { done ->
               PendingAssociationApp(
                   onLoggedOut = done,
                   viewModel = viewModel { PendingAssociationViewModel(auth, associations) },
-                  logoutViewModel = viewModel { ProfileViewModel(auth, cache) },
+                  logoutViewModel = logout,
               )
             },
         )
@@ -304,7 +313,10 @@ class PendingAssociationFlowTest {
     compose.onNodeWithTag(C.Tag.error_state).assertIsDisplayed()
 
     compose.onNodeWithTag(C.Tag.error_secondary).performClick()
+    compose.onNodeWithTag(ProfileTags.Dialog).assertIsDisplayed()
+    compose.onNodeWithTag(ProfileTags.Confirm).performClick()
     compose.waitForIdle()
+    assertEquals(listOf<AuthUser?>(user), clearedWhileSignedInAs)
     assertEquals(1, auth.logOutCalls)
     assertEquals(null, auth.currentUser())
 
@@ -320,6 +332,7 @@ class PendingAssociationFlowTest {
 
   @Test
   fun aNonEpflAccountWithAStudentProfile_neverOpensTheStudentsApp() {
+    auth.user = AuthUser("club-uid", "club@example.org", isEmailVerified = true)
     profiles.getProfileResult = profile(AccountType.STUDENT)
 
     launch()

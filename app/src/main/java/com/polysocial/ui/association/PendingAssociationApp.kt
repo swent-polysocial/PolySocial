@@ -1,5 +1,6 @@
 // Contributors: Claude (the app of an association an admin hasn't verified yet, #127; nothing kept
-// from one session to the next, after a review, #127).
+// from one session to the next, after a review, #127; its logout moved to the shared
+// ActivityLogout, #208).
 package com.polysocial.ui.association
 
 import androidx.compose.material3.SnackbarHostState
@@ -8,7 +9,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -17,8 +17,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import com.polysocial.R
-import com.polysocial.ui.profile.LogoutDialog
-import com.polysocial.ui.profile.LogoutState
+import com.polysocial.ui.profile.ActivityLogout
 import com.polysocial.ui.profile.ProfileViewModel
 import kotlinx.coroutines.launch
 
@@ -38,21 +37,10 @@ fun PendingAssociationApp(
     navController: NavHostController = rememberNavController(),
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
-  val logout by logoutViewModel.uiState.collectAsStateWithLifecycle()
-  val latestOnLoggedOut by rememberUpdatedState(onLoggedOut)
   // This app's ViewModels belong to the activity, which outlives the session: each session reads
   // its own details, and Log out leaves nothing (details, logout state, tab stacks) to the next
   // account.
   LaunchedEffect(viewModel) { viewModel.open() }
-  LaunchedEffect(logout) {
-    if (logout == LogoutState.LoggedOut) {
-      viewModel.close()
-      logoutViewModel.reset()
-      AssociationTab.entries.forEach { navController.clearBackStack(it.route) }
-      navController.popBackStack(AssociationTab.EVENTS.route, inclusive = true)
-      latestOnLoggedOut()
-    }
-  }
 
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
@@ -89,5 +77,10 @@ fun PendingAssociationApp(
       }
     }
   }
-  LogoutDialog(logout, logoutViewModel::cancelLogout, logoutViewModel::confirmLogout)
+  ActivityLogout(logoutViewModel) {
+    viewModel.close()
+    AssociationTab.entries.forEach { navController.clearBackStack(it.route) }
+    navController.popBackStack(AssociationTab.EVENTS.route, inclusive = true)
+    onLoggedOut()
+  }
 }
