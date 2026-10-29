@@ -1,6 +1,8 @@
 // Contributors: OpenAI Codex (inject Google entry state after #107 rebase).
 // Contributors: OpenAI Codex (fake-backed logout navigation and account-switch regression tests,
 // verification injection after rebase, #109).
+// Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.ui.profile
 
 import androidx.activity.ComponentActivity
@@ -77,6 +79,7 @@ class LogoutFlowTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     val profileSetup = ProfileSetupViewModel(auth, profiles)
     restoration.setContent {

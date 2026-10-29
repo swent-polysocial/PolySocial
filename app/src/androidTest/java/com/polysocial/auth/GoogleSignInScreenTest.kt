@@ -1,5 +1,7 @@
 // Contributors: OpenAI Codex (offline Google auth device tests, generic failure recovery and
 // synthetic screenshots for #107).
+// Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.auth
 
 import android.graphics.Bitmap
@@ -16,6 +18,7 @@ import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.auth.GoogleAccount
 import com.polysocial.model.auth.GoogleSignInResult
+import com.polysocial.model.firebase.FakeSessionGuard
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.UserProfile
 import com.polysocial.model.user.UserProfileRepository
@@ -67,6 +70,7 @@ class GoogleSignInScreenTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     val signup = SignUpViewModel(auth, EmptyAssociationSignupStore)
     val login = LoginViewModel(auth)

@@ -4,6 +4,8 @@
 // preserved the injected Events tab test shell when rebasing onto main).
 // Contributors: OpenAI Codex (integrated real profile form and offline injection after PR #168
 // rebase).
+// Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.auth
 
 import android.content.res.Configuration
@@ -41,6 +43,7 @@ import com.polysocial.model.auth.VerificationClock
 import com.polysocial.model.auth.VerificationResult
 import com.polysocial.model.auth.VerificationStore
 import com.polysocial.model.auth.VerificationTiming
+import com.polysocial.model.firebase.FakeSessionGuard
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.UserProfile
 import com.polysocial.model.user.UserProfileRepository
@@ -126,6 +129,7 @@ class VerifyEmailScreenTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     vm = VerifyEmailViewModel(repository, store, VerificationClock { now })
     signup = SignUpViewModel(repository, EmptyAssociationSignupStore)
@@ -207,6 +211,7 @@ class VerifyEmailScreenTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     vm = VerifyEmailViewModel(repository, store, VerificationClock { now })
     flow()

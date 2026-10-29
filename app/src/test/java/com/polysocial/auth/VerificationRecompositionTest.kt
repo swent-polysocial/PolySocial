@@ -1,6 +1,8 @@
 // Contributors: OpenAI Codex (replacement-session callback and lifecycle-observer regression
 // test for verification navigation, #31).
 // Contributors: OpenAI Codex (preserved per-session injection after PR #168 rebase).
+// Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -25,6 +27,7 @@ import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.auth.SignUpField
 import com.polysocial.model.auth.VerificationClock
 import com.polysocial.model.auth.VerificationTiming
+import com.polysocial.model.firebase.FakeSessionGuard
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.ui.auth.AuthFlow
 import com.polysocial.ui.auth.SignUpTags
@@ -72,6 +75,7 @@ class VerificationRecompositionTest {
                 FakeUserProfileRepository(),
                 associationSignup = EmptyAssociationSignupStore,
                 associations = FakeAssociationRepository(),
+                sessions = FakeSessionGuard(),
             ),
             VerifyEmailViewModel(auth, store, VerificationClock { 100_000 }),
             com.polysocial.ui.auth.WelcomeViewModel(auth),

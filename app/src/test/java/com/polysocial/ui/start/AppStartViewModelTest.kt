@@ -3,12 +3,16 @@
 // Contributors: Claude Opus 5.5 (wrote these tests; refresh after Log in; full profile fixture,
 // #34); Claude (log out and the created profile; Verify Email opened in-session, #74; routing
 // of association accounts, #127).
+// Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start and tested
+// waiting for it, #198; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.ui.start
 
 import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.auth.FakeAuthRepository
+import com.polysocial.model.firebase.FakeSessionGuard
+import com.polysocial.model.firebase.SessionGuardResult
 import com.polysocial.model.user.AccountType
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.ProfileResult
@@ -47,6 +51,7 @@ class AppStartViewModelTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
 
@@ -64,6 +69,7 @@ class AppStartViewModelTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
 
@@ -82,6 +88,7 @@ class AppStartViewModelTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
 
@@ -103,6 +110,7 @@ class AppStartViewModelTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
 
@@ -127,6 +135,7 @@ class AppStartViewModelTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
 
@@ -145,6 +154,7 @@ class AppStartViewModelTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
 
@@ -162,6 +172,7 @@ class AppStartViewModelTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
 
@@ -178,6 +189,7 @@ class AppStartViewModelTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
     profiles.getProfileResult = found
@@ -201,6 +213,7 @@ class AppStartViewModelTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
 
@@ -222,6 +235,7 @@ class AppStartViewModelTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
     assertEquals(StartDestination.Login, viewModel.destination.value)
@@ -242,6 +256,7 @@ class AppStartViewModelTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
 
@@ -263,6 +278,7 @@ class AppStartViewModelTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
     assertEquals(StartDestination.ProfileSetup, vm.destination.value)
@@ -287,6 +303,7 @@ class AppStartViewModelTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
     assertEquals(StartDestination.Main, firstLaunch.destination.value)
@@ -298,6 +315,7 @@ class AppStartViewModelTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
 
@@ -315,6 +333,7 @@ class AppStartViewModelTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
     assertEquals(StartDestination.Main, viewModel.destination.value)
@@ -337,6 +356,7 @@ class AppStartViewModelTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
     assertEquals(StartDestination.Loading, viewModel.destination.value)
@@ -359,6 +379,7 @@ class AppStartViewModelTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
     viewModel.logOut()
@@ -382,6 +403,7 @@ class AppStartViewModelTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
     assertEquals(StartDestination.ProfileSetup, viewModel.destination.value)
@@ -401,6 +423,7 @@ class AppStartViewModelTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
     assertEquals(StartDestination.Login, viewModel.destination.value)
@@ -419,6 +442,7 @@ class AppStartViewModelTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
     assertEquals(StartDestination.Login, viewModel.destination.value)
@@ -442,6 +466,7 @@ class AppStartViewModelTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
     assertEquals(StartDestination.Main, viewModel.destination.value)
@@ -479,6 +504,7 @@ class AppStartViewModelTest {
                     )
                 )
             ),
+            sessions = FakeSessionGuard(),
         )
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     return viewModel.destination.value
@@ -538,6 +564,7 @@ class AppStartViewModelTest {
                     )
                 )
             ),
+            sessions = FakeSessionGuard(),
         )
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
 
@@ -548,5 +575,122 @@ class AppStartViewModelTest {
     viewModel.refresh()
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     assertEquals(StartDestination.PendingAssociation, viewModel.destination.value)
+  }
+
+  // ---- session guard (#198) ----
+
+  @Test
+  fun verifiedUser_readsTheProfileOnlyOnceTheCacheIsSafeForTheAccount() = runTest {
+    auth.user = verified
+    profiles.getProfileResult = found
+    val guard = FakeSessionGuard().apply { gate = CompletableDeferred() }
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+            sessions = guard,
+        )
+    advanceUntilIdle()
+
+    assertEquals(StartDestination.Loading, viewModel.destination.value)
+    assertEquals(listOf<String?>("u1"), guard.requestedUids)
+    assertEquals(0, profiles.getProfileCalls)
+
+    guard.gate?.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals(StartDestination.Main, viewModel.destination.value)
+    assertEquals(1, profiles.getProfileCalls)
+  }
+
+  @Test
+  fun failedCacheClear_showsTheProfileErrorWithoutReading() = runTest {
+    auth.user = verified
+    profiles.getProfileResult = found
+    val guard = FakeSessionGuard(SessionGuardResult.CleanupFailed)
+
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+            sessions = guard,
+        )
+    advanceUntilIdle()
+
+    assertEquals(StartDestination.Error, viewModel.destination.value)
+    assertEquals(0, profiles.getProfileCalls)
+  }
+
+  @Test
+  fun retryAfterAFailedCacheClear_triesTheClearAgainThenReads() = runTest {
+    auth.user = verified
+    profiles.getProfileResult = found
+    val guard = FakeSessionGuard(SessionGuardResult.CleanupFailed)
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+            sessions = guard,
+        )
+    advanceUntilIdle()
+
+    guard.result = SessionGuardResult.Ready
+    viewModel.refresh()
+    advanceUntilIdle()
+
+    assertEquals(StartDestination.Main, viewModel.destination.value)
+    assertEquals(listOf<String?>("u1", "u1"), guard.requestedUids)
+    assertEquals(1, profiles.getProfileCalls)
+  }
+
+  @Test
+  fun retryWhileTheClearStillFails_staysOnTheError() = runTest {
+    auth.user = verified
+    val guard = FakeSessionGuard(SessionGuardResult.CleanupFailed)
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+            sessions = guard,
+        )
+    advanceUntilIdle()
+
+    viewModel.refresh()
+    advanceUntilIdle()
+
+    assertEquals(StartDestination.Error, viewModel.destination.value)
+    assertEquals(2, guard.calls)
+    assertEquals(0, profiles.getProfileCalls)
+  }
+
+  @Test
+  fun logOutWhileWaitingForTheGuard_neverReadsTheProfile() = runTest {
+    auth.user = verified
+    profiles.getProfileResult = found
+    val guard = FakeSessionGuard().apply { gate = CompletableDeferred() }
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+            sessions = guard,
+        )
+    advanceUntilIdle()
+
+    viewModel.logOut()
+    guard.gate?.complete(Unit)
+    advanceUntilIdle()
+
+    assertEquals(StartDestination.Login, viewModel.destination.value)
+    assertEquals(0, profiles.getProfileCalls)
   }
 }

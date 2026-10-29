@@ -1,6 +1,8 @@
 // Contributors: OpenAI Codex (inject Google entry state after #107 rebase).
 // Contributors: OpenAI Codex (offline device recovery navigation and synthetic visual checks,
 // #164); Claude (the profile step's ViewModel, #74).
+// Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.auth
 
 import android.graphics.Bitmap
@@ -12,6 +14,7 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
 import com.polysocial.model.auth.EmptyAssociationSignupStore
+import com.polysocial.model.firebase.FakeSessionGuard
 import com.polysocial.model.user.UserProfileRepository
 import com.polysocial.ui.auth.*
 import com.polysocial.ui.login.LoginScreenTestTags
@@ -43,6 +46,7 @@ class PasswordRecoveryScreenTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     val profileStep = ProfileSetupViewModel(auth, profiles)
     val signup = SignUpViewModel(auth, EmptyAssociationSignupStore)

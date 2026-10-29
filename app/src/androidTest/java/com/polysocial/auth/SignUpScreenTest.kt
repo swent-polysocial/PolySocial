@@ -6,6 +6,8 @@
 // (signed-in shell without Hilt, #105; profile step ViewModel injection, #74).
 // Contributors: OpenAI Codex (updated verification/back sign-out expectations and integration for
 // #31).
+// Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -20,6 +22,7 @@ import com.polysocial.R
 import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
 import com.polysocial.model.auth.EmptyAssociationSignupStore
+import com.polysocial.model.firebase.FakeSessionGuard
 import com.polysocial.model.user.*
 import com.polysocial.resources.C
 import com.polysocial.ui.auth.*
@@ -105,6 +108,7 @@ class SignUpScreenTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     profileSetupViewModel = ProfileSetupViewModel(repository, profiles)
     coEvery { repository.signUp(any(), any(), any()) } returns SignUpResult.Success(user)

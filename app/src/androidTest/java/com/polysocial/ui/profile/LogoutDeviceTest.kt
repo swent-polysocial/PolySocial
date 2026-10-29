@@ -2,6 +2,8 @@
 // Contributors: OpenAI Codex (association signup contract, #125).
 // Contributors: OpenAI Codex (device logout proof with fakes and verification wiring, #109).
 // Contributors: OpenAI Codex (Google sign-in contract compatibility during #106 rebase).
+// Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.ui.profile
 
 import android.content.Context
@@ -97,6 +99,7 @@ class LogoutDeviceTest {
             profiles,
             associationSignup = EmptyAssociationSignupStore,
             associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     val profileSetup = ProfileSetupViewModel(auth, profiles)
     val welcome = com.polysocial.ui.auth.WelcomeViewModel(auth)

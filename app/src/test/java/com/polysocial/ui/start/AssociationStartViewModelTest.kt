@@ -1,6 +1,8 @@
 // Contributors: OpenAI Codex (preserve association entry and offline retry, #125).
 // Contributors: OpenAI Codex (restored association startup, marker cleanup and fail-closed
 // regressions, #125).
+// Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.ui.start
 
 import com.polysocial.model.association.Association
@@ -11,6 +13,7 @@ import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.AssociationSignupStore
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
+import com.polysocial.model.firebase.FakeSessionGuard
 import com.polysocial.model.user.AccountType
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.ProfileResult
@@ -79,6 +82,7 @@ class AssociationStartViewModelTest {
                 profiles,
                 store,
                 associations,
+                sessions = FakeSessionGuard(),
             )
         advanceUntilIdle()
         assertEquals(
@@ -100,6 +104,7 @@ class AssociationStartViewModelTest {
             FakeUserProfileRepository(profile()),
             Store(),
             FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
     assertEquals(StartDestination.AssociationSetup, vm.destination.value)
@@ -116,6 +121,7 @@ class AssociationStartViewModelTest {
               profiles,
               store,
               FakeAssociationRepository(),
+              sessions = FakeSessionGuard(),
           )
       advanceUntilIdle()
       assertEquals(StartDestination.AssociationSetup, vm.destination.value)
@@ -129,7 +135,13 @@ class AssociationStartViewModelTest {
     val store = Store().apply { readFailure = IOException("device storage unavailable") }
     val profiles = FakeUserProfileRepository()
     val vm =
-        AppStartViewModel(FakeAuthRepository(user), profiles, store, FakeAssociationRepository())
+        AppStartViewModel(
+            FakeAuthRepository(user),
+            profiles,
+            store,
+            FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
+        )
     advanceUntilIdle()
     assertEquals(StartDestination.AssociationSetup, vm.destination.value)
     assertEquals(AccountType.ASSOCIATION, vm.accountType.value)
@@ -147,6 +159,7 @@ class AssociationStartViewModelTest {
             profiles,
             store,
             FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
     assertEquals(StartDestination.VerifyEmail, vm.destination.value)
@@ -163,6 +176,7 @@ class AssociationStartViewModelTest {
             FakeUserProfileRepository(profile(type = AccountType.STUDENT)),
             Store(),
             FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
     assertEquals(StartDestination.Error, vm.destination.value)
@@ -179,6 +193,7 @@ class AssociationStartViewModelTest {
               FakeUserProfileRepository(profile()),
               Store(),
               associations,
+              sessions = FakeSessionGuard(),
           )
       advanceUntilIdle()
       assertEquals(StartDestination.Error, vm.destination.value)
@@ -198,6 +213,7 @@ class AssociationStartViewModelTest {
               FakeUserProfileRepository(profile(verified = verified)),
               Store(),
               FakeAssociationRepository(AssociationResult.NetworkError),
+              sessions = FakeSessionGuard(),
           )
       advanceUntilIdle()
       assertEquals(
@@ -216,7 +232,7 @@ class AssociationStartViewModelTest {
           override suspend fun getAssociation(uid: String): AssociationResult =
               throw IOException("read failed")
         }
-    val vm = AppStartViewModel(auth, profiles, Store(), throwing)
+    val vm = AppStartViewModel(auth, profiles, Store(), throwing, sessions = FakeSessionGuard())
     advanceUntilIdle()
     assertEquals(StartDestination.Error, vm.destination.value)
   }
@@ -231,6 +247,7 @@ class AssociationStartViewModelTest {
               profiles,
               Store(),
               FakeAssociationRepository(),
+              sessions = FakeSessionGuard(),
           )
       advanceUntilIdle()
       assertEquals(StartDestination.Error, vm.destination.value)
@@ -241,7 +258,13 @@ class AssociationStartViewModelTest {
               throw IOException("read failed")
         }
     val vm =
-        AppStartViewModel(FakeAuthRepository(user), throwing, Store(), FakeAssociationRepository())
+        AppStartViewModel(
+            FakeAuthRepository(user),
+            throwing,
+            Store(),
+            FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
+        )
     advanceUntilIdle()
     assertEquals(StartDestination.Error, vm.destination.value)
   }
@@ -259,6 +282,7 @@ class AssociationStartViewModelTest {
             FakeUserProfileRepository(),
             store,
             FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
     assertEquals(StartDestination.Error, vm.destination.value)
@@ -285,6 +309,7 @@ class AssociationStartViewModelTest {
                     FakeUserProfileRepository(profile(verified = verified)),
                     store,
                     FakeAssociationRepository(AssociationResult.Found(association)),
+                    sessions = FakeSessionGuard(),
                 )
             advanceUntilIdle()
             val expected =
@@ -314,6 +339,7 @@ class AssociationStartViewModelTest {
             FakeUserProfileRepository(profile()),
             store,
             associations,
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
     assertEquals(StartDestination.Loading, vm.destination.value)
@@ -329,7 +355,14 @@ class AssociationStartViewModelTest {
     val gate = CompletableDeferred<Unit>()
     val associations =
         FakeAssociationRepository(AssociationResult.Found(association)).apply { this.gate = gate }
-    val vm = AppStartViewModel(auth, FakeUserProfileRepository(profile()), Store(), associations)
+    val vm =
+        AppStartViewModel(
+            auth,
+            FakeUserProfileRepository(profile()),
+            Store(),
+            associations,
+            sessions = FakeSessionGuard(),
+        )
     runCurrent()
     assertEquals(StartDestination.Loading, vm.destination.value)
     assertEquals(listOf(user.uid), associations.requestedUids)
@@ -350,6 +383,7 @@ class AssociationStartViewModelTest {
             FakeUserProfileRepository(),
             store,
             FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
     assertEquals(StartDestination.Loading, vm.destination.value)
@@ -367,6 +401,7 @@ class AssociationStartViewModelTest {
             profiles,
             store,
             FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
     assertEquals(StartDestination.VerifyEmail, vm.destination.value)
@@ -381,11 +416,23 @@ class AssociationStartViewModelTest {
     for (email in listOf("club@example.org", "club@epfl.ch")) {
       val auth = FakeAuthRepository(user.copy(email = email, isEmailVerified = false))
       val first =
-          AppStartViewModel(auth, FakeUserProfileRepository(), store, FakeAssociationRepository())
+          AppStartViewModel(
+              auth,
+              FakeUserProfileRepository(),
+              store,
+              FakeAssociationRepository(),
+              sessions = FakeSessionGuard(),
+          )
       advanceUntilIdle()
       assertEquals(AccountType.ASSOCIATION, first.accountType.value)
       val restarted =
-          AppStartViewModel(auth, FakeUserProfileRepository(), store, FakeAssociationRepository())
+          AppStartViewModel(
+              auth,
+              FakeUserProfileRepository(),
+              store,
+              FakeAssociationRepository(),
+              sessions = FakeSessionGuard(),
+          )
       advanceUntilIdle()
       assertEquals(StartDestination.VerifyEmail, restarted.destination.value)
       assertEquals(AccountType.ASSOCIATION, restarted.accountType.value)
@@ -403,6 +450,7 @@ class AssociationStartViewModelTest {
             profiles,
             store,
             FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
     assertEquals(StartDestination.Error, vm.destination.value)
@@ -424,6 +472,7 @@ class AssociationStartViewModelTest {
             profiles,
             store,
             FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
         )
     advanceUntilIdle()
     assertEquals(StartDestination.Loading, vm.destination.value)
