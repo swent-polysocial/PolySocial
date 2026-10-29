@@ -80,21 +80,24 @@ fun ProfilePrivacyEntry(onOpenPrivacy: () -> Unit, modifier: Modifier = Modifier
 
 /**
  * Navigation boundary for the privacy screen. The notice needs no backend or device access; Delete
- * account opens its sheet (#207), and [onAccountDeleted] leaves the app for Welcome once the
- * account is deleted and this device is cleared.
+ * account opens its sheet (#207). Once this device is cleared and signed out, [onSessionEnded]
+ * leaves the app for Welcome, told whether the server confirmed the deletion (false after a lost
+ * session).
  */
 @Composable
 fun PrivacyRoute(
     onBack: () -> Unit,
     onFullNotice: () -> Unit,
-    onAccountDeleted: () -> Unit,
+    onSessionEnded: (accountDeleted: Boolean) -> Unit,
     viewModel: PrivacyViewModel = hiltViewModel(),
     deleteViewModel: DeleteAccountViewModel = hiltViewModel(),
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   val deleteState by deleteViewModel.uiState.collectAsStateWithLifecycle()
-  val deleted by rememberUpdatedState(onAccountDeleted)
-  LaunchedEffect(deleteState.step) { if (deleteState.step == DeleteAccountStep.Done) deleted() }
+  val ended by rememberUpdatedState(onSessionEnded)
+  LaunchedEffect(deleteState.step) {
+    if (deleteState.step == DeleteAccountStep.Done) ended(deleteState.deleted)
+  }
   val context = LocalContext.current
   val subject = stringResource(R.string.privacy_contact_subject)
   val actions =
@@ -106,6 +109,7 @@ fun PrivacyRoute(
               deleteViewModel.cancel()
             },
             onPasswordChange = deleteViewModel::onPasswordChange,
+            onTogglePassword = deleteViewModel::togglePasswordVisibility,
             onSubmitPassword = deleteViewModel::submitPassword,
             onGoogle = { deleteViewModel.continueWithGoogle(context) },
             onRetry = deleteViewModel::retry,
