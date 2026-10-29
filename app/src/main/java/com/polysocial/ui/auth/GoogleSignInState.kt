@@ -1,4 +1,6 @@
 // Contributors: OpenAI Codex (shared Google attempt state and Welcome ViewModel for #107).
+// Contributors: Claude (Opus 5.5, Anthropic) added the "Account deleted" notice, #207; Mohamed
+// Khellaf (reviewed and revised).
 package com.polysocial.ui.auth
 
 import android.content.Context
@@ -46,6 +48,20 @@ internal suspend fun googleSignIn(auth: AuthRepository, context: Context): Googl
 class WelcomeViewModel @Inject constructor(private val auth: AuthRepository) : ViewModel() {
   private val state = MutableStateFlow(GoogleSignInState())
   val uiState = state.asStateFlow()
+
+  private val deleted = MutableStateFlow(false)
+
+  /** Whether Welcome should say "Account deleted" (Figma "Delete account · done", #207). */
+  val accountDeleted = deleted.asStateFlow()
+
+  /** The account was just deleted; Welcome shows it once. */
+  fun onAccountDeleted() {
+    deleted.value = true
+  }
+
+  fun onAccountDeletedShown() {
+    deleted.value = false
+  }
 
   fun onGoogle(context: Context) {
     if (state.value.busy) return

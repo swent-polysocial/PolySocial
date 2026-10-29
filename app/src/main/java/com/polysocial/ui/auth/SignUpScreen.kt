@@ -14,6 +14,8 @@
 // OpenAI Codex (verification routing, Back sign-out and replacement-session
 // entry and stable current-model callbacks for #31);
 // OpenAI Codex (password recovery destination and Back routing for #164).
+// Contributors: Claude (Opus 5.5, Anthropic) opened Welcome with "Account deleted" after a
+// deletion, #207; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.ui.auth
 
 import androidx.activity.compose.BackHandler
@@ -195,11 +197,21 @@ fun AuthFlow(
     pendingAssociationContent: @Composable (() -> Unit) -> Unit = { done ->
       PendingAssociationApp(onLoggedOut = done)
     },
-    signedInContent: @Composable (() -> Unit) -> Unit = { done -> AppShell(onLoggedOut = done) },
+    signedInContent: @Composable (() -> Unit) -> Unit = { done ->
+      AppShell(
+          onLoggedOut = done,
+          // After the reset, so the notice survives it (Figma "Delete account · done", #207).
+          onAccountDeleted = {
+            done()
+            welcomeViewModel.onAccountDeleted()
+          },
+      )
+    },
 ) {
   val profileCallbacks =
       ProfileSetupCallbacks(welcomeViewModel, loginViewModel, viewModel, startViewModel)
   val welcomeState by welcomeViewModel.uiState.collectAsStateWithLifecycle()
+  val accountDeleted by welcomeViewModel.accountDeleted.collectAsStateWithLifecycle()
   val context = LocalContext.current
   LaunchedEffect(welcomeState.result) {
     if (welcomeState.result is GoogleSignInResult.Success) startViewModel.refresh()
@@ -382,6 +394,8 @@ fun AuthFlow(
               busy = welcomeState.busy,
               onSignUp = { open(AuthDestination.SignUp) },
               onLogIn = { open(AuthDestination.LogIn) },
+              message = if (accountDeleted) stringResource(R.string.delete_account_done) else null,
+              onMessageShown = welcomeViewModel::onAccountDeletedShown,
           )
     }
     AuthDestination.SignUp ->
