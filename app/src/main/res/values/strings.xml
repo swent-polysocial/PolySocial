@@ -269,4 +269,5 @@
     <string name="association_account_title">Your association account</string>
     <string name="association_account_description">Use your association’s email, on any domain. We’ll send a verification link.</string>
     <string name="association_email">Association email</string>
+    <string name="association_signup_password_hint">At least 8 characters, including a number.</string>
 </resources>

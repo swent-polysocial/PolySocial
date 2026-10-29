@@ -1,7 +1,7 @@
 // Contributors: OpenAI Codex (preserve association entry and offline retry, #125).
 // Contributors: OpenAI Codex (association-specific invalid email feedback, #125).
 // Contributors: OpenAI Codex (association email validation feedback, #125).
-// Contributors: OpenAI Codex (shared association signup/setup routing, #125).
+// Contributors: OpenAI Codex (shared association signup/setup routing and form review fixes, #125).
 // Contributors: OpenAI Codex (fresh signed-out forms, shared reset action and Welcome after
 // logout, #109).
 // Contributors: OpenAI Codex (Google startup, shared profile callbacks and integration for #107).
@@ -79,6 +79,7 @@ import com.polysocial.ui.profile.ProfileSetupScreen
 import com.polysocial.ui.profile.ProfileSetupViewModel
 import com.polysocial.ui.start.AppStartViewModel
 import com.polysocial.ui.start.StartDestination
+import com.polysocial.ui.theme.Accent
 import com.polysocial.ui.theme.Bg
 import com.polysocial.ui.theme.Disabled
 import com.polysocial.ui.theme.Success
@@ -499,16 +500,16 @@ fun SignUpScreen(
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
   val notAvailable = stringResource(R.string.not_available_yet)
-  Box(Modifier.fillMaxSize()) {
+  BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
+    val viewportHeight = maxHeight
     val editingEnabled =
         state.status !is SignUpStatus.Loading && state.status !is SignUpStatus.SignedUp
     val backendError = (state.status as? SignUpStatus.Error)?.reason
     Column(
         Modifier.fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .safeDrawingPadding()
-            .imePadding()
             .verticalScroll(rememberScrollState())
+            .then(if (association) Modifier.heightIn(min = viewportHeight) else Modifier)
             .padding(horizontal = 20.dp)
             .semantics { testTag = SignUpTags.Screen }
     ) {
@@ -547,69 +548,7 @@ fun SignUpScreen(
           modifier = Modifier.widthIn(max = 300.dp),
       )
       Spacer(Modifier.height(18.dp))
-      Column(Modifier.alpha(if (state.status is SignUpStatus.Loading) 0.5f else 1f)) {
-        SignUpField.entries
-            .filter { !association || it != SignUpField.FullName }
-            .forEach { field ->
-              val fieldError = state.visibleError(field)
-              val isEmailFailure =
-                  field == SignUpField.Email &&
-                      backendError in listOf(SignUpResult.AlreadyInUse, SignUpResult.InvalidDomain)
-              FormField(
-                  field,
-                  state.form,
-                  fieldError != null || isEmailFailure,
-                  editingEnabled,
-                  { onChange(field, it) },
-                  { onBlur(field) },
-              )
-              if (fieldError != null) {
-                ErrorLabel(fieldError.text(), SignUpTags.error(field))
-              }
-              if (field == SignUpField.Email) {
-                when {
-                  isEmailFailure -> {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                      ErrorLabel(
-                          stringResource(backendError!!.message()),
-                          SignUpTags.BackendError,
-                          Modifier.weight(1f),
-                      )
-                      if (backendError == SignUpResult.AlreadyInUse) {
-                        Link(
-                            stringResource(R.string.signup_log_in_instead),
-                            SignUpTags.LogInInstead,
-                            onLogIn,
-                        )
-                      }
-                    }
-                  }
-                  !association &&
-                      state.form.email.isNotEmpty() &&
-                      state.form.error(SignUpField.Email) == null ->
-                      Rule(
-                          stringResource(R.string.signup_epfl_address),
-                          true,
-                          "sign_up_epfl_address",
-                      )
-                }
-              }
-              if (field == SignUpField.Password) {
-                Spacer(Modifier.height(8.dp))
-                Rule(
-                    stringResource(R.string.signup_minimum_length),
-                    state.form.hasMinimumLength,
-                    SignUpTags.LengthRule,
-                )
-                Rule(
-                    stringResource(R.string.signup_contains_number),
-                    state.form.hasNumber,
-                    SignUpTags.NumberRule,
-                )
-              }
-              Spacer(Modifier.height(14.dp))
-            }
-      }
+      SignUpFields(state, editingEnabled, onChange, onBlur, onLogIn)
       if (
           backendError != null &&
               backendError !in listOf(SignUpResult.AlreadyInUse, SignUpResult.InvalidDomain)
@@ -619,24 +558,10 @@ fun SignUpScreen(
       }
       Spacer(Modifier.height(10.dp))
       if (!association) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-          Box(Modifier.weight(1f).height(1.dp).background(MaterialTheme.colorScheme.outline))
-          Label(
-              stringResource(R.string.signup_or),
-              Modifier.padding(horizontal = 12.dp),
-              style = MaterialTheme.typography.bodySmall,
-              color = MaterialTheme.colorScheme.onSurfaceVariant,
-          )
-          Box(Modifier.weight(1f).height(1.dp).background(MaterialTheme.colorScheme.outline))
+        StudentGoogleOption(editingEnabled) {
+          scope.launch { snackbarHostState.showSnackbar(notAvailable) }
         }
-        Spacer(Modifier.height(16.dp))
-        GoogleSignInButton(
-            tag = SignUpTags.Google,
-            enabled = editingEnabled,
-            onClick = { scope.launch { snackbarHostState.showSnackbar(notAvailable) } },
-        )
-        Spacer(Modifier.height(16.dp))
-      }
+      } else Spacer(Modifier.weight(1f))
       val submitLabel =
           stringResource(
               if (state.status is SignUpStatus.Loading) R.string.signup_creating
@@ -680,23 +605,21 @@ fun SignUpScreen(
         Label(
             stringResource(R.string.signup_already_have_account),
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = if (association) Accent else MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Link(
             stringResource(R.string.signup_log_in),
             SignUpTags.LogIn,
             onLogIn,
             enabled = editingEnabled,
+            color = if (association) Accent else MaterialTheme.colorScheme.onErrorContainer,
         )
       }
       Spacer(Modifier.height(20.dp))
     }
     SnackbarHost(
         snackbarHostState,
-        Modifier.align(Alignment.BottomCenter)
-            .safeDrawingPadding()
-            .imePadding()
-            .padding(horizontal = 20.dp, vertical = 16.dp),
+        Modifier.align(Alignment.BottomCenter).padding(horizontal = 20.dp, vertical = 16.dp),
     ) {
       Snackbar(
           it,
@@ -706,6 +629,105 @@ fun SignUpScreen(
       )
     }
   }
+}
+
+@Composable
+private fun SignUpFields(
+    state: SignUpUiState,
+    editingEnabled: Boolean,
+    onChange: (SignUpField, String) -> Unit,
+    onBlur: (SignUpField) -> Unit,
+    onLogIn: () -> Unit,
+) {
+  val association = state.form.accountType == AccountType.ASSOCIATION
+  val backendError = (state.status as? SignUpStatus.Error)?.reason
+  Column(Modifier.alpha(if (state.status is SignUpStatus.Loading) 0.5f else 1f)) {
+    SignUpField.entries
+        .filter { !association || it != SignUpField.FullName }
+        .forEach { field ->
+          val fieldError = state.visibleError(field)
+          val isEmailFailure =
+              field == SignUpField.Email &&
+                  backendError in listOf(SignUpResult.AlreadyInUse, SignUpResult.InvalidDomain)
+          FormField(
+              field,
+              state.form,
+              fieldError != null || isEmailFailure,
+              editingEnabled,
+              { onChange(field, it) },
+              { onBlur(field) },
+          )
+          if (fieldError != null) {
+            ErrorLabel(fieldError.text(), SignUpTags.error(field))
+          }
+          if (field == SignUpField.Email) {
+            when {
+              isEmailFailure -> {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                  ErrorLabel(
+                      stringResource(backendError!!.message()),
+                      SignUpTags.BackendError,
+                      Modifier.weight(1f),
+                  )
+                  if (backendError == SignUpResult.AlreadyInUse) {
+                    Link(
+                        stringResource(R.string.signup_log_in_instead),
+                        SignUpTags.LogInInstead,
+                        onLogIn,
+                    )
+                  }
+                }
+              }
+              !association &&
+                  state.form.email.isNotEmpty() &&
+                  state.form.error(SignUpField.Email) == null ->
+                  Rule(
+                      stringResource(R.string.signup_epfl_address),
+                      true,
+                      "sign_up_epfl_address",
+                  )
+            }
+          }
+          if (field == SignUpField.Password) SignUpPasswordHint(state.form)
+          Spacer(Modifier.height(14.dp))
+        }
+  }
+}
+
+@Composable
+private fun SignUpPasswordHint(form: SignUpForm) {
+  Spacer(Modifier.height(8.dp))
+  if (form.accountType == AccountType.ASSOCIATION) {
+    Label(
+        stringResource(R.string.association_signup_password_hint),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+  } else {
+    Rule(
+        stringResource(R.string.signup_minimum_length),
+        form.hasMinimumLength,
+        SignUpTags.LengthRule,
+    )
+    Rule(stringResource(R.string.signup_contains_number), form.hasNumber, SignUpTags.NumberRule)
+  }
+}
+
+@Composable
+private fun StudentGoogleOption(enabled: Boolean, onClick: () -> Unit) {
+  Row(verticalAlignment = Alignment.CenterVertically) {
+    Box(Modifier.weight(1f).height(1.dp).background(MaterialTheme.colorScheme.outline))
+    Label(
+        stringResource(R.string.signup_or),
+        Modifier.padding(horizontal = 12.dp),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Box(Modifier.weight(1f).height(1.dp).background(MaterialTheme.colorScheme.outline))
+  }
+  Spacer(Modifier.height(16.dp))
+  GoogleSignInButton(tag = SignUpTags.Google, enabled = enabled, onClick = onClick)
+  Spacer(Modifier.height(16.dp))
 }
 
 @Composable
@@ -880,7 +902,13 @@ private fun ErrorLabel(text: String, tag: String, modifier: Modifier = Modifier)
 }
 
 @Composable
-private fun Link(text: String, tag: String, onClick: () -> Unit, enabled: Boolean = true) {
+private fun Link(
+    text: String,
+    tag: String,
+    onClick: () -> Unit,
+    enabled: Boolean = true,
+    color: Color = MaterialTheme.colorScheme.onErrorContainer,
+) {
   Label(
       text,
       Modifier.heightIn(min = 48.dp)
@@ -888,7 +916,7 @@ private fun Link(text: String, tag: String, onClick: () -> Unit, enabled: Boolea
           .semantics { testTag = tag }
           .padding(horizontal = 6.dp, vertical = 14.dp),
       style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-      color = MaterialTheme.colorScheme.onErrorContainer,
+      color = color,
       decoration = TextDecoration.Underline,
   )
 }

@@ -447,7 +447,9 @@ class AppStartViewModelTest {
     advanceUntilIdle()
     assertEquals(StartDestination.Login, viewModel.destination.value)
 
+    auth.user = verified.copy(isEmailVerified = false)
     viewModel.onVerificationNeeded()
+    advanceUntilIdle()
     assertEquals(StartDestination.VerifyEmail, viewModel.destination.value)
 
     // The move back to Login is what lets the signed-out start reset the forms.

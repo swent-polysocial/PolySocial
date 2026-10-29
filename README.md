@@ -188,19 +188,6 @@ firebase deploy --only functions --project <project-id>
 Keep `--only functions`: a plain `firebase deploy` would also deploy the Security Rules and indexes. The app calls the function in `europe-west6`; if the region changes, change it in both `firebase/functions/deleteAccountHandler.js` (`REGION`) and the app.
 
 **Not in CI yet:** CI runs neither the function's unit tests nor the Functions emulator, and doesn't deploy. Adding them needs a workflow change, which needs team approval, so run both commands above locally and paste their output in any PR that changes `firebase/functions`.
-## Association onboarding integration
-
-Association signup reuses email/password and Verify Email, then shows setup with
-initials. It saves the private association account before #126's identity.
-A private local email digest remembers unfinished setup on this device; no raw
-email/password is stored by that hint and it grants no server permissions.
-
-The pending renderer/editing belongs to #127, existing-association login to #208,
-and the owner-constrained Map query to #133. The startup handoff uses
-`PendingAssociation` for #127 and a distinct verified `AssociationMain` for #140.
-Those integrations remain draft gates; associations must never enter student
-features while another screen is unfinished. No new backend/configuration is added.
-
 ## Project links
 
 - **Figma mockups:** [First proposal revamped](https://www.figma.com/design/7Gt7tmy1ikpNyNBh1P6QdY/App-Mockup?node-id=123-467) (the team-agreed design)

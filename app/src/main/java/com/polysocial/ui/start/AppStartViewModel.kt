@@ -130,8 +130,7 @@ constructor(
    * resets the forms. Ignored unless the user was signed out at the start.
    */
   fun onVerificationNeeded() {
-    if (_destination.value == StartDestination.Login)
-        _destination.value = StartDestination.VerifyEmail
+    if (_destination.value == StartDestination.Login) resolve()
   }
 
   /**

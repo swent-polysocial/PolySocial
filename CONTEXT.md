@@ -14,9 +14,8 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 
 - **Association setup saving (#125):** the plain form enforces #126's name/about/type/HTTPS limits. Its UID-scoped ViewModel saves the private association account before the public identity, rejects existing student accounts, and recovers duplicate creates after a lost response. Input survives retries and saved-state restoration for the same UID. The app never writes the verification flag. The presentation and startup handoff follow separately; pending editing stays with #127.
 
-
 - **Association signup foundation (#125):** signup takes the existing account type, defaulting to student. Associations accept a valid email on any domain and omit the personal name. The controller records a private local email digest before remote signup; checked disk commits run off-main and block signup on failure. This same-device routing hint stores no raw email/password and grants no permissions. Setup/navigation follow separately; #127 owns pending UI and #208 owns login.
-- **Association onboarding (#125):** Welcome reuses signup/verification, then the UID-scoped setup form writes its private association account before #126's identity. Missing setup resumes after verification; the local digest preserves association intent across same-device restarts, including EPFL associations. Server profile type supersedes the hint. Change address prefers the current completed signup type over a retained startup hint, so a later student signup cannot inherit association mode. Startup exposes `AssociationSetup`, verified `AssociationMain`, and #127-compatible `PendingAssociation`; #127 must supply its pending renderer and #208 its login flow. No pending editing or verification UI is implemented here. The setup screen uses initials and the amber review notice; failed writes preserve the form. Another device before a private profile exists remains an integration limitation; never infer account type from email domain.
+- **Association onboarding (#125):** Welcome reuses signup/verification, then the UID-scoped setup form writes its private association account before #126's identity. Missing setup resumes after verification; the local digest preserves association intent across same-device restarts, including EPFL associations. Server profile type supersedes the hint. Change address prefers the current completed signup type over a retained startup hint, so a later student signup cannot inherit association mode. Startup exposes `AssociationSetup`, verified `AssociationMain`, and #127-compatible `PendingAssociation`; #127 must supply its pending renderer and #208 its login flow. No pending editing or verification UI is implemented here. The setup screen uses initials and the amber review notice; failed writes preserve the form. Before a private profile exists, cross-device recovery works for non-EPFL accounts; an EPFL association still needs its same-device marker. Existing private profiles remain authoritative.
 
 - **Password recovery (#164):** the owner keeps email enumeration protection enabled. Request resets directly through `AuthRepository`; never fetch providers by email. All accepted requests show conditional inbox guidance, including unknown and Google-only addresses. The request preserves the auth session and login form. Firebase handles password choice on its hosted action page.
 - **Privacy notice (#103):** Profile exposes a read-only Privacy & data entry alongside confirmed logout (#109). The app shell supplies its destination to `ProfileRoute`; a standalone profile without that destination hides the entry. The summary and dated full notice are bundled and need no data query, so they remain usable offline. Export, in-app deletion and attendance-based matching show an unavailable Snackbar; the switch remains Off and writes no consent. Collection/access text describes this build; #121 and #123 must update it when attendance or reminders are enabled. Mehdi authorized explicit prototype draft wording while contact/provider details are pending. `privacy_contact_email` stays empty until supplied; Hilt provides the configured address and contact service to each notice entry's ViewModel, which opens a user-controlled email draft when configured, and otherwise explains the missing address/client. No account data is added. Feedback effects must key both text and owner callback: replacing a ViewModel with the same message otherwise dismisses the previous owner.
@@ -218,6 +217,7 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 - 2026-10-29 · Registrations live in `events/{eventId}/attendees/{uid}` (`uid`, `registeredAt`) and a student reads their own with a collection-group query on `uid`, and can't register once the event has ended; the capacity check waits for a team decision on widening the event rule. ([#121](https://github.com/swent-polysocial/PolySocial/issues/121))
 - 2026-10-29 · Until #259/#261 land, association setup uses the pending app and verified entry uses the existing app; an offline identity read keeps the pending retry path. ([#258 review](https://github.com/swent-polysocial/PolySocial/pull/258))
+
 - 2026-10-29 · Address correction uses the current completed signup type before a restored hint, keeping a later student signup separate from an earlier association attempt. ([#125](https://github.com/swent-polysocial/PolySocial/issues/125))
 
 - 2026-10-29 · Split #125 into signup persistence, setup saving, setup UI, and auth routing, each with its own tests/coverage gate. ([#125](https://github.com/swent-polysocial/PolySocial/issues/125))
@@ -233,6 +233,7 @@ Newest first, one line each, with a link. Remove a line once its content lives i
 - 2026-10-28 · An association an admin hasn't verified yet opens its own pending app (Events with the review steps, Map closed until verified, Organization with its details and Log out); a verified one keeps the students' app until #140, which plugs its tabs into the shared `AssociationShell`. ([#127](https://github.com/swent-polysocial/PolySocial/issues/127))
 - 2026-10-28 · Students (unverified ones too) delete their account through a `deleteAccount` Cloud Function that removes `users/{uid}` then the Auth user, retry-safe; their events are kept, associations stay admin-assisted, a `SessionGuard` clears the cache on any UID change (#198), and unverified accounts are deleted after 7 days (#149). ([#201](https://github.com/swent-polysocial/PolySocial/issues/201))
 - 2026-10-29 · Split #125 into signup persistence, setup saving, setup UI, and auth routing, each with its own tests/coverage gate. ([#125](https://github.com/swent-polysocial/PolySocial/issues/125))
+- 2026-10-29 · [#125 review](https://github.com/swent-polysocial/PolySocial/pull/259): document built signup/setup and the pending-renderer gate; recover missing non-EPFL setup without a local marker, keep the name in the identity only, and share form validation with editing.
 
 - 2026-10-28 · [#168 review](https://github.com/swent-polysocial/PolySocial/pull/168): Google progress stays beside the Google action while password actions are locked; clarify the Activity lifetime and the unverified device rotation case.
 
@@ -241,22 +242,38 @@ Newest first, one line each, with a link. Remove a line once its content lives i
 - 2026-10-27 · The Create Event and Edit event form shows a verified association its initials, "Organized by <name>" and the Verified badge; everyone else, and any read failure, gets "Organized by you", and the row stays empty while loading. ([#134](https://github.com/swent-polysocial/PolySocial/issues/134))
 
 - 2026-10-27 · An association's events show its name and a Verified pill on the Events cards, the map preview and the detail (Figma frames added for #128); names are read once per association app-wide, and a name that can't be read leaves the badge alone. ([#128](https://github.com/swent-polysocial/PolySocial/issues/128))
+
 - 2026-10-27 · Association profiles live in `associations/{uid}` (name, type, about, optional `https://` website, server `createdAt`): the owner reads and writes it even while pending, students read only verified ones (a pending one reads as missing), other associations none; name and type are fixed once verified. ([#126](https://github.com/swent-polysocial/PolySocial/issues/126))
+
 - 2026-10-20 · Organizers edit and cancel an event from its detail; cancelling asks to confirm, deletes the event and returns to the previous screen with "Event cancelled", and a failed delete keeps the confirmation with Try again. ([#131](https://github.com/swent-polysocial/PolySocial/issues/131))
+
 - 2026-10-19 · Edit event is the Create Event form in edit mode, one level above the event detail; it accepts an unchanged past start and never reports a refused save as saved. ([#131](https://github.com/swent-polysocial/PolySocial/issues/131))
+
 - 2026-10-19 · The event detail stops loading 10 s after a read starts without a server answer and shows the offline "not saved" state with Retry (a new read); a late answer still shows the event. ([#194](https://github.com/swent-polysocial/PolySocial/issues/194))
+
 - 2026-10-19 · A verified association's Events tab lists its own events (`getOwnAssociationEvents`, owner-constrained query with its own index) split into Upcoming and Past, an event being past once it has ended. ([#132](https://github.com/swent-polysocial/PolySocial/issues/132))
+
 - 2026-10-19 · A started event stays editable if its start is unchanged; updates use `update` to keep unknown fields; a deleted event's registrations are removed with it by #121, and #123's reminder worker skips deleted events. ([#130](https://github.com/swent-polysocial/PolySocial/issues/130))
+
 - 2026-10-18 · Organizers edit and delete events through `updateEvent`/`deleteEvent`, in one read-check-write transaction that keeps the stored organizers, readers, creator and badge; a denied read is `NotFound`, a denied write `NotOrganizer`. ([#130](https://github.com/swent-polysocial/PolySocial/issues/130))
+
 - 2026-10-16 · "View event" after creating opens the event detail in the tab Create Event came from, no longer the placeholder. ([#211](https://github.com/swent-polysocial/PolySocial/issues/211))
+
 - 2026-10-16 · The offline Profile privacy notice shares the Profile screen with confirmed logout, with Hilt-provided email configuration and Android draft access; contact/provider details remain explicit prototype drafts, unbuilt actions stay unavailable and feedback is scoped to each notice entry. ([#173](https://github.com/swent-polysocial/PolySocial/pull/173))
+
 - 2026-10-15 · `main` publishes the debug APK (`polysocial-apk`, 7 days) from the final CI job only after every job succeeds; a missing file fails CI. ([#176](https://github.com/swent-polysocial/PolySocial/pull/176), [team approval](https://github.com/swent-polysocial/PolySocial/issues/137#issuecomment-6155218847))
+
 - 2026-10-15 · The M1 end-to-end test runs the real `MainActivity` with Hilt-bound fakes; instrumented tests run in `HiltTestApplication`, and the fakes move to `app/src/sharedTest` so both test kinds share them. ([#136](https://github.com/swent-polysocial/PolySocial/issues/136))
+
 - 2026-10-15 · Logout clears active and saved tab stacks and resets all retained auth screen state, including verification; cache cleanup remains in #156 with blocking Retry. ([#177](https://github.com/swent-polysocial/PolySocial/pull/177))
+
 - 2026-10-15 · Sign-in is email/password and Google only: Microsoft would need EPFL's admin to whitelist the app, and Google, through EPFL's SSO, proves the address just as well. ([#197 review](https://github.com/swent-polysocial/PolySocial/pull/197#pullrequestreview-5539093813))
+
 - 2026-10-15 · Event writes keep every organizer in `allowedUids`, on create and update, so a co-organizer can always read the private event they manage. ([#102](https://github.com/swent-polysocial/PolySocial/pull/102))
+
 - 2026-10-15 · CI installs the APKs and waits for the emulator's broadcasts before the device tests, and retries the system image download, after both made runs fail at random. ([#192](https://github.com/swent-polysocial/PolySocial/issues/192))
 - 2026-10-15 · The full name is limited to 50 characters: one constant shared by sign-up and the profile step, and the `users/{uid}` rule on `displayName`. ([#191](https://github.com/swent-polysocial/PolySocial/pull/191))
+
 - 2026-10-14 · [#106](https://github.com/swent-polysocial/PolySocial/issues/106): owner confirmed automatic Firebase linking for EPFL Google accounts through EPFL SSO; remove the original-method collision flow and retain generic failure recovery.
 
 - 2026-10-14 · [#107](https://github.com/swent-polysocial/PolySocial/issues/107): remove the original-method error screen and Figma mockup following owner-confirmed Firebase linking; retain non-EPFL guidance and generic Retry.
@@ -266,11 +283,15 @@ Newest first, one line each, with a link. Remove a line once its content lives i
 - 2026-10-14 · Confirm clear-before-sign-out; bound and serialize cleanup despite caller cancellation, and deny database access until success. ([#177 review](https://github.com/swent-polysocial/PolySocial/pull/177#issuecomment-6168926664))
 
 - 2026-10-14 · Events tab search and filters apply right away on the loaded events and survive rotation; the distance filter reads the location once, only after a distance is picked, and is disabled without it. ([#178](https://github.com/swent-polysocial/PolySocial/pull/178), [#179](https://github.com/swent-polysocial/PolySocial/pull/179))
+
 - 2026-10-14 · `AGENTS.md` and `CONTEXT.md` keep a fixed AI header that nobody edits, so it stops causing rebase conflicts; each PR says what AI contributed. ([#187](https://github.com/swent-polysocial/PolySocial/pull/187))
+
 - 2026-10-14 · Split #31 into verification foundation (repository, cooldown and ViewModel) and screen/navigation in #99; merge the foundation first. ([#99](https://github.com/swent-polysocial/PolySocial/pull/99))
 
 - 2026-10-14 · Auth navigation wired (#74): profile step in the flow, Back on it signs out, signed-out back stack, one `logOut()` path, Figma app-start loading and error states (frames added to section 01), shared `ErrorState`. ([#144](https://github.com/swent-polysocial/PolySocial/pull/144))
+
 - 2026-10-14 · [#111](https://github.com/swent-polysocial/PolySocial/issues/111) map screen: the picker opens inside Create Event (no route, no `onPickLocation`), never sends the student's position on its own, and two Figma frames were added for unnamed pins.
+
 - 2026-10-13 · [#106](https://github.com/swent-polysocial/PolySocial/issues/106): Google credentials stay in the repository; reject invalid domains before Firebase and use its returned verified identity.
 
 - 2026-10-13 · [#107](https://github.com/swent-polysocial/PolySocial/issues/107): share Google error UI across entry screens and wire the existing profile form.
@@ -280,44 +301,73 @@ Newest first, one line each, with a link. Remove a line once its content lives i
 - 2026-10-13 · [#164](https://github.com/swent-polysocial/PolySocial/issues/164): owner re-enabled enumeration protection and authorized completing account-neutral recovery; conditional Figma confirmation replaces provider lookup, superseding the cancelled prototype.
 
 - 2026-10-13 · App bar actions: one `TabAction` per tab (none on Map), shown only at the tab root, opening a placeholder route inside the tab. ([#166](https://github.com/swent-polysocial/PolySocial/pull/166))
+
 - 2026-10-13 · Event filters: separate selections on Events and Map, quick chips plus a Filters sheet, one day within the next 14 days, distances up to 2 km. ([#113](https://github.com/swent-polysocial/PolySocial/issues/113))
+
 - 2026-10-13 · Event creation: a verified association must set the badge, so it can always read what it creates, and a present `locationName` is a string of at most 100 characters. ([#102](https://github.com/swent-polysocial/PolySocial/pull/102))
+
 - 2026-10-13 · Events are filtered on the device over the loaded events (title search ignoring case and accents, categories OR, criteria AND, end-exclusive dates); a distance without a user location is ignored. ([#169](https://github.com/swent-polysocial/PolySocial/pull/169))
+
 - 2026-10-13 · Create Event opens full screen inside the Events or Map tab's graph; "View event" uses the placeholder detail until #112; the map's "+" hides while an event card is open. ([#174](https://github.com/swent-polysocial/PolySocial/pull/174))
+
 - 2026-10-13 · Sprint 2 architecture records the shared detail, explicit place search, filtering, attendance and opt-in reminders; capacity enforcement and account isolation remain open design checks. ([#139](https://github.com/swent-polysocial/PolySocial/issues/139))
 
 - 2026-10-13 · Location reads use the declared coarse permission and network provider; cancelled platform operations show Unavailable unless the caller itself is cancelled. ([#96](https://github.com/swent-polysocial/PolySocial/pull/96))
+
 - 2026-10-13 · Record Mapbox provider/token policy with #50's code; the UI renderer may import the SDK, optional telemetry/geofencing starts disabled, and Mapbox usage alerts are separate from the Firebase budget. ([#94](https://github.com/swent-polysocial/PolySocial/pull/94))
 
 - 2026-10-13 · Map previews use Zurich-local Today before 18:00 and Tonight from 18:00; renderer and event-query retries remain independent, with one shared annotation manager. The approved provider/token policy is documented with its implementation. ([#94](https://github.com/swent-polysocial/PolySocial/pull/94))
 
 - 2026-10-13 · Creating `users/{uid}` accepts `accountType` only as `student` or `association` (or absent), so a typo can't pass as a student. ([#162](https://github.com/swent-polysocial/PolySocial/pull/162))
+
 - 2026-10-12 · CI starts the Firebase emulators and runs the rules tests and `@EmulatorTest` tests, in one `connectedCheck -Pemulator=all` so coverage keeps them all. ([#159](https://github.com/swent-polysocial/PolySocial/issues/159))
+
 - 2026-10-12 · A student is an `@epfl.ch` account whose profile isn't an association: an `@epfl.ch` association gets only association access. Clients can't delete an association's profile, so it can't become a student again. ([#161](https://github.com/swent-polysocial/PolySocial/issues/161))
+
 - 2026-10-12 · Events tab after review: sections hold a plain `LocalDate` and the screen names Today / Tomorrow; the offline banner needs `fromCache` and no network. ([#145](https://github.com/swent-polysocial/PolySocial/pull/145))
+
 - 2026-10-12 · [#112](https://github.com/swent-polysocial/PolySocial/issues/112): the event detail is a route in every tab's graph, edge to edge without the app bar and bottom bar; it follows reduced Sprint 2 Figma frames and leaves unbuilt actions out. The Events list opens it; the map (#94) and "View event" (#110) still need to.
+
 - 2026-10-11 · [#112](https://github.com/swent-polysocial/PolySocial/issues/112): events store the picked place's name (`locationName`, at most 100 characters) for the detail screen.
+
 - 2026-10-11 · [#99](https://github.com/swent-polysocial/PolySocial/pull/99): keep resend deadlines across sign-out so re-login cannot bypass cooldowns; account correction/deletion and retention await the team decision in [#149](https://github.com/swent-polysocial/PolySocial/issues/149).
+
 - 2026-10-11 · Events tab: day headings Today / Tomorrow / date instead of Figma's relative labels, shared `EventCategoryStyle`, and injectable tab content so tests run without Hilt. ([#145](https://github.com/swent-polysocial/PolySocial/pull/145))
+
 - 2026-10-11 · Anything that can fail is handled gracefully: typed results, an error state with a way out, a test per failure path; added to `AGENTS.md`. ([#153](https://github.com/swent-polysocial/PolySocial/pull/153))
+
 - 2026-10-11 · Repository tests against the Firebase emulators are `@EmulatorTest` instrumented tests, run only with `-Pemulator` inside `firebase emulators:exec`; CI skips them until it starts the emulators. ([#117](https://github.com/swent-polysocial/PolySocial/issues/117))
+
 - 2026-10-11 · [#111](https://github.com/swent-polysocial/PolySocial/issues/111): Nominatim geocodes for the Mapbox picker; pin moves by drag or tap, its address comes from reverse geocoding once the map settles; data layer before the UI.
+
 - 2026-10-11 · [#112](https://github.com/swent-polysocial/PolySocial/issues/112): `getEvent(id)` is live; a denied read is "not found"; the detail follows a reduced Sprint 2 Figma frame (no unbuilt actions, badge without the association name until #128).
+
 - 2026-10-10 · Sprint 2 planning: the Sprint 2 tasks cover every Sprint 2 feature and match the Figma; the association stories and their tasks (#124–#135, #140) move to Sprint 3 so Sprint 2 delivers one robust student flow for M1. Co-organizers wait for Public profiles, "Cancel event" deletes, reminders are a 1 h opt-in, associations get their own tabs with initials instead of a logo, and unbuilt actions show a Snackbar. (Scrum Board)
+
 - 2026-10-09 · [#99](https://github.com/swent-polysocial/PolySocial/pull/99): Verify Email Back signs out and resets forms; success uses the shared startup profile check.
+
 - 2026-10-09 · Record #47 owner's confirmation that association writes build on the existing own-events read policy; broader association public-event access still needs a team decision. ([#93](https://github.com/swent-polysocial/PolySocial/pull/93#issuecomment-6069094805))
+
 - 2026-10-09 · [#87](https://github.com/swent-polysocial/PolySocial/pull/87): preserve sign-up/login completion effects by blocking Back during submission and handoff; failures restore navigation.
+
 - 2026-10-08 · The association badge comes from the creator's profile. If the profile can't be read, creating the event fails instead of dropping the badge. One shared `FirebaseFirestore` from `FirebaseModule`. (#45)
+
 - 2026-10-08 · Map permission is requested once and only asks for coarse access; a cancellable foreground fix supplies straight-line distance. Permanent denial opens app settings; pausing clears coordinates into a quiet idle state and reentry needs explicit refresh. Only the prompt flag is persisted. ([#51](https://github.com/swent-polysocial/PolySocial/issues/51))
+
 - 2026-10-08 · Event writes: verified students and verified associations create, organizers manage, `createdBy` and the association badge are fixed, and the rules check the same title, description and category limits as the app. (#47)
+
 - 2026-10-08 · [#87](https://github.com/swent-polysocial/PolySocial/pull/87): wire the merged startup router into auth entry and verified login; preserve Welcome for signed-out users, handle profile loading/error/Retry, and keep #31/#34 destination markers until their screens land.
 
 - 2026-10-08 · Public upcoming events are a live `Flow` (snapshot listener, cache while offline), 14-day default window from now, composite index versioned. The map adapts it. (#49)
+
 - 2026-10-08 · Clarify owner-constrained association event queries and record the #47/#52 review coordination question; event access rules are unchanged. ([#93](https://github.com/swent-polysocial/PolySocial/pull/93))
+
 - 2026-10-08 · [#97](https://github.com/swent-polysocial/PolySocial/pull/97): retain official Google artwork on both Welcome and Log in to comply with Google branding; use the shared light pill rather than the custom text G.
+
 - 2026-10-08 · [#97](https://github.com/swent-polysocial/PolySocial/pull/97): #30 is split into the auth foundation/standalone entry components, followed by the sign-up form and navigation in [#87](https://github.com/swent-polysocial/PolySocial/pull/87); merge the foundation first.
 
 - 2026-10-08 · [#30](https://github.com/swent-polysocial/PolySocial/issues/30): welcome replaces sign-up as the entry screen; Google and association actions stay placeholders, with account-status routing deferred to #74.
+
 - 2026-10-08 · [#30](https://github.com/swent-polysocial/PolySocial/issues/30): sign-up links open the merged login screen; login callbacks select the existing app shell or verification marker. Full app-start/profile routing remains #74.
 
 - 2026-10-07 · Profile step: no photo or username yet (removed from Figma until Public profiles), section and year from fixed lists (`SECTIONS`, `YEARS` in `model/user`), saving and couldn't-save states added to Figma. (#34)

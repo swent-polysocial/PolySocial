@@ -192,6 +192,26 @@ class AssociationAuthFlowTest {
   }
 
   @Test
+  fun unverifiedAssociationLoginChangingAddressKeepsAssociationForm() {
+    val returning = user.copy(email = "club@epfl.ch")
+    signupStore.emails += returning.email
+    auth.logInResult = com.polysocial.model.auth.LogInResult.Success(returning)
+    launch()
+    compose.onNodeWithTag(WelcomeTags.LogIn).performScrollTo().performClick()
+    compose.onNodeWithTag(LoginScreenTestTags.EMAIL).performTextInput(returning.email)
+    compose.onNodeWithTag(LoginScreenTestTags.PASSWORD).performTextInput("password1")
+    compose.onNodeWithTag(LoginScreenTestTags.LOG_IN).performScrollTo().performClick()
+    compose.onNodeWithTag(LoginScreenTestTags.UNVERIFIED_BANNER).assertIsDisplayed()
+    compose.mainClock.advanceTimeBy(com.polysocial.ui.login.UNVERIFIED_REDIRECT_DELAY_MS)
+    compose.onNodeWithTag(VerifyEmailTags.Screen).assertIsDisplayed()
+    compose.onNodeWithTag(VerifyEmailTags.ChangeAddress).performClick()
+    compose.onNodeWithTag(SignUpTags.Screen).assertIsDisplayed()
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.FullName)).assertDoesNotExist()
+    assertEquals(AccountType.ASSOCIATION, signup.uiState.value.form.accountType)
+    assertNull(auth.user)
+  }
+
+  @Test
   fun restartedUnverifiedEpflAssociationChangingAddressKeepsAssociationForm() {
     auth.user = user.copy(email = "club@epfl.ch")
     signupStore.emails += "club@epfl.ch"
