@@ -69,6 +69,7 @@ import com.polysocial.R
 import com.polysocial.model.auth.*
 import com.polysocial.model.user.MAX_DISPLAY_NAME_LENGTH
 import com.polysocial.ui.association.PendingAssociationApp
+import com.polysocial.ui.common.ErrorAction
 import com.polysocial.ui.common.ErrorState
 import com.polysocial.ui.common.LoadingState
 import com.polysocial.ui.login.LoginScreen
@@ -370,8 +371,8 @@ fun AuthFlow(
             message = stringResource(R.string.app_start_error_message),
             onRetry = startViewModel::refresh,
             modifier = Modifier.background(Bg),
-            secondaryLabel = stringResource(R.string.app_start_log_out),
-            onSecondary = startViewModel::logOut,
+            secondaryAction =
+                ErrorAction(stringResource(R.string.app_start_log_out), startViewModel::logOut),
         )
     AuthDestination.ProfileSetup ->
         profileContent(
