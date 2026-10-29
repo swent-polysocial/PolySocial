@@ -4,6 +4,8 @@
 // registration repository for the manage event's count, #131).
 // Contributors: Claude (Opus 5.5, Anthropic) bound a fake session guard and its parts,
 // #198; Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) bound a fake account deletion, which Privacy's
+// ViewModel now needs, #207; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.ui.profile
 
 import androidx.compose.ui.test.*
@@ -11,6 +13,9 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.MainActivity
 import com.polysocial.auth.MemoryVerificationStore
+import com.polysocial.model.account.AccountDeletionModule
+import com.polysocial.model.account.AccountDeletionRepository
+import com.polysocial.model.account.FakeAccountDeletionRepository
 import com.polysocial.model.association.AssociationModule
 import com.polysocial.model.association.AssociationRepository
 import com.polysocial.model.association.FakeAssociationRepository
@@ -35,6 +40,7 @@ import org.robolectric.annotation.Config
 /** Exercises default routes and injected ViewModels, rather than replacing app screens. */
 @HiltAndroidTest
 @UninstallModules(
+    AccountDeletionModule::class,
     AssociationModule::class,
     AuthModule::class,
     EventModule::class,
@@ -63,6 +69,7 @@ class LogoutInjectionTest {
   @BindValue @JvmField val events: EventRepository = FakeEventRepository()
   @BindValue @JvmField val registrations: RegistrationRepository = FakeRegistrationRepository()
   @BindValue @JvmField val associations: AssociationRepository = FakeAssociationRepository()
+  @BindValue @JvmField val deletion: AccountDeletionRepository = FakeAccountDeletionRepository()
   @BindValue
   @JvmField
   val profiles: UserProfileRepository =
