@@ -1,5 +1,6 @@
 // Contributors: Claude (wrote these tests for the shared loading and error states, #74; scrolling
-// and heading after review; the spinner's Figma drawing); Claude (optional Log out link, #208).
+// and heading after review; the spinner's Figma drawing); Claude (optional Log out link and its
+// touch area, #208).
 package com.polysocial.ui.common
 
 import android.app.Application
@@ -11,6 +12,10 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertTextEquals
@@ -161,17 +166,20 @@ class StateScreensTest {
             title = "Couldn't load your profile",
             message = "Check your connection and try again.",
             onRetry = { retries++ },
-            secondaryLabel = "Log out",
-            onSecondary = { secondary++ },
+            secondaryAction = ErrorAction("Log out") { secondary++ },
         )
       }
     }
 
     val link = composeTestRule.onNodeWithTag(C.Tag.error_secondary)
-    link.assertIsDisplayed().assertTextEquals("Log out")
-    // Figma "App start · couldn't load profile" (490:26): the stack's 10 dp spacing under Retry.
+    link.assertIsDisplayed().assertTextEquals("Log out").assert(hasRole(Role.Button))
+    // Figma "App start · couldn't load profile" (490:26): the text sits the stack's 10 dp under
+    // Retry. Its 48 dp touch area reaches 15 dp above and below the text, over that space, so
+    // the touch area's top is 15 dp above the text's.
     val retry = composeTestRule.onNodeWithTag(C.Tag.error_retry).getUnclippedBoundsInRoot()
-    assertEquals(10f, (link.getUnclippedBoundsInRoot().top - retry.bottom).value, 0.01f)
+    val touch = link.getUnclippedBoundsInRoot()
+    assertEquals(10f, (touch.top + 15.dp - retry.bottom).value, 0.01f)
+    assertTrue(touch.bottom - touch.top >= 48.dp)
     link.performClick()
     assertEquals(1, secondary)
     assertEquals(0, retries)
@@ -179,4 +187,6 @@ class StateScreensTest {
 
   private fun string(id: Int) =
       ApplicationProvider.getApplicationContext<Application>().getString(id)
+
+  private fun hasRole(role: Role) = SemanticsMatcher.expectValue(SemanticsProperties.Role, role)
 }
