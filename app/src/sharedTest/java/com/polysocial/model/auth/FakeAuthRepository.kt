@@ -4,6 +4,7 @@
 // added the logIn gate); OpenAI Codex (GPT-6.1 Sol, medium; extended the existing fake to
 // the sign-up contract with submission controls and added verification controls for #31);
 // OpenAI Codex (account-neutral recovery fake for #164).
+// Contributors: Claude (Fable 5.1, Anthropic) drafted the re-authentication controls for #206; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.model.auth
 
 import android.content.Context
@@ -131,4 +132,39 @@ class FakeAuthRepository(var user: AuthUser? = null) : AuthRepository {
   }
 
   override fun currentUser(): AuthUser? = user
+
+  /** Methods reported for the signed-in user; empty while signed out, like Firebase. */
+  var signInMethods: Set<SignInMethod> = setOf(SignInMethod.PASSWORD)
+
+  override fun currentSignInMethods(): Set<SignInMethod> =
+      if (user == null) emptySet() else signInMethods
+
+  /** Result of both re-authentication methods. */
+  var reauthResult: ReauthResult = ReauthResult.Success
+
+  /** Suspends re-authentication until the test releases it, to observe the progress state. */
+  var reauthGate: CompletableDeferred<Unit>? = null
+
+  var reauthCalls = 0
+    private set
+
+  var googleReauthCalls = 0
+    private set
+
+  /** The password of the last [reauthenticateWithPassword] call. */
+  var lastReauthPassword: String? = null
+    private set
+
+  override suspend fun reauthenticateWithPassword(password: String): ReauthResult {
+    reauthCalls++
+    lastReauthPassword = password
+    reauthGate?.await()
+    return reauthResult
+  }
+
+  override suspend fun reauthenticateWithGoogle(context: Context): ReauthResult {
+    googleReauthCalls++
+    reauthGate?.await()
+    return reauthResult
+  }
 }

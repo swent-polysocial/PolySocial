@@ -1,3 +1,5 @@
+// Contributors: Claude (Fable 5.1, Anthropic) drafted the re-authentication stubs for #206; Mohamed
+// Khellaf (reviewed and revised).
 // Contributors: OpenAI Codex (inject Google entry state after #107 rebase).
 // Contributors: OpenAI Codex (association signup contract, #125).
 // Contributors: OpenAI Codex (device logout proof with fakes and verification wiring, #109).
@@ -66,6 +68,14 @@ class LogoutDeviceTest {
             password: String,
             accountType: AccountType,
         ): SignUpResult = error("Unexpected signup in this test")
+
+        override fun currentSignInMethods(): Set<SignInMethod> = emptySet()
+
+        override suspend fun reauthenticateWithPassword(password: String): ReauthResult =
+            error("Unexpected re-authentication in this test")
+
+        override suspend fun reauthenticateWithGoogle(context: Context): ReauthResult =
+            error("Unexpected re-authentication in this test")
       }
   private val profiles =
       object : UserProfileRepository {

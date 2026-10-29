@@ -5,6 +5,10 @@
 // (GPT-6.1 Sol, medium; sign-up and display-name integration; verification delivery and
 // token refresh for #31);
 // OpenAI Codex (enumeration-protected password recovery and failure handling for #164).
+// Contributors: Claude (Fable 5.1, Anthropic) drafted password and Google re-authentication for
+// #206; Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) removed the unreachable user-mismatch branch and
+// reported too many re-authentication attempts, #206; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.model.auth
 
 import android.content.Context
@@ -12,6 +16,8 @@ import androidx.credentials.exceptions.GetCredentialCancellationException
 import com.google.firebase.FirebaseException
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.FirebaseTooManyRequestsException
+import com.google.firebase.auth.AuthCredential
+import com.google.firebase.auth.EmailAuthProvider
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseAuthInvalidCredentialsException
 import com.google.firebase.auth.FirebaseAuthInvalidUserException
@@ -175,6 +181,67 @@ private constructor(
       VerificationResult.UnexpectedError
     }
   }
+
+  override fun currentSignInMethods(): Set<SignInMethod> =
+      auth.currentUser
+          ?.providerData
+          .orEmpty()
+          .mapNotNull { info ->
+            when (info.providerId) {
+              EmailAuthProvider.PROVIDER_ID -> SignInMethod.PASSWORD
+              GoogleAuthProvider.PROVIDER_ID -> SignInMethod.GOOGLE
+              else -> null
+            }
+          }
+          .toSet()
+
+  override suspend fun reauthenticateWithPassword(password: String): ReauthResult {
+    val user = auth.currentUser ?: return ReauthResult.NotSignedIn
+    val email = user.email
+    if (email.isNullOrBlank()) return ReauthResult.UnexpectedError
+    return reauthenticate(user, wrongCredential = ReauthResult.WrongPassword) {
+      EmailAuthProvider.getCredential(email, password)
+    }
+  }
+
+  override suspend fun reauthenticateWithGoogle(context: Context): ReauthResult {
+    val user = auth.currentUser ?: return ReauthResult.NotSignedIn
+    return reauthenticate(
+        user,
+        // An invalid Google token, or another Google account than the signed-in one
+        // (ERROR_USER_MISMATCH, an invalid-credentials error), is not a wrong password.
+        wrongCredential = ReauthResult.UnexpectedError,
+    ) {
+      GoogleAuthProvider.getCredential(googleCredentials.get(context).idToken, null)
+    }
+  }
+
+  /** Maps re-authentication failures; [credential] may open the Google picker. */
+  private suspend fun reauthenticate(
+      user: FirebaseUser,
+      wrongCredential: ReauthResult,
+      credential: suspend () -> AuthCredential,
+  ): ReauthResult =
+      try {
+        user.reauthenticate(credential()).await()
+        ReauthResult.Success
+      } catch (cancelled: CancellationException) {
+        // A cancelled SDK task is a failure; cancellation of our coroutine must still propagate.
+        currentCoroutineContext().ensureActive()
+        ReauthResult.UnexpectedError
+      } catch (_: GetCredentialCancellationException) {
+        ReauthResult.Cancelled
+      } catch (_: FirebaseAuthInvalidCredentialsException) {
+        wrongCredential
+      } catch (_: FirebaseAuthInvalidUserException) {
+        ReauthResult.NotSignedIn
+      } catch (_: FirebaseNetworkException) {
+        ReauthResult.NetworkError
+      } catch (_: FirebaseTooManyRequestsException) {
+        ReauthResult.TooManyAttempts
+      } catch (_: Exception) {
+        ReauthResult.UnexpectedError
+      }
 
   override suspend fun sendPasswordResetEmail(email: String): PasswordResetResult {
     if (!isRecoveryEmail(email)) return PasswordResetResult.InvalidEmail

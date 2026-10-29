@@ -6,6 +6,8 @@
 // CI, #159; unit tests in parallel forks and coverage of sharded device tests, #192; fakes shared
 // with instrumented tests and Hilt in instrumented tests, #136);
 // OpenAI Codex (sign-up test dependencies, review cleanup and Android UI-test MockK binding).
+// Contributors: Claude (Opus 5.5, Anthropic) made unit tests rerun when the Cloud Function source
+// changes, #206; Mohamed Khellaf (reviewed and revised).
 import java.util.Properties
 
 plugins {
@@ -92,7 +94,15 @@ android {
       isReturnDefaultValues = true
       // Runs test classes in parallel JVMs (2 on CI's 4 cores), which share no state. At most 4,
       // since each Robolectric JVM needs about 1 GB and laptops also run an IDE and an emulator.
-      all { it.maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4) }
+      all {
+        it.maxParallelForks = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 4)
+        // AccountDeletionRegionTest reads the Cloud Function's source: rerun it when that changes,
+        // instead of reusing a cached result.
+        it.inputs
+            .files(rootProject.fileTree("firebase/functions") { include("*.js") })
+            .withPropertyName("cloudFunctionSources")
+            .withPathSensitivity(PathSensitivity.RELATIVE)
+      }
     }
   }
 
