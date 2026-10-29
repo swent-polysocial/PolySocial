@@ -5,7 +5,7 @@
 <!-- Contributors: OpenAI Codex (Google authentication architecture, Firebase-managed linking clarification and review cleanup for #106; preserved contributor acknowledgments during rebase); Claude (the shared UI parts, #251). -->
 <!-- Contributors: OpenAI Codex (removed obsolete Google collision UI, #107). -->
 <!-- Contributors: OpenAI Codex (Google entry routing for #107). -->
-<!-- Contributors: OpenAI Codex (Sprint 2 architecture, navigation, registration/reminder design and open questions, #139; documented Mapbox renderer/setup decisions and production/privacy open questions, #50); Claude (drafted this page and its diagrams from the README, the Scrum Board and the issue descriptions; association accounts without an EPFL email; Create Event design update, #44; ViewModel rule wording; Security Rules state after #35; the profile step's year question, #34; association badge from the profile, #45; synced the place-name and sign-in decisions with `CONTEXT.md`; association profiles and their rules, #126; association names, #128; open questions on shared association code, #125/#127, and their answers; the Create Event organizer row, #134; routing of association accounts and Edit details, #127; the full name's limit, #143; the map's Details open the event detail, #112). -->
+<!-- Contributors: OpenAI Codex (Sprint 2 architecture, navigation, registration/reminder design and open questions, #139; documented Mapbox renderer/setup decisions and production/privacy open questions, #50); Claude (drafted this page and its diagrams from the README, the Scrum Board and the issue descriptions; association accounts without an EPFL email; Create Event design update, #44; ViewModel rule wording; Security Rules state after #35; the profile step's year question, #34; association badge from the profile, #45; synced the place-name and sign-in decisions with `CONTEXT.md`; association profiles and their rules, #126; association names, #128; open questions on shared association code, #125/#127, and their answers; the Create Event organizer row, #134; routing of association accounts and Edit details, #127; the full name's limit, #143; the map's Details open the event detail, #112; association log in, #208). -->
 
 How PolySocial is built, as we currently envision it. The page follows the [Android App Architecture guide](https://developer.android.com/topic/architecture/intro): a **UI layer** (Compose screens and ViewModels), a **domain layer** of pure Kotlin logic, and a **data layer** of repositories in front of Firebase, the map and geocoding services, and the device sensors.
 
@@ -299,7 +299,7 @@ sequenceDiagram
   end
 ```
 
-### 4.3 App start routing (#32, #74, #127)
+### 4.3 App start routing (#32, #74, #127, #208)
 
 ```mermaid
 flowchart TD
@@ -309,20 +309,26 @@ flowchart TD
   q1 -- yes --> q2{"Email verified?"}
   q2 -- no --> verify["Verify Email screen"]:::s1
   q2 -- yes --> load["Loading your profile…<br/>(App start · loading)"]:::s1 --> q3{"Profile exists?"}
-  q3 -- no --> create["Profile step:<br/>createProfile(), once"]:::s1
+  q3 -- no --> q5{"EPFL email?"}
+  q5 -- yes --> create["Profile step:<br/>createProfile(), once"]:::s1
   main["Main app, Events tab"]:::s1
   create -- "saved" --> main
   create -- "Back: sign out" --> welcome
   q3 -- yes --> q4{"Association an admin<br/>hasn't verified?"}
-  q4 -- no --> main
+  q4 -- "no, association" --> main
+  q4 -- "no, other account" --> q6{"EPFL email?"}
+  q6 -- yes --> main
   q4 -- yes --> pending["Pending association app, #127<br/>Events · Map · Organization"]:::s1
   pending -- "Log out" --> welcome
   q3 -- "load failed" --> err["Couldn't load your profile<br/>+ Retry, never a blank screen"]:::s1
   err -- "Retry" --> load
+  q5 -- "no, #258" --> setup["Association setup, #125<br/>(pending app until #259)"]:::s1
+  q6 -- "no, #208" --> err
 ```
 
 - **Association accounts (#127).** The account type decides, never the email. An association an admin hasn't verified yet opens its own app in the pending state (Figma section 02): the review steps on Events, a closed Map and its details on Organization. A verified association opens the main app (with its own Events tab, #132) until #140 gives it its own tabs in the same `AssociationShell`. The admin's verification (#135) takes effect at the next app start.
 - **Edit details (#127).** On the pending app's Organization tab, Edit details (`EditAssociationScreen` → `EditAssociationViewModel`) edits the name, type, about and optional website, starting from the details shown there, checks them with association setup's `associationFormErrors` (#256), and saves them with `AssociationRepository.updateAssociation` (#126's owner-only update rule). A failed save keeps the form and offers Try again, with its own offline message.
+- **Association log in (#208).** Log in accepts any email domain, so an association signs in with its own address; its helper line says students use `@epfl.ch` and associations their own email. Routing then decides by account type and fails closed: a session whose email isn't an EPFL one never gets the student profile step or the students' app. Without a profile it resumes association setup (#258); with a student profile it gets the error screen, whose Log out link is its way out. The Security Rules already deny it student data. A verified association keeps the main app until #140.
 
 ### 4.4 Map: public events and distances (#49–#51)
 
