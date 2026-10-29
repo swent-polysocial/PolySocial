@@ -11,9 +11,17 @@ import com.google.firebase.functions.FirebaseFunctionsException
 import com.google.firebase.functions.FirebaseFunctionsException.Code
 import java.io.IOException
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withTimeout
+
+/**
+ * How long a deletion may take before it counts as a [AccountDeletionResult.NetworkError]: a bit
+ * more than the callable's own 70-second client timeout, so the SDK normally answers first.
+ */
+internal const val ACCOUNT_DELETION_TIMEOUT_MILLIS = 80_000L
 
 /**
  * [AccountDeletionRepository] that calls the `deleteAccount` callable Cloud Function
@@ -24,7 +32,8 @@ import kotlinx.coroutines.tasks.await
  * - `failed-precondition` with details `recent-login-required` →
  *   [AccountDeletionResult.RecentLoginRequired], with details `association` →
  *   [AccountDeletionResult.NotAllowed];
- * - `unavailable`, `deadline-exceeded`, or no connection → [AccountDeletionResult.NetworkError];
+ * - `unavailable`, `deadline-exceeded`, no connection, or no answer within
+ *   [ACCOUNT_DELETION_TIMEOUT_MILLIS] → [AccountDeletionResult.NetworkError];
  * - anything else (`internal`, `not-found` when the function is not deployed, an unknown answer) →
  *   [AccountDeletionResult.UnexpectedError].
  *
@@ -51,9 +60,17 @@ class FirebaseAccountDeletionRepository(
   override suspend fun deleteAccount(): AccountDeletionResult {
     return try {
       if (auth.currentUser == null) return AccountDeletionResult.NotSignedIn
-      val answer = functions.getHttpsCallable(DELETE_ACCOUNT_FUNCTION).call().await().getData()
+      // The SDK's task can stay pending forever (a connection lost mid-answer), so bound the wait.
+      val answer =
+          withTimeout(ACCOUNT_DELETION_TIMEOUT_MILLIS) {
+            functions.getHttpsCallable(DELETE_ACCOUNT_FUNCTION).call().await().getData()
+          }
       if ((answer as? Map<*, *>)?.get("deleted") == true) AccountDeletionResult.Deleted
       else AccountDeletionResult.UnexpectedError
+    } catch (_: TimeoutCancellationException) {
+      // Our timeout, unless the caller was cancelled at the same moment.
+      currentCoroutineContext().ensureActive()
+      AccountDeletionResult.NetworkError
     } catch (_: CancellationException) {
       // A cancelled SDK task is a failure; cancellation of our coroutine must still propagate.
       currentCoroutineContext().ensureActive()
