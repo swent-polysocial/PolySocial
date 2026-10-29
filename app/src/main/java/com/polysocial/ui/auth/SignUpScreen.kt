@@ -3,6 +3,7 @@
 // Contributors: OpenAI Codex (association email validation feedback, #125).
 // Contributors: Claude (Log out from the app-start error, through the shared activity logout that
 // clears the cache first, #208).
+// Contributors: OpenAI Codex (shared association signup/setup routing, #125).
 // Contributors: OpenAI Codex (fresh signed-out forms, shared reset action and Welcome after
 // logout, #109).
 // Contributors: OpenAI Codex (Google startup, shared profile callbacks and integration for #107).
@@ -69,6 +70,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
 import com.polysocial.model.auth.*
 import com.polysocial.model.user.MAX_DISPLAY_NAME_LENGTH
+import com.polysocial.model.user.AccountType
+import com.polysocial.ui.association.AssociationSetupRoute
 import com.polysocial.ui.association.PendingAssociationApp
 import com.polysocial.ui.common.ErrorAction
 import com.polysocial.ui.common.ErrorState
@@ -77,6 +80,7 @@ import com.polysocial.ui.login.LoginScreen
 import com.polysocial.ui.login.LoginViewModel
 import com.polysocial.ui.navigation.AppShell
 import com.polysocial.ui.profile.ActivityLogout
+import com.polysocial.ui.profile.ProfileRoute
 import com.polysocial.ui.profile.ProfileSetupScreen
 import com.polysocial.ui.profile.ProfileSetupViewModel
 import com.polysocial.ui.profile.ProfileViewModel
@@ -141,6 +145,8 @@ private enum class AuthDestination {
   /** An association an admin hasn't verified yet, in its own tabs (#127). */
   PendingAssociation,
   SignedIn,
+  AssociationSetup,
+  Association,
 }
 
 /** Saves the signed-out back stack as the destinations' names. */
@@ -165,6 +171,12 @@ private class ProfileSetupCallbacks(
   }
 
   fun saved() = start.onProfileCreated()
+}
+
+/** Keeps setup actions bound to its startup owner without recomposition captures. */
+private class AssociationSetupCallbacks(start: AppStartViewModel) {
+  val back = start::logOut
+  val saved = start::refresh
 }
 
 /**
@@ -206,6 +218,12 @@ fun AuthFlow(
     pendingAssociationContent: @Composable (() -> Unit) -> Unit = { done ->
       PendingAssociationApp(onLoggedOut = done)
     },
+    associationSetupContent: @Composable (() -> Unit, () -> Unit) -> Unit = { back, saved ->
+      AssociationSetupRoute(back, saved)
+    },
+    associationContent: @Composable (Boolean, () -> Unit) -> Unit = { _, done ->
+      ProfileRoute(onLoggedOut = done)
+    },
     signedInContent: @Composable (() -> Unit) -> Unit = { done ->
       AppShell(
           onLoggedOut = done,
@@ -217,6 +235,7 @@ fun AuthFlow(
       )
     },
 ) {
+  val associationCallbacks = remember(startViewModel) { AssociationSetupCallbacks(startViewModel) }
   val profileCallbacks =
       ProfileSetupCallbacks(welcomeViewModel, loginViewModel, viewModel, startViewModel)
   val welcomeState by welcomeViewModel.uiState.collectAsStateWithLifecycle()
@@ -282,12 +301,11 @@ fun AuthFlow(
             StartDestination.Login -> AuthDestination.Welcome
             StartDestination.VerifyEmail -> AuthDestination.VerifyEmail
             StartDestination.ProfileSetup -> AuthDestination.ProfileSetup
+            StartDestination.AssociationSetup -> AuthDestination.AssociationSetup
+            StartDestination.AssociationMain -> AuthDestination.SignedIn
             StartDestination.Main -> AuthDestination.SignedIn
             StartDestination.PendingAssociation -> AuthDestination.PendingAssociation
             StartDestination.Error -> AuthDestination.Error
-            // Keep existing association entry usable until the later screen slices land.
-            StartDestination.AssociationSetup -> AuthDestination.PendingAssociation
-            StartDestination.AssociationMain -> AuthDestination.SignedIn
           }
       // A step left half-done (or already saved) before must not come back: open it fresh.
       if (target == AuthDestination.ProfileSetup && destination != AuthDestination.ProfileSetup) {
@@ -348,7 +366,6 @@ fun AuthFlow(
     // other.
     startViewModel.onVerificationNeeded()
   }
-  // The signed-in apps log out themselves (cache cleared, signed out), then come back here.
   fun loggedOut() {
     resetSessionState()
     destination = AuthDestination.Welcome
@@ -358,12 +375,14 @@ fun AuthFlow(
   BackHandler(
       destination != AuthDestination.Welcome &&
           destination != AuthDestination.SignedIn &&
-          destination != AuthDestination.PendingAssociation
+          destination != AuthDestination.PendingAssociation &&
+          destination != AuthDestination.Association
   ) {
     when (destination) {
       AuthDestination.SignUp,
       AuthDestination.LogIn -> back()
       AuthDestination.ProfileSetup -> profileCallbacks.leave()
+      AuthDestination.AssociationSetup -> startViewModel.logOut()
       AuthDestination.VerifyEmail -> backFromVerification()
       AuthDestination.PasswordRecovery -> back()
       else -> onExit()
@@ -407,7 +426,16 @@ fun AuthFlow(
           WelcomeScreen(
               onGoogle = { welcomeViewModel.onGoogle(context) },
               busy = welcomeState.busy,
-              onSignUp = { open(AuthDestination.SignUp) },
+              onSignUp = {
+                if (viewModel.uiState.value.form.accountType != AccountType.STUDENT)
+                    viewModel.reset()
+                open(AuthDestination.SignUp)
+              },
+              onAssociationSignUp = {
+                if (viewModel.uiState.value.form.accountType != AccountType.ASSOCIATION)
+                    viewModel.reset(AccountType.ASSOCIATION)
+                open(AuthDestination.SignUp)
+              },
               onLogIn = { open(AuthDestination.LogIn) },
               message = if (accountDeleted) stringResource(R.string.delete_account_done) else null,
               onMessageShown = welcomeViewModel::onAccountDeletedShown,
@@ -425,8 +453,16 @@ fun AuthFlow(
             verificationState,
             onBack = backFromVerification,
             onChangeAddress = {
+              val accountType =
+                  if (
+                      latestSignUpViewModel.uiState.value.form.accountType ==
+                          AccountType.ASSOCIATION
+                  )
+                      AccountType.ASSOCIATION
+                  else startViewModel.accountType.value
               latestVerificationViewModel.changeAddress()
               resetSessionState()
+              latestSignUpViewModel.reset(accountType)
               destination = AuthDestination.SignUp
             },
             onContinue = { latestVerificationViewModel.checkVerified() },
@@ -459,6 +495,8 @@ fun AuthFlow(
     }
     AuthDestination.SignedIn -> signedInContent(::loggedOut)
     AuthDestination.PendingAssociation -> pendingAssociationContent(::loggedOut)
+    AuthDestination.AssociationSetup -> associationSetupContent(associationCallbacks.back, associationCallbacks.saved)
+    AuthDestination.Association -> associationContent(true, ::loggedOut)
   }
 }
 
@@ -487,6 +525,7 @@ fun SignUpScreen(
     onLogIn: () -> Unit,
     onBack: () -> Unit,
 ) {
+  val association = state.form.accountType == AccountType.ASSOCIATION
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
   val notAvailable = stringResource(R.string.not_available_yet)
@@ -522,68 +561,84 @@ fun SignUpScreen(
         )
       }
       Spacer(Modifier.height(10.dp))
-      Label(stringResource(R.string.signup_title), style = MaterialTheme.typography.headlineMedium)
+      Label(
+          stringResource(
+              if (association) R.string.association_account_title else R.string.signup_title
+          ),
+          style = MaterialTheme.typography.headlineMedium,
+      )
       Spacer(Modifier.height(8.dp))
       Label(
-          stringResource(R.string.signup_description),
+          stringResource(
+              if (association) R.string.association_account_description
+              else R.string.signup_description
+          ),
           color = MaterialTheme.colorScheme.onSurfaceVariant,
           modifier = Modifier.widthIn(max = 300.dp),
       )
       Spacer(Modifier.height(18.dp))
       Column(Modifier.alpha(if (state.status is SignUpStatus.Loading) 0.5f else 1f)) {
-        SignUpField.entries.forEach { field ->
-          val fieldError = state.visibleError(field)
-          val isEmailFailure =
-              field == SignUpField.Email &&
-                  backendError in listOf(SignUpResult.AlreadyInUse, SignUpResult.InvalidDomain)
-          FormField(
-              field,
-              state.form,
-              fieldError != null || isEmailFailure,
-              editingEnabled,
-              { onChange(field, it) },
-              { onBlur(field) },
-          )
-          if (fieldError != null) {
-            ErrorLabel(fieldError.text(), SignUpTags.error(field))
-          }
-          if (field == SignUpField.Email) {
-            when {
-              isEmailFailure -> {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                  ErrorLabel(
-                      stringResource(backendError!!.message()),
-                      SignUpTags.BackendError,
-                      Modifier.weight(1f),
-                  )
-                  if (backendError == SignUpResult.AlreadyInUse) {
-                    Link(
-                        stringResource(R.string.signup_log_in_instead),
-                        SignUpTags.LogInInstead,
-                        onLogIn,
-                    )
+        SignUpField.entries
+            .filter { !association || it != SignUpField.FullName }
+            .forEach { field ->
+              val fieldError = state.visibleError(field)
+              val isEmailFailure =
+                  field == SignUpField.Email &&
+                      backendError in listOf(SignUpResult.AlreadyInUse, SignUpResult.InvalidDomain)
+              FormField(
+                  field,
+                  state.form,
+                  fieldError != null || isEmailFailure,
+                  editingEnabled,
+                  { onChange(field, it) },
+                  { onBlur(field) },
+              )
+              if (fieldError != null) {
+                ErrorLabel(fieldError.text(), SignUpTags.error(field))
+              }
+              if (field == SignUpField.Email) {
+                when {
+                  isEmailFailure -> {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                      ErrorLabel(
+                          stringResource(backendError!!.message()),
+                          SignUpTags.BackendError,
+                          Modifier.weight(1f),
+                      )
+                      if (backendError == SignUpResult.AlreadyInUse) {
+                        Link(
+                            stringResource(R.string.signup_log_in_instead),
+                            SignUpTags.LogInInstead,
+                            onLogIn,
+                        )
+                      }
+                    }
                   }
+                  !association &&
+                      state.form.email.isNotEmpty() &&
+                      state.form.error(SignUpField.Email) == null ->
+                      Rule(
+                          stringResource(R.string.signup_epfl_address),
+                          true,
+                          "sign_up_epfl_address",
+                      )
                 }
               }
-              state.form.email.isNotEmpty() && state.form.error(SignUpField.Email) == null ->
-                  Rule(stringResource(R.string.signup_epfl_address), true, "sign_up_epfl_address")
+              if (field == SignUpField.Password) {
+                Spacer(Modifier.height(8.dp))
+                Rule(
+                    stringResource(R.string.signup_minimum_length),
+                    state.form.hasMinimumLength,
+                    SignUpTags.LengthRule,
+                )
+                Rule(
+                    stringResource(R.string.signup_contains_number),
+                    state.form.hasNumber,
+                    SignUpTags.NumberRule,
+                )
+              }
+              Spacer(Modifier.height(14.dp))
             }
-          }
-          if (field == SignUpField.Password) {
-            Spacer(Modifier.height(8.dp))
-            Rule(
-                stringResource(R.string.signup_minimum_length),
-                state.form.hasMinimumLength,
-                SignUpTags.LengthRule,
-            )
-            Rule(
-                stringResource(R.string.signup_contains_number),
-                state.form.hasNumber,
-                SignUpTags.NumberRule,
-            )
-          }
-          Spacer(Modifier.height(14.dp))
-        }
       }
       if (
           backendError != null &&
@@ -593,23 +648,25 @@ fun SignUpScreen(
         Spacer(Modifier.height(12.dp))
       }
       Spacer(Modifier.height(10.dp))
-      Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.weight(1f).height(1.dp).background(MaterialTheme.colorScheme.outline))
-        Label(
-            stringResource(R.string.signup_or),
-            Modifier.padding(horizontal = 12.dp),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+      if (!association) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Box(Modifier.weight(1f).height(1.dp).background(MaterialTheme.colorScheme.outline))
+          Label(
+              stringResource(R.string.signup_or),
+              Modifier.padding(horizontal = 12.dp),
+              style = MaterialTheme.typography.bodySmall,
+              color = MaterialTheme.colorScheme.onSurfaceVariant,
+          )
+          Box(Modifier.weight(1f).height(1.dp).background(MaterialTheme.colorScheme.outline))
+        }
+        Spacer(Modifier.height(16.dp))
+        GoogleSignInButton(
+            tag = SignUpTags.Google,
+            enabled = editingEnabled,
+            onClick = { scope.launch { snackbarHostState.showSnackbar(notAvailable) } },
         )
-        Box(Modifier.weight(1f).height(1.dp).background(MaterialTheme.colorScheme.outline))
+        Spacer(Modifier.height(16.dp))
       }
-      Spacer(Modifier.height(16.dp))
-      GoogleSignInButton(
-          tag = SignUpTags.Google,
-          enabled = editingEnabled,
-          onClick = { scope.launch { snackbarHostState.showSnackbar(notAvailable) } },
-      )
-      Spacer(Modifier.height(16.dp))
       val submitLabel =
           stringResource(
               if (state.status is SignUpStatus.Loading) R.string.signup_creating
@@ -694,7 +751,9 @@ private fun FormField(
       stringResource(
           when (field) {
             SignUpField.FullName -> R.string.signup_full_name
-            SignUpField.Email -> R.string.signup_email
+            SignUpField.Email ->
+                if (form.accountType == AccountType.ASSOCIATION) R.string.association_email
+                else R.string.signup_email
             SignUpField.Password -> R.string.signup_password
             SignUpField.ConfirmPassword -> R.string.signup_confirm_password
           }

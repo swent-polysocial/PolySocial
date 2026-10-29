@@ -1,4 +1,5 @@
 // Contributors: OpenAI Codex (enabled Google action and Welcome loading state for #107).
+// Contributors: OpenAI Codex (association signup entry, #125).
 // Contributors: Figma mockup (event/group illustration assets); OpenAI Codex (GPT-6.1 Sol,
 // medium; implemented the welcome layout, navigation callbacks and unavailable actions;
 // added a compact two-column layout for landscape and reused theme typography after review).
@@ -87,6 +88,7 @@ fun WelcomeScreen(
     busy: Boolean = false,
     message: String? = null,
     onMessageShown: () -> Unit = {},
+    onAssociationSignUp: (() -> Unit)? = null,
 ) {
   val snackbarHostState = remember { SnackbarHostState() }
   // A one-off notice, such as "Account deleted" (#207), shown once then cleared by its owner.
@@ -129,7 +131,13 @@ fun WelcomeScreen(
               Modifier.weight(1f).widthIn(max = 400.dp),
               horizontalAlignment = Alignment.CenterHorizontally,
           ) {
-            WelcomeActions(onSignUp, onLogIn, showUnavailable, onGoogle, busy)
+            WelcomeActions(
+                onSignUp,
+                onLogIn,
+                onGoogle,
+                busy,
+                onAssociationSignUp ?: showUnavailable,
+            )
           }
         }
       } else {
@@ -144,7 +152,7 @@ fun WelcomeScreen(
           Spacer(Modifier.height(86.dp + extraSpace))
           WelcomeHeading()
           Spacer(Modifier.height(70.dp))
-          WelcomeActions(onSignUp, onLogIn, showUnavailable, onGoogle, busy)
+          WelcomeActions(onSignUp, onLogIn, onGoogle, busy, onAssociationSignUp ?: showUnavailable)
           Spacer(Modifier.height(10.dp))
         }
       }
@@ -180,9 +188,9 @@ private fun WelcomeHeading() {
 private fun WelcomeActions(
     onSignUp: () -> Unit,
     onLogIn: () -> Unit,
-    showUnavailable: () -> Unit,
     onGoogle: () -> Unit,
     busy: Boolean,
+    onAssociationSignUp: () -> Unit,
 ) {
   GoogleSignInButton(WelcomeTags.Google, onGoogle, enabled = !busy)
   if (busy) {
@@ -221,7 +229,7 @@ private fun WelcomeActions(
   WelcomeLink(
       stringResource(R.string.welcome_association),
       WelcomeTags.Association,
-      showUnavailable,
+      onAssociationSignUp,
       enabled = !busy,
   )
   Spacer(Modifier.height(4.dp))
