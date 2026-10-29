@@ -11,13 +11,10 @@ import com.polysocial.model.auth.AuthSessionSource
 import com.polysocial.model.auth.FakeAuthSessionSource
 import io.mockk.every
 import io.mockk.mockk
-import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.emptyFlow
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -328,25 +325,53 @@ class FirestoreSessionGuardTest {
   }
 
   @Test
-  fun unexpectedFailure_isReportedInsteadOfEndingObservationSilently() = runTest {
-    val failure = IllegalArgumentException("fictional bug")
-    val broken =
-        object : AuthSessionSource {
-          override fun uidChanges() = flow<String?> { throw failure }
-        }
-    var reported: Throwable? = null
-    val appScope =
-        CoroutineScope(
-            SupervisorJob() +
-                UnconfinedTestDispatcher(testScheduler) +
-                CoroutineExceptionHandler { _, error -> reported = error }
-        )
+  fun unexpectedFailureDuringACheck_blocksTheCacheAndKeepsObserving() = runTest {
+    owner.uid = "student-a"
+    auth.uid = "student-a"
+    session.database
+    val observing = startGuard()
 
-    val observing = FirestoreSessionGuard(broken, owner, session).start(appScope)
+    // The stored owner can't be read when student B signs in.
+    owner.failure = IllegalStateException("fictional storage failure")
+    auth.uid = "student-b"
     runCurrent()
 
-    assertTrue(observing.isCancelled)
-    assertSame(failure, reported)
+    assertFalse("a failed check must not end observation", observing.isCompleted)
+    assertTrue(session.isBlocked)
+    assertAccessBlocked()
+    assertEquals(0, clears)
+
+    // Observation goes on: the next change is checked and cleared as usual.
+    owner.failure = null
+    auth.uid = "student-c"
+    runCurrent()
+    assertEquals(1, clears)
+    assertEquals("student-c", owner.uid)
+    assertFalse(session.isBlocked)
+
+    // App start's own check (its Retry path) then finds the cache ready.
+    assertEquals(SessionGuardResult.Ready, guard.ensureSession("student-c"))
+    assertOpenedLast(session)
+  }
+
+  @Test
+  fun unexpectedFailureDuringACheck_isRecoveredByAppStartsRetry() = runTest {
+    owner.uid = "student-a"
+    auth.uid = "student-a"
+    session.database
+    startGuard()
+    owner.failure = IllegalStateException("fictional storage failure")
+    auth.uid = "student-b"
+    runCurrent()
+    assertAccessBlocked()
+
+    owner.failure = null
+    assertEquals(SessionGuardResult.Ready, guard.ensureSession("student-b"))
+
+    assertEquals(1, clears)
+    assertEquals("student-b", owner.uid)
+    assertFalse(session.isBlocked)
+    assertOpenedLast(session)
   }
 
   @Test
