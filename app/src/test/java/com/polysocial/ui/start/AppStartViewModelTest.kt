@@ -4,7 +4,9 @@
 // of association accounts, #127).
 package com.polysocial.ui.start
 
+import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.AuthUser
+import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.user.AccountType
 import com.polysocial.model.user.FakeUserProfileRepository
@@ -38,7 +40,13 @@ class AppStartViewModelTest {
 
   @Test
   fun noUser_routesToLoginWithoutLoadingAProfile() = runTest {
-    val viewModel = AppStartViewModel(auth, profiles)
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     advanceUntilIdle()
 
     assertEquals(StartDestination.Login, viewModel.destination.value)
@@ -49,7 +57,13 @@ class AppStartViewModelTest {
   fun unverifiedUser_routesToVerifyEmailWithoutLoadingAProfile() = runTest {
     auth.user = verified.copy(isEmailVerified = false)
 
-    val viewModel = AppStartViewModel(auth, profiles)
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     advanceUntilIdle()
 
     assertEquals(StartDestination.VerifyEmail, viewModel.destination.value)
@@ -61,7 +75,13 @@ class AppStartViewModelTest {
     auth.user = verified
     profiles.getProfileResult = found
 
-    val viewModel = AppStartViewModel(auth, profiles)
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     advanceUntilIdle()
 
     assertEquals(StartDestination.Main, viewModel.destination.value)
@@ -76,7 +96,13 @@ class AppStartViewModelTest {
     val gate = CompletableDeferred<Unit>()
     profiles.gate = gate
 
-    val viewModel = AppStartViewModel(auth, profiles)
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     advanceUntilIdle()
 
     assertEquals(1, profiles.getProfileCalls)
@@ -94,7 +120,13 @@ class AppStartViewModelTest {
     auth.user = verified
     profiles.getProfileResult = ProfileResult.NotFound
 
-    val viewModel = AppStartViewModel(auth, profiles)
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     advanceUntilIdle()
 
     assertEquals(StartDestination.ProfileSetup, viewModel.destination.value)
@@ -106,7 +138,13 @@ class AppStartViewModelTest {
     auth.user = verified
     profiles.getProfileResult = ProfileResult.NetworkError
 
-    val viewModel = AppStartViewModel(auth, profiles)
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     advanceUntilIdle()
 
     assertEquals(StartDestination.Error, viewModel.destination.value)
@@ -117,7 +155,13 @@ class AppStartViewModelTest {
     auth.user = verified
     profiles.getProfileResult = ProfileResult.UnexpectedError
 
-    val viewModel = AppStartViewModel(auth, profiles)
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     advanceUntilIdle()
 
     assertEquals(StartDestination.Error, viewModel.destination.value)
@@ -127,7 +171,13 @@ class AppStartViewModelTest {
   fun refreshAfterError_loadsTheProfileAgainAndRoutesToMain() = runTest {
     auth.user = verified
     profiles.getProfileResult = ProfileResult.NetworkError
-    val viewModel = AppStartViewModel(auth, profiles)
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     advanceUntilIdle()
     profiles.getProfileResult = found
 
@@ -144,7 +194,13 @@ class AppStartViewModelTest {
     auth.user = verified
     profiles.getProfileResult = found
     profiles.gate = CompletableDeferred()
-    val viewModel = AppStartViewModel(auth, profiles)
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     advanceUntilIdle()
 
     viewModel.refresh()
@@ -159,7 +215,13 @@ class AppStartViewModelTest {
   @Test
   fun refreshAfterLogIn_routesTheNewUserToTheProfileStep() = runTest {
     profiles.getProfileResult = ProfileResult.NotFound
-    val viewModel = AppStartViewModel(auth, profiles)
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     advanceUntilIdle()
     assertEquals(StartDestination.Login, viewModel.destination.value)
 
@@ -173,7 +235,13 @@ class AppStartViewModelTest {
 
   @Test
   fun refreshAfterAnUnverifiedLogIn_routesToVerifyEmail() = runTest {
-    val viewModel = AppStartViewModel(auth, profiles)
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     advanceUntilIdle()
 
     auth.user = verified.copy(isEmailVerified = false)
@@ -188,7 +256,13 @@ class AppStartViewModelTest {
   fun lateProfileCompletionAfterLeavingSetupCannotReopenTheApp() = runTest {
     auth.user = verified
     profiles.getProfileResult = ProfileResult.NotFound
-    val vm = AppStartViewModel(auth, profiles)
+    val vm =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     advanceUntilIdle()
     assertEquals(StartDestination.ProfileSetup, vm.destination.value)
 
@@ -206,12 +280,24 @@ class AppStartViewModelTest {
   fun logOut_nextLaunchRoutesToLogin() = runTest {
     auth.user = verified
     profiles.getProfileResult = found
-    val firstLaunch = AppStartViewModel(auth, profiles)
+    val firstLaunch =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     advanceUntilIdle()
     assertEquals(StartDestination.Main, firstLaunch.destination.value)
 
     auth.logOut()
-    val nextLaunch = AppStartViewModel(auth, profiles)
+    val nextLaunch =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     advanceUntilIdle()
 
     assertEquals(StartDestination.Login, nextLaunch.destination.value)
@@ -222,7 +308,13 @@ class AppStartViewModelTest {
   fun logOut_signsOutAndRoutesToLogin() = runTest {
     auth.user = verified
     profiles.getProfileResult = found
-    val viewModel = AppStartViewModel(auth, profiles)
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     advanceUntilIdle()
     assertEquals(StartDestination.Main, viewModel.destination.value)
 
@@ -238,7 +330,13 @@ class AppStartViewModelTest {
     auth.user = verified
     profiles.getProfileResult = found
     profiles.gate = CompletableDeferred()
-    val viewModel = AppStartViewModel(auth, profiles)
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     advanceUntilIdle()
     assertEquals(StartDestination.Loading, viewModel.destination.value)
 
@@ -254,7 +352,13 @@ class AppStartViewModelTest {
   fun refreshAfterLogOut_routesTheNextAccount() = runTest {
     auth.user = verified
     profiles.getProfileResult = found
-    val viewModel = AppStartViewModel(auth, profiles)
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     advanceUntilIdle()
     viewModel.logOut()
 
@@ -271,7 +375,13 @@ class AppStartViewModelTest {
   fun onProfileCreated_opensTheMainAppWithoutReadingTheProfileAgain() = runTest {
     auth.user = verified
     profiles.getProfileResult = ProfileResult.NotFound
-    val viewModel = AppStartViewModel(auth, profiles)
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     advanceUntilIdle()
     assertEquals(StartDestination.ProfileSetup, viewModel.destination.value)
 
@@ -284,7 +394,13 @@ class AppStartViewModelTest {
 
   @Test
   fun onProfileCreated_outsideTheProfileStep_changesNothing() = runTest {
-    val viewModel = AppStartViewModel(auth, profiles)
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     advanceUntilIdle()
     assertEquals(StartDestination.Login, viewModel.destination.value)
 
@@ -296,7 +412,13 @@ class AppStartViewModelTest {
 
   @Test
   fun onVerificationNeeded_whenSignedOut_opensVerifyEmailAndLogOutReturnsToLogin() = runTest {
-    val viewModel = AppStartViewModel(auth, profiles)
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     advanceUntilIdle()
     assertEquals(StartDestination.Login, viewModel.destination.value)
 
@@ -313,7 +435,13 @@ class AppStartViewModelTest {
   fun onVerificationNeeded_whenSignedIn_changesNothing() = runTest {
     auth.user = verified
     profiles.getProfileResult = found
-    val viewModel = AppStartViewModel(auth, profiles)
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     advanceUntilIdle()
     assertEquals(StartDestination.Main, viewModel.destination.value)
 

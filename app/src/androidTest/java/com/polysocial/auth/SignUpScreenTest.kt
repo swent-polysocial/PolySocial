@@ -17,6 +17,7 @@ import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.polysocial.R
+import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
 import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.user.*
@@ -98,7 +99,13 @@ class SignUpScreenTest {
         }
     coEvery { profiles.getProfile(any()) } returns
         ProfileResult.Found(UserProfile(user.uid, user.email, "Test Student", "IN", "BA1"))
-    startViewModel = AppStartViewModel(repository, profiles)
+    startViewModel =
+        AppStartViewModel(
+            repository,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     profileSetupViewModel = ProfileSetupViewModel(repository, profiles)
     coEvery { repository.signUp(any(), any(), any()) } returns SignUpResult.Success(user)
   }

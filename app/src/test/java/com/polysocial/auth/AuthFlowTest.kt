@@ -25,6 +25,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
+import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
 import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.user.*
@@ -81,7 +82,13 @@ class AuthFlowTest {
   private lateinit var start: AppStartViewModel
 
   private fun launch() {
-    start = AppStartViewModel(auth, profiles)
+    start =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     val verification =
         VerifyEmailViewModel(auth, MemoryVerificationStore(), VerificationClock { 1000 }).also {
           verificationModels.add(it)
@@ -137,7 +144,15 @@ class AuthFlowTest {
     val pendingProfile = CompletableDeferred<Unit>()
     profiles.getProfileResult =
         ProfileResult.Found(UserProfile(user.uid, user.email, "Test Student", "IN", "BA1"))
-    val currentStart = mutableStateOf(AppStartViewModel(auth, profiles))
+    val currentStart =
+        mutableStateOf(
+            AppStartViewModel(
+                auth,
+                profiles,
+                associationSignup = EmptyAssociationSignupStore,
+                associations = FakeAssociationRepository(),
+            )
+        )
     val verification = verificationModel()
     compose.setContent {
       PolySocialTheme {
@@ -162,7 +177,13 @@ class AuthFlowTest {
     compose.onNodeWithTag(C.Tag.loading_state).assertIsDisplayed()
     compose.runOnIdle {
       auth.user = user.copy(isEmailVerified = false)
-      currentStart.value = AppStartViewModel(auth, profiles)
+      currentStart.value =
+          AppStartViewModel(
+              auth,
+              profiles,
+              associationSignup = EmptyAssociationSignupStore,
+              associations = FakeAssociationRepository(),
+          )
     }
     compose.onNodeWithTag(VerifyEmailTags.Screen).assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.loading_state).assertDoesNotExist()
@@ -179,7 +200,13 @@ class AuthFlowTest {
     auth.user = user
     profiles.getProfileResult =
         ProfileResult.Found(UserProfile(user.uid, user.email, "Test Student", "IN", "BA1"))
-    val start = AppStartViewModel(auth, profiles)
+    val start =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     val currentVerification = mutableStateOf(verificationModel())
     val currentProfile = mutableStateOf(profileSetup)
     compose.setContent {
@@ -237,7 +264,13 @@ class AuthFlowTest {
     auth.user = user
     profiles.getProfileResult =
         ProfileResult.Found(UserProfile(user.uid, user.email, "Test Student", "IN", "BA1"))
-    val previous = AppStartViewModel(auth, profiles)
+    val previous =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     val current = mutableStateOf(previous)
     val verification = verificationModel()
     restoration.setContent {
@@ -264,7 +297,13 @@ class AuthFlowTest {
       }
     }
     compose.onNodeWithTag("logout").assertIsDisplayed()
-    val replacement = AppStartViewModel(auth, profiles)
+    val replacement =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     compose.runOnIdle { current.value = replacement }
     compose.onNodeWithTag("logout").assertIsDisplayed()
     compose.runOnIdle { assertEquals(StartDestination.Main, replacement.destination.value) }
@@ -288,7 +327,13 @@ class AuthFlowTest {
     auth.user = user
     profiles.getProfileResult =
         ProfileResult.Found(UserProfile(user.uid, user.email, "Test Student", "IN", "BA1"))
-    val start = AppStartViewModel(auth, profiles)
+    val start =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     val verification = verificationModel()
     val currentSignUp = mutableStateOf(signUp)
     val currentLogin = mutableStateOf(login)
@@ -347,7 +392,13 @@ class AuthFlowTest {
     auth.user = user
     profiles.getProfileResult =
         ProfileResult.Found(UserProfile(user.uid, user.email, "Test Student", "IN", "BA1"))
-    val start = AppStartViewModel(auth, profiles)
+    val start =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     val verification = verificationModel()
     val currentStart = mutableStateOf(start)
     compose.setContent {
@@ -374,7 +425,13 @@ class AuthFlowTest {
     compose.onNodeWithTag(C.Tag.loading_state).assertIsDisplayed()
     compose.runOnIdle {
       auth.user = null
-      currentStart.value = AppStartViewModel(auth, profiles)
+      currentStart.value =
+          AppStartViewModel(
+              auth,
+              profiles,
+              associationSignup = EmptyAssociationSignupStore,
+              associations = FakeAssociationRepository(),
+          )
     }
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.loading_state).assertDoesNotExist()
@@ -392,7 +449,13 @@ class AuthFlowTest {
     auth.user = user
     profiles.getProfileResult =
         ProfileResult.Found(UserProfile(user.uid, user.email, "Test Student", "IN", "BA1"))
-    val start = AppStartViewModel(auth, profiles)
+    val start =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     val verification = verificationModel()
     compose.setContent {
       PolySocialTheme {
@@ -426,7 +489,13 @@ class AuthFlowTest {
 
   @Test
   fun refreshDuringSignedOutSignUpPreservesTheActiveForm() {
-    val start = AppStartViewModel(auth, profiles)
+    val start =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+        )
     val verification = verificationModel()
     compose.setContent {
       PolySocialTheme {

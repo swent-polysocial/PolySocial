@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (association startup, durable intent and fail-closed tests, #125).
+// Contributors: OpenAI Codex (restored association startup, marker cleanup and fail-closed
+// regressions, #125).
 package com.polysocial.ui.start
 
 import com.polysocial.model.association.Association
@@ -22,7 +23,10 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -120,12 +124,47 @@ class AssociationStartViewModelTest {
   }
 
   @Test
-  fun nonEpflOrdinaryAccountsCannotEnterTheStudentAppOrStudentSetup() = runTest {
-    for (result in listOf(ProfileResult.NotFound, profile(type = AccountType.STUDENT))) {
-      val vm = AppStartViewModel(FakeAuthRepository(user), FakeUserProfileRepository(result))
-      advanceUntilIdle()
-      assertEquals(StartDestination.Error, vm.destination.value)
-    }
+  fun restoredNonEpflAccountWithoutMarkerResumesSetupWithoutReadingTheStore() = runTest {
+    val store = Store().apply { readFailure = IOException("device storage unavailable") }
+    val profiles = FakeUserProfileRepository()
+    val vm =
+        AppStartViewModel(FakeAuthRepository(user), profiles, store, FakeAssociationRepository())
+    advanceUntilIdle()
+    assertEquals(StartDestination.AssociationSetup, vm.destination.value)
+    assertEquals(AccountType.ASSOCIATION, vm.accountType.value)
+    assertEquals(0, store.clears)
+    assertTrue(profiles.createdProfiles.isEmpty())
+  }
+
+  @Test
+  fun restoredUnverifiedNonEpflAccountWithoutMarkerUsesAssociationVerification() = runTest {
+    val store = Store().apply { readFailure = IOException("device storage unavailable") }
+    val profiles = FakeUserProfileRepository()
+    val vm =
+        AppStartViewModel(
+            FakeAuthRepository(user.copy(isEmailVerified = false)),
+            profiles,
+            store,
+            FakeAssociationRepository(),
+        )
+    advanceUntilIdle()
+    assertEquals(StartDestination.VerifyEmail, vm.destination.value)
+    assertEquals(AccountType.ASSOCIATION, vm.accountType.value)
+    assertEquals(0, profiles.getProfileCalls)
+    assertEquals(0, store.clears)
+  }
+
+  @Test
+  fun nonEpflAccountWithStudentProfileCannotEnterTheStudentApp() = runTest {
+    val vm =
+        AppStartViewModel(
+            FakeAuthRepository(user),
+            FakeUserProfileRepository(profile(type = AccountType.STUDENT)),
+            Store(),
+            FakeAssociationRepository(),
+        )
+    advanceUntilIdle()
+    assertEquals(StartDestination.Error, vm.destination.value)
   }
 
   @Test
@@ -150,12 +189,9 @@ class AssociationStartViewModelTest {
   }
 
   @Test
-  fun unavailableRepositoryAndUnexpectedRepositoryExceptionFailClosed() = runTest {
+  fun unexpectedRepositoryExceptionFailsClosed() = runTest {
     val auth = FakeAuthRepository(user)
     val profiles = FakeUserProfileRepository(profile())
-    val absent = AppStartViewModel(auth, profiles)
-    advanceUntilIdle()
-    assertEquals(StartDestination.Error, absent.destination.value)
     val throwing =
         object : AssociationRepository by FakeAssociationRepository() {
           override suspend fun getAssociation(uid: String): AssociationResult =
@@ -185,39 +221,87 @@ class AssociationStartViewModelTest {
           override suspend fun getProfile(uid: String): ProfileResult =
               throw IOException("read failed")
         }
-    val vm = AppStartViewModel(FakeAuthRepository(user), throwing)
+    val vm =
+        AppStartViewModel(FakeAuthRepository(user), throwing, Store(), FakeAssociationRepository())
     advanceUntilIdle()
     assertEquals(StartDestination.Error, vm.destination.value)
   }
 
   @Test
-  fun failedIntentReadOrClearDoesNotGuessStudentRoutingAndCanBeRetried() = runTest {
-    val readStore =
+  fun failedEpflIntentReadDoesNotGuessStudentRoutingAndCanBeRetried() = runTest {
+    val store =
         Store().apply {
           remembered = true
           readFailure = IOException("read failed")
         }
-    val readVm = AppStartViewModel(FakeAuthRepository(user), FakeUserProfileRepository(), readStore)
-    advanceUntilIdle()
-    assertEquals(StartDestination.Error, readVm.destination.value)
-    readStore.readFailure = null
-    readVm.refresh()
-    advanceUntilIdle()
-    assertEquals(StartDestination.AssociationSetup, readVm.destination.value)
-    val clearStore = Store().apply { clearFailure = IOException("clear failed") }
-    val clearVm =
+    val vm =
         AppStartViewModel(
-            FakeAuthRepository(user),
-            FakeUserProfileRepository(profile()),
-            clearStore,
+            FakeAuthRepository(user.copy(email = "club@epfl.ch")),
+            FakeUserProfileRepository(),
+            store,
             FakeAssociationRepository(),
         )
     advanceUntilIdle()
-    assertEquals(StartDestination.Error, clearVm.destination.value)
-    clearStore.clearFailure = null
-    clearVm.refresh()
+    assertEquals(StartDestination.Error, vm.destination.value)
+    store.readFailure = null
+    vm.refresh()
     advanceUntilIdle()
-    assertEquals(StartDestination.AssociationSetup, clearVm.destination.value)
+    assertEquals(StartDestination.AssociationSetup, vm.destination.value)
+  }
+
+  @Test
+  fun failedMarkerCleanupKeepsPendingAndVerifiedAssociationsAccessibleAndRetriesOnRefresh() =
+      runTest {
+        for (verified in listOf(false, true)) {
+          for (failure in
+              listOf(IOException("clear failed"), IllegalStateException("storage failed"))) {
+            val store =
+                Store().apply {
+                  remembered = true
+                  clearFailure = failure
+                }
+            val vm =
+                AppStartViewModel(
+                    FakeAuthRepository(user),
+                    FakeUserProfileRepository(profile(verified = verified)),
+                    store,
+                    FakeAssociationRepository(AssociationResult.Found(association)),
+                )
+            advanceUntilIdle()
+            val expected =
+                if (verified) StartDestination.AssociationMain
+                else StartDestination.PendingAssociation
+            assertEquals(expected, vm.destination.value)
+            assertEquals(SignupMarkerCleanup.RetryNeeded, vm.signupMarkerCleanup.value)
+            assertTrue(store.remembered)
+            store.clearFailure = null
+            vm.refresh()
+            advanceUntilIdle()
+            assertEquals(expected, vm.destination.value)
+            assertEquals(SignupMarkerCleanup.Cleared, vm.signupMarkerCleanup.value)
+            assertFalse(store.remembered)
+            assertEquals(1, store.clears)
+          }
+        }
+      }
+
+  @Test
+  fun cancelledMarkerCleanupPropagatesBeforeReadingAssociationOrRouting() = runTest {
+    val store = Store().apply { clearFailure = CancellationException("cancelled clear") }
+    val associations = FakeAssociationRepository(AssociationResult.Found(association))
+    val vm =
+        AppStartViewModel(
+            FakeAuthRepository(user),
+            FakeUserProfileRepository(profile()),
+            store,
+            associations,
+        )
+    advanceUntilIdle()
+    assertEquals(StartDestination.Loading, vm.destination.value)
+    assertEquals(SignupMarkerCleanup.NotRequired, vm.signupMarkerCleanup.value)
+    assertTrue(associations.requestedUids.isEmpty())
+    vm.logOut()
+    assertEquals(StartDestination.Login, vm.destination.value)
   }
 
   @Test
@@ -241,7 +325,13 @@ class AssociationStartViewModelTest {
   @Test
   fun cancelledIntentReadIsNotConvertedIntoAnUnexpectedFailure() = runTest {
     val store = Store().apply { readFailure = CancellationException("cancelled read") }
-    val vm = AppStartViewModel(FakeAuthRepository(user), FakeUserProfileRepository(), store)
+    val vm =
+        AppStartViewModel(
+            FakeAuthRepository(user.copy(email = "club@epfl.ch")),
+            FakeUserProfileRepository(),
+            store,
+            FakeAssociationRepository(),
+        )
     advanceUntilIdle()
     assertEquals(StartDestination.Loading, vm.destination.value)
     vm.logOut()
@@ -253,7 +343,12 @@ class AssociationStartViewModelTest {
     val store = Store().apply { remembered = true }
     val profiles = FakeUserProfileRepository(profile())
     val vm =
-        AppStartViewModel(FakeAuthRepository(user.copy(isEmailVerified = false)), profiles, store)
+        AppStartViewModel(
+            FakeAuthRepository(user.copy(isEmailVerified = false)),
+            profiles,
+            store,
+            FakeAssociationRepository(),
+        )
     advanceUntilIdle()
     assertEquals(StartDestination.VerifyEmail, vm.destination.value)
     assertEquals(AccountType.ASSOCIATION, vm.accountType.value)
@@ -266,10 +361,12 @@ class AssociationStartViewModelTest {
     val store = Store().apply { remembered = true }
     for (email in listOf("club@example.org", "club@epfl.ch")) {
       val auth = FakeAuthRepository(user.copy(email = email, isEmailVerified = false))
-      val first = AppStartViewModel(auth, FakeUserProfileRepository(), store)
+      val first =
+          AppStartViewModel(auth, FakeUserProfileRepository(), store, FakeAssociationRepository())
       advanceUntilIdle()
       assertEquals(AccountType.ASSOCIATION, first.accountType.value)
-      val restarted = AppStartViewModel(auth, FakeUserProfileRepository(), store)
+      val restarted =
+          AppStartViewModel(auth, FakeUserProfileRepository(), store, FakeAssociationRepository())
       advanceUntilIdle()
       assertEquals(StartDestination.VerifyEmail, restarted.destination.value)
       assertEquals(AccountType.ASSOCIATION, restarted.accountType.value)
@@ -286,6 +383,7 @@ class AssociationStartViewModelTest {
             FakeAuthRepository(user.copy(email = "student@epfl.ch", isEmailVerified = false)),
             profiles,
             store,
+            FakeAssociationRepository(),
         )
     advanceUntilIdle()
     assertEquals(StartDestination.Error, vm.destination.value)
@@ -302,7 +400,12 @@ class AssociationStartViewModelTest {
     val store = Store().apply { readFailure = CancellationException("cancelled read") }
     val profiles = FakeUserProfileRepository()
     val vm =
-        AppStartViewModel(FakeAuthRepository(user.copy(isEmailVerified = false)), profiles, store)
+        AppStartViewModel(
+            FakeAuthRepository(user.copy(email = "club@epfl.ch", isEmailVerified = false)),
+            profiles,
+            store,
+            FakeAssociationRepository(),
+        )
     advanceUntilIdle()
     assertEquals(StartDestination.Loading, vm.destination.value)
     assertEquals(0, profiles.getProfileCalls)
