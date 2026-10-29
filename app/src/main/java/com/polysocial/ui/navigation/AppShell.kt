@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (association tabs, Organization and account-specific stack cleanup,
+// #140).
 // Contributors: OpenAI Codex (Profile logout route and clear tab stacks, #109).
 // Contributors: Claude (app shell with bottom navigation and app bar, #41; theme title style after
 // review; bottom bar matched to the Figma; loading state, #43; per-tab back stacks, #42; Events
@@ -59,7 +61,9 @@ import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.polysocial.R
+import com.polysocial.model.user.AccountType
 import com.polysocial.resources.C
+import com.polysocial.ui.association.OrganizationRoute
 import com.polysocial.ui.event.create.CreateEventButton
 import com.polysocial.ui.event.create.CreateEventScreen
 import com.polysocial.ui.event.create.EditEventScreen
@@ -101,6 +105,10 @@ data class EventDetailNavigation(
 )
 
 /**
+ * Approved associations use Events, Map and Organization; students retain their four tabs.
+ * Organization reuses the Profile graph for its own identity, privacy and cache-first logout. The
+ * association Map remains a query-free placeholder until #133.
+ *
  * Root of the signed-in app: an app bar with the current tab's title and, at the tab's root, its
  * action (see [TabAction]), the current tab's screen, and the bottom navigation bar. The Events tab
  * shows the upcoming events (a verified association's own events instead, #132) and the Map tab the
@@ -127,13 +135,15 @@ data class EventDetailNavigation(
 @Composable
 fun AppShell(
     modifier: Modifier = Modifier,
+    accountType: AccountType = AccountType.STUDENT,
     navController: NavHostController = rememberNavController(),
     eventsContent: @Composable (onEventClick: (String) -> Unit) -> Unit = { onEventClick ->
       EventsTabRoute(onEventClick = onEventClick)
     },
     mapContent: @Composable (onViewDetails: (String) -> Unit, onCreateEvent: () -> Unit) -> Unit =
         { onDetails, onCreateEvent ->
-          MapRoute(onDetails, onCreateEvent = onCreateEvent)
+          if (accountType == AccountType.ASSOCIATION) TabRootScreen(Tab.MAP)
+          else MapRoute(onDetails, onCreateEvent = onCreateEvent)
         },
     createEventContent: @Composable (CreateEventNavigation) -> Unit = { navigation ->
       CreateEventScreen(
@@ -153,6 +163,9 @@ fun AppShell(
       EditEventScreen(onClose = onClose)
     },
     onLoggedOut: () -> Unit = {},
+    organizationContent: @Composable (() -> Unit, () -> Unit) -> Unit = { done, privacy ->
+      OrganizationRoute(done, privacy)
+    },
     profileContent: @Composable (() -> Unit) -> Unit = { done ->
       ProfileRoute(
           onLoggedOut = done,
@@ -160,12 +173,13 @@ fun AppShell(
       )
     },
 ) {
+  val association = accountType == AccountType.ASSOCIATION
+  val tabs = if (association) listOf(Tab.EVENTS, Tab.MAP, Tab.PROFILE) else Tab.entries
   val backStackEntry by navController.currentBackStackEntryAsState()
   val destination = backStackEntry?.destination
   val currentTab =
-      Tab.entries.firstOrNull { tab ->
-        destination?.hierarchy?.any { it.route == tab.route } == true
-      } ?: Tab.EVENTS
+      tabs.firstOrNull { tab -> destination?.hierarchy?.any { it.route == tab.route } == true }
+          ?: Tab.EVENTS
   // Figma shows Create Event full screen, without the app bar and the bottom bar.
   val privacyScreen =
       destination?.route == Tab.PROFILE.privacyRoute ||
@@ -176,7 +190,10 @@ fun AppShell(
           !privacyScreen
   // The app bar action (TabAction, set per tab in Tab.action) shows only on the current tab's root
   // screen: it is hidden on the screens opened from there, including the one the action opens.
-  val action = currentTab.action.takeIf { destination?.route == currentTab.rootRoute }
+  val action =
+      currentTab.action.takeIf {
+        destination?.route == currentTab.rootRoute && !(association && currentTab == Tab.PROFILE)
+      }
 
   val onEventDetail = destination?.route == currentTab.eventDetailRoute
   // Shown on the screen the detail returns to once its event is cancelled (Figma "Cancel event ·
@@ -195,7 +212,11 @@ fun AppShell(
       topBar = {
         if (showBars && !onEventDetail && destination?.route != Tab.MAP.rootRoute)
             AppBar(
-                title = stringResource(currentTab.label),
+                title =
+                    stringResource(
+                        if (association && currentTab == Tab.PROFILE) R.string.tab_organization
+                        else currentTab.label
+                    ),
                 action = action,
                 // A double tap must not open the screen twice.
                 onAction = {
@@ -207,6 +228,8 @@ fun AppShell(
         if (showBars && !onEventDetail) {
           BottomNavBar(
               currentTab = currentTab,
+              tabs = tabs,
+              association = association,
               onTabSelected = { navController.navigateToTab(it) },
           )
         }
@@ -220,7 +243,7 @@ fun AppShell(
         modifier = Modifier.padding(padding).consumeWindowInsets(padding),
     ) {
       // One nested graph per tab, so each tab keeps its own back stack.
-      Tab.entries.forEach { tab ->
+      tabs.forEach { tab ->
         navigation(startDestination = tab.rootRoute, route = tab.route) {
           composable(tab.rootRoute) { entry ->
             // dropUnlessResumed: a second quick tap doesn't open a second Create Event.
@@ -242,12 +265,21 @@ fun AppShell(
                       modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp, 20.dp),
                   )
                 }
-                Tab.PROFILE ->
-                    profileContent {
-                      Tab.entries.forEach { navController.clearBackStack(it.route) }
-                      navController.popBackStack(Tab.EVENTS.route, inclusive = true)
-                      onLoggedOut()
-                    }
+                Tab.PROFILE -> {
+                  val loggedOut = {
+                    tabs.forEach { navController.clearBackStack(it.route) }
+                    navController.popBackStack(Tab.EVENTS.route, inclusive = true)
+                    onLoggedOut()
+                  }
+                  if (association)
+                      organizationContent(
+                          loggedOut,
+                          dropUnlessResumed {
+                            navController.navigate(tab.privacyRoute) { launchSingleTop = true }
+                          },
+                      )
+                  else profileContent(loggedOut)
+                }
                 else -> TabRootScreen(tab)
               }
             }
@@ -424,21 +456,39 @@ private fun AppBar(title: String, action: TabAction?, onAction: (TabAction) -> U
 }
 
 @Composable
-private fun BottomNavBar(currentTab: Tab, onTabSelected: (Tab) -> Unit) {
+private fun BottomNavBar(
+    currentTab: Tab,
+    tabs: List<Tab>,
+    association: Boolean,
+    onTabSelected: (Tab) -> Unit,
+) {
   // Figma "09 · App shell": a thin border above the bar, dark labels (bold when selected) and Ink3
   // for unselected tabs. The light-red pill and the red selected icon come from the theme.
   Column {
     HorizontalDivider(color = MaterialTheme.colorScheme.outline)
     NavigationBar(modifier = Modifier.testTag(C.Tag.bottom_nav)) {
-      Tab.entries.forEach { tab ->
+      tabs.forEach { tab ->
         val selected = tab == currentTab
         NavigationBarItem(
             selected = selected,
             onClick = { onTabSelected(tab) },
-            icon = { Icon(painter = painterResource(tab.icon), contentDescription = null) },
+            icon = {
+              Icon(
+                  painter =
+                      painterResource(
+                          if (association && tab == Tab.PROFILE) R.drawable.ic_organization
+                          else tab.icon
+                      ),
+                  contentDescription = null,
+              )
+            },
             label = {
               Text(
-                  text = stringResource(tab.label),
+                  text =
+                      stringResource(
+                          if (association && tab == Tab.PROFILE) R.string.tab_organization
+                          else tab.label
+                      ),
                   style = MaterialTheme.typography.labelSmall,
                   fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
               )
@@ -449,7 +499,11 @@ private fun BottomNavBar(currentTab: Tab, onTabSelected: (Tab) -> Unit) {
                     unselectedIconColor = Ink3,
                     unselectedTextColor = Ink3,
                 ),
-            modifier = Modifier.testTag(tab.navItemTag),
+            modifier =
+                Modifier.testTag(
+                    if (association && tab == Tab.PROFILE) "nav_item_organization"
+                    else tab.navItemTag
+                ),
         )
       }
     }
