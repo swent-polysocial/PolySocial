@@ -285,7 +285,7 @@ class DeleteAccountViewModelTest {
         vm.submitPassword()
         runCurrent()
         assertEquals(DeleteAccountStep.Reauthenticate, step)
-        assertEquals(DeleteAccountError.Unexpected, error)
+        assertEquals(DeleteAccountError.TooManyAttempts, error)
         assertEquals("", vm.uiState.value.password)
         assertEquals(0, deletion.calls)
         assertAccountUntouched()

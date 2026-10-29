@@ -224,6 +224,9 @@ private fun ReauthContent(state: DeleteAccountUiState, actions: DeleteAccountAct
   )
   if (password) PasswordField(state, actions)
   when (state.error) {
+    // A password account shows it under the field instead, like a wrong password.
+    DeleteAccountError.TooManyAttempts ->
+        if (!password) Message(R.string.delete_account_too_many_attempts)
     DeleteAccountError.GoogleCancelled ->
         Message(R.string.delete_account_google_cancelled, color = Ink2)
     DeleteAccountError.Offline -> Message(R.string.delete_account_offline)
@@ -286,7 +289,13 @@ private fun PasswordField(state: DeleteAccountUiState, actions: DeleteAccountAct
         },
         modifier = Modifier.testTag(DeleteAccountTags.Password),
     )
-    if (wrong) {
+    val fieldError =
+        when (state.error) {
+          DeleteAccountError.WrongPassword -> R.string.delete_account_wrong_password
+          DeleteAccountError.TooManyAttempts -> R.string.delete_account_too_many_attempts
+          else -> null
+        }
+    if (fieldError != null) {
       Row(
           verticalAlignment = Alignment.CenterVertically,
           horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -294,7 +303,7 @@ private fun PasswordField(state: DeleteAccountUiState, actions: DeleteAccountAct
       ) {
         Image(painterResource(R.drawable.ic_delete_account_error), null, Modifier.size(14.dp))
         Text(
-            stringResource(R.string.delete_account_wrong_password),
+            stringResource(fieldError),
             style = messageStyle(),
             color = AccentText,
         )
