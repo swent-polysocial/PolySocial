@@ -220,7 +220,13 @@ class FirestoreEventRepositoryEmulatorTest {
             detailResults.receiveAsFlow().first { it is EventResult.Found && !it.fromCache }
           }
           whileOffline(emulator.firestore.collection(EVENTS_COLLECTION).document("public")) {
-            withTimeout(TIMEOUT_MS) { repository.getUpcomingPublicEvents(WINDOW_DAYS).first() }
+            // Firestore notices it is offline some seconds after Android does; until then, its
+            // results still count as from the server. Wait for the first one from the cache.
+            withTimeout(OFFLINE_TIMEOUT_MS) {
+              repository.getUpcomingPublicEvents(WINDOW_DAYS).first {
+                it !is PublicEventsResult.Events || it.fromCache
+              }
+            }
           }
         } finally {
           map.cancel()
@@ -594,6 +600,8 @@ class FirestoreEventRepositoryEmulatorTest {
     val WINDOW: Duration = Duration.ofDays(WINDOW_DAYS.toLong())
     val NOW: Instant = Instant.parse("2030-03-01T12:00:00Z")
     const val TIMEOUT_MS = 10_000L
+    /** Long enough for Firestore to notice the device is offline. */
+    const val OFFLINE_TIMEOUT_MS = 30_000L
 
     /** The field names of `events/{id}`, written out here so a renamed field fails the test. */
     val STORED_FIELDS =
