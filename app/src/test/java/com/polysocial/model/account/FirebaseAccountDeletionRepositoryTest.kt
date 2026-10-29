@@ -23,7 +23,10 @@ import java.io.IOException
 import java.util.concurrent.ExecutionException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.currentTime
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -209,6 +212,27 @@ class FirebaseAccountDeletionRepositoryTest {
     functionReturns(Tasks.forCanceled())
 
     assertEquals(AccountDeletionResult.UnexpectedError, repository.deleteAccount())
+  }
+
+  @Test
+  fun noAnswerInTime_returnsNetworkError() = runTest {
+    // A connection lost after the headers leaves the SDK's task pending forever.
+    functionReturns(TaskCompletionSource<HttpsCallableResult>().task)
+
+    assertEquals(AccountDeletionResult.NetworkError, repository.deleteAccount())
+    assertEquals(ACCOUNT_DELETION_TIMEOUT_MILLIS, currentTime)
+  }
+
+  @Test
+  fun answerJustBeforeTheTimeout_isUsed() = runTest {
+    val pending = TaskCompletionSource<HttpsCallableResult>()
+    functionReturns(pending.task)
+    val deletion = async { repository.deleteAccount() }
+
+    advanceTimeBy(ACCOUNT_DELETION_TIMEOUT_MILLIS - 1)
+    pending.setResult(callableResult(mapOf("deleted" to true)))
+
+    assertEquals(AccountDeletionResult.Deleted, deletion.await())
   }
 
   @Test
