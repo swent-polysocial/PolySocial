@@ -2,6 +2,8 @@
 // Contributors: Figma mockup (event/group illustration assets); OpenAI Codex (GPT-6.1 Sol,
 // medium; implemented the welcome layout, navigation callbacks and unavailable actions;
 // added a compact two-column layout for landscape and reused theme typography after review).
+// Contributors: Claude (Opus 5.5, Anthropic) added the one-off message for "Account deleted", #207;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.ui.auth
 
 import androidx.compose.foundation.Image
@@ -34,6 +36,7 @@ import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -82,8 +85,20 @@ fun WelcomeScreen(
     onLogIn: () -> Unit,
     onGoogle: () -> Unit = {},
     busy: Boolean = false,
+    message: String? = null,
+    onMessageShown: () -> Unit = {},
 ) {
   val snackbarHostState = remember { SnackbarHostState() }
+  // A one-off notice, such as "Account deleted" (#207), shown once then cleared by its owner.
+  LaunchedEffect(message) {
+    if (message != null) {
+      try {
+        snackbarHostState.showSnackbar(message)
+      } finally {
+        onMessageShown()
+      }
+    }
+  }
   val scope = rememberCoroutineScope()
   val unavailable = stringResource(R.string.not_available_yet)
   val showUnavailable: () -> Unit = { scope.launch { snackbarHostState.showSnackbar(unavailable) } }

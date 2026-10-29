@@ -5,11 +5,13 @@ package com.polysocial.ui.profile
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.MainActivity
+import com.polysocial.R
 import com.polysocial.auth.MemoryVerificationStore
 import com.polysocial.model.account.AccountDeletionModule
 import com.polysocial.model.account.AccountDeletionRepository
@@ -117,6 +119,9 @@ class DeleteAccountInjectionTest {
     compose.onNodeWithTag(DeleteAccountTags.Continue).performScrollTo().performClick()
 
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.delete_account_done))
+        .assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.app_shell).assertDoesNotExist()
     assertEquals(1, fakeDeletion.calls)
     assertEquals(1, clears)
