@@ -19,9 +19,11 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
 
 /**
- * How long a deletion (sending pending writes, then the call) may take before it counts as a
- * [AccountDeletionResult.NetworkError]: a bit more than the callable's own 70-second client
- * timeout, so the SDK normally answers first.
+ * How long a deletion may take before it counts as a [AccountDeletionResult.NetworkError]. The
+ * budget covers both steps: waiting for pending writes, then the call, whose own client (OkHttp)
+ * timeout is 70 seconds. The SDK therefore answers first only if the writes are sent within about
+ * 10 seconds. If this bound ends while the request is in flight, the server may still delete the
+ * account: that is a lost answer, which a retry covers (both server steps are idempotent).
  */
 internal const val ACCOUNT_DELETION_TIMEOUT_MILLIS = 80_000L
 
