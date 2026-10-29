@@ -1,5 +1,7 @@
 // Contributors: Claude (Fable 5.1, Anthropic) drafted the session guard, #198; Mohamed Khellaf
 // (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) started it from the application and tested it, #198;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.model.firebase
 
 import com.polysocial.model.auth.AuthSessionSource
@@ -70,11 +72,11 @@ constructor(
   private val reconciling = Mutex()
 
   /**
-   * Observes sign-ins and sign-outs for the life of [scope] (the application's main scope). With
-   * `Dispatchers.Main.immediate`, detection blocks access within Firebase's main-thread callback,
-   * then the clear runs. If Firebase Authentication cannot be created, nobody can sign in or out in
-   * this process, so there is nothing to observe and observation ends; app start still checks
-   * before every first read.
+   * Observes sign-ins and sign-outs for the life of [scope]. `PolySocialApp` calls it once, with an
+   * application-wide scope on `Dispatchers.Main.immediate`, so it runs for the whole process and
+   * detection blocks access within Firebase's main-thread callback, before the clear runs. If
+   * Firebase Authentication cannot be created, nobody can sign in or out in this process, so there
+   * is nothing to observe and observation ends; app start still checks before every first read.
    */
   fun start(scope: CoroutineScope): Job =
       scope.launch(start = CoroutineStart.UNDISPATCHED) {

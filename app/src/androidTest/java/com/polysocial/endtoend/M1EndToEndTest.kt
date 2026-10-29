@@ -2,6 +2,8 @@
 // Contributors: Claude (end-to-end test of the M1 student flow with Hilt test bindings and a fake
 // map renderer, #136; a fake association repository for the association names, #128; the
 // student's organizer row, #134).
+// Contributors: Claude (Opus 5.5, Anthropic) bound a fake session guard and its parts,
+// #198; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.endtoend
 
 import androidx.activity.compose.setContent
@@ -40,9 +42,11 @@ import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.AssociationSignupStore
 import com.polysocial.model.auth.AuthModule
 import com.polysocial.model.auth.AuthRepository
+import com.polysocial.model.auth.AuthSessionSource
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.auth.FakeAuthRepository
+import com.polysocial.model.auth.FakeAuthSessionSource
 import com.polysocial.model.auth.SignUpField
 import com.polysocial.model.auth.SignUpResult
 import com.polysocial.model.auth.VerificationClock
@@ -55,6 +59,10 @@ import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.EventModule
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.FakeEventRepository
+import com.polysocial.model.firebase.FakeSessionGuard
+import com.polysocial.model.firebase.FakeSessionOwnerStore
+import com.polysocial.model.firebase.SessionGuard
+import com.polysocial.model.firebase.SessionOwnerStore
 import com.polysocial.model.geocoding.FakeGeocodingService
 import com.polysocial.model.geocoding.GeocodingModule
 import com.polysocial.model.geocoding.GeocodingService
@@ -154,6 +162,10 @@ class M1EndToEndTest {
   @BindValue @JvmField val associations: AssociationRepository = FakeAssociationRepository()
   @BindValue @JvmField val clock: Clock = Clock.fixed(NOW, ZURICH)
   @BindValue @JvmField val verificationClock = VerificationClock { NOW.toEpochMilli() }
+  @BindValue @JvmField val sessionGuard: SessionGuard = FakeSessionGuard()
+  // PolySocialApp injects the real guard, which needs these too, though nothing starts it here.
+  @BindValue @JvmField val sessionSource: AuthSessionSource = FakeAuthSessionSource()
+  @BindValue @JvmField val sessionOwner: SessionOwnerStore = FakeSessionOwnerStore()
   @BindValue @JvmField val verificationStore: VerificationStore = InMemoryVerificationStore()
   @BindValue @JvmField val network: NetworkMonitor = AlwaysOnline
   // The permission was already asked once and refused, so no system dialog interrupts the test.

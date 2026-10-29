@@ -1,5 +1,7 @@
 // Contributors: OpenAI Codex (keep association onboarding dependencies fake in Hilt tests, #125).
 // Contributors: OpenAI Codex (offline Hilt recovery routing and real activity recreation, #164).
+// Contributors: Claude (Opus 5.5, Anthropic) bound a fake session guard and its parts,
+// #198; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.auth
 
 import androidx.compose.ui.test.*
@@ -12,6 +14,10 @@ import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
 import com.polysocial.model.auth.AssociationSignupStore
 import com.polysocial.model.auth.EmptyAssociationSignupStore
+import com.polysocial.model.firebase.FakeSessionGuard
+import com.polysocial.model.firebase.FakeSessionOwnerStore
+import com.polysocial.model.firebase.SessionGuard
+import com.polysocial.model.firebase.SessionOwnerStore
 import com.polysocial.model.user.*
 import com.polysocial.ui.auth.*
 import com.polysocial.ui.login.LoginScreenTestTags
@@ -35,6 +41,10 @@ class PasswordRecoveryInjectionTest {
   private val auth = FakeAuthRepository()
   @BindValue @JvmField val authBinding: AuthRepository = auth
   @BindValue @JvmField val verificationStore: VerificationStore = MemoryVerificationStore()
+  @BindValue @JvmField val sessionGuard: SessionGuard = FakeSessionGuard()
+  // PolySocialApp injects the real guard, which needs these too, though nothing starts it here.
+  @BindValue @JvmField val sessionSource: AuthSessionSource = FakeAuthSessionSource()
+  @BindValue @JvmField val sessionOwner: SessionOwnerStore = FakeSessionOwnerStore()
   @BindValue @JvmField val verificationClock: VerificationClock = VerificationClock { 1000 }
   @BindValue @JvmField val profiles: UserProfileRepository = FakeUserProfileRepository()
   @get:Rule(order = 0) val hilt = HiltAndroidRule(this)
