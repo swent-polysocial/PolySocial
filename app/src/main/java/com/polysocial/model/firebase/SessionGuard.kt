@@ -7,7 +7,6 @@ package com.polysocial.model.firebase
 import com.polysocial.model.auth.AuthSessionSource
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -75,18 +74,14 @@ constructor(
    * Observes sign-ins and sign-outs for the life of [scope]. `PolySocialApp` calls it once, with an
    * application-wide scope on `Dispatchers.Main.immediate`, so it runs for the whole process and
    * detection blocks access within Firebase's main-thread callback, before the clear runs. If
-   * Firebase Authentication cannot be created, nobody can sign in or out in this process, so there
-   * is nothing to observe and observation ends; app start still checks before every first read.
+   * Firebase Authentication cannot be created, [AuthSessionSource.uidChanges] ends at once (nobody
+   * can sign in or out in this process) and observation ends with it; app start still checks before
+   * every first read. Any other failure is not caught here: it fails the job in [scope], so it is
+   * reported instead of silently ending observation.
    */
   fun start(scope: CoroutineScope): Job =
       scope.launch(start = CoroutineStart.UNDISPATCHED) {
-        try {
-          auth.uidChanges().collect { ensureSession(it) }
-        } catch (cancelled: CancellationException) {
-          throw cancelled
-        } catch (_: Exception) {
-          // No Firebase Authentication: no account can change, and app start still checks.
-        }
+        auth.uidChanges().collect { ensureSession(it) }
       }
 
   override suspend fun ensureSession(uid: String?): SessionGuardResult {

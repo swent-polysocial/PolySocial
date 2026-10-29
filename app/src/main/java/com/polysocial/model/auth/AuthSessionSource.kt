@@ -1,5 +1,8 @@
 // Contributors: Claude (Fable 5.1, Anthropic) drafted the auth state source, #198; Mohamed Khellaf
 // (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) ended the flow when Firebase Auth is unavailable,
+// #198;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.model.auth
 
 import com.google.firebase.auth.FirebaseAuth
@@ -16,6 +19,8 @@ interface AuthSessionSource {
   /**
    * Emits the signed-in UID (`null` when signed out) when collection starts and after every sign-in
    * or sign-out, until collection is cancelled. Conflated: a slow collector gets the latest UID.
+   * Completes without emitting if Firebase Authentication can't be created (no Firebase app in this
+   * process), since then nobody can sign in or out.
    */
   fun uidChanges(): Flow<String?>
 }
@@ -25,7 +30,14 @@ class FirebaseAuthSessionSource(private val auth: () -> FirebaseAuth) : AuthSess
   constructor() : this({ FirebaseAuth.getInstance() })
 
   override fun uidChanges(): Flow<String?> = callbackFlow {
-    val firebase = auth()
+    val firebase =
+        try {
+          auth()
+        } catch (_: IllegalStateException) {
+          // FirebaseAuth.getInstance() without a Firebase app: there is no session to observe.
+          close()
+          return@callbackFlow
+        }
     val listener = FirebaseAuth.AuthStateListener { trySend(it.currentUser?.uid) }
     // Firebase calls the listener on the main thread, once now and after each change.
     firebase.addAuthStateListener(listener)
