@@ -207,6 +207,7 @@ Closed issues keep their original text, so where one disagrees with this section
 
 ## Open questions (don't guess, ask)
 
+- **Cancel after a lost deletion answer (#207):** if `deleteAccount` finished but its answer was lost (`NetworkError`), Cancel on "Couldn't delete your account" (as in Figma) leaves a possibly deleted account in the app, with a token still valid for up to an hour. Reopening Delete account recovers (re-authentication answers `NotSignedIn`, then the cleanup), and so does #198's guard at the next start. Should Cancel sign out instead when the last error was a network error?
 - **Association account deletion (#201):** associations can't delete their own `users/{uid}` (#161), and the deletion flow refuses them with the privacy contact. Who deletes an association account, its `associations/{uid}` and its events, and how, is not decided; ask before building it.
 - **Unverified accounts (#149):** the policy is decided (see "Account deletion" in Decided design). Only the implementation remains: #149's "Change address" deletion and 7-day cleanup, as new follow-up issues. Session loss (#198) is implemented (see "Session guard" in Current state).
 
