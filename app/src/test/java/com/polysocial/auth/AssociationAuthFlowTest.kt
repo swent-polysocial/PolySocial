@@ -19,6 +19,7 @@ import com.polysocial.model.association.AssociationResult
 import com.polysocial.model.association.AssociationType
 import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
+import com.polysocial.model.firebase.FakeSessionGuard
 import com.polysocial.model.user.*
 import com.polysocial.ui.auth.*
 import com.polysocial.ui.login.LoginScreenTestTags
@@ -99,7 +100,14 @@ class AssociationAuthFlowTest {
   }
 
   private fun launch() {
-    start = AppStartViewModel(auth, profiles, signupStore, associations)
+    start =
+        AppStartViewModel(
+            auth = auth,
+            profiles = profiles,
+            associationSignup = signupStore,
+            associations = associations,
+            sessions = FakeSessionGuard(),
+        )
     restoration.setContent {
       PolySocialTheme {
         AuthFlow(
@@ -442,9 +450,22 @@ class AssociationAuthFlowTest {
   fun setupBackUsesTheCurrentStartupOwnerAfterReplacement() {
     val firstAuth = FakeAuthRepository(user.copy(uid = "first-uid", isEmailVerified = true))
     val secondAuth = FakeAuthRepository(user.copy(uid = "second-uid", isEmailVerified = true))
-    val first = AppStartViewModel(firstAuth, FakeUserProfileRepository(), signupStore, associations)
+    val first =
+        AppStartViewModel(
+            auth = firstAuth,
+            profiles = FakeUserProfileRepository(),
+            associationSignup = signupStore,
+            associations = associations,
+            sessions = FakeSessionGuard(),
+        )
     val second =
-        AppStartViewModel(secondAuth, FakeUserProfileRepository(), signupStore, associations)
+        AppStartViewModel(
+            auth = secondAuth,
+            profiles = FakeUserProfileRepository(),
+            associationSignup = signupStore,
+            associations = associations,
+            sessions = FakeSessionGuard(),
+        )
     val current = mutableStateOf(first)
     compose.setContent {
       PolySocialTheme {
