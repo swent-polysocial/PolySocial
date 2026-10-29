@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (preserve association entry and offline retry, #125).
 // Contributors: OpenAI Codex (association onboarding, restored setup and non-blocking marker
 // cleanup, #125).
 // Contributors: Claude (app-start routing for #32; refresh after Log in, not while loading; log
@@ -188,7 +189,9 @@ constructor(
           if (profile.isAssociationVerified) StartDestination.AssociationMain
           else StartDestination.PendingAssociation
       AssociationResult.NotFound -> StartDestination.AssociationSetup
-      AssociationResult.NetworkError,
+      AssociationResult.NetworkError ->
+          if (profile.isAssociationVerified) StartDestination.AssociationMain
+          else StartDestination.PendingAssociation
       AssociationResult.UnexpectedError -> StartDestination.Error
     }
   }

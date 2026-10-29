@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (preserve association entry and offline retry, #125).
 // Contributors: OpenAI Codex (restored association startup, marker cleanup and fail-closed
 // regressions, #125).
 package com.polysocial.ui.start
@@ -170,7 +171,7 @@ class AssociationStartViewModelTest {
   @Test
   fun associationReadFailuresAllowRetryWithoutEnteringStudentScreens() = runTest {
     val associations = FakeAssociationRepository()
-    for (failure in listOf(AssociationResult.NetworkError, AssociationResult.UnexpectedError)) {
+    for (failure in listOf(AssociationResult.UnexpectedError)) {
       associations.getAssociationResult = failure
       val vm =
           AppStartViewModel(
@@ -185,6 +186,24 @@ class AssociationStartViewModelTest {
       vm.refresh()
       advanceUntilIdle()
       assertEquals(StartDestination.PendingAssociation, vm.destination.value)
+    }
+  }
+
+  @Test
+  fun associationIdentityNetworkFailureKeepsExistingEntryAvailable() = runTest {
+    for (verified in listOf(false, true)) {
+      val vm =
+          AppStartViewModel(
+              FakeAuthRepository(user),
+              FakeUserProfileRepository(profile(verified = verified)),
+              Store(),
+              FakeAssociationRepository(AssociationResult.NetworkError),
+          )
+      advanceUntilIdle()
+      assertEquals(
+          if (verified) StartDestination.AssociationMain else StartDestination.PendingAssociation,
+          vm.destination.value,
+      )
     }
   }
 

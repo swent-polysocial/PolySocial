@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (preserve association entry and offline retry, #125).
 // Contributors: OpenAI Codex (association-specific invalid email feedback, #125).
 // Contributors: OpenAI Codex (association email validation feedback, #125).
 // Contributors: OpenAI Codex (fresh signed-out forms, shared reset action and Welcome after
@@ -263,9 +264,9 @@ fun AuthFlow(
             StartDestination.Main -> AuthDestination.SignedIn
             StartDestination.PendingAssociation -> AuthDestination.PendingAssociation
             StartDestination.Error -> AuthDestination.Error
-            // New association destinations fail closed until the following screen slice.
-            StartDestination.AssociationSetup,
-            StartDestination.AssociationMain -> AuthDestination.Error
+            // Keep existing association entry usable until the later screen slices land.
+            StartDestination.AssociationSetup -> AuthDestination.PendingAssociation
+            StartDestination.AssociationMain -> AuthDestination.SignedIn
           }
       // A step left half-done (or already saved) before must not come back: open it fresh.
       if (target == AuthDestination.ProfileSetup && destination != AuthDestination.ProfileSetup) {

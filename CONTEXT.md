@@ -6,7 +6,7 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 
 ## Current state
 
-- **Association startup recovery (#258 review):** an existing private profile remains authoritative. With no profile, non-EPFL accounts resume association setup even after reinstall; only EPFL accounts need the same-device marker to disambiguate student and association setup. This exception changes no backend access. Marker cleanup after durable association typing is housekeeping: a failed write reports `RetryNeeded` and retries on refresh without blocking pending/verified entry. #247 and this stack retain the agreed merge-order contract for `PendingAssociation`.
+- **Association startup recovery (#258 review):** an existing private profile remains authoritative. With no profile, non-EPFL accounts resume association setup even after reinstall; only EPFL accounts need the same-device marker to disambiguate student and association setup. This exception changes no backend access. Marker cleanup after durable association typing is housekeeping: a failed write reports `RetryNeeded` and retries on refresh without blocking pending/verified entry. Until #259/#261, incomplete setup opens the pending app and verified accounts open the existing app; an offline identity read preserves the pending app’s retry path.
 
 - **Setup copy (#257 review):** Lucas confirmed keeping the current review-focused description; Figma’s first-admin/invite sentence awaits a team update because the membership model is undecided. The form matches the reviewed geometry and exposes a dedicated wrong-account sign-out message.
 
@@ -206,6 +206,8 @@ Closed issues keep their original text, so where one disagrees with this section
 Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 ## Decision log
+
+- 2026-10-29 · Until #259/#261 land, association setup uses the pending app and verified entry uses the existing app; an offline identity read keeps the pending retry path. ([#258 review](https://github.com/swent-polysocial/PolySocial/pull/258))
 
 Newest first, one line each, with a link. Remove a line once its content lives in "Current state" or "Decided design" and it's older than a sprint, since git history keeps it.
 
