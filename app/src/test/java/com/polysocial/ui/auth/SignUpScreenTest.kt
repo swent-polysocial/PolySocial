@@ -7,8 +7,8 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.auth.*
-import com.polysocial.model.user.MAX_DISPLAY_NAME_LENGTH
 import com.polysocial.model.auth.EmptyAssociationSignupStore
+import com.polysocial.model.user.MAX_DISPLAY_NAME_LENGTH
 import com.polysocial.ui.theme.PolySocialTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
