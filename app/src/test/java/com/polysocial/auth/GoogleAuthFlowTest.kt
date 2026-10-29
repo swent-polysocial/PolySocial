@@ -16,6 +16,7 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.auth.*
+import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.user.*
 import com.polysocial.ui.auth.*
 import com.polysocial.ui.login.LoginScreenTestTags
@@ -39,7 +40,7 @@ class GoogleAuthFlowTest {
   private val user = AuthUser("student", "student@epfl.ch", true, "Demo Student")
   private val welcome = WelcomeViewModel(auth)
   private val login = LoginViewModel(auth)
-  private val signUp = SignUpViewModel(auth)
+  private val signUp = SignUpViewModel(auth, EmptyAssociationSignupStore)
   private val profile = ProfileSetupViewModel(auth, profiles)
   private val verification =
       VerifyEmailViewModel(auth, MemoryVerificationStore(), VerificationClock { 1000 })

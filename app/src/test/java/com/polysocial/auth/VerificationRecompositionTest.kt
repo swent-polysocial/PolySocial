@@ -19,6 +19,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.auth.AuthUser
+import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.auth.SignUpField
 import com.polysocial.model.auth.VerificationClock
@@ -63,7 +64,7 @@ class VerificationRecompositionTest {
     val store = MemoryVerificationStore().apply { timings[uid] = VerificationTiming(1000, 1000) }
     return Session(
             auth,
-            SignUpViewModel(auth),
+            SignUpViewModel(auth, EmptyAssociationSignupStore),
             LoginViewModel(auth),
             AppStartViewModel(auth, FakeUserProfileRepository()),
             VerifyEmailViewModel(auth, store, VerificationClock { 100_000 }),

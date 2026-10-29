@@ -94,7 +94,7 @@ private constructor(
   ): SignUpResult {
     if (accountType == AccountType.STUDENT && !isEpflEmail(email)) return SignUpResult.InvalidDomain
     if (accountType == AccountType.ASSOCIATION && !isRecoveryEmail(email))
-        return SignUpResult.InvalidDomain
+        return SignUpResult.InvalidEmail
     return try {
       val user =
           auth.createUserWithEmailAndPassword(email.trim(), password).await().user

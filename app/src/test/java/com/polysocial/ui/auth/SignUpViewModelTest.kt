@@ -4,6 +4,7 @@
 package com.polysocial.ui.auth
 
 import com.polysocial.model.auth.AuthUser
+import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.auth.FieldError
 import com.polysocial.model.auth.SignUpField
@@ -39,7 +40,7 @@ class SignUpViewModelTest {
         FakeAuthRepository().apply {
           signUpResult = SignUpResult.Success(this@SignUpViewModelTest.user)
         }
-    viewModel = SignUpViewModel(repository)
+    viewModel = SignUpViewModel(repository, EmptyAssociationSignupStore)
   }
 
   private fun validForm() {

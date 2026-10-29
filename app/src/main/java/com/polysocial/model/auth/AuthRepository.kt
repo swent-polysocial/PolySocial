@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (distinguish malformed association emails from student domains, #125).
 // Contributors: OpenAI Codex (Google sign-in contract for #106; context lifetime wording for #107).
 // Contributors: OpenAI Codex (association account type at signup, #125).
 // Contributors: Claude (auth contract for #32; Sign up and Verify Email methods left to #30 and
@@ -34,6 +35,8 @@ sealed interface SignUpResult {
   sealed interface Failure : SignUpResult
 
   data class Success(val user: AuthUser) : SignUpResult
+
+  data object InvalidEmail : Failure
 
   data object InvalidDomain : Failure
 

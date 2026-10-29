@@ -18,6 +18,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.polysocial.R
 import com.polysocial.model.auth.*
+import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.user.*
 import com.polysocial.resources.C
 import com.polysocial.ui.auth.*
@@ -45,7 +46,7 @@ class SignUpScreenTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
   private val repository = mockk<AuthRepository>()
   private val user = AuthUser("test-uid", "student.test@epfl.ch", false, "Test Student")
-  private val viewModel = SignUpViewModel(repository)
+  private val viewModel = SignUpViewModel(repository, EmptyAssociationSignupStore)
   private val loginViewModel = LoginViewModel(repository)
   private val profiles = mockk<UserProfileRepository>()
   private val welcomeViewModel by lazy { com.polysocial.ui.auth.WelcomeViewModel(repository) }

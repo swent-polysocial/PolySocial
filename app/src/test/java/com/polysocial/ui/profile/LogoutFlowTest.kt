@@ -14,6 +14,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.auth.MemoryVerificationStore
 import com.polysocial.model.auth.*
+import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.firebase.*
 import com.polysocial.model.user.*
 import com.polysocial.resources.C
@@ -40,7 +41,7 @@ class LogoutFlowTest {
         getProfileResult =
             ProfileResult.Found(UserProfile(first.uid, first.email, "Test Student", "IN", "BA1"))
       }
-  private val signup = SignUpViewModel(auth)
+  private val signup = SignUpViewModel(auth, EmptyAssociationSignupStore)
   private val login = LoginViewModel(auth)
   private val verification =
       VerifyEmailViewModel(auth, MemoryVerificationStore(), VerificationClock { 1000 })

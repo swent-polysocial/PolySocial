@@ -8,6 +8,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.auth.*
 import com.polysocial.model.user.MAX_DISPLAY_NAME_LENGTH
+import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.ui.theme.PolySocialTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -19,7 +20,7 @@ import org.junit.runner.RunWith
 class SignUpScreenTest {
   @get:Rule val compose = createComposeRule()
   private val auth = FakeAuthRepository()
-  private val viewModel = SignUpViewModel(auth)
+  private val viewModel = SignUpViewModel(auth, EmptyAssociationSignupStore)
   private var loginCalls = 0
 
   private fun launch() {

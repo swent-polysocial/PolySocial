@@ -89,7 +89,7 @@ class AssociationFirebaseSignUpTest {
     for (email in listOf("", "club.example.org", "club@", "@example.org", "club @example.org")) {
       assertEquals(
           email,
-          SignUpResult.InvalidDomain,
+          SignUpResult.InvalidEmail,
           repository.signUp("", email, "password1", AccountType.ASSOCIATION),
       )
     }

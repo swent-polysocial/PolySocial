@@ -41,7 +41,6 @@ class LogoutInjectionTest {
   @BindValue
   @JvmField
   val associationSignupStore: AssociationSignupStore = EmptyAssociationSignupStore
-  @BindValue @JvmField val associations: AssociationRepository = FakeAssociationRepository()
 
   private val student = AuthUser("fictional-student", "fictional@epfl.ch", true)
   private val fakeAuth = FakeAuthRepository(student)
