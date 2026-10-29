@@ -3,7 +3,8 @@
 // cleanup, #125).
 // Contributors: Claude (app-start routing for #32; refresh after Log in, not while loading; log
 // out and the created profile; Verify Email opened in-session, #74; an association an admin
-// hasn't verified yet opens its pending app, #127).
+// hasn't verified yet opens its pending app, #127; a non-EPFL account that is not an association
+// fails closed, #208).
 // Contributors: Claude (Opus 5.5, Anthropic) awaited the session guard before the profile read,
 // #198; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.ui.start
@@ -40,7 +41,10 @@ sealed interface StartDestination {
 
   data object VerifyEmail : StartDestination
 
-  /** Verified, but no profile yet: the profile step after verification (#34). */
+  /**
+   * Verified, with an EPFL email, but no profile yet: the student profile step after verification
+   * (#34).
+   */
   data object ProfileSetup : StartDestination
 
   /** Verified association whose own setup document is missing. */
@@ -57,7 +61,11 @@ sealed interface StartDestination {
    */
   data object PendingAssociation : StartDestination
 
-  /** The profile could not be loaded; the user can retry. */
+  /**
+   * The profile could not be loaded, or the account can't open any app: a session that isn't an
+   * association's and can't use the students' app, such as a non-EPFL one with a student profile
+   * (#208). The user can retry.
+   */
   data object Error : StartDestination
 }
 
