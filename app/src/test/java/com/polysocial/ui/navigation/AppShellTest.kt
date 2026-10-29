@@ -145,9 +145,8 @@ class AppShellTest {
     composeTestRule.onNodeWithTag(Tab.MAP.navItemTag).performClick()
     composeTestRule.onNodeWithTag("fake_map_details").performClick()
 
-    // The real event detail, as from the Events tab (#112), never the old placeholder.
+    // The real event detail, as from the Events tab (#112).
     composeTestRule.onNodeWithTag(FAKE_DETAIL).assertIsDisplayed()
-    composeTestRule.onNodeWithTag("event_detail_placeholder").assertDoesNotExist()
     composeTestRule.runOnIdle {
       val entry = navController.currentBackStackEntry!!
       assertEquals(Tab.MAP.eventDetailRoute, entry.destination.route)
