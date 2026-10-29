@@ -5,20 +5,12 @@
 // (updateEvent and deleteEvent against the rules, #130; an association's own events against the
 // rules, #132); Franciszek Najda (reviewed #130).
 // OpenAI Codex (Google sign-in contract in the event-test fixture, #106).
-// Claude Opus 5.5 (private event detail and offline cache tests, #209).
+// Claude Opus 5.5 (private event detail and offline cache tests, #209; shared signed-in user,
+// #121).
 package com.polysocial.emulator
 
-import android.content.Context
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.firebase.firestore.Source
-import com.polysocial.model.auth.AuthRepository
-import com.polysocial.model.auth.AuthUser
-import com.polysocial.model.auth.GoogleSignInResult
-import com.polysocial.model.auth.LogInResult
-import com.polysocial.model.auth.PasswordResetResult
-import com.polysocial.model.auth.SendVerificationResult
-import com.polysocial.model.auth.SignUpResult
-import com.polysocial.model.auth.VerificationResult
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.CreateEventResult
 import com.polysocial.model.event.DeleteEventResult
@@ -33,8 +25,6 @@ import com.polysocial.model.event.UpdateEventResult
 import com.polysocial.model.event.eventFromFirestore
 import com.polysocial.model.event.toFirestoreMap
 import com.polysocial.model.event.withCreator
-import com.polysocial.model.network.NetworkMonitor
-import com.polysocial.model.user.AccountType
 import com.polysocial.model.user.FirestoreUserProfileRepository
 import com.polysocial.model.user.USERS_COLLECTION
 import java.time.Clock
@@ -74,7 +64,7 @@ class FirestoreEventRepositoryEmulatorTest {
   private val repository by lazy {
     FirestoreEventRepository(
         db = emulator.firestore,
-        auth = SignedInUser(),
+        auth = EmulatorSignedInUser(emulator),
         profiles = FirestoreUserProfileRepository(emulator.firestore),
         network = AlwaysOnline,
         clock = Clock.fixed(NOW, ZoneOffset.UTC),
@@ -573,44 +563,6 @@ class FirestoreEventRepositoryEmulatorTest {
         } while (result.fromCache || !expected(result.events.map { it.id }))
         result.events.map { it.id }
       }
-
-  /**
-   * The user [FirebaseEmulator] signed in. The repository only reads [currentUser] (in
-   * `createEvent`); the tests sign in through the emulator, never through this class.
-   */
-  private inner class SignedInUser : AuthRepository {
-    override suspend fun signInWithGoogle(context: Context): GoogleSignInResult =
-        throw UnsupportedOperationException("Sign in with FirebaseEmulator.signInVerifiedUser")
-
-    override suspend fun signUp(
-        fullName: String,
-        email: String,
-        password: String,
-        accountType: AccountType,
-    ): SignUpResult =
-        throw UnsupportedOperationException("Sign in with FirebaseEmulator.signInVerifiedUser")
-
-    override suspend fun logIn(email: String, password: String): LogInResult =
-        throw UnsupportedOperationException("Sign in with FirebaseEmulator.signInVerifiedUser")
-
-    override suspend fun sendPasswordResetEmail(email: String): PasswordResetResult =
-        throw UnsupportedOperationException("Password recovery is outside this event-test fixture")
-
-    override suspend fun sendVerificationEmail(): SendVerificationResult =
-        throw UnsupportedOperationException("Verification is outside this event-test fixture")
-
-    override suspend fun reloadAndCheckVerified(): VerificationResult =
-        throw UnsupportedOperationException("Verification is outside this event-test fixture")
-
-    override fun logOut() = emulator.auth.signOut()
-
-    override fun currentUser(): AuthUser? =
-        emulator.auth.currentUser?.let { AuthUser(it.uid, it.email.orEmpty(), it.isEmailVerified) }
-  }
-
-  private object AlwaysOnline : NetworkMonitor {
-    override fun isOnline() = true
-  }
 
   private companion object {
     /** Fictional accounts and events: no real user data in tests. */

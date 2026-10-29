@@ -1,6 +1,6 @@
 // Contributors: Claude (Firestore emulator test setup, #117; timeouts and the port in the error
 // after an adversarial test review; geopoints and nulls in admin writes after review; admin
-// existence check, #126).
+// existence check, #126); Claude Opus 5.5 (subcollection paths, #121).
 // Contributors: Claude (Opus 5.5, Anthropic) let a test sign in on its own Firebase app, #198;
 // Mohamed Khellaf (reviewed and revised).
 package com.polysocial.emulator
@@ -86,11 +86,12 @@ class FirebaseEmulator : ExternalResource() {
   }
 
   /**
-   * Creates the document [id] in [collection] with [data] as an administrator would, bypassing the
-   * Security Rules (for example to set `isAssociationVerified`, which only an admin may set).
-   * Values keep their type: a [String], [Boolean], [Int] or [Long], [Double], [Timestamp] or
-   * [Instant], a [GeoPoint], `null`, or a [List] of these, so an event's map from
-   * `Event.toFirestoreMap()` (with its `location` and an optional `endTime`) can be stored as is.
+   * Creates the document [id] in [collection] (a top-level collection or a subcollection path such
+   * as `events/{id}/attendees`) with [data] as an administrator would, bypassing the Security Rules
+   * (for example to set `isAssociationVerified`, which only an admin may set). Values keep their
+   * type: a [String], [Boolean], [Int] or [Long], [Double], [Timestamp] or [Instant], a [GeoPoint],
+   * `null`, or a [List] of these, so an event's map from `Event.toFirestoreMap()` (with its
+   * `location` and an optional `endTime`) can be stored as is.
    */
   suspend fun createAsAdmin(collection: String, id: String, data: Map<String, Any?>) {
     val fields = JSONObject()
@@ -98,7 +99,7 @@ class FirebaseEmulator : ExternalResource() {
     request(
         "POST",
         "$FIRESTORE_URL/v1/projects/$PROJECT_ID/databases/(default)/documents/" +
-            "${Uri.encode(collection)}?documentId=${Uri.encode(id)}",
+            "${collectionPath(collection)}?documentId=${Uri.encode(id)}",
         body = JSONObject().put("fields", fields).toString(),
     )
   }
@@ -111,9 +112,16 @@ class FirebaseEmulator : ExternalResource() {
       request(
           "GET",
           "$FIRESTORE_URL/v1/projects/$PROJECT_ID/databases/(default)/documents/" +
-              "${Uri.encode(collection)}/${Uri.encode(id)}",
+              "${collectionPath(collection)}/${Uri.encode(id)}",
           missingAllowed = true,
       ) != HTTP_NOT_FOUND
+
+  /**
+   * [collection] for a REST URL, each segment encoded, so a subcollection such as
+   * `events/{id}/attendees` keeps its slashes.
+   */
+  private fun collectionPath(collection: String): String =
+      collection.split('/').joinToString("/") { Uri.encode(it) }
 
   /** [value] in the Firestore REST API's typed form, for example `{"booleanValue": true}`. */
   private fun firestoreValue(value: Any?): JSONObject =
