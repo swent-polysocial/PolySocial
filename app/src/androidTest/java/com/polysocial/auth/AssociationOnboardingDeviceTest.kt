@@ -133,7 +133,30 @@ class AssociationOnboardingDeviceTest {
     capture("association-verify-email")
     assertTrue(privateProfiles.createdProfiles.isEmpty())
     compose.runOnIdle { fakeAuth.verificationResult = VerificationResult.Verified }
-    compose.onNodeWithTag(VerifyEmailTags.Continue).performScrollTo().performClick()
+    compose.waitUntil(5000) {
+      compose
+          .onAllNodes(hasTestTag(VerifyEmailTags.Continue) and isEnabled())
+          .fetchSemanticsNodes()
+          .isNotEmpty()
+    }
+    // On a short display the delivery Snackbar can cover a scrolled Continue button.
+    compose.waitUntil(10000) {
+      compose
+          .onAllNodes(hasAnyAncestor(hasTestTag(VerifyEmailTags.Snackbar)))
+          .fetchSemanticsNodes()
+          .isEmpty()
+    }
+    val checksBefore = fakeAuth.checkCalls
+    compose
+        .onNodeWithTag(VerifyEmailTags.Continue)
+        .performScrollTo()
+        .assertIsEnabled()
+        .performClick()
+    compose.waitUntil(5000) { fakeAuth.checkCalls > checksBefore }
+    assertTrue(
+        "Continue must verify the fixture account",
+        requireNotNull(fakeAuth.currentUser()).isEmailVerified,
+    )
     compose.waitUntil(5000) {
       compose.onAllNodesWithTag(AssociationSetupTags.Screen).fetchSemanticsNodes().isNotEmpty()
     }
@@ -177,6 +200,55 @@ class AssociationOnboardingDeviceTest {
     assertNull(fakeAuth.user)
     compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
     assertTrue(compose.activity.isFinishing)
+  }
+
+  @Test
+  fun wrongAddressReturnsToAssociationAccountCreationAndAcceptsAnotherNonEpflEmail() {
+    compose.onNodeWithTag(WelcomeTags.Association).performScrollTo().performClick()
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.Email)).performTextInput(applicant.email)
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.Password)).performTextInput("password1")
+    compose
+        .onNodeWithTag(SignUpTags.input(SignUpField.ConfirmPassword))
+        .performScrollTo()
+        .performTextInput("password1")
+    compose.onNodeWithTag(SignUpTags.Submit).performScrollTo().performClick()
+    compose.waitUntil(5000) {
+      compose
+          .onAllNodes(hasTestTag(VerifyEmailTags.ChangeAddress) and isEnabled())
+          .fetchSemanticsNodes()
+          .isNotEmpty()
+    }
+    compose.waitUntil(10000) {
+      compose
+          .onAllNodes(hasAnyAncestor(hasTestTag(VerifyEmailTags.Snackbar)))
+          .fetchSemanticsNodes()
+          .isEmpty()
+    }
+    compose
+        .onNodeWithTag(VerifyEmailTags.ChangeAddress)
+        .performScrollTo()
+        .assertIsEnabled()
+        .performClick()
+    compose.waitUntil(5000) {
+      compose.onAllNodesWithTag(SignUpTags.Screen).fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onNodeWithText("Your association account").assertIsDisplayed()
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.FullName)).assertDoesNotExist()
+    compose.onNodeWithTag(SignUpTags.Google).assertDoesNotExist()
+    assertNull(fakeAuth.currentUser())
+    assertEquals(1, fakeAuth.logOutCalls)
+    capture("association-wrong-address", closeKeyboard = true)
+    compose
+        .onNodeWithTag(SignUpTags.input(SignUpField.Email))
+        .performTextInput("updated-club@example.org")
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.Password)).performTextInput("password1")
+    compose
+        .onNodeWithTag(SignUpTags.input(SignUpField.ConfirmPassword))
+        .performScrollTo()
+        .performTextInput("password1")
+    compose.onNodeWithTag(SignUpTags.error(SignUpField.Email)).assertDoesNotExist()
+    compose.onNodeWithTag(SignUpTags.Submit).performScrollTo().assertIsEnabled()
+    assertEquals(1, fakeAuth.signUpCalls)
   }
 
   private fun capture(name: String, closeKeyboard: Boolean = false) {

@@ -111,7 +111,23 @@ class AssociationOnboardingInjectionTest {
     compose.onNodeWithTag(VerifyEmailTags.Screen).assertIsDisplayed()
     assertTrue(privateProfiles.createdProfiles.isEmpty())
     compose.runOnIdle { fakeAuth.verificationResult = VerificationResult.Verified }
-    compose.onNodeWithTag(VerifyEmailTags.Continue).performScrollTo().performClick()
+    compose.waitUntil(5000) {
+      compose
+          .onAllNodes(hasTestTag(VerifyEmailTags.Continue) and isEnabled())
+          .fetchSemanticsNodes()
+          .isNotEmpty()
+    }
+    val checksBefore = fakeAuth.checkCalls
+    compose
+        .onNodeWithTag(VerifyEmailTags.Continue)
+        .performScrollTo()
+        .assertIsEnabled()
+        .performClick()
+    compose.waitUntil(5000) { fakeAuth.checkCalls > checksBefore }
+    assertTrue(
+        "Continue must verify the fixture account",
+        requireNotNull(fakeAuth.currentUser()).isEmailVerified,
+    )
     compose.onNodeWithTag(AssociationSetupTags.Screen).assertIsDisplayed()
     compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertDoesNotExist()
     compose
