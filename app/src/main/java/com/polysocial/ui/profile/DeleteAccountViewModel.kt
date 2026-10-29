@@ -58,9 +58,9 @@ enum class DeleteAccountError {
 }
 
 /**
- * The Delete account sheet's state. [email] is the signed-in account's, shown on the confirmation
- * step; [password] is kept in memory only, never saved. [deleted] tells whether the server
- * confirmed the deletion, so a lost session's cleanup never claims it.
+ * The Delete account sheet's state. [email] is the signed-in account's, shown on the
+ * re-authentication step; [password] is kept in memory only, never saved. [deleted] tells whether
+ * the server confirmed the deletion, so a lost session's cleanup never claims it.
  */
 data class DeleteAccountUiState(
     val step: DeleteAccountStep = DeleteAccountStep.Hidden,
@@ -263,7 +263,10 @@ constructor(
    * three; [deleted] is whether the server confirmed the deletion.
    */
   private fun clearSession(deleted: Boolean) {
-    state.value = DeleteAccountUiState(step = DeleteAccountStep.Clearing, deleted = deleted)
+    // Keeps the methods and email, so the re-authentication step stays on screen, faded.
+    state.update {
+      it.copy(step = DeleteAccountStep.Clearing, password = "", error = null, deleted = deleted)
+    }
     viewModelScope.launch {
       try {
         if (cache.clear() != CacheClearResult.Cleared) {
@@ -272,7 +275,7 @@ constructor(
         }
         uid?.let { verification.clear(it) }
         auth.logOut()
-        state.value = DeleteAccountUiState(step = DeleteAccountStep.Done, deleted = deleted)
+        state.update { it.copy(step = DeleteAccountStep.Done) }
       } catch (cancelled: CancellationException) {
         cleanupFailed(deleted)
         throw cancelled
@@ -291,6 +294,6 @@ constructor(
   }
 
   private fun cleanupFailed(deleted: Boolean) {
-    state.value = DeleteAccountUiState(step = DeleteAccountStep.CleanupFailed, deleted = deleted)
+    state.update { it.copy(step = DeleteAccountStep.CleanupFailed, deleted = deleted) }
   }
 }

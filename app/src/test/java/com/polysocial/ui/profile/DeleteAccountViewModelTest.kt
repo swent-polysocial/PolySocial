@@ -58,11 +58,13 @@ class DeleteAccountViewModelTest {
 
   private var cacheResult = CacheClearResult.Cleared
   private var clears = 0
+  private var cacheGate: CompletableDeferred<Unit>? = null
   private val cache =
       object : SessionCache {
         override suspend fun clear(): CacheClearResult {
           clears++
           events += "cache"
+          cacheGate?.await()
           return cacheResult
         }
       }
@@ -162,6 +164,27 @@ class DeleteAccountViewModelTest {
         assertNull(memory.timings[student.uid])
         assertEquals(VerificationTiming(3, 4), memory.timings["someone-else"])
         assertEquals("", vm.uiState.value.password)
+      }
+
+  @Test
+  fun clearingKeepsTheStepOnScreenWithoutThePassword() =
+      runTest(main.dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        cacheGate = gate
+        openReauth()
+        vm.onPasswordChange("fictional-password")
+        vm.submitPassword()
+        runCurrent()
+        val clearing = vm.uiState.value
+        assertEquals(DeleteAccountStep.Clearing, clearing.step)
+        assertEquals(setOf(SignInMethod.PASSWORD), clearing.methods)
+        assertEquals(student.email, clearing.email)
+        assertEquals("", clearing.password)
+        assertTrue(clearing.busy)
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(DeleteAccountStep.Done, step)
+        assertEquals(student.email, vm.uiState.value.email)
       }
 
   @Test
