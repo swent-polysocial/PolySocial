@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (adapted the pending flow to association signup intent).
 // Contributors: Claude (wrote these tests, #127; logging in again in the same activity, after a
 // review, #127).
 package com.polysocial.auth
@@ -17,6 +18,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.association.AssociationResult
 import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.AuthUser
+import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.auth.VerificationClock
 import com.polysocial.model.firebase.CacheClearResult
@@ -91,7 +93,7 @@ class PendingAssociationFlowTest {
     start = AppStartViewModel(auth, profiles)
     val verification =
         VerifyEmailViewModel(auth, MemoryVerificationStore(), VerificationClock { 1000 })
-    val signUp = SignUpViewModel(auth)
+    val signUp = SignUpViewModel(auth, EmptyAssociationSignupStore)
     val login = LoginViewModel(auth)
     val profileStep = ProfileSetupViewModel(auth, profiles)
     val welcome = WelcomeViewModel(auth)
