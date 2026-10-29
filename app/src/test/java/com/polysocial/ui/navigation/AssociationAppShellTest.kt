@@ -5,15 +5,22 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.test.*
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.user.AccountType
 import com.polysocial.resources.C
 import com.polysocial.ui.theme.PolySocialTheme
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -62,7 +69,7 @@ class AssociationAppShellTest {
     show()
     compose.onNodeWithTag(C.Tag.nav_item_events).assertIsSelected()
     compose.onNodeWithTag(C.Tag.nav_item_map).assertExists()
-    compose.onNodeWithTag("nav_item_organization").performClick().assertIsSelected()
+    compose.onNodeWithTag(C.Tag.nav_item_organization).performClick().assertIsSelected()
     compose.onNodeWithTag(C.Tag.app_bar_title).assertTextEquals("Organization")
     compose.onNodeWithTag(C.Tag.nav_item_chats).assertDoesNotExist()
     compose.onNodeWithTag(C.Tag.nav_item_profile).assertDoesNotExist()
@@ -74,7 +81,7 @@ class AssociationAppShellTest {
   fun studentRetainsAllFourTabsAndItsProfileAction() {
     show(AccountType.STUDENT)
     Tab.entries.forEach { compose.onNodeWithTag(it.navItemTag).assertExists() }
-    compose.onNodeWithTag("nav_item_organization").assertDoesNotExist()
+    compose.onNodeWithTag(C.Tag.nav_item_organization).assertDoesNotExist()
     compose.onNodeWithTag(C.Tag.nav_item_chats).performClick()
     compose.onNodeWithTag(TabAction.SEARCH_CHATS.tag).assertIsDisplayed()
   }
@@ -86,11 +93,11 @@ class AssociationAppShellTest {
     compose.onNodeWithTag("detail_back").performClick()
     compose.onNodeWithTag(C.Tag.nav_item_map).performClick()
     compose.onNodeWithTag("map_details").performClick()
-    compose.onNodeWithTag("nav_item_organization").performClick()
+    compose.onNodeWithTag(C.Tag.nav_item_organization).performClick()
     compose.onNodeWithText("Organization fixture").assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.nav_item_map).performClick()
     compose.onNodeWithTag(C.Tag.event_detail_placeholder).assertIsDisplayed()
-    compose.onNodeWithTag("nav_item_organization").performClick()
+    compose.onNodeWithTag(C.Tag.nav_item_organization).performClick()
     compose.runOnIdle { logout() }
     compose.runOnIdle {
       assertEquals(1, completions)

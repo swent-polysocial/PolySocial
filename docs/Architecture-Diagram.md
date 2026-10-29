@@ -1,5 +1,6 @@
 <!-- Contributors: Claude Opus 5.5 (attendees schema, rules and capacity question, #121). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the account deletion decision, its deletion/failure matrix and the related open questions (#201); Mohamed Khellaf (reviewed and revised). -->
+<!-- Contributors: OpenAI Codex (verified association shell and remaining map handoff, #140). -->
 <!-- Contributors: OpenAI Codex (association signup/setup routing and built/planned integration, #125). -->
 <!-- Contributors: OpenAI Codex (Google authentication architecture, Firebase-managed linking clarification and review cleanup for #106; preserved contributor acknowledgments during rebase); Claude (the shared UI parts, #251). -->
 <!-- Contributors: OpenAI Codex (removed obsolete Google collision UI, #107). -->
@@ -74,7 +75,7 @@ flowchart TB
   gate -- "association setup missing" --> associationSetup["Association setup"]:::s1
   associationSetup -- "private account, then identity saved" --> gate
   gate -- "association pending" --> pending["PendingAssociation handoff: renderer #127 planned"]
-  gate -- "association verified" --> associationMain["AssociationMain handoff: tabs #140 planned"]
+  gate -- "association verified" --> associationMain["AssociationMain: Events · Map · Organization"]
 ```
 
 **Association onboarding (#125, implemented):** `SignUpViewModel` persists an association intent in `AssociationSignupStore` before calling `AuthRepository.signUp`. `PreferencesAssociationSignupStore` writes only an email digest and marker, off the main thread; it grants no server permissions. Student signup retains the EPFL restriction, while association signup accepts a valid email on any domain and reuses Verify Email.
@@ -83,7 +84,9 @@ flowchart TB
 
 `AppStartViewModel` restores `AssociationSetup`, `PendingAssociation` or verified `AssociationMain` from the private account type and identity. Missing non-EPFL profiles resume association setup without a device-local hint; EPFL accounts need the hint to distinguish unfinished student and association setup. Once the private profile records the type, marker cleanup is housekeeping and cannot block entry. Existing profiles remain authoritative.
 
-**Integration still planned:** #127 supplies the pending-review renderer and editing; until it is wired, this slice's pending handoff offers logout only and does not complete #125. #140 supplies verified Events/Map/Organization tabs, and #133 the owner-constrained Map content; #208 owns existing-association login. The first association shell merged (#247 or #261) stays and the second adapts on rebase. Membership/invite behavior is undecided, so setup keeps review-focused copy; Figma's invitation sentence needs a team update. No new setup/configuration is required.
+**Verified shell (#140, implemented):** verified associations reuse the tab graphs with Events, a query-free explanatory Map state until #133, and Organization. Chats is absent. Organization retains its own identity across Privacy navigation and reuses cache-first logout, which clears installed graphs.
+
+**Integration still planned:** #127 supplies the pending-review renderer and editing; until it is wired, this slice's pending handoff offers logout only and does not complete #125. #133 supplies the owner-constrained Map content; #208 owns existing-association login. The first association shell merged (#247 or #261) stays and the second adapts on rebase. Membership/invite behavior is undecided, so setup keeps review-focused copy; Figma's invitation sentence needs a team update. No new setup/configuration is required.
 
 ### 2.2 Main app (one back stack per tab)
 

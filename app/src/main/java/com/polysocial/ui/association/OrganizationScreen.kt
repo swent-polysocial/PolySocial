@@ -1,14 +1,39 @@
-// Contributors: OpenAI Codex (Organization identity and shared privacy/logout controls, #140).
+// Contributors: OpenAI Codex (Organization identity, retained Privacy return state and shared
+// controls, #140).
 package com.polysocial.ui.association
 
 import androidx.activity.compose.BackHandler
+import androidx.annotation.DrawableRes
+import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -21,10 +46,21 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
+import com.polysocial.model.association.Association
 import com.polysocial.ui.common.ErrorState
 import com.polysocial.ui.common.LoadingState
-import com.polysocial.ui.profile.*
-import com.polysocial.ui.theme.*
+import com.polysocial.ui.profile.LogoutState
+import com.polysocial.ui.profile.OrganizationUiState
+import com.polysocial.ui.profile.ProfileScreen
+import com.polysocial.ui.profile.ProfileViewModel
+import com.polysocial.ui.theme.Border
+import com.polysocial.ui.theme.Info
+import com.polysocial.ui.theme.InfoSoft
+import com.polysocial.ui.theme.Ink
+import com.polysocial.ui.theme.Ink2
+import com.polysocial.ui.theme.Ink3
+import com.polysocial.ui.theme.Warning
+import com.polysocial.ui.theme.WarningSoft
 import kotlinx.coroutines.launch
 
 object OrganizationTags {
@@ -46,24 +82,19 @@ fun OrganizationRoute(
   val organization by viewModel.organization.collectAsStateWithLifecycle()
   val logout by viewModel.uiState.collectAsStateWithLifecycle()
   val actions = remember(viewModel) { OrganizationActions(viewModel) }
-  var opened by remember(viewModel) { mutableStateOf(false) }
-  LaunchedEffect(viewModel) {
-    viewModel.loadOrganization()
-    opened = true
-  }
+  LaunchedEffect(viewModel) { viewModel.loadOrganization() }
   val done by rememberUpdatedState(onLoggedOut)
-  LaunchedEffect(logout) { if (opened && logout == LogoutState.LoggedOut) done() }
+  LaunchedEffect(logout) { if (logout == LogoutState.LoggedOut) done() }
   BackHandler(logout != LogoutState.Idle, actions.cancel)
-  if (opened)
-      OrganizationScreen(
-          organization,
-          logout,
-          actions.retry,
-          actions.request,
-          actions.cancel,
-          actions.confirm,
-          onOpenPrivacy,
-      )
+  OrganizationScreen(
+      organization,
+      logout,
+      actions.retry,
+      actions.request,
+      actions.cancel,
+      actions.confirm,
+      onOpenPrivacy,
+  )
 }
 
 private class OrganizationActions(model: ProfileViewModel) {
@@ -107,73 +138,7 @@ fun OrganizationScreen(
               )
             }
         is OrganizationUiState.Ready -> {
-          val association = state.association
-          Column(
-              Modifier.fillMaxWidth().padding(20.dp),
-              verticalArrangement = Arrangement.spacedBy(18.dp),
-          ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(14.dp),
-            ) {
-              Surface(shape = RoundedCornerShape(18.dp), color = WarningSoft) {
-                Box(Modifier.size(64.dp), contentAlignment = Alignment.Center) {
-                  Text(
-                      associationInitials(association.name),
-                      Modifier.testTag(OrganizationTags.Initials),
-                      style = MaterialTheme.typography.titleLarge,
-                      color = Warning,
-                      fontWeight = FontWeight.ExtraBold,
-                  )
-                }
-              }
-              Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                Text(
-                    association.name,
-                    style =
-                        MaterialTheme.typography.titleLarge.copy(
-                            fontSize = 19.sp,
-                            lineHeight = 24.sp,
-                        ),
-                    fontWeight = FontWeight.ExtraBold,
-                )
-                Text(
-                    stringResource(association.type.label()),
-                    style =
-                        MaterialTheme.typography.bodySmall.copy(
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Normal,
-                        ),
-                    color = Ink2,
-                )
-                Surface(shape = RoundedCornerShape(12.dp), color = InfoSoft) {
-                  Row(
-                      Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                      verticalAlignment = Alignment.CenterVertically,
-                      horizontalArrangement = Arrangement.spacedBy(4.dp),
-                  ) {
-                    Icon(
-                        painterResource(R.drawable.ic_check_small),
-                        null,
-                        Modifier.size(12.dp),
-                        tint = Info,
-                    )
-                    Text(
-                        stringResource(R.string.organization_verified),
-                        Modifier.testTag(OrganizationTags.Verified),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = Info,
-                    )
-                  }
-                }
-              }
-            }
-            Text(association.about, style = MaterialTheme.typography.bodyMedium, color = Ink2)
-            association.website?.let {
-              Text(it, style = MaterialTheme.typography.bodySmall, color = Ink2)
-            }
-          }
+          OrganizationHeader(state.association)
           OrganizationEntry(
               R.string.organization_members,
               R.drawable.ic_organization_members,
@@ -206,9 +171,77 @@ fun OrganizationScreen(
 }
 
 @Composable
+private fun OrganizationHeader(association: Association) {
+  Column(
+      Modifier.fillMaxWidth().padding(20.dp),
+      verticalArrangement = Arrangement.spacedBy(18.dp),
+  ) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+      Surface(shape = RoundedCornerShape(18.dp), color = WarningSoft) {
+        Box(Modifier.size(64.dp), contentAlignment = Alignment.Center) {
+          Text(
+              associationInitials(association.name),
+              Modifier.testTag(OrganizationTags.Initials),
+              style = MaterialTheme.typography.titleLarge,
+              color = Warning,
+              fontWeight = FontWeight.ExtraBold,
+          )
+        }
+      }
+      Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        Text(
+            association.name,
+            style =
+                MaterialTheme.typography.titleLarge.copy(
+                    fontSize = 19.sp,
+                    lineHeight = 24.sp,
+                ),
+            fontWeight = FontWeight.ExtraBold,
+        )
+        Text(
+            stringResource(association.type.label()),
+            style =
+                MaterialTheme.typography.bodySmall.copy(
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Normal,
+                ),
+            color = Ink2,
+        )
+        Surface(shape = RoundedCornerShape(12.dp), color = InfoSoft) {
+          Row(
+              Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+              verticalAlignment = Alignment.CenterVertically,
+              horizontalArrangement = Arrangement.spacedBy(4.dp),
+          ) {
+            Icon(
+                painterResource(R.drawable.ic_check_small),
+                null,
+                Modifier.size(12.dp),
+                tint = Info,
+            )
+            Text(
+                stringResource(R.string.organization_verified),
+                Modifier.testTag(OrganizationTags.Verified),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = Info,
+            )
+          }
+        }
+      }
+    }
+    Text(association.about, style = MaterialTheme.typography.bodyMedium, color = Ink2)
+    association.website?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = Ink2) }
+  }
+}
+
+@Composable
 private fun OrganizationEntry(
-    label: Int,
-    icon: Int,
+    @StringRes label: Int,
+    @DrawableRes icon: Int,
     tag: String,
     enabled: Boolean,
     onClick: () -> Unit,
