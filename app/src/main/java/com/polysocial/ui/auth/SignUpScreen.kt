@@ -265,7 +265,6 @@ fun AuthFlow(
             StartDestination.Error -> AuthDestination.Error
             // New association destinations fail closed until the following screen slice.
             StartDestination.AssociationSetup,
-            StartDestination.PendingAssociation,
             StartDestination.AssociationMain -> AuthDestination.Error
           }
       // A step left half-done (or already saved) before must not come back: open it fresh.
