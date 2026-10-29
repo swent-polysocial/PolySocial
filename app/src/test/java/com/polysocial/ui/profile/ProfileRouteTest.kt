@@ -15,6 +15,7 @@ import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
 import com.polysocial.model.firebase.*
 import com.polysocial.ui.theme.PolySocialTheme
@@ -40,6 +41,7 @@ class ProfileRouteTest {
               return CacheClearResult.Cleared
             }
           },
+          FakeAssociationRepository(),
       )
 
   private fun back() {
@@ -83,6 +85,7 @@ class ProfileRouteTest {
                   return CacheClearResult.Cleared
                 }
               },
+              FakeAssociationRepository(),
           )
         }
         androidx.compose.material3.Text(
@@ -119,6 +122,7 @@ class ProfileRouteTest {
                 return CacheClearResult.Cleared
               }
             },
+            FakeAssociationRepository(),
         )
     val current = mutableStateOf(vm)
     var completed = 0
