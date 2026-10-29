@@ -213,7 +213,7 @@ class FirestoreEventRepositoryEmulatorTest {
       repository.getUpcomingPublicEvents(WINDOW_DAYS).collect(publicResults::send)
     }
     val detail = launch { repository.getEvent("privateReadable").collect(detailResults::send) }
-    val offline =
+    val (offline, cachedDetail) =
         try {
           awaitServerResult(publicResults) { "public" in it }
           withTimeout(TIMEOUT_MS) {
@@ -222,11 +222,21 @@ class FirestoreEventRepositoryEmulatorTest {
           whileOffline(emulator.firestore.collection(EVENTS_COLLECTION).document("public")) {
             // Firestore notices it is offline some seconds after Android does; until then, its
             // results still count as from the server. Wait for the first one from the cache.
-            withTimeout(OFFLINE_TIMEOUT_MS) {
-              repository.getUpcomingPublicEvents(WINDOW_DAYS).first {
-                it !is PublicEventsResult.Events || it.fromCache
-              }
-            }
+            val events =
+                withTimeout(OFFLINE_TIMEOUT_MS) {
+                  repository.getUpcomingPublicEvents(WINDOW_DAYS).first {
+                    it !is PublicEventsResult.Events || it.fromCache
+                  }
+                }
+            // Still offline: the private event must be in the cache, or the check above proves
+            // nothing.
+            val detail =
+                withTimeout(OFFLINE_TIMEOUT_MS) {
+                  repository.getEvent("privateReadable").first {
+                    it !is EventResult.Found || it.fromCache
+                  }
+                }
+            events to detail
           }
         } finally {
           map.cancel()
@@ -236,6 +246,11 @@ class FirestoreEventRepositoryEmulatorTest {
     assertTrue("Expected cached events, got $offline", offline is PublicEventsResult.Events)
     assertTrue((offline as PublicEventsResult.Events).fromCache)
     assertEquals(listOf("public"), offline.ids())
+    assertTrue(
+        "Expected the cached private event, got $cachedDetail",
+        cachedDetail is EventResult.Found,
+    )
+    assertTrue((cachedDetail as EventResult.Found).fromCache)
   }
 
   @Test
