@@ -267,6 +267,13 @@ guessing. It also shows how the design evolved.
   2. include rules tests covering at least one allowed access and one denied
      access for each rule added or changed;
   3. request a reviewer's explicit sign-off on the rules change.
+- Merging a rules change does not deploy it: Firebase keeps serving the old
+  rules until someone runs the deploy command in the README, so the app's new
+  reads and writes fail in production (#220 was missed this way). Right after
+  the merge, the human author deploys `firestore.rules` from an up-to-date
+  `main` (never from a feature branch, which could publish unmerged rules).
+  Remind the author in the PR. An agent runs the deploy only when the author
+  asks and is logged in to the Firebase CLI.
 - Never loosen a rule (for example widen a match or remove a condition) to make
   a feature or test work. If a feature seems to need broader access, stop and
   ask.
