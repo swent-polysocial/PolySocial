@@ -1,4 +1,4 @@
-// Contributors: OpenAI Codex (adapted the pending flow to association signup intent).
+// Contributors: OpenAI Codex (adapted pending flow to startup recovery).
 // Contributors: Claude (wrote these tests, #127; logging in again in the same activity, after a
 // review, #127).
 package com.polysocial.auth
@@ -12,9 +12,11 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.R
 import com.polysocial.model.association.AssociationResult
 import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.AuthUser
@@ -90,7 +92,7 @@ class PendingAssociationFlowTest {
   private lateinit var start: AppStartViewModel
 
   private fun launch() {
-    start = AppStartViewModel(auth, profiles)
+    start = AppStartViewModel(auth, profiles, EmptyAssociationSignupStore, associations)
     val verification =
         VerifyEmailViewModel(auth, MemoryVerificationStore(), VerificationClock { 1000 })
     val signUp = SignUpViewModel(auth, EmptyAssociationSignupStore)
@@ -139,14 +141,17 @@ class PendingAssociationFlowTest {
 
     launch()
 
-    compose.onNodeWithTag(STUDENT_APP).assertIsDisplayed()
+    compose
+        .onNodeWithText(compose.activity.getString(R.string.app_start_error_title))
+        .assertIsDisplayed()
+    compose.onNodeWithTag(STUDENT_APP).assertDoesNotExist()
     compose.onNodeWithTag(AssociationTags.SHELL).assertDoesNotExist()
-    // The pending app never read its details.
-    assertEquals(0, associations.requestedUids.size)
+    assertEquals(1, associations.requestedUids.size)
   }
 
   @Test
   fun aStudent_opensTheStudentsApp() {
+    auth.user = user.copy(email = "student@epfl.ch")
     profiles.getProfileResult = profile(AccountType.STUDENT)
 
     launch()
@@ -209,7 +214,10 @@ class PendingAssociationFlowTest {
         .assertTextEquals("Other Club")
     compose.onNodeWithTag(ProfileTags.Dialog).assertDoesNotExist()
     assertEquals(1, auth.logOutCalls)
-    assertEquals(listOf("club-uid", "other-uid"), associations.requestedUids)
+    assertEquals(
+        listOf("club-uid", "club-uid", "other-uid", "other-uid"),
+        associations.requestedUids,
+    )
   }
 
   private companion object {

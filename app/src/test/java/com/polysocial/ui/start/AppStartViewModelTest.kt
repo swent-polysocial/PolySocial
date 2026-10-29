@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (adapted association routing tests to setup recovery).
 // Contributors: OpenAI Codex (late profile completion cannot reopen a signed-out session, #107).
 // Contributors: Claude Opus 5.5 (wrote these tests; refresh after Log in; full profile fixture,
 // #34); Claude (log out and the created profile; Verify Email opened in-session, #74; routing
@@ -463,7 +464,22 @@ class AppStartViewModelTest {
   private fun routeOf(profile: ProfileResult): StartDestination {
     auth.user = verified
     profiles.getProfileResult = profile
-    val viewModel = AppStartViewModel(auth, profiles)
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            EmptyAssociationSignupStore,
+            FakeAssociationRepository(
+                com.polysocial.model.association.AssociationResult.Found(
+                    com.polysocial.model.association.Association(
+                        "u1",
+                        "Club",
+                        com.polysocial.model.association.AssociationType.CLUB,
+                        "About",
+                    )
+                )
+            ),
+        )
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
     return viewModel.destination.value
   }
@@ -475,7 +491,7 @@ class AppStartViewModelTest {
 
   @Test
   fun aVerifiedAssociation_routesToTheMainApp_neverToThePendingOne() {
-    assertEquals(StartDestination.Main, routeOf(association(verified = true)))
+    assertEquals(StartDestination.AssociationMain, routeOf(association(verified = true)))
   }
 
   @Test
@@ -500,14 +516,29 @@ class AppStartViewModelTest {
   fun onceAnAdminVerifiesIt_theNextStartOpensTheMainApp() {
     assertEquals(StartDestination.PendingAssociation, routeOf(association(verified = false)))
     // The admin sets the flag (#135); the app starts again.
-    assertEquals(StartDestination.Main, routeOf(association(verified = true)))
+    assertEquals(StartDestination.AssociationMain, routeOf(association(verified = true)))
   }
 
   @Test
   fun aPendingAssociationLoggingOut_returnsToLogin_andRefreshRoutesItBackAfterLogIn() {
     auth.user = verified
     profiles.getProfileResult = association(verified = false)
-    val viewModel = AppStartViewModel(auth, profiles)
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            EmptyAssociationSignupStore,
+            FakeAssociationRepository(
+                com.polysocial.model.association.AssociationResult.Found(
+                    com.polysocial.model.association.Association(
+                        "u1",
+                        "Club",
+                        com.polysocial.model.association.AssociationType.CLUB,
+                        "About",
+                    )
+                )
+            ),
+        )
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
 
     viewModel.logOut()
