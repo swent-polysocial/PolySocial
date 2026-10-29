@@ -1,3 +1,4 @@
+<!-- Contributors: OpenAI Codex (Organization availability and recovery messages, #140). -->
 <!-- Contributors: OpenAI Codex (Organization tab and own-identity states, #140). -->
 <!-- Contributors: OpenAI Codex (association auth and privacy copy, #125). -->
 <!-- Contributors: OpenAI Codex (association setup form copy, #125). -->
@@ -278,5 +279,7 @@
     <string name="organization_reports">Reported content</string>
     <string name="organization_loading">Loading your organization…</string>
     <string name="organization_error_title">Couldn’t load your organization</string>
-    <string name="organization_error_message">Check your connection and try again.</string>
+    <string name="organization_error_message">Try again, or sign out and reopen your account.</string>
+    <string name="association_map_unavailable_title">Your events map is not available yet</string>
+    <string name="association_map_unavailable_message">You can view and manage your association’s events in the Events tab.</string>
 </resources>
