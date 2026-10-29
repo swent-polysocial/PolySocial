@@ -1,23 +1,64 @@
-// Contributors: OpenAI Codex (editable association onboarding form, #125).
+// Contributors: OpenAI Codex (association onboarding form and Figma review fixes, #125).
 package com.polysocial.ui.association
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
 import com.polysocial.model.association.AssociationType
+import com.polysocial.ui.theme.Accent
+import com.polysocial.ui.theme.Bg
+import com.polysocial.ui.theme.Border
+import com.polysocial.ui.theme.Ink
+import com.polysocial.ui.theme.Ink2
 import com.polysocial.ui.theme.Warning
 import com.polysocial.ui.theme.WarningSoft
 
@@ -27,6 +68,7 @@ object AssociationSetupTags {
   const val Back = "association_setup_back"
   const val Error = "association_setup_error"
   const val Initials = "association_setup_initials"
+  const val InitialsBox = "association_setup_initials_box"
   const val ReviewNotice = "association_setup_review_notice"
 
   fun field(field: AssociationSetupField) = "association_setup_${field.name}"
@@ -91,96 +133,20 @@ fun AssociationSetupScreen(
         style = MaterialTheme.typography.headlineMedium,
     )
     Text(stringResource(R.string.association_setup_description))
-    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-      Surface(
-          shape = MaterialTheme.shapes.medium,
-          color = MaterialTheme.colorScheme.surfaceVariant,
-      ) {
-        Text(
-            associationInitials(state.form.name),
-            Modifier.padding(18.dp).testTag(AssociationSetupTags.Initials),
-            style = MaterialTheme.typography.headlineSmall,
-        )
-      }
-      Column {
-        Text(
-            stringResource(R.string.association_initials),
-            style = MaterialTheme.typography.titleSmall,
-        )
-        Text(
-            stringResource(R.string.association_initials_description),
-            style = MaterialTheme.typography.bodySmall,
-        )
-      }
-    }
+    AssociationSetupInitials(state.form.name)
     AssociationSetupField.entries.forEach { field ->
-      val error = state.form.error(field).takeIf { field in state.touched }
-      if (field == AssociationSetupField.Type) {
-        Text(stringResource(field.label()))
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-          AssociationType.entries.forEach { type ->
-            FilterChip(
-                selected = state.form.type == type,
-                onClick = { onType(type) },
-                enabled = enabled,
-                label = { Text(stringResource(type.label())) },
-                modifier = Modifier.testTag(AssociationSetupTags.type(type)),
-            )
-          }
-        }
-      } else {
-        val value =
-            when (field) {
-              AssociationSetupField.Name -> state.form.name
-              AssociationSetupField.About -> state.form.about
-              else -> state.form.website
-            }
-        OutlinedTextField(
-            value,
-            { onChange(field, it) },
-            enabled = enabled,
-            label = { Text(stringResource(field.label())) },
-            isError = error != null,
-            singleLine = field != AssociationSetupField.About,
-            modifier = Modifier.fillMaxWidth().testTag(AssociationSetupTags.field(field)),
-        )
-      }
-      if (error != null)
-          Text(
-              stringResource(error.message()),
-              color = MaterialTheme.colorScheme.error,
-              modifier = Modifier.testTag("${AssociationSetupTags.field(field)}_error"),
-          )
+      AssociationSetupInput(field, state, enabled, onChange, onType)
     }
-    Surface(
-        color = WarningSoft,
-        shape = MaterialTheme.shapes.medium,
-        modifier = Modifier.fillMaxWidth().testTag(AssociationSetupTags.ReviewNotice),
-    ) {
-      Row(
-          Modifier.padding(12.dp),
-          horizontalArrangement = Arrangement.spacedBy(8.dp),
-          verticalAlignment = Alignment.Top,
-      ) {
-        Icon(
-            painterResource(R.drawable.ic_shield),
-            contentDescription = null,
-            tint = Warning,
-            modifier = Modifier.size(18.dp),
-        )
-        Text(
-            stringResource(R.string.association_review_notice),
-            color = Warning,
-            style = MaterialTheme.typography.bodySmall,
-            fontWeight = FontWeight.SemiBold,
-        )
-      }
-    }
+    AssociationReviewNotice()
     state.error?.let {
       Text(
           stringResource(
-              if (it == AssociationSetupFailure.Network) R.string.association_setup_network
-              else R.string.association_setup_error
+              when (it) {
+                AssociationSetupFailure.Network -> R.string.association_setup_network
+                AssociationSetupFailure.WrongAccount -> R.string.association_setup_wrong_account
+                AssociationSetupFailure.Unexpected,
+                AssociationSetupFailure.NotSignedIn -> R.string.association_setup_error
+              }
           ),
           color = MaterialTheme.colorScheme.error,
           modifier = Modifier.testTag(AssociationSetupTags.Error),
@@ -195,6 +161,157 @@ fun AssociationSetupScreen(
           stringResource(
               if (state.saving) R.string.association_saving else R.string.association_submit
           )
+      )
+    }
+  }
+}
+
+@Composable
+private fun AssociationSetupInitials(name: String) {
+  Row(
+      horizontalArrangement = Arrangement.spacedBy(14.dp),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Box(
+        Modifier.size(64.dp)
+            .background(com.polysocial.ui.theme.Surface, RoundedCornerShape(18.dp))
+            .testTag(AssociationSetupTags.InitialsBox)
+            .drawBehind {
+              val width = 2.dp.toPx()
+              drawRoundRect(
+                  color = Border,
+                  topLeft = Offset(width / 2, width / 2),
+                  size = Size(size.width - width, size.height - width),
+                  cornerRadius = CornerRadius(18.dp.toPx()),
+                  style =
+                      Stroke(
+                          width,
+                          pathEffect =
+                              PathEffect.dashPathEffect(floatArrayOf(6.dp.toPx(), 4.dp.toPx())),
+                      ),
+              )
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+      Text(
+          associationInitials(name),
+          Modifier.testTag(AssociationSetupTags.Initials),
+          color = Accent,
+          fontSize = 24.sp,
+          fontWeight = FontWeight.ExtraBold,
+      )
+    }
+    Column {
+      Text(
+          stringResource(R.string.association_initials),
+          style = MaterialTheme.typography.titleSmall,
+      )
+      Text(
+          stringResource(R.string.association_initials_description),
+          style = MaterialTheme.typography.bodySmall,
+      )
+    }
+  }
+}
+
+@Composable
+private fun AssociationSetupInput(
+    field: AssociationSetupField,
+    state: AssociationSetupUiState,
+    enabled: Boolean,
+    onChange: (AssociationSetupField, String) -> Unit,
+    onType: (AssociationType) -> Unit,
+) {
+  val error = state.form.error(field).takeIf { field in state.touched }
+  val label = stringResource(field.label())
+  Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Text(label, color = Ink2, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+    if (field == AssociationSetupField.Type) {
+      AssociationSetupTypes(state.form.type, enabled, onType)
+    } else {
+      val value =
+          when (field) {
+            AssociationSetupField.Name -> state.form.name
+            AssociationSetupField.About -> state.form.about
+            AssociationSetupField.Website -> state.form.website
+            AssociationSetupField.Type -> state.form.website
+          }
+      OutlinedTextField(
+          value,
+          { onChange(field, it) },
+          enabled = enabled,
+          placeholder = {
+            if (field == AssociationSetupField.Website)
+                Text(stringResource(R.string.association_website_placeholder))
+          },
+          isError = error != null,
+          singleLine = field != AssociationSetupField.About,
+          minLines = if (field == AssociationSetupField.About) 2 else 1,
+          modifier =
+              Modifier.fillMaxWidth()
+                  .defaultMinSize(
+                      minHeight = if (field == AssociationSetupField.About) 70.dp else 52.dp
+                  )
+                  .semantics { contentDescription = label }
+                  .testTag(AssociationSetupTags.field(field)),
+      )
+    }
+    if (error != null)
+        Text(
+            stringResource(error.message()),
+            color = MaterialTheme.colorScheme.error,
+            modifier = Modifier.testTag("${AssociationSetupTags.field(field)}_error"),
+        )
+  }
+}
+
+@Composable
+private fun AssociationSetupTypes(
+    selected: AssociationType?,
+    enabled: Boolean,
+    onType: (AssociationType) -> Unit,
+) {
+  FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    AssociationType.entries.forEach { type ->
+      FilterChip(
+          selected = selected == type,
+          onClick = { onType(type) },
+          enabled = enabled,
+          label = { Text(stringResource(type.label())) },
+          colors =
+              FilterChipDefaults.filterChipColors(
+                  selectedContainerColor = Ink,
+                  selectedLabelColor = Bg,
+              ),
+          modifier = Modifier.testTag(AssociationSetupTags.type(type)),
+      )
+    }
+  }
+}
+
+@Composable
+private fun AssociationReviewNotice() {
+  Surface(
+      color = WarningSoft,
+      shape = MaterialTheme.shapes.medium,
+      modifier = Modifier.fillMaxWidth().testTag(AssociationSetupTags.ReviewNotice),
+  ) {
+    Row(
+        Modifier.padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.Top,
+    ) {
+      Icon(
+          painterResource(R.drawable.ic_shield),
+          contentDescription = null,
+          tint = Warning,
+          modifier = Modifier.size(18.dp),
+      )
+      Text(
+          stringResource(R.string.association_review_notice),
+          color = Warning,
+          style = MaterialTheme.typography.bodySmall,
+          fontWeight = FontWeight.SemiBold,
       )
     }
   }

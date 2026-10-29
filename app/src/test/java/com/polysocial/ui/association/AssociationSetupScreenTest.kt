@@ -8,17 +8,20 @@ import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -69,6 +72,7 @@ class AssociationSetupScreenTest {
       PolySocialTheme { AssociationSetupScreen(AssociationSetupUiState(), { _, _ -> }, {}, {}, {}) }
     }
     node(AssociationSetupTags.Screen).assertExists()
+    node(AssociationSetupTags.InitialsBox).assertWidthIsEqualTo(64.dp).assertHeightIsEqualTo(64.dp)
     compose.onNodeWithText(string(R.string.association_setup_title)).assertIsDisplayed()
     for (field in AssociationSetupField.entries) {
       node("${AssociationSetupTags.field(field)}_error").assertDoesNotExist()
@@ -241,8 +245,12 @@ class AssociationSetupScreenTest {
           .performScrollTo()
           .assertTextEquals(
               string(
-                  if (failure == AssociationSetupFailure.Network) R.string.association_setup_network
-                  else R.string.association_setup_error
+                  when (failure) {
+                    AssociationSetupFailure.Network -> R.string.association_setup_network
+                    AssociationSetupFailure.WrongAccount -> R.string.association_setup_wrong_account
+                    AssociationSetupFailure.Unexpected,
+                    AssociationSetupFailure.NotSignedIn -> R.string.association_setup_error
+                  }
               )
           )
       node(AssociationSetupTags.Submit).performScrollTo().assertIsEnabled()
