@@ -203,6 +203,17 @@ test("a profile read that can't reach Firestore is unavailable and deletes nothi
   }
 });
 
+test("a transaction aborted by concurrent writes is unavailable and deletes nothing", async () => {
+  for (const code of [10, "aborted"]) {
+    const backend = fakeBackend();
+    backend.fail.delete = { error: backendError(code) };
+    await assertHttpsError(call(backend), "unavailable", undefined);
+    assert.notEqual(backend.state.profile, null);
+    assert.equal(backend.state.authUserExists, true);
+    assert.ok(!backend.calls.some((c) => c.startsWith("deleteUser")));
+  }
+});
+
 test("any other profile read failure is internal and deletes nothing", async () => {
   for (const error of [backendError(7), new TypeError("unexpected"), "not an Error"]) {
     const backend = fakeBackend();
