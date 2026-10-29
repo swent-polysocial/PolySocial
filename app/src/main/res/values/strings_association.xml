@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Contributors: Claude (the pending association app, from the Figma "Association · pending" frames, #127). -->
+<!-- Contributors: Claude (the pending association app and its Edit details form, from the Figma "Association · pending" frames, #127). -->
 <resources>
     <!-- The association's bottom bar (#127; its verified tabs come with #140). -->
     <string name="association_tab_events">Events</string>
@@ -34,8 +34,27 @@
     <string name="association_pending_map_body">PolySocial checks every association by hand. Once you are verified, students see your events here.</string>
 
     <!-- Organization tab, Figma "Association · pending · Organization". -->
+    <string name="association_edit_details">Edit details</string>
     <string name="association_log_out">Log out</string>
     <string name="association_load_error_title">Couldn\'t load your association</string>
     <string name="association_load_error_message">Check your connection and try again.</string>
 
+    <!-- Edit details, Figma "Association · pending · Edit details". -->
+    <string name="association_edit_back">Back</string>
+    <string name="association_edit_name">Name</string>
+    <string name="association_edit_name_placeholder">Your association\'s name</string>
+    <string name="association_edit_type">Type</string>
+    <string name="association_edit_about">About</string>
+    <string name="association_edit_about_placeholder">What students should know about you</string>
+    <string name="association_edit_website">Website or EPFL page · optional</string>
+    <string name="association_edit_website_placeholder">https://</string>
+    <string name="association_edit_save">Save changes</string>
+    <string name="association_edit_saving">Saving…</string>
+    <string name="association_edit_try_again">Try again</string>
+    <string name="association_edit_error_name">Add a name</string>
+    <string name="association_edit_error_about">Add a description</string>
+    <string name="association_edit_error_website">Use a link starting with https://</string>
+    <string name="association_edit_failed_title">Couldn\'t save your details</string>
+    <string name="association_edit_offline_body">You\'re offline. Your changes are kept, so try again once you\'re back online.</string>
+    <string name="association_edit_unexpected_body">Something went wrong. Your changes are kept, so try again.</string>
 </resources>

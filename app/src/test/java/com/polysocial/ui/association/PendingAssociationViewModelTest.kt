@@ -98,6 +98,18 @@ class PendingAssociationViewModelTest {
     assertEquals(emptyList<String>(), associations.requestedUids)
   }
 
+  @Test
+  fun savedDetails_replaceTheShownOnes_withoutReadingAgain() = runTest {
+    val viewModel = PendingAssociationViewModel(auth, associations)
+    advanceUntilIdle()
+    val renamed = testClub.copy(name = "Renamed Club")
+
+    viewModel.onSaved(renamed)
+
+    assertEquals(PendingAssociationUiState.Loaded(renamed), viewModel.uiState.value)
+    assertEquals(1, associations.requestedUids.size)
+  }
+
   // --- One session after another (the ViewModel outlives a session) ---
 
   @Test
