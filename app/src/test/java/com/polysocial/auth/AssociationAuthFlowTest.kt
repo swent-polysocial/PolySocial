@@ -330,6 +330,22 @@ class AssociationAuthFlowTest {
   }
 
   @Test
+  fun existingAssociationEmailCanOpenLoginAndReturnToItsDraft() {
+    auth.signUpResult = SignUpResult.AlreadyInUse
+    launch()
+    openAssociationForm()
+    enterAssociationCredentials()
+    compose.onNodeWithTag(SignUpTags.Submit).performScrollTo().performClick()
+    compose.onNodeWithTag(SignUpTags.BackendError).assertIsDisplayed()
+    compose.onNodeWithTag(SignUpTags.LogInInstead).performScrollTo().performClick()
+    compose.onNodeWithTag(LoginScreenTestTags.SCREEN).assertIsDisplayed()
+    pressBack()
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.Email)).assertTextContains(user.email)
+    assertEquals(AccountType.ASSOCIATION, signup.uiState.value.form.accountType)
+    assertEquals(1, auth.signUpCalls)
+  }
+
+  @Test
   fun malformedAssociationEmailShowsItsInlineErrorAndPreventsCreation() {
     launch()
     openAssociationForm()
