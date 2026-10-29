@@ -241,6 +241,17 @@ class DeleteAccountSheetTest {
   }
 
   @Test
+  fun lostSessionCleanupFailureDoesNotSayTheAccountIsDeleted() {
+    cacheResult = CacheClearResult.UnexpectedError
+    auth.reauthResult = ReauthResult.NotSignedIn
+    open()
+    reauthWithPassword()
+    title(R.string.delete_account_cleanup_session_title)
+    rule.onNodeWithText(text(R.string.delete_account_cleanup_title)).assertDoesNotExist()
+    assertEquals(0, deletion.calls)
+  }
+
+  @Test
   fun failedCleanupBlocksWithRetryOnly() {
     cacheResult = CacheClearResult.UnexpectedError
     open()

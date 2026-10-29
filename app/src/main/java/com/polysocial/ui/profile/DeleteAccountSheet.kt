@@ -163,7 +163,10 @@ private fun SheetBody(
       SecondaryButton(R.string.delete_account_close, enabled = true, actions.onCancel)
     }
     DeleteAccountStep.CleanupFailed -> {
-      Title(R.string.delete_account_cleanup_title)
+      Title(
+          if (state.deleted) R.string.delete_account_cleanup_title
+          else R.string.delete_account_cleanup_session_title
+      )
       Message(R.string.delete_account_cleanup_error, DeleteAccountTags.Error)
       DestructiveButton(R.string.retry, DeleteAccountTags.Retry, actions.onRetry)
     }
