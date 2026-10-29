@@ -1,9 +1,15 @@
 // Contributors: OpenAI Codex (Organization loading, identity, retry and shared actions, #140).
 package com.polysocial.ui.association
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.association.*
 import com.polysocial.model.auth.*
@@ -112,5 +118,31 @@ class OrganizationScreenTest {
     }
     compose.onNodeWithTag(C.Tag.loading_state).assertExists()
     compose.onNodeWithTag(ProfileTags.Logout).performScrollTo().assertIsDisplayed()
+  }
+
+  @Test
+  fun largeTextKeepsTheWholeLogoutRowReachableInAShortWindow() {
+    var requested = 0
+    compose.setContent {
+      CompositionLocalProvider(
+          LocalDensity provides Density(LocalDensity.current.density, fontScale = 3f)
+      ) {
+        PolySocialTheme {
+          Box(Modifier.height(400.dp)) {
+            OrganizationScreen(
+                OrganizationUiState.Ready(identity),
+                LogoutState.Idle,
+                {},
+                { requested++ },
+                {},
+                {},
+                {},
+            )
+          }
+        }
+      }
+    }
+    compose.onNodeWithTag(ProfileTags.Logout).performScrollTo().assertIsDisplayed().performClick()
+    assertEquals(1, requested)
   }
 }

@@ -14,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -186,7 +187,7 @@ fun OrganizationScreen(
           )
         }
       }
-      Box(Modifier.fillMaxWidth().height(120.dp)) {
+      Box(Modifier.fillMaxWidth().heightIn(min = 120.dp)) {
         ProfileScreen(logout, onLogout, onCancel, onConfirm, onOpenPrivacy)
       }
     }
@@ -207,7 +208,7 @@ private fun OrganizationEntry(
         Modifier.fillMaxWidth()
             .heightIn(min = 53.dp)
             .testTag(tag)
-            .clickable(enabled = enabled, onClick = onClick)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(vertical = 15.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

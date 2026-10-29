@@ -99,6 +99,9 @@ class AssociationTabsDeviceTest {
 
   @Test
   fun approvedAssociationUsesRealOrganizationPrivacyAndLogoutWithoutStudentScreens() {
+    compose.waitUntil(5000) {
+      compose.onAllNodesWithTag(C.Tag.app_shell).fetchSemanticsNodes().isNotEmpty()
+    }
     compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.nav_item_chats).assertDoesNotExist()
     compose.onNodeWithTag(C.Tag.nav_item_profile).assertDoesNotExist()
@@ -108,6 +111,9 @@ class AssociationTabsDeviceTest {
     }
     compose.onNodeWithText("Map — coming soon").assertIsDisplayed()
     compose.onNodeWithTag("nav_item_organization").performClick()
+    compose.waitUntil(5000) {
+      compose.onAllNodesWithText(identity.name).fetchSemanticsNodes().isNotEmpty()
+    }
     compose.onNodeWithText(identity.name).assertIsDisplayed()
     compose.onNodeWithTag(OrganizationTags.Verified).assertIsDisplayed()
     capture("organization")
@@ -125,6 +131,9 @@ class AssociationTabsDeviceTest {
     compose.onNodeWithTag(ProfileTags.Logout).performScrollTo().performClick()
     capture("organization-logout")
     compose.onNodeWithTag(ProfileTags.Confirm).performClick()
+    compose.waitUntil(5000) {
+      compose.onAllNodesWithTag(WelcomeTags.Screen).fetchSemanticsNodes().isNotEmpty()
+    }
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
     assertEquals(1, clears)
     assertEquals(1, fakeAuth.logOutCalls)
