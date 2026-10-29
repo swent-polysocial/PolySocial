@@ -1,7 +1,8 @@
 // Contributors: OpenAI Codex (Profile tab, shared logout dialog and remembered action binding,
 // #109; matched the logout row and icon to Figma).
 // Contributors: OpenAI Codex (privacy entry alongside confirmed logout after rebase, #103).
-// Contributors: Claude (the logout dialog shared with the association's Organization tab, #127).
+// Contributors: Claude (the logout dialog shared with the association's Organization tab, #127;
+// the activity-scoped logout confirmation shared with the app-start error, #208).
 package com.polysocial.ui.profile
 
 import androidx.activity.compose.BackHandler
@@ -95,6 +96,25 @@ fun ProfileScreen(
     }
   }
   LogoutDialog(state, onCancel, onConfirm)
+}
+
+/**
+ * The logout of an app whose [viewModel] belongs to the activity, which outlives the session: the
+ * confirmation [LogoutDialog] (cache cleared, then signed out, #109), then, once logged out, the
+ * ViewModel is reset for the next account and [onLoggedOut] is called. Shared by the association's
+ * pending app (#127) and the app-start error (#208); [ProfileViewModel.requestLogout] opens it.
+ */
+@Composable
+fun ActivityLogout(viewModel: ProfileViewModel, onLoggedOut: () -> Unit) {
+  val state by viewModel.uiState.collectAsStateWithLifecycle()
+  val latestOnLoggedOut by rememberUpdatedState(onLoggedOut)
+  LaunchedEffect(state) {
+    if (state == LogoutState.LoggedOut) {
+      viewModel.reset()
+      latestOnLoggedOut()
+    }
+  }
+  LogoutDialog(state, viewModel::cancelLogout, viewModel::confirmLogout)
 }
 
 /**
