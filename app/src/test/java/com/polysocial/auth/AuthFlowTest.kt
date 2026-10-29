@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (bound the organization repository on rebase, #140).
 // Contributors: OpenAI Codex (inject Google entry state after #107 rebase).
 // Contributors: OpenAI Codex (session loss during router replacement and Profile placeholder in
 // shell tests; logout uses replacement verification/profile state and startup router, #109).
@@ -76,7 +77,12 @@ class AuthFlowTest {
           return clearResult
         }
       }
-  private val logout = com.polysocial.ui.profile.ProfileViewModel(auth, cache)
+  private val logout =
+      com.polysocial.ui.profile.ProfileViewModel(
+          auth,
+          cache,
+          com.polysocial.model.association.FakeAssociationRepository(),
+      )
   private val restoration = StateRestorationTester(compose)
 
   private var exits = 0
