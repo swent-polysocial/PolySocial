@@ -1,12 +1,13 @@
 // Contributors: Claude (Fable 5.1, Anthropic) drafted the session guard, #198; Mohamed Khellaf
 // (reviewed and revised).
-// Contributors: Claude (Opus 5.5, Anthropic) started it from the application and tested it, #198;
-// Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) started it from the application, made failed checks
+// fail safe and tested it, #198; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.model.firebase
 
 import com.polysocial.model.auth.AuthSessionSource
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -76,12 +77,27 @@ constructor(
    * detection blocks access within Firebase's main-thread callback, before the clear runs. If
    * Firebase Authentication cannot be created, [AuthSessionSource.uidChanges] ends at once (nobody
    * can sign in or out in this process) and observation ends with it; app start still checks before
-   * every first read. Any other failure is not caught here: it fails the job in [scope], so it is
-   * reported instead of silently ending observation.
+   * every first read.
+   *
+   * **An unexpected failure while checking a change fails safe.** It must neither crash the app
+   * (the scope has no handler) nor let the new account read a cache that may hold the previous
+   * one's documents. So the cache is blocked unless it is known to be empty (in which case there is
+   * nothing to protect), the owner is left unchanged, and observation goes on with the next change.
+   * The user gets out through app start: its "couldn't load profile" Retry calls [ensureSession]
+   * again, which clears the blocked cache and records the account.
    */
   fun start(scope: CoroutineScope): Job =
       scope.launch(start = CoroutineStart.UNDISPATCHED) {
-        auth.uidChanges().collect { ensureSession(it) }
+        auth.uidChanges().collect { uid ->
+          try {
+            ensureSession(uid)
+          } catch (cancelled: CancellationException) {
+            throw cancelled
+          } catch (_: Exception) {
+            // Fail safe instead of crashing: no account reads until a later check clears.
+            session.blockUnlessEmpty()
+          }
+        }
       }
 
   override suspend fun ensureSession(uid: String?): SessionGuardResult {
