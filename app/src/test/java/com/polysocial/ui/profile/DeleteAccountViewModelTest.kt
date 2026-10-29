@@ -169,6 +169,27 @@ class DeleteAccountViewModelTest {
       }
 
   @Test
+  fun clearingKeepsTheStepOnScreenWithoutThePassword() =
+      runTest(main.dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        cacheGate = gate
+        openReauth()
+        vm.onPasswordChange("fictional-password")
+        vm.submitPassword()
+        runCurrent()
+        val clearing = vm.uiState.value
+        assertEquals(DeleteAccountStep.Clearing, clearing.step)
+        assertEquals(setOf(SignInMethod.PASSWORD), clearing.methods)
+        assertEquals(student.email, clearing.email)
+        assertEquals("", clearing.password)
+        assertTrue(clearing.busy)
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(DeleteAccountStep.Done, step)
+        assertEquals(student.email, vm.uiState.value.email)
+      }
+
+  @Test
   fun googleReauthDeletesTheAccount() =
       runTest(main.dispatcher) {
         fakeAuth.signInMethods = setOf(SignInMethod.GOOGLE)
