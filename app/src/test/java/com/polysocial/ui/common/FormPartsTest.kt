@@ -1,4 +1,4 @@
-// Contributors: Claude (wrote these tests, #251; modifier tests after review).
+// Contributors: Claude (wrote these tests, #251; modifier and label style tests after review).
 package com.polysocial.ui.common
 
 import androidx.activity.ComponentActivity
@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
@@ -18,7 +20,11 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
 import com.polysocial.ui.theme.PolySocialTheme
@@ -108,5 +114,32 @@ class FormPartsTest {
 
     compose.onNodeWithTag("errorOuter").assertWidthIsEqualTo(200.dp)
     compose.onNodeWithTag("button").assertWidthIsEqualTo(150.dp).assertHeightIsEqualTo(52.dp)
+  }
+
+  @Test
+  fun primaryButton_drawsItsLabelInTheStyleItIsGiven() {
+    val style = TextStyle(fontSize = 21.sp, fontWeight = FontWeight.Bold)
+    show {
+      Column {
+        PrimaryButton("Default", true, "default") {}
+        PrimaryButton("Custom", true, "custom", textStyle = style) {}
+      }
+    }
+
+    assertEquals(21.sp, labelLayout("Custom").layoutInput.style.fontSize)
+    // Without one, the label keeps the theme's button style (titleSmall, 15 sp).
+    assertEquals(15.sp, labelLayout("Default").layoutInput.style.fontSize)
+  }
+
+  private fun labelLayout(text: String): TextLayoutResult {
+    val results = mutableListOf<TextLayoutResult>()
+    compose
+        .onNodeWithText(text)
+        .fetchSemanticsNode()
+        .config
+        .getOrNull(SemanticsActions.GetTextLayoutResult)
+        ?.action
+        ?.invoke(results)
+    return results.single()
   }
 }

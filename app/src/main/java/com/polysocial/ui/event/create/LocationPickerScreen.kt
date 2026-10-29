@@ -1,5 +1,6 @@
 // Contributors: Claude (location picker screen from the Figma "Pick location" frames, section 04,
-// #111; pin tip on the map center and scrollable results after review).
+// #111; pin tip on the map center and scrollable results after review; the shared primary button,
+// #251).
 package com.polysocial.ui.event.create
 
 import android.content.Intent
@@ -82,6 +83,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.geocoding.Place
+import com.polysocial.ui.common.PrimaryButton
 import com.polysocial.ui.theme.AccentSoft
 import com.polysocial.ui.theme.AccentText
 import com.polysocial.ui.theme.Bg
@@ -591,17 +593,13 @@ private fun PlaceCard(state: LocationPickerUiState, onUse: () -> Unit, modifier:
       }
     }
     Spacer(Modifier.height(12.dp))
-    Box(
-        Modifier.fillMaxWidth()
-            .height(52.dp)
-            .clip(RoundedCornerShape(26.dp))
-            .background(Ink)
-            .clickable(role = Role.Button, onClick = onUse)
-            .testTag(LocationPickerTags.USE),
-        contentAlignment = Alignment.Center,
-    ) {
-      Text(R.string.location_picker_use, figmaText(15, FontWeight.Bold), Bg)
-    }
+    PrimaryButton(
+        text = stringResource(R.string.location_picker_use),
+        enabled = true,
+        tag = LocationPickerTags.USE,
+        textStyle = figmaText(15, FontWeight.Bold),
+        onClick = onUse,
+    )
     if (text.credit) {
       Spacer(Modifier.height(11.5.dp))
       Text(

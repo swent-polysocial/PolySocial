@@ -1,5 +1,5 @@
 // Contributors: Claude (shared from the copies in Create Event, Log in, Profile setup, Events and
-// Event detail, #251; modifiers after review).
+// Event detail, #251; modifiers, and the location picker's button, after review).
 package com.polysocial.ui.common
 
 import androidx.annotation.StringRes
@@ -124,7 +124,8 @@ fun ErrorBanner(
 
 /**
  * Figma's dark 52 dp pill button: greyed out when it can't be used, with a spinner while [loading].
- * [tag] is its test tag.
+ * [tag] is its test tag. [textStyle] lets a screen keep its own measured variant of the label
+ * style, for example one rendered exactly as in Figma.
  */
 @Composable
 fun PrimaryButton(
@@ -133,6 +134,7 @@ fun PrimaryButton(
     tag: String,
     loading: Boolean = false,
     modifier: Modifier = Modifier,
+    textStyle: TextStyle = MaterialTheme.typography.titleSmall,
     onClick: () -> Unit,
 ) {
   val greyed = !enabled && !loading
@@ -155,7 +157,7 @@ fun PrimaryButton(
           strokeWidth = 2.dp,
       )
     }
-    Text(text, style = MaterialTheme.typography.titleSmall, color = if (greyed) Ink3 else Bg)
+    Text(text, style = textStyle, color = if (greyed) Ink3 else Bg)
   }
 }
 
