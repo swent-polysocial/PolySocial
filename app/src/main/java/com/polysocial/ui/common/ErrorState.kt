@@ -106,14 +106,14 @@ fun ErrorState(
       )
       secondaryAction?.let { action ->
         // A 48 dp touch target whose text still sits the stack's 10 dp under Retry (Figma 490:26):
-        // the padding above the text is taken from that gap.
+        // the padding above the text is exactly that gap, so the target stops at Retry's edge.
         TextLink(
             action.label,
             action.onClick,
-            Modifier.overlapVertically(LINK_PADDING)
+            Modifier.overlapVertically(LINK_PADDING_TOP, LINK_PADDING_BOTTOM)
                 .heightIn(min = 48.dp)
                 .testTag(C.Tag.error_secondary),
-            contentPadding = PaddingValues(vertical = LINK_PADDING),
+            contentPadding = PaddingValues(top = LINK_PADDING_TOP, bottom = LINK_PADDING_BOTTOM),
         )
       }
     }
@@ -123,17 +123,24 @@ fun ErrorState(
 /** The width of Figma's text block, 40 dp inside each edge of the 360 dp frame. */
 private val MAX_TEXT_WIDTH = 280.dp
 
-/** Space above and below the link's text, inside its 48 dp touch target. */
-private val LINK_PADDING = 15.dp
+/**
+ * Space above the link's text inside its 48 dp touch target: the stack's whole 10 dp gap, and no
+ * more, so the target never covers Retry.
+ */
+private val LINK_PADDING_TOP = 10.dp
+
+/** Space below the link's text, making up the rest of its 48 dp touch target. */
+private val LINK_PADDING_BOTTOM = 20.dp
 
 /**
- * Lays the content out [padding] shorter at the top and the bottom, so that padding grows the touch
- * area over the neighbouring space without moving anything.
+ * Lays the content out [top] shorter at the top and [bottom] shorter at the bottom, so that padding
+ * grows the touch area over the neighbouring space without moving anything.
  */
-private fun Modifier.overlapVertically(padding: Dp) = layout { measurable, constraints ->
-  val extra = padding.roundToPx()
-  val placeable = measurable.measure(constraints.offset(vertical = 2 * extra))
-  layout(placeable.width, (placeable.height - 2 * extra).coerceAtLeast(0)) {
-    placeable.place(0, -extra)
+private fun Modifier.overlapVertically(top: Dp, bottom: Dp) = layout { measurable, constraints ->
+  val above = top.roundToPx()
+  val below = bottom.roundToPx()
+  val placeable = measurable.measure(constraints.offset(vertical = above + below))
+  layout(placeable.width, (placeable.height - above - below).coerceAtLeast(0)) {
+    placeable.place(0, -above)
   }
 }
