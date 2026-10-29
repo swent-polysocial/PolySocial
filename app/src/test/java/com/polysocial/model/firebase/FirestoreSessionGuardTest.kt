@@ -228,6 +228,24 @@ class FirestoreSessionGuardTest {
   }
 
   @Test
+  fun sameAccountAfterAFailedClear_clearsAgainBeforeReading() = runTest {
+    // Logout's clear failed and the student is still signed in (or A → null failed and A is back).
+    owner.uid = "student-a"
+    session.database
+    persistence = { Tasks.forException(FirebaseException("fictional failure")) }
+    assertEquals(CacheClearResult.UnexpectedError, session.clear())
+    assertTrue(session.isBlocked)
+
+    persistence = { Tasks.forResult(null) }
+    assertEquals(SessionGuardResult.Ready, guard.ensureSession("student-a"))
+
+    assertEquals(2, clears)
+    assertFalse(session.isBlocked)
+    assertOpenedLast(session)
+    assertEquals("student-a", owner.uid)
+  }
+
+  @Test
   fun stalledClear_timesOutAsAFailureAndCanBeRetried() = runTest {
     owner.uid = "student-a"
     termination = { TaskCompletionSource<Void>().task }
