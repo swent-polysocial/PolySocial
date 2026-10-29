@@ -1,4 +1,5 @@
-// Contributors: Claude Opus 5.5 (wrote these tests); Claude (reset after a sign-out, #74).
+// Contributors: Claude Opus 5.5 (wrote these tests); Claude (reset after a sign-out, #74;
+// association emails, #208).
 package com.polysocial.ui.login
 
 import com.polysocial.model.auth.AuthUser
@@ -248,5 +249,51 @@ class LoginViewModelTest {
 
     // A kept LoggedIn status would make the next visit navigate away at once.
     assertEquals(LoginUiState(), viewModel.uiState.value)
+  }
+
+  private val association =
+      AuthUser(uid = "club-uid", email = "club@example.org", isEmailVerified = true)
+
+  private fun logInAsAssociation(result: LogInResult): LoginStatus {
+    auth.logInResult = result
+    fillForm(email = "  club@example.org ")
+    viewModel.onLogIn()
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+    return status()
+  }
+
+  @Test
+  fun aNonEpflAssociationEmail_logsIn_withTheTrimmedEmail() {
+    // Log in has no EPFL-domain check: routing decides by account type afterwards (#208).
+    assertEquals(LoginStatus.LoggedIn, logInAsAssociation(LogInResult.Success(association)))
+    assertEquals(1, auth.logInCalls)
+    assertEquals("club@example.org", auth.lastLogInEmail)
+  }
+
+  @Test
+  fun aNonEpflEmail_withWrongCredentials_keepsTheRecoverableState() {
+    assertEquals(LoginStatus.WrongCredentials, logInAsAssociation(LogInResult.WrongCredentials))
+    assertTrue(viewModel.uiState.value.canSubmit)
+  }
+
+  @Test
+  fun aNonEpflEmail_offline_showsCantConnect_andCanRetry() {
+    assertEquals(LoginStatus.CantConnect, logInAsAssociation(LogInResult.NetworkError))
+    assertTrue(viewModel.uiState.value.canSubmit)
+
+    auth.logInResult = LogInResult.Success(association)
+    viewModel.onLogIn()
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+
+    assertEquals(LoginStatus.LoggedIn, status())
+    assertEquals(2, auth.logInCalls)
+  }
+
+  @Test
+  fun anAssociationWithAnUnverifiedEmail_goesToVerification() {
+    assertEquals(
+        LoginStatus.Unverified,
+        logInAsAssociation(LogInResult.Success(association.copy(isEmailVerified = false))),
+    )
   }
 }
