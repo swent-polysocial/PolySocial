@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (shared verified and pending navigation, #140).
 // Contributors: Claude (the association's bottom bar and tab graphs, from the Figma "Association"
 // frames, #127).
 package com.polysocial.ui.association
@@ -7,6 +8,7 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -19,6 +21,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -41,6 +44,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.polysocial.R
+import com.polysocial.resources.C
 import com.polysocial.ui.theme.Bg
 import com.polysocial.ui.theme.Ink
 import com.polysocial.ui.theme.Ink3
@@ -90,39 +94,56 @@ enum class AssociationTab(
  * [AssociationTab.rootRoute]), so each tab keeps its own back stack. The bar shows on the tabs'
  * root screens only: a screen opened from a tab (Edit details) is full screen, as in Figma.
  *
- * The pending association app (#127) uses it now; the verified association's tabs (#140) are meant
- * to plug their own graphs into it.
+ * Both pending and verified associations supply their tab graphs. Verified navigation may supply
+ * existing graph routes, its top bar, and explicit bar visibility for full-screen destinations.
+ *
+ * @param routes maps each association tab to its graph and root routes.
+ * @param showBottomBar overrides the root-only rule when the verified app supplies its own routes.
+ * @param dismissSnackbarOnNavigation keeps pending notices scoped to the screen that raised them.
  */
 @Composable
 fun AssociationShell(
     navController: NavHostController,
     snackbarHostState: SnackbarHostState,
     modifier: Modifier = Modifier,
+    routes: Map<AssociationTab, Pair<String, String>> =
+        AssociationTab.entries.associateWith { it.route to it.rootRoute },
+    showBottomBar: Boolean? = null,
+    topBar: @Composable () -> Unit = {},
+    contentWindowInsets: WindowInsets = ScaffoldDefaults.contentWindowInsets,
+    useAppTags: Boolean = false,
+    dismissSnackbarOnNavigation: Boolean = true,
     tabGraphs: NavGraphBuilder.() -> Unit,
 ) {
   val entry by navController.currentBackStackEntryAsState()
   val destination = entry?.destination
   val currentTab =
       AssociationTab.entries.firstOrNull { tab ->
-        destination?.hierarchy?.any { it.route == tab.route } == true
+        destination?.hierarchy?.any { it.route == routes.getValue(tab).first } == true
       } ?: AssociationTab.EVENTS
-  val atTabRoot = destination == null || destination.route == currentTab.rootRoute
+  val atTabRoot = destination == null || destination.route == routes.getValue(currentTab).second
   // A message is about the screen it was shown on: it leaves with it.
-  LaunchedEffect(destination?.route) { snackbarHostState.currentSnackbarData?.dismiss() }
+  LaunchedEffect(destination?.route, dismissSnackbarOnNavigation) {
+    if (dismissSnackbarOnNavigation) snackbarHostState.currentSnackbarData?.dismiss()
+  }
   Scaffold(
-      modifier = modifier.testTag(AssociationTags.SHELL),
+      modifier = modifier.testTag(if (useAppTags) C.Tag.app_shell else AssociationTags.SHELL),
+      topBar = topBar,
+      contentWindowInsets = contentWindowInsets,
       snackbarHost = {
         SnackbarHost(snackbarHostState) { data -> AssociationSnackbar(data.visuals.message) }
       },
       bottomBar = {
-        if (atTabRoot) {
-          AssociationBottomBar(currentTab) { tab -> navController.navigateToTab(tab) }
+        if (showBottomBar ?: atTabRoot) {
+          AssociationBottomBar(currentTab, useAppTags) { tab ->
+            navController.navigateToTab(routes.getValue(tab).first)
+          }
         }
       },
   ) { padding ->
     NavHost(
         navController = navController,
-        startDestination = AssociationTab.EVENTS.route,
+        startDestination = routes.getValue(AssociationTab.EVENTS).first,
         modifier = Modifier.padding(padding).consumeWindowInsets(padding),
         builder = tabGraphs,
     )
@@ -130,12 +151,12 @@ fun AssociationShell(
 }
 
 /**
- * Shows [tab] with the screen it was on, like the students' tabs (#42): the other tabs' stacks are
- * saved, Back from another tab's root returns to Events, and selecting the current tab again does
- * not stack a second copy of it.
+ * Shows [route] with the screen it was on, like the students' tabs (#42): the other tabs' stacks
+ * are saved, Back from another tab's root returns to Events, and selecting the current tab again
+ * does not stack a second copy of it.
  */
-private fun NavHostController.navigateToTab(tab: AssociationTab) {
-  navigate(tab.route) {
+private fun NavHostController.navigateToTab(route: String) {
+  navigate(route) {
     popUpTo(graph.findStartDestination().id) { saveState = true }
     launchSingleTop = true
     restoreState = true
@@ -173,11 +194,15 @@ private fun AssociationSnackbar(message: String) {
 @Composable
 private fun AssociationBottomBar(
     currentTab: AssociationTab,
+    useAppTags: Boolean,
     onTabSelected: (AssociationTab) -> Unit,
 ) {
   Column {
     HorizontalDivider(color = MaterialTheme.colorScheme.outline)
-    NavigationBar(modifier = Modifier.testTag(AssociationTags.BOTTOM_BAR)) {
+    NavigationBar(
+        modifier =
+            Modifier.testTag(if (useAppTags) C.Tag.bottom_nav else AssociationTags.BOTTOM_BAR)
+    ) {
       AssociationTab.entries.forEach { tab ->
         val selected = tab == currentTab
         NavigationBarItem(
@@ -197,7 +222,16 @@ private fun AssociationBottomBar(
                     unselectedIconColor = Ink3,
                     unselectedTextColor = Ink3,
                 ),
-            modifier = Modifier.testTag(tab.navItemTag),
+            modifier =
+                Modifier.testTag(
+                    if (!useAppTags) tab.navItemTag
+                    else
+                        when (tab) {
+                          AssociationTab.EVENTS -> C.Tag.nav_item_events
+                          AssociationTab.MAP -> C.Tag.nav_item_map
+                          AssociationTab.ORGANIZATION -> C.Tag.nav_item_organization
+                        }
+                ),
         )
       }
     }

@@ -1,4 +1,4 @@
-// Contributors: OpenAI Codex (adapted logout fixture to the organization repository).
+// Contributors: OpenAI Codex (adapted pending tests to the shared session controller).
 // Contributors: Claude (wrote these tests, #127; testing agent: each "not available" entry, the
 // replaced Snackbar, the logout dialog's states, leaving once saved, #127).
 package com.polysocial.ui.association
@@ -64,13 +64,11 @@ class PendingAssociationAppTest {
   private var loggedOut = 0
 
   private fun launch() {
-    val pending = PendingAssociationViewModel(auth, associations)
     val logout = ProfileViewModel(auth, cache, associations)
     compose.setContent {
       PolySocialTheme {
         PendingAssociationApp(
             onLoggedOut = { loggedOut++ },
-            viewModel = pending,
             logoutViewModel = logout,
             editViewModel = { viewModel { EditAssociationViewModel(associations) } },
         )
@@ -487,13 +485,11 @@ class PendingAssociationAppTest {
         object : SessionCache {
           override suspend fun clear(): CacheClearResult = gate.await()
         }
-    val pending = PendingAssociationViewModel(auth, associations)
     val logout = ProfileViewModel(auth, slowCache, associations)
     compose.setContent {
       PolySocialTheme {
         PendingAssociationApp(
             onLoggedOut = { loggedOut++ },
-            viewModel = pending,
             logoutViewModel = logout,
             editViewModel = { viewModel { EditAssociationViewModel(associations) } },
         )

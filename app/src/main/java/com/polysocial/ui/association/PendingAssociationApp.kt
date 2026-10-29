@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (preserved navigation, logout and pending edits on rebase, #140).
+// Contributors: OpenAI Codex (shared pending and verified identity controller, #140).
 // Contributors: Claude (the app of an association an admin hasn't verified yet, #127; nothing kept
 // from one session to the next, after a review, #127; its logout moved to the shared
 // ActivityLogout, #208).
@@ -19,6 +21,7 @@ import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import com.polysocial.R
 import com.polysocial.ui.profile.ActivityLogout
+import com.polysocial.ui.profile.OrganizationUiState
 import com.polysocial.ui.profile.ProfileViewModel
 import kotlinx.coroutines.launch
 
@@ -42,16 +45,18 @@ internal val EDIT_DETAILS_ROUTE = "${AssociationTab.ORGANIZATION.route}/edit"
 @Composable
 fun PendingAssociationApp(
     onLoggedOut: () -> Unit,
-    viewModel: PendingAssociationViewModel = hiltViewModel(),
     logoutViewModel: ProfileViewModel = hiltViewModel(),
     navController: NavHostController = rememberNavController(),
     editViewModel: @Composable () -> EditAssociationViewModel = { hiltViewModel() },
 ) {
-  val state by viewModel.uiState.collectAsStateWithLifecycle()
-  // This app's ViewModels belong to the activity, which outlives the session: each session reads
-  // its own details, and Log out leaves nothing (details, logout state, tab stacks) to the next
-  // account.
-  LaunchedEffect(viewModel) { viewModel.open() }
+  val organization by logoutViewModel.organization.collectAsStateWithLifecycle()
+  val state =
+      when (val current = organization) {
+        OrganizationUiState.Loading -> PendingAssociationUiState.Loading
+        is OrganizationUiState.Ready -> PendingAssociationUiState.Loaded(current.association)
+        OrganizationUiState.Error -> PendingAssociationUiState.Failed
+      }
+  LaunchedEffect(logoutViewModel) { logoutViewModel.loadOrganization() }
 
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
@@ -84,7 +89,7 @@ fun PendingAssociationApp(
             state = state,
             // dropUnlessResumed: a double tap doesn't open Edit details twice.
             onEdit = dropUnlessResumed { navController.navigate(EDIT_DETAILS_ROUTE) },
-            onRetry = viewModel::retry,
+            onRetry = logoutViewModel::loadOrganization,
             onLogOut = logoutViewModel::requestLogout,
         )
       }
@@ -102,7 +107,7 @@ fun PendingAssociationApp(
               viewModel = editViewModel(),
               onBack = { leave() },
               onSaved = { saved ->
-                viewModel.onSaved(saved)
+                logoutViewModel.onOrganizationSaved(saved)
                 leave()
               },
           )
@@ -111,7 +116,7 @@ fun PendingAssociationApp(
     }
   }
   ActivityLogout(logoutViewModel) {
-    viewModel.close()
+    logoutViewModel.clearOrganization()
     AssociationTab.entries.forEach { navController.clearBackStack(it.route) }
     navController.popBackStack(AssociationTab.EVENTS.route, inclusive = true)
     onLoggedOut()
