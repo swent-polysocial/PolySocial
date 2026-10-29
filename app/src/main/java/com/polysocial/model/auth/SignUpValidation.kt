@@ -1,4 +1,5 @@
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; implemented framework-free sign-up validation).
+// Contributors: Claude (shared the exact EPFL check from FirebaseAuthRepository, #208).
 package com.polysocial.model.auth
 
 /** Accepts a single mailbox on exactly epfl.ch; subdomains and lookalike suffixes are rejected. */
@@ -8,6 +9,12 @@ fun isEpflEmail(email: String): Boolean =
             RegexOption.IGNORE_CASE,
         )
         .matches(email.trim())
+
+/**
+ * [isEpflEmail] with the Security Rules' case-sensitive `@epfl.ch` ending: the rules only grant
+ * student access to such an email, so Google sign-in and app-start routing use this check.
+ */
+fun isExactEpflEmail(email: String): Boolean = isEpflEmail(email) && email.endsWith("@epfl.ch")
 
 enum class SignUpField {
   FullName,
