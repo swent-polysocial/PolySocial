@@ -1,13 +1,13 @@
 // Contributors: Claude (app-start routing for #32; refresh after Log in, not while loading; log
 // out and the created profile; Verify Email opened in-session, #74; an association an admin
 // hasn't verified yet opens its pending app, #127; a non-EPFL account that is not an association
-// fails closed, #208).
+// fails closed, with the rules' exact @epfl.ch check, #208).
 package com.polysocial.ui.start
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.polysocial.model.auth.AuthRepository
-import com.polysocial.model.auth.isEpflEmail
+import com.polysocial.model.auth.isExactEpflEmail
 import com.polysocial.model.user.AccountType
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.UserProfile
@@ -53,13 +53,14 @@ sealed interface StartDestination {
 /**
  * Decides the start destination: no user → Log in; unverified → Verify Email; verified → load the
  * profile once, then the main app, the pending association app for an association an admin hasn't
- * verified yet, or the profile step when the profile is missing. The account type decides, never
- * the email: an association with an `@epfl.ch` email is still an association (#161).
+ * verified yet, or the profile step when the profile is missing. An association is routed by its
+ * type whatever its email (an `@epfl.ch` association is still an association, #161); anyone else
+ * also needs an exact `@epfl.ch` session email, as the Security Rules check it (lowercase domain).
  *
- * Log in accepts any email so associations can sign in (#208), so routing fails closed: a session
- * whose email is not an EPFL one gets [StartDestination.Error] unless its profile is an
- * association's, instead of the student profile step or the students' app. The Security Rules deny
- * such an account student data anyway; this keeps it out of the student screens.
+ * Log in accepts any email so associations can sign in (#208), so routing fails closed: any other
+ * session gets [StartDestination.Error] unless its profile is an association's, instead of the
+ * student profile step or the students' app. The Security Rules deny such an account student data
+ * anyway; this keeps it out of the student screens.
  */
 @HiltViewModel
 class AppStartViewModel
@@ -127,7 +128,7 @@ constructor(
                 when (val result = profiles.getProfile(user.uid)) {
                   is ProfileResult.Found -> result.profile.startDestination(user.email)
                   ProfileResult.NotFound ->
-                      if (isEpflEmail(user.email)) StartDestination.ProfileSetup
+                      if (isExactEpflEmail(user.email)) StartDestination.ProfileSetup
                       else StartDestination.Error
                   ProfileResult.NetworkError,
                   ProfileResult.UnexpectedError -> StartDestination.Error
@@ -139,13 +140,13 @@ constructor(
 
 /**
  * Where a signed-in account with this profile and session email opens: an association by its flag,
- * whatever its email; anyone else only with an EPFL email.
+ * whatever its email; anyone else only with an exact EPFL email.
  */
 private fun UserProfile.startDestination(sessionEmail: String): StartDestination =
     when {
       accountType == AccountType.ASSOCIATION && !isAssociationVerified ->
           StartDestination.PendingAssociation
       accountType == AccountType.ASSOCIATION -> StartDestination.Main
-      isEpflEmail(sessionEmail) -> StartDestination.Main
+      isExactEpflEmail(sessionEmail) -> StartDestination.Main
       else -> StartDestination.Error
     }

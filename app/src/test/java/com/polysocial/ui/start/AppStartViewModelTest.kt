@@ -459,13 +459,11 @@ class AppStartViewModelTest {
   }
 
   @Test
-  fun anEpflEmailInCapitals_isStillAStudentsEmail() {
+  fun anEpflDomainInCapitals_failsClosed_likeTheRules() {
+    // The rules match '@epfl.ch' case-sensitively and would deny every read: fail closed.
     val email = "Test.Student@EPFL.CH"
-    assertEquals(StartDestination.Main, routeOf(found, sessionEmail = email))
-    assertEquals(
-        StartDestination.ProfileSetup,
-        routeOf(ProfileResult.NotFound, sessionEmail = email),
-    )
+    assertEquals(StartDestination.Error, routeOf(found, sessionEmail = email))
+    assertEquals(StartDestination.Error, routeOf(ProfileResult.NotFound, sessionEmail = email))
   }
 
   @Test
