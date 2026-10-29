@@ -1,7 +1,8 @@
-// Contributors: OpenAI Codex (GPT-6.1 Sol, medium; implemented framework-free sign-up validation);
-// Claude (the full name's limit, test-first, #143).
+// Contributors: OpenAI Codex (sign-up validation and association mailbox policy, #125);
+// Claude (the full name’s limit, #143).
 package com.polysocial.model.auth
 
+import com.polysocial.model.user.AccountType
 import com.polysocial.model.user.isDisplayNameTooLong
 
 /** Accepts a single mailbox on exactly epfl.ch; subdomains and lookalike suffixes are rejected. */
@@ -22,6 +23,7 @@ enum class SignUpField {
 enum class FieldError {
   Required,
   InvalidDomain,
+  InvalidEmail,
   PasswordRules,
   PasswordMismatch,
 
@@ -35,6 +37,7 @@ data class SignUpForm(
     val email: String = "",
     val password: String = "",
     val confirmPassword: String = "",
+    val accountType: AccountType = AccountType.STUDENT,
 ) {
   val hasMinimumLength: Boolean
     get() = password.length >= 8
@@ -46,13 +49,15 @@ data class SignUpForm(
       when (field) {
         SignUpField.FullName ->
             when {
-              fullName.isBlank() -> FieldError.Required
+              accountType == AccountType.STUDENT && fullName.isBlank() -> FieldError.Required
               isDisplayNameTooLong(fullName) -> FieldError.TooLong
               else -> null
             }
         SignUpField.Email ->
             when {
               email.isBlank() -> FieldError.Required
+              accountType == AccountType.ASSOCIATION ->
+                  if (isRecoveryEmail(email)) null else FieldError.InvalidEmail
               !isEpflEmail(email) -> FieldError.InvalidDomain
               else -> null
             }

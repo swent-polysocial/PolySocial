@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (association email validation feedback, #125).
 // Contributors: OpenAI Codex (fresh signed-out forms, shared reset action and Welcome after
 // logout, #109).
 // Contributors: OpenAI Codex (Google startup, shared profile callbacks and integration for #107).
@@ -845,6 +846,7 @@ private fun Label(
 private fun FieldError.text(): String =
     when (this) {
       FieldError.Required -> stringResource(R.string.signup_required)
+      FieldError.InvalidEmail -> stringResource(R.string.association_invalid_email)
       FieldError.InvalidDomain -> stringResource(R.string.signup_invalid_domain)
       FieldError.PasswordRules -> stringResource(R.string.signup_password_rules)
       FieldError.PasswordMismatch -> stringResource(R.string.signup_password_mismatch)
