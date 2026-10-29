@@ -5,6 +5,8 @@
 // of association accounts, #127; non-EPFL accounts that are not associations, #208).
 // Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start and tested
 // waiting for it, #198; Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (testing agent: look-alike domains, letter case and Retry for the non-EPFL
+// error, #208).
 package com.polysocial.ui.start
 
 import com.polysocial.model.association.FakeAssociationRepository
@@ -748,5 +750,54 @@ class AppStartViewModelTest {
         StartDestination.ProfileSetup,
         routeOf(ProfileResult.NotFound, sessionEmail = "test.student@epfl.ch"),
     )
+  }
+
+  @Test
+  fun lookAlikeEpflDomains_neverOpenTheStudentsAppOrProfileStep() {
+    // Only an exact @epfl.ch address is a student's: a domain that merely contains or ends with
+    // "epfl.ch" must not open the students' app or their profile step (#208). Without a profile it
+    // is an association finishing its setup (#258).
+    for (email in listOf("a@notepfl.ch", "a@epfl.ch.example.org", "a@mail.epfl.ch")) {
+      assertEquals(email, StartDestination.Error, routeOf(found, sessionEmail = email))
+      assertEquals(
+          email,
+          StartDestination.AssociationSetup,
+          routeOf(ProfileResult.NotFound, sessionEmail = email),
+      )
+    }
+  }
+
+  @Test
+  fun anEpflEmailInCapitals_isStillAStudentsEmail() {
+    val email = "Test.Student@EPFL.CH"
+    assertEquals(StartDestination.Main, routeOf(found, sessionEmail = email))
+    assertEquals(
+        StartDestination.ProfileSetup,
+        routeOf(ProfileResult.NotFound, sessionEmail = email),
+    )
+  }
+
+  @Test
+  fun retryOnTheNonEpflError_readsTheProfileAgain_andStillFailsClosed() {
+    auth.user = verified.copy(email = nonEpfl)
+    profiles.getProfileResult = found
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
+        )
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+    assertEquals(StartDestination.Error, viewModel.destination.value)
+
+    viewModel.refresh()
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+    viewModel.onProfileCreated()
+
+    // Retry is not a way into the student profile step, nor is a late "profile created".
+    assertEquals(StartDestination.Error, viewModel.destination.value)
+    assertEquals(2, profiles.getProfileCalls)
   }
 }
