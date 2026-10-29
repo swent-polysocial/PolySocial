@@ -1,18 +1,27 @@
 // Contributors: OpenAI Codex (map state, selection, day labels and failure handling for #50;
 // one-off location permission and distance state for #51).
-// Contributors: Claude (the names of the associations with events on the map, #128).
+// Contributors: Claude (the names of the associations with events on the map, #128; the search
+// and filters on the loaded events, #116).
 package com.polysocial.ui.map
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.polysocial.model.association.AssociationNames
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.Event
+import com.polysocial.model.event.EventCategory
+import com.polysocial.model.event.filterEvents
 import com.polysocial.model.location.LocationResult
 import com.polysocial.model.location.LocationService
 import com.polysocial.model.location.straightLineDistanceMeters
 import com.polysocial.model.map.MapEventResult
 import com.polysocial.model.map.MapEventSource
+import com.polysocial.ui.event.list.DateChoice
+import com.polysocial.ui.event.list.EventSelection
+import com.polysocial.ui.event.list.EventsLocationState
+import com.polysocial.ui.event.list.restoreEventSelection
+import com.polysocial.ui.event.list.saveTo
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
 import java.time.LocalDate
@@ -34,6 +43,9 @@ enum class MapContentStatus {
   LOADING,
   READY,
   EMPTY,
+
+  /** There are events, but none matches the search and filters (#116). */
+  NO_MATCH,
   ERROR,
 }
 
@@ -64,6 +76,7 @@ sealed interface MapLocationState {
 
 data class MapUiState(
     val status: MapContentStatus = MapContentStatus.LOADING,
+    /** The events with a marker: the loaded ones that match [selection]. */
     val events: List<Event> = emptyList(),
     val selectedEvent: Event? = null,
     val renderStatus: MapRenderStatus = MapRenderStatus.LOADING,
@@ -73,7 +86,22 @@ data class MapUiState(
     val locationState: MapLocationState = MapLocationState.Idle,
     /** The names read so far of the associations with events on the map, by UID (#128). */
     val associationNames: Map<String, String> = emptyMap(),
+    /** The search and filters, separate from the Events tab's (#113). */
+    val selection: EventSelection = EventSelection(),
 ) {
+  /**
+   * The location as the shared Filters sheet shows it: the distance chips work only with a fix, and
+   * a fix being read shows as such; otherwise they are off, with *Turn on*.
+   */
+  val filterLocation: EventsLocationState
+    get() =
+        when (locationState) {
+          is MapLocationState.Available -> EventsLocationState.Available(locationState.coordinates)
+          MapLocationState.Locating,
+          MapLocationState.Waiting -> EventsLocationState.Locating
+          else -> EventsLocationState.Off
+        }
+
   /** Distance to the selected event, calculated outside Compose with pure haversine math. */
   val selectedDistanceMeters: Double?
     get() {
@@ -85,7 +113,11 @@ data class MapUiState(
 
 /**
  * Observes events, protects the public map and retains cached markers during transient failures.
- * The name of each association with events on the map is read once, through the shared
+ * The search and filters (#116) run [filterEvents] on the events already loaded, so a change needs
+ * no new request and works offline; they are kept in [savedState], so they survive rotation. A
+ * distance applies only with a location fix, and a lost permission or fix clears it, as on the
+ * Events tab. Coming back to the map with a distance picked reads the location again, once. The
+ * name of each association with events on the map is read once, through the shared
  * [associationNames], so its preview shows it (#128); a name that can't be read is left out, and
  * tried again when its preview opens.
  */
@@ -97,14 +129,19 @@ constructor(
     private val locationService: LocationService,
     private val clock: Clock,
     private val associationNames: AssociationNames,
+    private val savedState: SavedStateHandle = SavedStateHandle(),
 ) : ViewModel() {
-  private val mutableState = MutableStateFlow(MapUiState())
+  private val mutableState =
+      MutableStateFlow(MapUiState(selection = restoreEventSelection(savedState, SAVED_PREFIX)))
   val uiState: StateFlow<MapUiState> = mutableState.asStateFlow()
   private var observation: Job? = null
   private var locationRequest: Job? = null
   private var enteredMap = false
   private var mapActive = false
   private var readAfterPermissionResult = false
+
+  /** The public events last loaded, before the search and filters; null until loaded. */
+  private var loadedEvents: List<Event>? = null
 
   /** The associations whose names the map asked for, so each is asked for once. */
   private val requestedNames = mutableSetOf<String>()
@@ -139,7 +176,8 @@ constructor(
         setLocation(MapLocationState.Denied)
       }
     } else if (
-        (location == MapLocationState.Idle && readAfterPermissionResult) ||
+        (location == MapLocationState.Idle &&
+            (readAfterPermissionResult || selection().maxDistanceMeters != null)) ||
             location == MapLocationState.Denied ||
             location == MapLocationState.Waiting
     ) {
@@ -195,8 +233,82 @@ constructor(
     }
   }
 
-  private fun setLocation(location: MapLocationState) = mutableState.update {
-    it.copy(locationState = location)
+  private fun setLocation(location: MapLocationState) {
+    mutableState.update { it.copy(locationState = location) }
+    val lost =
+        location == MapLocationState.Denied ||
+            location == MapLocationState.Unavailable ||
+            location == MapLocationState.OpenSettings
+    // A distance can't be measured anymore: clear it rather than silently ignore it.
+    if (lost && selection().maxDistanceMeters != null) {
+      select(selection().copy(maxDistanceMeters = null))
+    } else {
+      showMatching()
+    }
+  }
+
+  fun setSearch(search: String) = select(selection().copy(search = search))
+
+  /** Adds [category] to the categories shown, or removes it if it is already there. */
+  fun toggleCategory(category: EventCategory) {
+    val categories = selection().categories
+    val toggled = if (category in categories) categories - category else categories + category
+    select(selection().copy(categories = toggled))
+  }
+
+  fun selectDate(date: DateChoice) = select(selection().copy(date = date))
+
+  /** Keeps the events within [meters] of the student, or any distance if null; needs a fix. */
+  fun selectDistance(meters: Int?) {
+    if (meters != null && mutableState.value.locationState !is MapLocationState.Available) return
+    select(selection().copy(maxDistanceMeters = meters))
+  }
+
+  /** The Filters sheet's *Clear*: every filter, but not the search. */
+  fun clearFilters() = select(EventSelection(search = selection().search))
+
+  /** *All* and *Clear filters*: the search and every filter, so every marker shows again. */
+  fun clearSearchAndFilters() = select(EventSelection())
+
+  /** The Filters sheet's day strip starts on this date. */
+  val today: LocalDate
+    get() = LocalDate.now(clock)
+
+  private fun selection() = mutableState.value.selection
+
+  private fun select(selection: EventSelection) {
+    selection.saveTo(savedState, SAVED_PREFIX)
+    mutableState.update { it.copy(selection = selection) }
+    showMatching()
+  }
+
+  /**
+   * Shows the loaded events that match the selection, and closes the preview of an event that no
+   * longer does. Before the events are loaded, the state stays as it is.
+   */
+  private fun showMatching() {
+    val loaded = loadedEvents ?: return
+    mutableState.update { previous ->
+      val userLocation = (previous.locationState as? MapLocationState.Available)?.coordinates
+      val events =
+          filterEvents(loaded, previous.selection.toFilter(today), clock.zone, userLocation)
+      val selected = events.firstOrNull { it.id == previous.selectedEvent?.id }
+      previous.copy(
+          status =
+              when {
+                // Still loading after Retry, or failed: the cached markers are filtered too.
+                previous.status == MapContentStatus.ERROR ||
+                    previous.status == MapContentStatus.LOADING -> previous.status
+                loaded.isEmpty() -> MapContentStatus.EMPTY
+                events.isEmpty() -> MapContentStatus.NO_MATCH
+                else -> MapContentStatus.READY
+              },
+          events = events,
+          selectedEvent = selected,
+          selectedEventIsTonight = isTonight(selected),
+          selectedEventIsToday = isToday(selected),
+      )
+    }
   }
 
   private fun readLocation() {
@@ -271,22 +383,16 @@ constructor(
       flow { emitAll(source.observePublicUpcomingEvents()) }
           .catch { emit(MapEventResult.Error) }
           .collect { result ->
-            if (result is MapEventResult.Events) loadNamesOf(publicMapEvents(result.events))
-            mutableState.update { previous ->
-              when (result) {
-                MapEventResult.Error -> previous.copy(status = MapContentStatus.ERROR)
-                is MapEventResult.Events -> {
-                  val events = publicMapEvents(result.events)
-                  val selected = events.firstOrNull { it.id == previous.selectedEvent?.id }
-                  previous.copy(
-                      status =
-                          if (events.isEmpty()) MapContentStatus.EMPTY else MapContentStatus.READY,
-                      events = events,
-                      selectedEvent = selected,
-                      selectedEventIsTonight = isTonight(selected),
-                      selectedEventIsToday = isToday(selected),
-                  )
-                }
+            when (result) {
+              MapEventResult.Error ->
+                  mutableState.update { it.copy(status = MapContentStatus.ERROR) }
+              is MapEventResult.Events -> {
+                val events = publicMapEvents(result.events)
+                loadNamesOf(events)
+                loadedEvents = events
+                // New events end an error or loading state; showMatching sets the status.
+                mutableState.update { it.copy(status = MapContentStatus.READY) }
+                showMatching()
               }
             }
           }
@@ -308,6 +414,9 @@ constructor(
   private fun isTonight(event: Event?): Boolean =
       event != null && isToday(event) && event.startTime.atZone(MAP_TIME_ZONE).hour >= 18
 }
+
+/** The Map tab's saved-state keys start with it (map_search...), apart from the Events tab's. */
+private const val SAVED_PREFIX = "map"
 
 internal val MAP_TIME_ZONE: ZoneId = ZoneId.of("Europe/Zurich")
 
