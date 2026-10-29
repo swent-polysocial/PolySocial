@@ -178,7 +178,8 @@ class ReauthenticationTest {
 
   @Test
   fun google_otherAccountPicked_returnsUnexpectedError() = runTest {
-    reauthFails(FirebaseAuthInvalidUserException("ERROR_USER_MISMATCH", "test"))
+    // firebase-auth reports ERROR_USER_MISMATCH as an invalid-credentials error.
+    reauthFails(FirebaseAuthInvalidCredentialsException("ERROR_USER_MISMATCH", "test"))
 
     assertEquals(ReauthResult.UnexpectedError, repository.reauthenticateWithGoogle(context))
   }
