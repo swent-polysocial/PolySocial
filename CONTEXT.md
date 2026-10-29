@@ -225,6 +225,7 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 - 2026-10-29 · [#260 review](https://github.com/swent-polysocial/PolySocial/pull/260): retain the current organization across tab re-entry, require its repository, and leave missing-identity setup recovery with startup.
 
 - 2026-10-29 · Address correction uses the current completed signup type before a restored hint, keeping a later student signup separate from an earlier association attempt. ([#125](https://github.com/swent-polysocial/PolySocial/issues/125))
+- 2026-10-29 · Approved associations reuse the existing tab stacks and logout controller; own-identity reads are explicit and invalidated across sessions. Map data remains #133's handoff, pending UI #127's. ([#140](https://github.com/swent-polysocial/PolySocial/issues/140))
 
 - 2026-10-29 · Split #125 into signup persistence, setup saving, setup UI, and auth routing, each with its own tests/coverage gate. ([#125](https://github.com/swent-polysocial/PolySocial/issues/125))
 
