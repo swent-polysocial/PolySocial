@@ -57,6 +57,8 @@ const TRANSIENT_CODES = new Set([
  *
  * Failures are HttpsErrors with a generic message (never the uid or the original error):
  * `unavailable` when the backend could not be reached and a retry may work, `internal` otherwise.
+ * For diagnosis, a failed step logs only its name and the error's code, never the uid, the error
+ * message or the stack (they may hold personal data). Refusals and successes log nothing.
  *
  * @param {object} args
  * @param {{uid: string, token: {auth_time?: number}} | undefined} args.auth the callable's
@@ -64,9 +66,11 @@ const TRANSIENT_CODES = new Set([
  * @param {object} args.db Firestore (Admin SDK): `collection(path).doc(id)` and `runTransaction`.
  * @param {{deleteUser: function(string): Promise<void>}} args.adminAuth Firebase Auth (Admin SDK).
  * @param {function(): number} args.now the current time, in milliseconds since the epoch.
+ * @param {{error: function(string, object): void}} args.logger where failed steps are logged
+ *   (`firebase-functions/logger` in production).
  * @returns {Promise<{deleted: true}>}
  */
-async function deleteAccountHandler({ auth, db, adminAuth, now }) {
+async function deleteAccountHandler({ auth, db, adminAuth, now, logger }) {
   if (!auth || typeof auth.uid !== "string" || auth.uid === "") {
     throw new HttpsError("unauthenticated", "Sign in to delete your account.");
   }
@@ -79,8 +83,8 @@ async function deleteAccountHandler({ auth, db, adminAuth, now }) {
   }
   const uid = auth.uid;
 
-  await callBackend(() => deleteStudentProfile(db, uid));
-  await callBackend(() => deleteAuthUser(adminAuth, uid));
+  await callBackend("delete-profile", logger, () => deleteStudentProfile(db, uid));
+  await callBackend("delete-auth-user", logger, () => deleteAuthUser(adminAuth, uid));
   return { deleted: true };
 }
 
@@ -118,17 +122,27 @@ async function deleteAuthUser(adminAuth, uid) {
   }
 }
 
-/** Runs one backend step and turns its failure into a typed, generic HttpsError. */
-async function callBackend(step) {
+/**
+ * Runs one backend step and turns its failure into a typed, generic HttpsError, logging only the
+ * step's name and the error's code.
+ */
+async function callBackend(stepName, logger, step) {
   try {
     await step();
   } catch (error) {
     if (error instanceof HttpsError) throw error;
+    logger.error("deleteAccount step failed", { step: stepName, code: errorCode(error) });
     if (isTransient(error)) {
       throw new HttpsError("unavailable", "Account deletion is unavailable, try again.");
     }
     throw new HttpsError("internal", "Account deletion failed.");
   }
+}
+
+/** The error's code if it is a number or a string (gRPC, Admin SDK or Node codes), else null. */
+function errorCode(error) {
+  const code = error && error.code;
+  return typeof code === "number" || typeof code === "string" ? code : null;
 }
 
 /** Whether an error says the backend could not be reached, so a retry may succeed. */
