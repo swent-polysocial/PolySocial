@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (own Organization loading through the shared logout controller, #140).
+// Contributors: OpenAI Codex (session-scoped Organization loading through the shared logout
+// controller, #140).
 // Contributors: OpenAI Codex (confirmation and logout state, #109).
 // Contributors: Claude (reset for the next session, #127).
 package com.polysocial.ui.profile
@@ -43,7 +44,7 @@ class ProfileViewModel
 constructor(
     private val auth: AuthRepository,
     private val cache: SessionCache,
-    private val associations: AssociationRepository? = null,
+    private val associations: AssociationRepository,
 ) : ViewModel() {
   private val state = MutableStateFlow(LogoutState.Idle)
   val uiState = state.asStateFlow()
@@ -53,22 +54,28 @@ constructor(
   private var organizationUid: String? = null
   private var organizationGeneration = 0
 
-  /** Reads only the current account's identity on explicit Organization entry or Retry. */
+  /**
+   * Reads the current account's identity once per session; failed reads permit an explicit Retry.
+   */
   fun loadOrganization() {
     val user = auth.currentUser()
-    val repository = associations
-    if (user == null || !user.isEmailVerified || repository == null) {
+    if (user == null || !user.isEmailVerified) {
       clearOrganization()
       organizationState.value = OrganizationUiState.Error
       return
     }
-    if (organizationUid == user.uid && organizationRead?.isActive == true) return
+    if (
+        organizationUid == user.uid &&
+            (organizationRead?.isActive == true ||
+                organizationState.value is OrganizationUiState.Ready)
+    )
+        return
     clearOrganization()
     organizationUid = user.uid
     val generation = organizationGeneration
     organizationRead = viewModelScope.launch {
       try {
-        val result = repository.getAssociation(user.uid)
+        val result = associations.getAssociation(user.uid)
         if (generation == organizationGeneration) {
           val current = auth.currentUser()
           organizationState.value =

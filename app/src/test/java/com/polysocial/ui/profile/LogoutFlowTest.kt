@@ -98,7 +98,9 @@ class LogoutFlowTest {
               mapContent = { _, _ -> TabRootScreen(Tab.MAP) },
               onLoggedOut = done,
               profileContent = { callback ->
-                val vm: ProfileViewModel = viewModel { ProfileViewModel(auth, cache) }
+                val vm: ProfileViewModel = viewModel {
+                  ProfileViewModel(auth, cache, FakeAssociationRepository())
+                }
                 ProfileRoute(callback, vm)
               },
           )

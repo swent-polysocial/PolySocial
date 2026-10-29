@@ -1,13 +1,27 @@
-// Contributors: OpenAI Codex (own-identity loading and session-isolation tests, #140).
+// Contributors: OpenAI Codex (own-identity caching, required dependencies and session-isolation
+// tests, #140).
 package com.polysocial.ui.profile
 
-import com.polysocial.model.association.*
-import com.polysocial.model.auth.*
-import com.polysocial.model.firebase.*
+import com.polysocial.model.association.Association
+import com.polysocial.model.association.AssociationRepository
+import com.polysocial.model.association.AssociationResult
+import com.polysocial.model.association.AssociationType
+import com.polysocial.model.association.FakeAssociationRepository
+import com.polysocial.model.auth.AuthUser
+import com.polysocial.model.auth.FakeAuthRepository
+import com.polysocial.model.firebase.CacheClearResult
+import com.polysocial.model.firebase.SessionCache
 import com.polysocial.utils.MainDispatcherRule
-import kotlinx.coroutines.*
-import kotlinx.coroutines.test.*
-import org.junit.Assert.*
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -49,7 +63,7 @@ class OrganizationViewModelTest {
   }
 
   @Test
-  fun absentOrUnverifiedSessionsAndMissingDependencyNeverQuery() = runTest {
+  fun absentOrUnverifiedSessionsNeverQuery() = runTest {
     val model = ProfileViewModel(auth, cache, repository)
     for (session in listOf(null, user.copy(isEmailVerified = false))) {
       auth.user = session
@@ -57,11 +71,6 @@ class OrganizationViewModelTest {
       advanceUntilIdle()
       assertEquals(OrganizationUiState.Error, model.organization.value)
     }
-    auth.user = user
-    val standalone = ProfileViewModel(auth, cache)
-    standalone.loadOrganization()
-    advanceUntilIdle()
-    assertEquals(OrganizationUiState.Error, standalone.organization.value)
     assertTrue(repository.requestedUids.isEmpty())
   }
 
@@ -77,6 +86,37 @@ class OrganizationViewModelTest {
     repository.gate!!.complete(Unit)
     advanceUntilIdle()
     assertEquals(OrganizationUiState.Ready(identity), model.organization.value)
+  }
+
+  @Test
+  fun repeatedEntryRetainsReadyIdentityWithoutAnotherReadOrLoadingState() = runTest {
+    val model = ProfileViewModel(auth, cache, repository)
+    model.loadOrganization()
+    advanceUntilIdle()
+    assertEquals(OrganizationUiState.Ready(identity), model.organization.value)
+    repository.gate = CompletableDeferred()
+    model.loadOrganization()
+    assertEquals(OrganizationUiState.Ready(identity), model.organization.value)
+    runCurrent()
+    assertEquals(OrganizationUiState.Ready(identity), model.organization.value)
+    assertEquals(listOf(user.uid), repository.requestedUids)
+  }
+
+  @Test
+  fun cachedIdentityIsDiscardedWhenTheSessionIsAbsentOrLosesVerification() = runTest {
+    for (session in listOf(null, user.copy(isEmailVerified = false))) {
+      auth.user = user
+      val model = ProfileViewModel(auth, cache, repository)
+      model.loadOrganization()
+      advanceUntilIdle()
+      assertEquals(OrganizationUiState.Ready(identity), model.organization.value)
+      val reads = repository.requestedUids.toList()
+      auth.user = session
+      model.loadOrganization()
+      advanceUntilIdle()
+      assertEquals(OrganizationUiState.Error, model.organization.value)
+      assertEquals(reads, repository.requestedUids)
+    }
   }
 
   @Test
@@ -134,14 +174,13 @@ class OrganizationViewModelTest {
   }
 
   @Test
-  fun successfulLogoutDropsMetadataAfterCacheCleanupAndBlocksLateResponses() = runTest {
+  fun successfulLogoutCancelsAnInflightFirstReadAndBlocksLateResponses() = runTest {
+    repository.gate = CompletableDeferred()
     val model = ProfileViewModel(auth, cache, repository)
     model.loadOrganization()
-    advanceUntilIdle()
-    assertEquals(OrganizationUiState.Ready(identity), model.organization.value)
-    repository.gate = CompletableDeferred()
-    model.loadOrganization()
     runCurrent()
+    assertEquals(OrganizationUiState.Loading, model.organization.value)
+    assertEquals(listOf(user.uid), repository.requestedUids)
     model.requestLogout()
     model.confirmLogout()
     advanceUntilIdle()
