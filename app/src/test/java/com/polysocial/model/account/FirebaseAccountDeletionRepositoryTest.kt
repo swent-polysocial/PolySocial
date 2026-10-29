@@ -21,11 +21,13 @@ import io.mockk.mockk
 import io.mockk.verify
 import java.io.IOException
 import java.util.concurrent.ExecutionException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.async
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -213,14 +215,24 @@ class FirebaseAccountDeletionRepositoryTest {
   fun callerCancellation_propagates() = runTest {
     val pending = TaskCompletionSource<HttpsCallableResult>()
     functionReturns(pending.task)
-    val deletion = async { repository.deleteAccount() }
+    var result: AccountDeletionResult? = null
+    var cancellationReachedCaller = false
+    val deletion = launch {
+      try {
+        result = repository.deleteAccount()
+      } catch (cancelled: CancellationException) {
+        cancellationReachedCaller = true
+        throw cancelled
+      }
+    }
     runCurrent()
 
     deletion.cancel()
     pending.setResult(callableResult(mapOf("deleted" to true)))
     runCurrent()
 
-    assertTrue(deletion.isCancelled)
+    assertNull(result)
+    assertTrue(cancellationReachedCaller)
   }
 
   @Test
