@@ -7,14 +7,19 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
 import com.polysocial.model.association.AssociationType
+import com.polysocial.ui.theme.Warning
+import com.polysocial.ui.theme.WarningSoft
 
 object AssociationSetupTags {
   const val Screen = "association_setup"
@@ -22,6 +27,7 @@ object AssociationSetupTags {
   const val Back = "association_setup_back"
   const val Error = "association_setup_error"
   const val Initials = "association_setup_initials"
+  const val ReviewNotice = "association_setup_review_notice"
 
   fun field(field: AssociationSetupField) = "association_setup_${field.name}"
 
@@ -73,8 +79,12 @@ fun AssociationSetupScreen(
           .testTag(AssociationSetupTags.Screen),
       verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
-    TextButton(onBack, enabled = enabled, modifier = Modifier.testTag(AssociationSetupTags.Back)) {
-      Text(stringResource(R.string.association_setup_back))
+    IconButton(onBack, enabled = enabled, modifier = Modifier.testTag(AssociationSetupTags.Back)) {
+      Icon(
+          painterResource(R.drawable.signup_back),
+          contentDescription = stringResource(R.string.association_setup_back),
+          modifier = Modifier.size(22.dp),
+      )
     }
     Text(
         stringResource(R.string.association_setup_title),
@@ -142,7 +152,30 @@ fun AssociationSetupScreen(
               modifier = Modifier.testTag("${AssociationSetupTags.field(field)}_error"),
           )
     }
-    Text(stringResource(R.string.association_review_notice))
+    Surface(
+        color = WarningSoft,
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth().testTag(AssociationSetupTags.ReviewNotice),
+    ) {
+      Row(
+          Modifier.padding(12.dp),
+          horizontalArrangement = Arrangement.spacedBy(8.dp),
+          verticalAlignment = Alignment.Top,
+      ) {
+        Icon(
+            painterResource(R.drawable.ic_shield),
+            contentDescription = null,
+            tint = Warning,
+            modifier = Modifier.size(18.dp),
+        )
+        Text(
+            stringResource(R.string.association_review_notice),
+            color = Warning,
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold,
+        )
+      }
+    }
     state.error?.let {
       Text(
           stringResource(

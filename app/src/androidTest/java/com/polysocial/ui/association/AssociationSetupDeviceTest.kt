@@ -61,6 +61,15 @@ class AssociationSetupDeviceTest {
         .performTextInput("https://example.org")
     compose.onNodeWithTag(AssociationSetupTags.Back).performScrollTo()
     compose.onNodeWithTag(AssociationSetupTags.Initials).assertTextEquals("EC")
+    androidx.test.espresso.Espresso.closeSoftKeyboard()
+    val notice =
+        compose
+            .onNodeWithTag(AssociationSetupTags.ReviewNotice)
+            .performScrollTo()
+            .captureToImage()
+            .asAndroidBitmap()
+    assertEquals(0xFFFDF1DC.toInt(), notice.getPixel(notice.width / 2, 3))
+    compose.onNodeWithTag(AssociationSetupTags.Back).performScrollTo()
     capture("association-setup-filled")
     compose.onNodeWithTag(AssociationSetupTags.Submit).performScrollTo().performClick()
     compose.onNodeWithTag(AssociationSetupTags.Error).performScrollTo().assertIsDisplayed()
