@@ -14,9 +14,8 @@ import kotlinx.coroutines.flow.conflate
  */
 interface AuthSessionSource {
   /**
-   * Emits the signed-in UID (`null` when signed out) when collection starts and after every
-   * sign-in or sign-out, until collection is cancelled. Conflated: a slow collector gets the latest
-   * UID.
+   * Emits the signed-in UID (`null` when signed out) when collection starts and after every sign-in
+   * or sign-out, until collection is cancelled. Conflated: a slow collector gets the latest UID.
    */
   fun uidChanges(): Flow<String?>
 }
@@ -25,13 +24,12 @@ interface AuthSessionSource {
 class FirebaseAuthSessionSource(private val auth: () -> FirebaseAuth) : AuthSessionSource {
   constructor() : this({ FirebaseAuth.getInstance() })
 
-  override fun uidChanges(): Flow<String?> =
-      callbackFlow {
-            val firebase = auth()
-            val listener = FirebaseAuth.AuthStateListener { trySend(it.currentUser?.uid) }
-            // Firebase calls the listener on the main thread, once now and after each change.
-            firebase.addAuthStateListener(listener)
-            awaitClose { firebase.removeAuthStateListener(listener) }
-          }
-          .conflate()
+  override fun uidChanges(): Flow<String?> = callbackFlow {
+    val firebase = auth()
+    val listener = FirebaseAuth.AuthStateListener { trySend(it.currentUser?.uid) }
+    // Firebase calls the listener on the main thread, once now and after each change.
+    firebase.addAuthStateListener(listener)
+    awaitClose { firebase.removeAuthStateListener(listener) }
+  }
+      .conflate()
 }
