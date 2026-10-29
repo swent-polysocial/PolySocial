@@ -7,8 +7,8 @@
 // OpenAI Codex (password recovery contract for #164).
 // Contributors: Claude (Fable 5.1, Anthropic) drafted the re-authentication contract for #206;
 // Mohamed Khellaf (reviewed and revised).
-// Contributors: Claude (Opus 5.5, Anthropic) documented the local sign-out on a missing account,
-// #206; Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) documented the local sign-out on a missing account
+// and added TooManyAttempts, #206; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.model.auth
 
 import android.content.Context
@@ -147,6 +147,9 @@ sealed interface ReauthResult {
   data object NotSignedIn : ReauthResult
 
   data object NetworkError : ReauthResult
+
+  /** Firebase blocked further attempts for a while (too many wrong passwords); try again later. */
+  data object TooManyAttempts : ReauthResult
 
   /** Any other failure, including picking a Google account other than the signed-in one. */
   data object UnexpectedError : ReauthResult
