@@ -12,6 +12,7 @@ import io.mockk.slot
 import io.mockk.verify
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
@@ -82,5 +83,12 @@ class FirebaseAuthSessionSourceTest {
 
     assertEquals(listOf(null, "student-b"), seen)
     collecting.cancel()
+  }
+
+  @Test
+  fun withoutAFirebaseApp_endsWithoutEmitting() = runTest {
+    val source = FirebaseAuthSessionSource { throw IllegalStateException("no Firebase app") }
+
+    assertEquals(emptyList<String?>(), source.uidChanges().toList())
   }
 }

@@ -11,9 +11,12 @@ import com.polysocial.model.auth.AuthSessionSource
 import com.polysocial.model.auth.FakeAuthSessionSource
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -310,10 +313,10 @@ class FirestoreSessionGuardTest {
 
   @Test
   fun unavailableAuth_endsObservationWithoutCrashing() = runTest {
+    // What FirebaseAuthSessionSource does without a Firebase app: it ends without emitting.
     val noAuth =
         object : AuthSessionSource {
-          override fun uidChanges() =
-              flow<String?> { throw IllegalStateException("no Firebase app") }
+          override fun uidChanges() = emptyFlow<String?>()
         }
 
     val observing = FirestoreSessionGuard(noAuth, owner, session).start(immediateScope())
@@ -322,6 +325,28 @@ class FirestoreSessionGuardTest {
     assertTrue(observing.isCompleted)
     assertFalse(observing.isCancelled)
     assertEquals(0, clears)
+  }
+
+  @Test
+  fun unexpectedFailure_isReportedInsteadOfEndingObservationSilently() = runTest {
+    val failure = IllegalArgumentException("fictional bug")
+    val broken =
+        object : AuthSessionSource {
+          override fun uidChanges() = flow<String?> { throw failure }
+        }
+    var reported: Throwable? = null
+    val appScope =
+        CoroutineScope(
+            SupervisorJob() +
+                UnconfinedTestDispatcher(testScheduler) +
+                CoroutineExceptionHandler { _, error -> reported = error }
+        )
+
+    val observing = FirestoreSessionGuard(broken, owner, session).start(appScope)
+    runCurrent()
+
+    assertTrue(observing.isCancelled)
+    assertSame(failure, reported)
   }
 
   @Test
