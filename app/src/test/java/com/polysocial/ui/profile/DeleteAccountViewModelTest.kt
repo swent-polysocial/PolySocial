@@ -275,6 +275,21 @@ class DeleteAccountViewModelTest {
       }
 
   @Test
+  fun tooManyAttemptsStaysOnTheStepWithoutDeleting() =
+      runTest(main.dispatcher) {
+        fakeAuth.reauthResult = ReauthResult.TooManyAttempts
+        openReauth()
+        vm.onPasswordChange("fictional-password")
+        vm.submitPassword()
+        runCurrent()
+        assertEquals(DeleteAccountStep.Reauthenticate, step)
+        assertEquals(DeleteAccountError.TooManyAttempts, error)
+        assertEquals("", vm.uiState.value.password)
+        assertEquals(0, deletion.calls)
+        assertAccountUntouched()
+      }
+
+  @Test
   fun lostSessionDuringReauthRunsTheCleanupWithoutClaimingDeletion() =
       runTest(main.dispatcher) {
         memory.timings[student.uid] = VerificationTiming(1, 2)

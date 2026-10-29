@@ -49,6 +49,8 @@ enum class DeleteAccountStep {
 enum class DeleteAccountError {
   Offline,
   WrongPassword,
+  /** Firebase blocks sign-in attempts for a while after too many wrong passwords. */
+  TooManyAttempts,
   /** The Google picker was dismissed; nothing changed. */
   GoogleCancelled,
   /** The sign-in is too old for the server: confirm it's you again. */
@@ -228,6 +230,7 @@ constructor(
           delete()
         }
         ReauthResult.WrongPassword -> backToReauth(DeleteAccountError.WrongPassword)
+        ReauthResult.TooManyAttempts -> backToReauth(DeleteAccountError.TooManyAttempts)
         ReauthResult.Cancelled -> backToReauth(DeleteAccountError.GoogleCancelled)
         ReauthResult.NotSignedIn -> clearSession(deleted = false)
         ReauthResult.NetworkError -> backToReauth(DeleteAccountError.Network)

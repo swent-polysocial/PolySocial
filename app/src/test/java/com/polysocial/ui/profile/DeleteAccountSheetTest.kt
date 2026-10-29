@@ -231,6 +231,29 @@ class DeleteAccountSheetTest {
   }
 
   @Test
+  fun tooManyAttemptsIsShownOnTheStep() {
+    auth.reauthResult = ReauthResult.TooManyAttempts
+    open()
+    reauthWithPassword()
+    title(R.string.delete_account_password_title)
+    rule.onNodeWithText(text(R.string.delete_account_too_many_attempts)).assertIsDisplayed()
+    rule.onNodeWithTag(DeleteAccountTags.Continue).assertIsDisplayed()
+    assertEquals(0, deletion.calls)
+  }
+
+  @Test
+  fun tooManyAttemptsIsShownForAGoogleAccount() {
+    auth.signInMethods = setOf(SignInMethod.GOOGLE)
+    auth.reauthResult = ReauthResult.TooManyAttempts
+    open()
+    tap(DeleteAccountTags.Confirm)
+    tap(DeleteAccountTags.Google)
+    rule.waitForIdle()
+    error(R.string.delete_account_too_many_attempts)
+    assertEquals(0, deletion.calls)
+  }
+
+  @Test
   fun reauthNetworkErrorStaysOnTheStep() {
     auth.reauthResult = ReauthResult.NetworkError
     open()
