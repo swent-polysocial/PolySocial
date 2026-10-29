@@ -89,6 +89,26 @@ class SignUpScreenTest {
   }
 
   @Test
+  fun malformedAssociationAddressFromBackendShowsEmailGuidanceAndAllowsRetry() {
+    auth.signUpResult = SignUpResult.InvalidEmail
+    viewModel.reset(com.polysocial.model.user.AccountType.ASSOCIATION)
+    launch()
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.Email)).performTextInput("club@example.org")
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.Password)).performTextInput("password1")
+    compose
+        .onNodeWithTag(SignUpTags.input(SignUpField.ConfirmPassword))
+        .performTextInput("password1")
+    compose.onNodeWithTag(SignUpTags.Submit).performScrollTo().performClick()
+    compose
+        .onNodeWithTag(SignUpTags.BackendError)
+        .performScrollTo()
+        .assertTextEquals("Enter a valid email address.")
+    compose.onNodeWithTag(SignUpTags.Submit).performScrollTo().assertIsEnabled().performClick()
+    assertEquals(2, auth.signUpCalls)
+    assertEquals(com.polysocial.model.user.AccountType.ASSOCIATION, auth.lastSignUpAccountType)
+  }
+
+  @Test
   fun invalidPasswordShowsTheFieldErrorAndBlocksSubmission() {
     launch()
     compose.onNodeWithTag(SignUpTags.input(SignUpField.Password)).performTextInput("short")

@@ -158,6 +158,64 @@ class AssociationSignUpViewModelTest {
   }
 
   @Test
+  fun studentSignupClearsStaleAssociationIntentBeforeCreatingTheAccount() = runTest {
+    val store = Store().apply { remembered += "student@epfl.ch" }
+    val fake =
+        FakeAuthRepository().apply {
+          signUpResult =
+              SignUpResult.Success(
+                  this@AssociationSignUpViewModelTest.user.copy(email = "student@epfl.ch")
+              )
+        }
+    val ordered =
+        object : AuthRepository by fake {
+          override suspend fun signUp(
+              fullName: String,
+              email: String,
+              password: String,
+              accountType: AccountType,
+          ): SignUpResult {
+            assertTrue(store.remembered.isEmpty())
+            assertEquals(listOf("student@epfl.ch"), store.cleared)
+            return fake.signUp(fullName, email, password, accountType)
+          }
+        }
+    val vm = SignUpViewModel(ordered, store)
+    fill(vm, AccountType.STUDENT)
+    vm.update(SignUpField.FullName, "Test Student")
+    vm.update(SignUpField.Email, "student@epfl.ch")
+    vm.signUp()
+    advanceUntilIdle()
+    assertEquals(
+        SignUpStatus.SignedUp(user.copy(email = "student@epfl.ch")),
+        vm.uiState.value.status,
+    )
+    assertEquals(AccountType.STUDENT, fake.lastSignUpAccountType)
+    assertEquals(1, fake.signUpCalls)
+  }
+
+  @Test
+  fun failedStaleIntentClearCannotCreateAStudentThatWouldResumeAsAnAssociation() = runTest {
+    val store =
+        Store().apply {
+          remembered += "student@epfl.ch"
+          clearFailure = IOException("storage unavailable")
+        }
+    val fake = FakeAuthRepository()
+    val vm = SignUpViewModel(fake, store)
+    fill(vm, AccountType.STUDENT)
+    vm.update(SignUpField.FullName, "Test Student")
+    vm.update(SignUpField.Email, "student@epfl.ch")
+    vm.signUp()
+    advanceUntilIdle()
+    assertEquals(0, fake.signUpCalls)
+    assertEquals(listOf("student@epfl.ch"), store.remembered)
+    assertEquals(SignUpStatus.Error(SignUpResult.UnexpectedError), vm.uiState.value.status)
+    assertEquals("password1", vm.uiState.value.form.password)
+    assertTrue(vm.uiState.value.canSubmit)
+  }
+
+  @Test
   fun studentSignupNeverWritesAssociationIntentAndResetRestoresTheDefaultType() = runTest {
     val fake =
         FakeAuthRepository().apply {
