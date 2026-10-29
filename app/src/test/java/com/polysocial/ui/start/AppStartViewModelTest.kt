@@ -1,7 +1,8 @@
 // Contributors: OpenAI Codex (late profile completion cannot reopen a signed-out session, #107).
 // Contributors: Claude Opus 5.5 (wrote these tests; refresh after Log in; full profile fixture,
 // #34); Claude (log out and the created profile; Verify Email opened in-session, #74; routing
-// of association accounts, #127; non-EPFL accounts that are not associations, #208).
+// of association accounts, #127; non-EPFL accounts that are not associations, #208); Claude
+// (testing agent: look-alike domains, letter case and Retry for the non-EPFL error, #208).
 package com.polysocial.ui.start
 
 import com.polysocial.model.auth.AuthUser
@@ -441,5 +442,46 @@ class AppStartViewModelTest {
         StartDestination.ProfileSetup,
         routeOf(ProfileResult.NotFound, sessionEmail = "test.student@epfl.ch"),
     )
+  }
+
+  @Test
+  fun lookAlikeEpflDomains_failClosed_withOrWithoutAStudentProfile() {
+    // Only an exact @epfl.ch address is a student's: a domain that merely contains or ends with
+    // "epfl.ch" must not open the students' app or their profile step (#208).
+    for (email in listOf("a@notepfl.ch", "a@epfl.ch.example.org", "a@mail.epfl.ch")) {
+      assertEquals(email, StartDestination.Error, routeOf(found, sessionEmail = email))
+      assertEquals(
+          email,
+          StartDestination.Error,
+          routeOf(ProfileResult.NotFound, sessionEmail = email),
+      )
+    }
+  }
+
+  @Test
+  fun anEpflEmailInCapitals_isStillAStudentsEmail() {
+    val email = "Test.Student@EPFL.CH"
+    assertEquals(StartDestination.Main, routeOf(found, sessionEmail = email))
+    assertEquals(
+        StartDestination.ProfileSetup,
+        routeOf(ProfileResult.NotFound, sessionEmail = email),
+    )
+  }
+
+  @Test
+  fun retryOnTheNonEpflError_readsTheProfileAgain_andStillFailsClosed() {
+    auth.user = verified.copy(email = nonEpfl)
+    profiles.getProfileResult = ProfileResult.NotFound
+    val viewModel = AppStartViewModel(auth, profiles)
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+    assertEquals(StartDestination.Error, viewModel.destination.value)
+
+    viewModel.refresh()
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+    viewModel.onProfileCreated()
+
+    // Retry is not a way into the student profile step, nor is a late "profile created".
+    assertEquals(StartDestination.Error, viewModel.destination.value)
+    assertEquals(2, profiles.getProfileCalls)
   }
 }
