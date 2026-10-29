@@ -76,7 +76,13 @@ function fakeBackend({ profile = { accountType: "student" }, authUserExists = tr
       state.authUserExists = false;
     },
   };
-  return { db, adminAuth, calls, fail, state };
+  // Records every log entry, at any level, so a test can check exactly what was logged.
+  const logs = [];
+  const logger = {};
+  for (const level of ["debug", "log", "info", "warn", "error"]) {
+    logger[level] = (...entry) => logs.push([level, ...entry]);
+  }
+  return { db, adminAuth, logger, logs, calls, fail, state };
 }
 
 /** Calls the handler as `auth` (undefined: nobody signed in). */
@@ -86,6 +92,7 @@ function callAs(backend, auth) {
     db: backend.db,
     adminAuth: backend.adminAuth,
     now: () => NOW,
+    logger: backend.logger,
   });
 }
 
@@ -254,6 +261,46 @@ test("a retry after a failed Auth deletion finishes the deletion", async () => {
 
   assert.deepEqual(await call(backend), { deleted: true });
   assert.equal(backend.state.authUserExists, false);
+});
+
+test("a failed step logs only its name and the error code, a success logs nothing", async () => {
+  const succeeded = fakeBackend();
+  await call(succeeded);
+  assert.deepEqual(succeeded.logs, []);
+
+  const refused = fakeBackend({ profile: { accountType: "association" } });
+  await assertHttpsError(call(refused), "failed-precondition", DETAILS.ASSOCIATION);
+  assert.deepEqual(refused.logs, []);
+
+  const profileFailed = fakeBackend();
+  profileFailed.fail.get = { error: backendError(14) };
+  await assertHttpsError(call(profileFailed), "unavailable", undefined);
+  assert.deepEqual(profileFailed.logs, [
+    ["error", "deleteAccount step failed", { step: "delete-profile", code: 14 }],
+  ]);
+
+  const authFailed = fakeBackend();
+  authFailed.fail.deleteUser = { error: backendError("auth/internal-error") };
+  await assertHttpsError(call(authFailed), "internal", undefined);
+  assert.deepEqual(authFailed.logs, [
+    [
+      "error",
+      "deleteAccount step failed",
+      { step: "delete-auth-user", code: "auth/internal-error" },
+    ],
+  ]);
+
+  const noCode = fakeBackend();
+  noCode.fail.get = { error: new TypeError(`unexpected for ${UID}`) };
+  await assertHttpsError(call(noCode), "internal", undefined);
+  assert.deepEqual(noCode.logs, [
+    ["error", "deleteAccount step failed", { step: "delete-profile", code: null }],
+  ]);
+  for (const backend of [profileFailed, authFailed, noCode]) {
+    const logged = JSON.stringify(backend.logs);
+    assert.ok(!logged.includes(UID), "the log must not contain the uid");
+    assert.ok(!logged.includes("raw backend failure"), "the log must not hold the error message");
+  }
 });
 
 test("a retry after a complete deletion succeeds again", async () => {

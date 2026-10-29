@@ -4,6 +4,7 @@
 const { initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const { getFirestore } = require("firebase-admin/firestore");
+const logger = require("firebase-functions/logger");
 const { onCall } = require("firebase-functions/v2/https");
 const { REGION, deleteAccountHandler } = require("./deleteAccountHandler");
 
@@ -16,5 +17,6 @@ exports.deleteAccount = onCall({ region: REGION }, (request) =>
     db: getFirestore(),
     adminAuth: getAuth(),
     now: Date.now,
+    logger,
   }),
 );
