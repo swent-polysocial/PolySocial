@@ -2,10 +2,8 @@
 // Mohamed Khellaf (reviewed and revised).
 package com.polysocial.model.account
 
-import com.google.firebase.FirebaseApp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.functions.FirebaseFunctions
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -26,9 +24,6 @@ object AccountDeletionModule {
   fun accountDeletionRepository(db: Provider<FirebaseFirestore>): AccountDeletionRepository =
       FirebaseAccountDeletionRepository(
           authProvider = { FirebaseAuth.getInstance() },
-          functionsProvider = {
-            FirebaseFunctions.getInstance(FirebaseApp.getInstance(), ACCOUNT_DELETION_REGION)
-          },
           firestore = { db.get() },
       )
 }
