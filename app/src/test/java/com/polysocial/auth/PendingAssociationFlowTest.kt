@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (retained the shared logout fixture on rebase, #140).
 // Contributors: OpenAI Codex (preserve association entry and offline retry, #125).
 // Contributors: OpenAI Codex (adapted pending flow to startup recovery and setup handoff).
 // Contributors: Claude (wrote these tests, #127; logging in again in the same activity, after a
@@ -128,7 +129,7 @@ class PendingAssociationFlowTest {
     val profileStep = ProfileSetupViewModel(auth, profiles)
     val welcome = WelcomeViewModel(auth)
     // One activity-scoped logout ViewModel, shared by the start error and the pending app.
-    val logout = ProfileViewModel(auth, cache)
+    val logout = ProfileViewModel(auth, cache, associations)
     compose.setContent {
       PolySocialTheme {
         AuthFlow(
