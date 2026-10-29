@@ -2,6 +2,8 @@
 package com.polysocial.ui.common
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Column
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
@@ -26,7 +28,7 @@ import org.junit.runner.RunWith
 class FormPartsTest {
   @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
 
-  private fun show(content: @androidx.compose.runtime.Composable () -> Unit) {
+  private fun show(content: @Composable () -> Unit) {
     compose.setContent { PolySocialTheme { content() } }
   }
 
@@ -59,10 +61,7 @@ class FormPartsTest {
   @Test
   fun primaryButton_clicksOnlyWhenEnabled_andKeepsFigmasHeight() {
     var clicks = 0
-    var enabled = true
-    compose.setContent {
-      PolySocialTheme { PrimaryButton("Save", enabled = enabled, tag = "button") { clicks++ } }
-    }
+    show { PrimaryButton("Save", enabled = true, tag = "button") { clicks++ } }
     compose
         .onNodeWithTag("button")
         .assertHeightIsEqualTo(52.dp)
@@ -76,7 +75,7 @@ class FormPartsTest {
   fun primaryButton_disabledOrLoading_ignoresTaps() {
     var clicks = 0
     show {
-      androidx.compose.foundation.layout.Column {
+      Column {
         PrimaryButton("Save", enabled = false, tag = "disabled") { clicks++ }
         PrimaryButton("Saving…", enabled = false, tag = "loading", loading = true) { clicks++ }
       }
