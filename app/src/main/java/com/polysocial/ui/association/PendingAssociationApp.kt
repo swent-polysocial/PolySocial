@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (shared pending and verified identity controller, #140).
 // Contributors: Claude (the app of an association an admin hasn't verified yet, #127; nothing kept
 // from one session to the next, after a review, #127).
 package com.polysocial.ui.association
@@ -19,6 +20,7 @@ import androidx.navigation.compose.rememberNavController
 import com.polysocial.R
 import com.polysocial.ui.profile.LogoutDialog
 import com.polysocial.ui.profile.LogoutState
+import com.polysocial.ui.profile.OrganizationUiState
 import com.polysocial.ui.profile.ProfileViewModel
 import kotlinx.coroutines.launch
 
@@ -33,20 +35,25 @@ import kotlinx.coroutines.launch
 @Composable
 fun PendingAssociationApp(
     onLoggedOut: () -> Unit,
-    viewModel: PendingAssociationViewModel = hiltViewModel(),
     logoutViewModel: ProfileViewModel = hiltViewModel(),
     navController: NavHostController = rememberNavController(),
 ) {
-  val state by viewModel.uiState.collectAsStateWithLifecycle()
+  val organization by logoutViewModel.organization.collectAsStateWithLifecycle()
+  val state =
+      when (val current = organization) {
+        OrganizationUiState.Loading -> PendingAssociationUiState.Loading
+        is OrganizationUiState.Ready -> PendingAssociationUiState.Loaded(current.association)
+        OrganizationUiState.Error -> PendingAssociationUiState.Failed
+      }
   val logout by logoutViewModel.uiState.collectAsStateWithLifecycle()
   val latestOnLoggedOut by rememberUpdatedState(onLoggedOut)
   // This app's ViewModels belong to the activity, which outlives the session: each session reads
   // its own details, and Log out leaves nothing (details, logout state, tab stacks) to the next
   // account.
-  LaunchedEffect(viewModel) { viewModel.open() }
+  LaunchedEffect(logoutViewModel) { logoutViewModel.loadOrganization() }
   LaunchedEffect(logout) {
     if (logout == LogoutState.LoggedOut) {
-      viewModel.close()
+      logoutViewModel.clearOrganization()
       logoutViewModel.reset()
       AssociationTab.entries.forEach { navController.clearBackStack(it.route) }
       navController.popBackStack(AssociationTab.EVENTS.route, inclusive = true)
@@ -83,7 +90,7 @@ fun PendingAssociationApp(
       composable(AssociationTab.ORGANIZATION.rootRoute) {
         PendingOrganizationScreen(
             state = state,
-            onRetry = viewModel::retry,
+            onRetry = logoutViewModel::loadOrganization,
             onLogOut = logoutViewModel::requestLogout,
         )
       }

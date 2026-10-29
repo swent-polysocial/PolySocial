@@ -53,6 +53,7 @@ import androidx.lifecycle.compose.dropUnlessResumed
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
+import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -64,6 +65,8 @@ import androidx.navigation.navArgument
 import com.polysocial.R
 import com.polysocial.model.user.AccountType
 import com.polysocial.resources.C
+import com.polysocial.ui.association.AssociationShell
+import com.polysocial.ui.association.AssociationTab
 import com.polysocial.ui.association.OrganizationRoute
 import com.polysocial.ui.event.create.CreateEventButton
 import com.polysocial.ui.event.create.CreateEventScreen
@@ -203,186 +206,199 @@ fun AppShell(
   val scope = rememberCoroutineScope()
   val eventCancelled = stringResource(R.string.event_cancelled)
 
-  Scaffold(
-      modifier = modifier.testTag(C.Tag.app_shell),
-      snackbarHost = { SnackbarHost(snackbarHostState) },
-      // The detail draws its own header behind the status bar and keeps its action bar above the
-      // navigation bar, so it gets no system insets from the Scaffold.
-      contentWindowInsets =
-          if (onEventDetail) WindowInsets(0) else ScaffoldDefaults.contentWindowInsets,
-      topBar = {
-        if (showBars && !onEventDetail && destination?.route != Tab.MAP.rootRoute)
-            AppBar(
-                title = stringResource(currentTab.presentation(association).label),
-                action = action,
-                // A double tap must not open the screen twice.
-                onAction = {
-                  navController.navigate(currentTab.routeOf(it)) { launchSingleTop = true }
-                },
+  val tabGraphs: NavGraphBuilder.() -> Unit = {
+    // One nested graph per tab, so each tab keeps its own back stack.
+    tabs.forEach { tab ->
+      navigation(startDestination = tab.rootRoute, route = tab.route) {
+        composable(tab.rootRoute) { entry ->
+          // dropUnlessResumed: a second quick tap doesn't open a second Create Event.
+          val openCreateEvent = dropUnlessResumed { navController.navigate(tab.createEventRoute) }
+          Box(Modifier.fillMaxSize()) {
+            when (tab) {
+              Tab.MAP ->
+                  mapContent(
+                      { id -> navController.navigate(mapDetailRoute(id)) },
+                      openCreateEvent,
+                  )
+              Tab.EVENTS -> {
+                eventsContent { eventId ->
+                  if (entry.isResumed) navController.navigate(tab.eventDetailRoute(eventId))
+                }
+                // Figma: 16 dp from the screen edge and 20 dp above the bottom bar.
+                CreateEventButton(
+                    onClick = openCreateEvent,
+                    modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp, 20.dp),
+                )
+              }
+              Tab.PROFILE -> {
+                val loggedOut = {
+                  tabs.forEach { navController.clearBackStack(it.route) }
+                  navController.popBackStack(Tab.EVENTS.route, inclusive = true)
+                  onLoggedOut()
+                }
+                if (association)
+                    organizationContent(
+                        loggedOut,
+                        dropUnlessResumed {
+                          navController.navigate(tab.privacyRoute) { launchSingleTop = true }
+                        },
+                    )
+                else profileContent(loggedOut)
+              }
+              else -> TabRootScreen(tab)
+            }
+          }
+        }
+        if (tab == Tab.MAP) {
+          composable(
+              "${tab.detailRoute}/{eventId}",
+              arguments = listOf(navArgument("eventId") { type = NavType.StringType }),
+          ) {
+            Column(Modifier.padding(20.dp).testTag(C.Tag.event_detail_placeholder)) {
+              Text(
+                  stringResource(R.string.event_detail_title),
+                  style = MaterialTheme.typography.titleLarge,
+              )
+              Text(stringResource(R.string.event_detail_placeholder))
+              TextButton(
+                  onClick = { navController.popBackStack() },
+                  modifier = Modifier.testTag(C.Tag.event_detail_back),
+              ) {
+                Text(stringResource(R.string.event_detail_back))
+              }
+            }
+          }
+        } else {
+          composable(tab.detailRoute) { PlaceholderDetailScreen(tab) }
+        }
+        if (tab in createEventTabs) {
+          composable(tab.createEventRoute) {
+            // Each action runs once: a second tap while leaving would pop the screen below.
+            // onViewEvent takes the event id, so it checks the lifecycle like dropUnlessResumed.
+            val lifecycle = LocalLifecycleOwner.current.lifecycle
+            createEventContent(
+                CreateEventNavigation(
+                    onClose = dropUnlessResumed { navController.popBackStack() },
+                    onViewEvent = { eventId ->
+                      if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                        navController.openCreatedEvent(tab, eventId)
+                      }
+                    },
+                    onBackToMap =
+                        dropUnlessResumed {
+                          // Leave Create Event first, so the tab doesn't come back on the
+                          // confirmation when the student returns to it.
+                          navController.popBackStack()
+                          navController.navigateToTab(Tab.MAP)
+                        },
+                )
             )
-      },
-      bottomBar = {
-        if (showBars && !onEventDetail) {
-          BottomNavBar(
-              currentTab = currentTab,
-              tabs = tabs,
-              association = association,
-              onTabSelected = { navController.navigateToTab(it) },
+          }
+        }
+        if (tab == Tab.PROFILE) {
+          composable(tab.privacyRoute) {
+            PrivacyRoute(
+                onBack = { navController.popBackStack() },
+                onFullNotice = { navController.navigate(tab.privacyNoticeRoute) },
+            )
+          }
+          composable(tab.privacyNoticeRoute) {
+            FullPrivacyNoticeRoute(onBack = { navController.popBackStack() })
+          }
+        }
+        tab.action?.let { action ->
+          composable(tab.routeOf(action)) { PlaceholderActionScreen(action) }
+        }
+        composable(
+            tab.eventDetailRoute,
+            arguments =
+                listOf(
+                    navArgument(EventDetailViewModel.EVENT_ID_ARG) { type = NavType.StringType }
+                ),
+        ) { entry ->
+          eventDetailContent(
+              EventDetailNavigation(
+                  onBack = { if (entry.isResumed) navController.popBackStack() },
+                  onEdit = {
+                    val id = entry.arguments?.getString(EventDetailViewModel.EVENT_ID_ARG)
+                    if (entry.isResumed && id != null) {
+                      navController.navigate(tab.editEventRoute(id))
+                    }
+                  },
+                  // Not isResumed: the event may be deleted while a transition runs.
+                  onCancelled = {
+                    if (navController.currentBackStackEntry == entry) {
+                      navController.popBackStack()
+                      snackbarHostState.currentSnackbarData?.dismiss()
+                      scope.launch { snackbarHostState.showSnackbar(eventCancelled) }
+                    }
+                  },
+              )
           )
         }
-      },
-  ) { padding ->
-    NavHost(
-        navController = navController,
-        startDestination = Tab.EVENTS.route,
-        // Consumed, so a screen that pads itself for the system bars (Create Event) doesn't add
-        // them a second time.
-        modifier = Modifier.padding(padding).consumeWindowInsets(padding),
-    ) {
-      // One nested graph per tab, so each tab keeps its own back stack.
-      tabs.forEach { tab ->
-        navigation(startDestination = tab.rootRoute, route = tab.route) {
-          composable(tab.rootRoute) { entry ->
-            // dropUnlessResumed: a second quick tap doesn't open a second Create Event.
-            val openCreateEvent = dropUnlessResumed { navController.navigate(tab.createEventRoute) }
-            Box(Modifier.fillMaxSize()) {
-              when (tab) {
-                Tab.MAP ->
-                    mapContent(
-                        { id -> navController.navigate(mapDetailRoute(id)) },
-                        openCreateEvent,
-                    )
-                Tab.EVENTS -> {
-                  eventsContent { eventId ->
-                    if (entry.isResumed) navController.navigate(tab.eventDetailRoute(eventId))
-                  }
-                  // Figma: 16 dp from the screen edge and 20 dp above the bottom bar.
-                  CreateEventButton(
-                      onClick = openCreateEvent,
-                      modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp, 20.dp),
-                  )
-                }
-                Tab.PROFILE -> {
-                  val loggedOut = {
-                    tabs.forEach { navController.clearBackStack(it.route) }
-                    navController.popBackStack(Tab.EVENTS.route, inclusive = true)
-                    onLoggedOut()
-                  }
-                  if (association)
-                      organizationContent(
-                          loggedOut,
-                          dropUnlessResumed {
-                            navController.navigate(tab.privacyRoute) { launchSingleTop = true }
-                          },
-                      )
-                  else profileContent(loggedOut)
-                }
-                else -> TabRootScreen(tab)
-              }
-            }
-          }
-          if (tab == Tab.MAP) {
-            composable(
-                "${tab.detailRoute}/{eventId}",
-                arguments = listOf(navArgument("eventId") { type = NavType.StringType }),
-            ) {
-              Column(Modifier.padding(20.dp).testTag(C.Tag.event_detail_placeholder)) {
-                Text(
-                    stringResource(R.string.event_detail_title),
-                    style = MaterialTheme.typography.titleLarge,
-                )
-                Text(stringResource(R.string.event_detail_placeholder))
-                TextButton(
-                    onClick = { navController.popBackStack() },
-                    modifier = Modifier.testTag(C.Tag.event_detail_back),
-                ) {
-                  Text(stringResource(R.string.event_detail_back))
-                }
-              }
-            }
-          } else {
-            composable(tab.detailRoute) { PlaceholderDetailScreen(tab) }
-          }
-          if (tab in createEventTabs) {
-            composable(tab.createEventRoute) {
-              // Each action runs once: a second tap while leaving would pop the screen below.
-              // onViewEvent takes the event id, so it checks the lifecycle like dropUnlessResumed.
-              val lifecycle = LocalLifecycleOwner.current.lifecycle
-              createEventContent(
-                  CreateEventNavigation(
-                      onClose = dropUnlessResumed { navController.popBackStack() },
-                      onViewEvent = { eventId ->
-                        if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-                          navController.openCreatedEvent(tab, eventId)
-                        }
-                      },
-                      onBackToMap =
-                          dropUnlessResumed {
-                            // Leave Create Event first, so the tab doesn't come back on the
-                            // confirmation when the student returns to it.
-                            navController.popBackStack()
-                            navController.navigateToTab(Tab.MAP)
-                          },
-                  )
-              )
-            }
-          }
-          if (tab == Tab.PROFILE) {
-            composable(tab.privacyRoute) {
-              PrivacyRoute(
-                  onBack = { navController.popBackStack() },
-                  onFullNotice = { navController.navigate(tab.privacyNoticeRoute) },
-              )
-            }
-            composable(tab.privacyNoticeRoute) {
-              FullPrivacyNoticeRoute(onBack = { navController.popBackStack() })
-            }
-          }
-          tab.action?.let { action ->
-            composable(tab.routeOf(action)) { PlaceholderActionScreen(action) }
-          }
-          composable(
-              tab.eventDetailRoute,
-              arguments =
-                  listOf(
-                      navArgument(EventDetailViewModel.EVENT_ID_ARG) { type = NavType.StringType }
-                  ),
-          ) { entry ->
-            eventDetailContent(
-                EventDetailNavigation(
-                    onBack = { if (entry.isResumed) navController.popBackStack() },
-                    onEdit = {
-                      val id = entry.arguments?.getString(EventDetailViewModel.EVENT_ID_ARG)
-                      if (entry.isResumed && id != null) {
-                        navController.navigate(tab.editEventRoute(id))
-                      }
-                    },
-                    // Not isResumed: the event may be deleted while a transition runs.
-                    onCancelled = {
-                      if (navController.currentBackStackEntry == entry) {
-                        navController.popBackStack()
-                        snackbarHostState.currentSnackbarData?.dismiss()
-                        scope.launch { snackbarHostState.showSnackbar(eventCancelled) }
-                      }
-                    },
-                )
-            )
-          }
-          composable(
-              tab.editEventRoute,
-              arguments =
-                  listOf(
-                      navArgument(EventDetailViewModel.EVENT_ID_ARG) { type = NavType.StringType }
-                  ),
-          ) { entry ->
-            // Not isResumed: Edit event can close itself during its enter transition (an event
-            // that can't be read), and must not stay open on a blank screen then.
-            editEventContent {
-              if (navController.currentBackStackEntry == entry) navController.popBackStack()
-            }
+        composable(
+            tab.editEventRoute,
+            arguments =
+                listOf(
+                    navArgument(EventDetailViewModel.EVENT_ID_ARG) { type = NavType.StringType }
+                ),
+        ) { entry ->
+          // Not isResumed: Edit event can close itself during its enter transition (an event
+          // that can't be read), and must not stay open on a blank screen then.
+          editEventContent {
+            if (navController.currentBackStackEntry == entry) navController.popBackStack()
           }
         }
       }
+    }
+  }
+  val topBar: @Composable () -> Unit = {
+    if (showBars && !onEventDetail && destination?.route != Tab.MAP.rootRoute)
+        AppBar(
+            title = stringResource(currentTab.presentation(association).label),
+            action = action,
+            onAction = {
+              navController.navigate(currentTab.routeOf(it)) { launchSingleTop = true }
+            },
+        )
+  }
+  if (association) {
+    AssociationShell(
+        navController = navController,
+        snackbarHostState = snackbarHostState,
+        modifier = modifier,
+        routes =
+            mapOf(
+                AssociationTab.EVENTS to (Tab.EVENTS.route to Tab.EVENTS.rootRoute),
+                AssociationTab.MAP to (Tab.MAP.route to Tab.MAP.rootRoute),
+                AssociationTab.ORGANIZATION to (Tab.PROFILE.route to Tab.PROFILE.rootRoute),
+            ),
+        showBottomBar = showBars && !onEventDetail,
+        topBar = topBar,
+        contentWindowInsets =
+            if (onEventDetail) WindowInsets(0) else ScaffoldDefaults.contentWindowInsets,
+        useAppTags = true,
+        dismissSnackbarOnNavigation = false,
+        tabGraphs = tabGraphs,
+    )
+  } else {
+    Scaffold(
+        modifier = modifier.testTag(C.Tag.app_shell),
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        contentWindowInsets =
+            if (onEventDetail) WindowInsets(0) else ScaffoldDefaults.contentWindowInsets,
+        topBar = topBar,
+        bottomBar = {
+          if (showBars && !onEventDetail)
+              BottomNavBar(currentTab, tabs, association) { navController.navigateToTab(it) }
+        },
+    ) { padding ->
+      NavHost(
+          navController = navController,
+          startDestination = Tab.EVENTS.route,
+          modifier = Modifier.padding(padding).consumeWindowInsets(padding),
+          builder = tabGraphs,
+      )
     }
   }
 }
