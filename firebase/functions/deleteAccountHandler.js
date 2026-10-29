@@ -5,7 +5,8 @@ const { HttpsError } = require("firebase-functions/v2/https");
 
 /**
  * Region of the deleteAccount callable (Zurich). The Android client calls it with
- * ACCOUNT_DELETION_REGION in app/src/main/java/com/polysocial/model/account/AccountDeletion.kt:
+ * ACCOUNT_DELETION_REGION in app/src/main/java/com/polysocial/model/account/AccountDeletion.kt,
+ * which arrives with the app's follow-up PR (#206, branch feature/206-delete-account-repository):
  * both must match, or the client reaches no function.
  */
 const REGION = "europe-west6";
