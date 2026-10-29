@@ -88,7 +88,7 @@ class AssociationSetupViewModelTest {
     assertEquals(user.uid, privateProfile.uid)
     assertEquals(user.email, privateProfile.email)
     assertEquals(AccountType.ASSOCIATION, privateProfile.accountType)
-    assertEquals("Example Club", privateProfile.displayName)
+    assertEquals("", privateProfile.displayName)
     assertEquals("", privateProfile.section)
     assertEquals("", privateProfile.year)
     assertFalse(privateProfile.isAssociationVerified)
@@ -241,15 +241,51 @@ class AssociationSetupViewModelTest {
   }
 
   @Test
-  fun lostCreateResponseIsRecoveredWithoutUpdatingTheExistingAssociation() = runTest {
+  fun lostCreateResponseSavesTheLatestEditedValues() = runTest {
     profiles.getProfileResult = found()
     associations.createAssociationResult = CreateAssociationResult.AlreadyExists
     val viewModel = model()
     fill(viewModel)
+    viewModel.update(AssociationSetupField.Name, "Latest Club")
     viewModel.submit()
     advanceUntilIdle()
     assertTrue(viewModel.uiState.value.saved)
-    assertTrue(associations.updatedAssociations.isEmpty())
+    assertEquals("Latest Club", associations.updatedAssociations.single().name)
+  }
+
+  @Test
+  fun sixtyCharacterAssociationNameDoesNotEnterThePrivateDisplayName() = runTest {
+    val viewModel = model()
+    fill(viewModel)
+    viewModel.update(AssociationSetupField.Name, "a".repeat(60))
+    viewModel.submit()
+    advanceUntilIdle()
+    assertTrue(viewModel.uiState.value.saved)
+    assertEquals("", profiles.createdProfiles.single().displayName)
+    assertEquals("a".repeat(60), associations.createdAssociations.single().name)
+  }
+
+  @Test
+  fun lostResponseUpdateFailuresKeepTheFormForRetry() = runTest {
+    for ((result, expected) in
+        listOf(
+            com.polysocial.model.association.UpdateAssociationResult.NetworkError to
+                AssociationSetupFailure.Network,
+            com.polysocial.model.association.UpdateAssociationResult.NotFound to
+                AssociationSetupFailure.Unexpected,
+            com.polysocial.model.association.UpdateAssociationResult.UnexpectedError to
+                AssociationSetupFailure.Unexpected,
+        )) {
+      associations.createAssociationResult = CreateAssociationResult.AlreadyExists
+      associations.updateAssociationResult = result
+      val viewModel = model()
+      fill(viewModel)
+      viewModel.submit()
+      advanceUntilIdle()
+      assertFalse(viewModel.uiState.value.saved)
+      assertEquals(expected, viewModel.uiState.value.error)
+      assertEquals(" Example Club ", viewModel.uiState.value.form.name)
+    }
   }
 
   @Test
@@ -300,10 +336,10 @@ class AssociationSetupViewModelTest {
     assertNull(viewModel.uiState.value.error)
     assertTrue(AssociationSetupField.Name in viewModel.uiState.value.touched)
     assertEquals("New Example Club", viewModel.uiState.value.form.name)
-    viewModel.update(AssociationSetupField.Type, AssociationType.COMMISSION.name)
+    viewModel.selectType(AssociationType.COMMISSION)
     assertEquals(AssociationType.COMMISSION, viewModel.uiState.value.form.type)
     viewModel.update(AssociationSetupField.Type, "unknown")
-    assertNull(viewModel.uiState.value.form.type)
+    assertEquals(AssociationType.COMMISSION, viewModel.uiState.value.form.type)
   }
 
   @Test

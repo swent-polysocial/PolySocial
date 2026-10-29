@@ -6,6 +6,8 @@ What a coding agent (or a new teammate) needs to know before starting a session 
 
 ## Current state
 
+- **Association setup review (#256):** the association name lives only in `associations/{uid}`; the private profile has an empty `displayName`, compatible with the 50-character student limit. A retry whose create already succeeded updates the identity with the latest submitted values. `model/association/AssociationValidation.kt` owns shared form validation and repository constants own the limits; #248 reuses them when rebased. Websites require HTTPS with a host and valid port, as #125 requires a valid URL.
+
 - **Association setup saving (#125):** the plain form enforces #126's name/about/type/HTTPS limits. Its UID-scoped ViewModel saves the private association account before the public identity, rejects existing student accounts, and recovers duplicate creates after a lost response. Input survives retries and saved-state restoration for the same UID. The app never writes the verification flag. The presentation and startup handoff follow separately; pending editing stays with #127.
 
 

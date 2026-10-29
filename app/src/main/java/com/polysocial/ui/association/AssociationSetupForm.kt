@@ -3,22 +3,11 @@ package com.polysocial.ui.association
 
 import com.polysocial.model.association.Association
 import com.polysocial.model.association.AssociationType
-import java.net.URI
-import java.net.URISyntaxException
 import java.util.Locale
 
-enum class AssociationSetupField {
-  Name,
-  Type,
-  About,
-  Website,
-}
+typealias AssociationSetupField = com.polysocial.model.association.AssociationField
 
-enum class AssociationSetupError {
-  Required,
-  TooLong,
-  InvalidWebsite,
-}
+typealias AssociationSetupError = com.polysocial.model.association.AssociationFieldError
 
 /** Validates the trimmed values saved by #126, without accessing Android or the network. */
 data class AssociationSetupForm(
@@ -28,18 +17,7 @@ data class AssociationSetupForm(
     val website: String = "",
 ) {
   fun error(field: AssociationSetupField): AssociationSetupError? =
-      when (field) {
-        AssociationSetupField.Name -> requiredTextError(name, 60)
-        AssociationSetupField.Type -> if (type == null) AssociationSetupError.Required else null
-        AssociationSetupField.About -> requiredTextError(about, 1000)
-        AssociationSetupField.Website ->
-            when {
-              website.isBlank() -> null
-              website.trim().length > 200 -> AssociationSetupError.TooLong
-              !isAssociationWebsite(website.trim()) -> AssociationSetupError.InvalidWebsite
-              else -> null
-            }
-      }
+      com.polysocial.model.association.associationFormErrors(name, type, about, website)[field]
 
   val isValid: Boolean
     get() = AssociationSetupField.entries.all { error(it) == null }
@@ -53,23 +31,6 @@ data class AssociationSetupForm(
           about = about.trim(),
           website = website.trim().takeIf { it.isNotEmpty() },
       )
-}
-
-private fun requiredTextError(value: String, maximum: Int): AssociationSetupError? =
-    when {
-      value.isBlank() -> AssociationSetupError.Required
-      value.trim().length > maximum -> AssociationSetupError.TooLong
-      else -> null
-    }
-
-private fun isAssociationWebsite(value: String): Boolean {
-  if (value.any(Char::isWhitespace)) return false
-  return try {
-    val uri = URI(value)
-    uri.scheme == "https" && !uri.host.isNullOrEmpty() && (uri.port == -1 || uri.port in 1..65535)
-  } catch (_: URISyntaxException) {
-    false
-  }
 }
 
 /** Two word initials, or the first two code points of one word; never splits a surrogate pair. */
