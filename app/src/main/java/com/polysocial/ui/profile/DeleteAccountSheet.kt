@@ -258,7 +258,8 @@ private fun PasswordField(state: DeleteAccountUiState, actions: DeleteAccountAct
             else PasswordVisualTransformation(),
         trailing = {
           Box(
-              Modifier.size(44.dp)
+              // Android's 48 dp minimum touch target around Figma's 20 dp eye.
+              Modifier.size(48.dp)
                   .clickable(enabled = !state.busy, onClick = actions.onTogglePassword)
                   .testTag(DeleteAccountTags.PasswordVisibility),
               contentAlignment = Alignment.Center,
@@ -313,7 +314,8 @@ private fun AssociationContent(
   Title(R.string.delete_account_association_title)
   Body(stringResource(R.string.delete_account_association_body))
   Box(
-      Modifier.heightIn(min = 44.dp)
+      // Figma's text link, with Android's 48 dp minimum touch target.
+      Modifier.heightIn(min = 48.dp)
           .clickable(role = Role.Button, onClick = actions.onContact)
           .testTag(DeleteAccountTags.Contact),
       contentAlignment = Alignment.CenterStart,
@@ -468,7 +470,8 @@ private fun Progress() {
 private fun SecondaryButton(@StringRes text: Int, enabled: Boolean, onClick: () -> Unit) {
   Box(
       Modifier.fillMaxWidth()
-          .height(47.dp)
+          // Figma draws it 47 dp high; 48 dp is Android's minimum touch target.
+          .heightIn(min = 48.dp)
           .alpha(if (enabled) 1f else 0.4f)
           .clip(RoundedCornerShape(26.dp))
           .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
