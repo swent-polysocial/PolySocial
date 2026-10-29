@@ -7,6 +7,8 @@
 // OpenAI Codex (enumeration-protected password recovery and failure handling for #164).
 // Contributors: Claude (Fable 5.1, Anthropic) drafted password and Google re-authentication for
 // #206; Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) removed the unreachable user-mismatch branch, #206;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.model.auth
 
 import android.content.Context
@@ -204,8 +206,12 @@ private constructor(
 
   override suspend fun reauthenticateWithGoogle(context: Context): ReauthResult {
     val user = auth.currentUser ?: return ReauthResult.NotSignedIn
-    // An invalid Google token is not a wrong password: report it as unexpected.
-    return reauthenticate(user, wrongCredential = ReauthResult.UnexpectedError) {
+    return reauthenticate(
+        user,
+        // An invalid Google token, or another Google account than the signed-in one
+        // (ERROR_USER_MISMATCH, an invalid-credentials error), is not a wrong password.
+        wrongCredential = ReauthResult.UnexpectedError,
+    ) {
       GoogleAuthProvider.getCredential(googleCredentials.get(context).idToken, null)
     }
   }
@@ -227,10 +233,8 @@ private constructor(
         ReauthResult.Cancelled
       } catch (_: FirebaseAuthInvalidCredentialsException) {
         wrongCredential
-      } catch (error: FirebaseAuthInvalidUserException) {
-        // Another Google account than the signed-in one is a mismatch, not a missing account.
-        if (error.errorCode == USER_MISMATCH) ReauthResult.UnexpectedError
-        else ReauthResult.NotSignedIn
+      } catch (_: FirebaseAuthInvalidUserException) {
+        ReauthResult.NotSignedIn
       } catch (_: FirebaseNetworkException) {
         ReauthResult.NetworkError
       } catch (_: Exception) {
@@ -269,11 +273,6 @@ private constructor(
   /** Matches the rules' lowercase domain as well as the shared mailbox validation. */
   private fun isExactEpflEmail(email: String): Boolean =
       isEpflEmail(email) && email.endsWith("@epfl.ch")
-
-  private companion object {
-    /** Firebase's error code when a credential belongs to another account. */
-    const val USER_MISMATCH = "ERROR_USER_MISMATCH"
-  }
 
   private fun FirebaseUser.snapshot() =
       AuthUser(
