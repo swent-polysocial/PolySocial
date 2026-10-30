@@ -242,9 +242,7 @@ fun AppShell(
                 )
               }
               Tab.PROFILE -> {
-                val loggedOut = {
-                  leaveApp(onLoggedOut)
-                }
+                val loggedOut = { leaveApp(onLoggedOut) }
                 if (association)
                     organizationContent(
                         loggedOut,

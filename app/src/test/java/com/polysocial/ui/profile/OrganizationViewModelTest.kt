@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (regressions for saved pending edits and session isolation on rebase).
 // Contributors: OpenAI Codex (own-identity caching, required dependencies and session-isolation
 // tests, #140).
 package com.polysocial.ui.profile
@@ -171,6 +172,34 @@ class OrganizationViewModelTest {
       assertEquals(OrganizationUiState.Error, model.organization.value)
       assertNotEquals(LogoutState.LoggedOut, model.uiState.value)
     }
+  }
+
+  @Test
+  fun savedEditsReplaceAnInflightReadAndRemainCachedOnReentry() = runTest {
+    repository.gate = CompletableDeferred()
+    val model = ProfileViewModel(auth, cache, repository)
+    model.loadOrganization()
+    runCurrent()
+    val edited = identity.copy(name = "Renamed Club")
+    model.onOrganizationSaved(edited)
+    assertEquals(OrganizationUiState.Ready(edited), model.organization.value)
+    repository.gate!!.complete(Unit)
+    advanceUntilIdle()
+    model.loadOrganization()
+    advanceUntilIdle()
+    assertEquals(OrganizationUiState.Ready(edited), model.organization.value)
+    assertEquals(listOf(user.uid), repository.requestedUids)
+  }
+
+  @Test
+  fun savedEditsFromAnAbsentUnverifiedOrDifferentSessionAreIgnored() = runTest {
+    for (session in listOf(null, user.copy(isEmailVerified = false), user.copy(uid = "other"))) {
+      val model = ProfileViewModel(auth, cache, repository)
+      auth.user = session
+      model.onOrganizationSaved(identity)
+      assertEquals(OrganizationUiState.Loading, model.organization.value)
+    }
+    assertTrue(repository.requestedUids.isEmpty())
   }
 
   @Test
