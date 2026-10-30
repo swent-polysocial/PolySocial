@@ -15,6 +15,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
 import com.polysocial.model.auth.SignUpForm
+import com.polysocial.model.auth.SignUpResult
 import com.polysocial.model.user.AccountType
 import com.polysocial.ui.theme.PolySocialTheme
 import org.junit.Assert.assertEquals
@@ -66,5 +67,19 @@ class AssociationSignUpScreenTest {
     compose.onNodeWithTag(SignUpTags.Submit).performScrollTo().assertIsDisplayed()
     compose.onNodeWithTag(SignUpTags.LogIn).performScrollTo().assertIsDisplayed().performClick()
     assertEquals(1, logins)
+  }
+
+  @Test
+  fun associationShowsRecoverableBackendErrorWithoutLeavingTheForm() {
+    var message = ""
+    val errorState = state.copy(status = SignUpStatus.Error(SignUpResult.NetworkError))
+    compose.setContent {
+      message = stringResource(R.string.signup_network_error)
+      PolySocialTheme { SignUpScreen(errorState, { _, _ -> }, {}, {}, {}, {}) }
+    }
+
+    compose.onNodeWithTag(SignUpTags.BackendError).assertIsDisplayed()
+    compose.onNodeWithText(message).assertIsDisplayed()
+    compose.onNodeWithTag(SignUpTags.Submit).assertIsDisplayed()
   }
 }
