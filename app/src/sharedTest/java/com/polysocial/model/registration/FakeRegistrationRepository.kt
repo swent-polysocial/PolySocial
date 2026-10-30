@@ -1,14 +1,18 @@
-// Contributors: Claude Opus 5.5 (wrote this fake for tests, #121).
+// Contributors: Claude Opus 5.5 (wrote this fake for tests, #121; matched the real checks' order
+// after review).
 package com.polysocial.model.registration
 
+import com.polysocial.model.event.isReadableEventId
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
 /**
- * In-memory [RegistrationRepository] for tests. It follows the [RegistrationRepository] contracts:
- * the signed-in user, then [registerFailure] or [cancelFailure], then the stored registrations.
+ * In-memory [RegistrationRepository] for tests. It follows the [RegistrationRepository] contracts
+ * and checks in the same order as `FirestoreRegistrationRepository`: an ID that can't be a document
+ * ID, then the signed-in user, then [registerFailure] or [cancelFailure], then the stored
+ * registrations.
  * Only the events in [readableEventIds] can be registered for; any other ID is
  * [RegisterResult.NotFound], like a missing or private event.
  *
@@ -38,6 +42,7 @@ class FakeRegistrationRepository(var currentUid: String? = "test-student") :
   fun attendeesOf(eventId: String): Set<String> = attendees.value[eventId].orEmpty()
 
   override suspend fun register(eventId: String): RegisterResult {
+    if (!isReadableEventId(eventId)) return RegisterResult.NotFound
     val uid = currentUid ?: return RegisterResult.NotSignedIn
     registerFailure?.let {
       return it
@@ -48,6 +53,7 @@ class FakeRegistrationRepository(var currentUid: String? = "test-student") :
   }
 
   override suspend fun cancel(eventId: String): CancelRegistrationResult {
+    if (!isReadableEventId(eventId)) return CancelRegistrationResult.Cancelled
     val uid = currentUid ?: return CancelRegistrationResult.NotSignedIn
     cancelFailure?.let {
       return it
