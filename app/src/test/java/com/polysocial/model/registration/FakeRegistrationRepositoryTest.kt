@@ -1,4 +1,4 @@
-// Contributors: Claude Opus 5.5 (wrote these tests, #121).
+// Contributors: Claude Opus 5.5 (wrote these tests, #121; the invalid-ID test after review).
 package com.polysocial.model.registration
 
 import kotlinx.coroutines.flow.first
@@ -47,6 +47,15 @@ class FakeRegistrationRepositoryTest {
     assertEquals(RegisterResult.NotSignedIn, repository.register("event-1"))
     assertEquals(CancelRegistrationResult.NotSignedIn, repository.cancel("event-1"))
     assertEquals(MyRegistrationsResult.Error, myRegistrations())
+  }
+
+  @Test
+  fun anIdThatCannotBeADocumentId_isCheckedBeforeTheUser_likeFirestore() = runTest {
+    repository.currentUid = null
+
+    assertEquals(RegisterResult.NotFound, repository.register(" "))
+    assertEquals(RegisterResult.NotFound, repository.register("events/event-1"))
+    assertEquals(CancelRegistrationResult.Cancelled, repository.cancel(""))
   }
 
   @Test
