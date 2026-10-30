@@ -130,7 +130,7 @@ class PendingAssociationFlowTest {
               PendingAssociationApp(
                   onLoggedOut = done,
                   viewModel = viewModel { PendingAssociationViewModel(auth, associations) },
-                  logoutViewModel = viewModel { ProfileViewModel(auth, cache) },
+                  logoutViewModel = viewModel { ProfileViewModel(auth, cache, associations) },
               )
             },
         )

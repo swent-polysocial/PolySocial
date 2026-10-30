@@ -4,6 +4,7 @@
 package com.polysocial.ui.profile
 
 import androidx.lifecycle.viewModelScope
+import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
 import com.polysocial.model.firebase.*
 import com.polysocial.utils.MainDispatcherRule
@@ -33,7 +34,7 @@ class ProfileViewModelTest {
           return result
         }
       }
-  private val vm = ProfileViewModel(auth, cache)
+  private val vm = ProfileViewModel(auth, cache, FakeAssociationRepository())
 
   @Test
   fun cancelKeepsTheAccountAndNeverClearsCache() {
@@ -149,7 +150,7 @@ class ProfileViewModelTest {
       runTest(main.dispatcher) {
         val failing = mockk<AuthRepository>()
         every { failing.logOut() } throws IllegalStateException("test failure")
-        val profile = ProfileViewModel(failing, cache)
+        val profile = ProfileViewModel(failing, cache, FakeAssociationRepository())
         profile.requestLogout()
         profile.confirmLogout()
         runCurrent()
