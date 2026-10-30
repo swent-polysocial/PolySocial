@@ -4,8 +4,6 @@
 # broadcast wait before the device tests, #192).
 
 # Contributors: OpenAI Codex (publish the main APK after the parallel CI jobs, #137).
-# OpenAI Codex (temporary workaround for the instrumented-test launch hang in PR #259).
-
 name: CI - Test Runner
 
 # Run the workflow when commits are pushed on main or when a PR is modified
@@ -256,6 +254,15 @@ jobs:
       - name: Gradle cache
         uses: gradle/actions/setup-gradle@v5
 
+      # The app and test APKs build in the background while the next steps install the Firebase
+      # CLI and the emulator (about 1 minute). "Instrumented tests (emulator)" waits for this build
+      # before it boots the emulator, which would otherwise slow it down. The output goes to a file,
+      # so this step doesn't wait for the build.
+      - name: Build APKs (in the background)
+        run: |
+          (./gradlew assembleDebug assembleDebugAndroidTest -Pemulator=all; echo $? > "$RUNNER_TEMP/apk-build-status") \
+            > "$RUNNER_TEMP/apk-build.log" 2>&1 < /dev/null &
+
       # The @EmulatorTest instrumented tests need the Firebase emulators (Auth and Firestore),
       # started with the Firebase CLI. The Android emulator reaches them at 10.0.2.2.
       - name: Setup Node
@@ -299,11 +306,10 @@ jobs:
           arch: x86_64
           emulator-options: -no-snapshot -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           disable-animations: true
-          # TEMPORARY WORKAROUND for PR #259: the background APK build sometimes never writes its
-          # status file, leaving both shards waiting before the emulator launches. This cannot be
-          # be merged yet: workflow changes require team approval. The PR's original build failure
-          # was a missing Hilt binding in an Android test and is fixed in the test sources; keep
-          # this slower path until CI confirms the background optimization is safe again.
+          # Runs after the emulator is installed, before it boots: waits for the background APK build
+          # and prints its log
+          pre-emulator-launch-script: |
+            while [ ! -f "$RUNNER_TEMP/apk-build-status" ]; do sleep 1; done; cat "$RUNNER_TEMP/apk-build.log"
           # The install waits until the emulator has delivered the broadcasts for that install and
           # its startup: when Android handles a newly added app late, during the first test, it
           # restarts the app's activity, which then has no Compose content ("No compose hierarchies
@@ -312,6 +318,7 @@ jobs:
           # the others, in one run, so the coverage report gets them all. The Firebase emulators
           # stop when the run ends.
           script: |
+            status="$(cat "$RUNNER_TEMP/apk-build-status")"; if [ "$status" -ne 0 ]; then cat "$RUNNER_TEMP/apk-build.log"; exit "$status"; fi
             ./gradlew installDebug installDebugAndroidTest -Pemulator=all -Pandroid.testInstrumentationRunnerArguments.numShards=2 -Pandroid.testInstrumentationRunnerArguments.shardIndex=${{ matrix.shard }}
             timeout 180 "$ANDROID_HOME/platform-tools/adb" shell am wait-for-broadcast-idle || echo "::warning::The emulator's broadcasts were still not idle after 180 s."
             firebase emulators:exec --project demo-polysocial --only firestore,auth "./gradlew connectedCheck -Pemulator=all -Pandroid.testInstrumentationRunnerArguments.numShards=2 -Pandroid.testInstrumentationRunnerArguments.shardIndex=${{ matrix.shard }}"
@@ -335,6 +342,7 @@ jobs:
           path: |
             app/build/reports/
             app/build/outputs/androidTest-results/
+            ${{ runner.temp }}/apk-build.log
           retention-days: 7
           if-no-files-found: ignore
 
