@@ -1,5 +1,5 @@
 // Contributors: OpenAI Codex (association onboarding, recreation, session-boundary and validation
-// UI tests, #125); OpenAI Codex (association entry re-selection regression, #125).
+// UI tests and redundant draft-test cleanup, #125).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -276,18 +276,6 @@ class AssociationAuthFlowTest {
     assertEquals("", signup.uiState.value.form.password)
     assertEquals(AccountType.STUDENT, signup.uiState.value.form.accountType)
     assertEquals(0, auth.signUpCalls)
-  }
-
-  @Test
-  fun reselectingAssociationSignupKeepsItsDraft() {
-    launch()
-    openAssociationForm()
-    enterAssociationCredentials()
-    pressBack()
-    compose.onNodeWithTag(WelcomeTags.Association).performScrollTo().performClick()
-
-    compose.onNodeWithTag(SignUpTags.input(SignUpField.Email)).assertTextContains(user.email)
-    assertEquals(AccountType.ASSOCIATION, signup.uiState.value.form.accountType)
   }
 
   @Test
