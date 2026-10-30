@@ -1,6 +1,6 @@
 // Contributors: Claude (the Events tab's filter chips from the Figma "Events · date chips" and
 // "Events · active filters" frames, a picked day, and the chip shared with the Filters sheet,
-// #115; the row without *All* for the Map tab, #116).
+// #115; the Map tab's row, with *Clear filters* instead of *All*, #116).
 package com.polysocial.ui.event.list
 
 import androidx.annotation.DrawableRes
@@ -50,9 +50,10 @@ private data class FilterChip(
 /**
  * Figma's chip row under the search: *All*, then the filters that are on (dark, with an ×, tapping
  * one removes it), then the quick filters that are off. *All* is on when no chip filter is, and
- * tapping it clears them all, the search included, as decided in #113. The Map's row has no *All*
- * ([showAll] false, Figma "Map"): its "No matching events" card clears them instead. Over the map,
- * the chips that are off are filled with [offFill] so they stay readable on the tiles.
+ * tapping it clears them all, the search included, as decided in #113. The Map's row
+ * ([clearInsteadOfAll], Figma "Map · active filters") has no *All*: while a search or filter is on,
+ * it starts with an outlined *Clear filters ×* that clears them all instead. Over the map, the
+ * chips that are off are filled with [offFill] so they stay readable on the tiles.
  */
 @Composable
 fun EventsChipRow(
@@ -62,7 +63,7 @@ fun EventsChipRow(
     onClearFilters: () -> Unit,
     onSelectDistance: (Int?) -> Unit,
     modifier: Modifier = Modifier,
-    showAll: Boolean = true,
+    clearInsteadOfAll: Boolean = false,
     offFill: Color = Color.Transparent,
 ) {
   val quickDates =
@@ -113,13 +114,17 @@ fun EventsChipRow(
           chips.none { it.isActive },
           onClearFilters,
       )
+  // Shown only while something is on; Figma has no first chip otherwise ("Map · filters").
+  val clear =
+      FilterChip(CLEAR, stringResource(R.string.events_clear_filters), false, onClearFilters)
+          .takeIf { selection != EventSelection() }
   LazyRow(
       modifier = modifier.testTag(EventsTags.CHIPS),
       contentPadding = PaddingValues(horizontal = 20.dp),
       horizontalArrangement = Arrangement.spacedBy(8.dp),
   ) {
     items(
-        listOfNotNull(all.takeIf { showAll }) +
+        listOfNotNull(if (clearInsteadOfAll) clear else all) +
             chips.filter { it.isActive } +
             chips.filterNot { it.isActive },
         { it.key },
@@ -129,7 +134,8 @@ fun EventsChipRow(
           selected = chip.isActive,
           onClick = chip.onClick,
           tag = EventsTags.chip(chip.key),
-          removable = chip.isActive && chip.key != ALL,
+          removable = (chip.isActive && chip.key != ALL) || chip.key == CLEAR,
+          role = if (chip.key == CLEAR) Role.Button else Role.Checkbox,
           offFill = offFill,
       )
     }
@@ -197,7 +203,7 @@ internal fun EventsChip(
         Icon(
             painterResource(R.drawable.ic_close),
             contentDescription = null,
-            tint = Bg,
+            tint = content,
             modifier = Modifier.size(14.dp),
         )
       }
@@ -206,6 +212,7 @@ internal fun EventsChip(
 }
 
 private const val ALL = "ALL"
+private const val CLEAR = "CLEAR"
 private const val DISABLED_ALPHA = 0.4f
 private const val PICKED_DAY = "DAY"
 private const val DISTANCE = "DISTANCE"

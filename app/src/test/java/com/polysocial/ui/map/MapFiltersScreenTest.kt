@@ -1,4 +1,4 @@
-// Contributors: Claude (UI tests of the Map tab's search and filters, #116).
+// Contributors: Claude (UI tests of the Map tab's search and filters, #116; review fixes).
 package com.polysocial.ui.map
 
 import androidx.activity.ComponentActivity
@@ -20,6 +20,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.R
 import com.polysocial.model.association.FakeAssociationNames
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
@@ -128,11 +129,40 @@ class MapFiltersScreenTest {
     compose
         .onNode(hasText("No matching events") and hasAnyAncestor(hasTestTag(MapTags.NO_MATCH)))
         .assertIsDisplayed()
+    // The map's own body (Figma "Map · no matching event"), not the Events tab's.
+    compose
+        .onNode(
+            hasText(compose.activity.getString(R.string.map_no_match_body)) and
+                hasAnyAncestor(hasTestTag(MapTags.NO_MATCH))
+        )
+        .assertIsDisplayed()
 
     compose.onNodeWithTag(MapTags.CLEAR_FILTERS).performClick()
     settle()
     compose.onNodeWithTag(MapTags.NO_MATCH).assertDoesNotExist()
     assertMarkers("study", "party", "sports")
+  }
+
+  @Test
+  fun theClearFiltersChipShowsOnlyWhileSomethingIsOnAndClearsIt() {
+    show()
+    // Figma "Map · filters": no first chip, and never *All*.
+    compose.onNodeWithTag(EventsTags.chip(CLEAR_CHIP)).assertDoesNotExist()
+    compose.onNodeWithTag(EventsTags.chip(ALL_CHIP)).assertDoesNotExist()
+
+    compose.onNodeWithTag(EventsTags.SEARCH).performTextInput("study")
+    settle()
+    compose.onNodeWithTag(EventsTags.chip(CLEAR_CHIP)).assertIsDisplayed()
+
+    compose.onNodeWithTag(EventsTags.chip(CLEAR_CHIP)).performClick()
+    compose.onNodeWithTag(EventsTags.chip(EventCategory.PARTY.name)).performClick()
+    settle()
+    // Clearing dropped the search: the party marker is back with the category alone.
+    assertMarkers("party")
+    compose.onNodeWithTag(EventsTags.chip(CLEAR_CHIP)).assertIsDisplayed().performClick()
+    settle()
+    assertMarkers("study", "party", "sports")
+    compose.onNodeWithTag(EventsTags.chip(CLEAR_CHIP)).assertDoesNotExist()
   }
 
   @Test
@@ -142,5 +172,11 @@ class MapFiltersScreenTest {
     settle()
     compose.onNodeWithTag(EventsTags.FILTERS_SHEET).assertIsDisplayed()
     compose.onNodeWithTag(EventsTags.TURN_ON_LOCATION).assertExists()
+  }
+
+  private companion object {
+    // The keys EventsChipRow tags its *Clear filters* and *All* chips with.
+    const val CLEAR_CHIP = "CLEAR"
+    const val ALL_CHIP = "ALL"
   }
 }

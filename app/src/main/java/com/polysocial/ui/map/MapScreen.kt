@@ -57,6 +57,7 @@ import com.polysocial.R
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
 import com.polysocial.resources.C
+import com.polysocial.ui.common.StateButton
 import com.polysocial.ui.event.VerifiedPill
 import com.polysocial.ui.event.create.CreateEventButton
 import com.polysocial.ui.event.create.CreateEventButtonSize
@@ -253,13 +254,15 @@ fun MapScreen(
       tokenConfigured && state.status == MapContentStatus.NO_MATCH ->
           MapNotice(
               R.string.events_no_match_title,
-              R.string.events_no_match_body,
+              R.string.map_no_match_body,
               MapTags.NO_MATCH,
               Modifier.align(Alignment.Center).padding(24.dp),
           ) {
-            TextButton(filters.onClearAll, Modifier.testTag(MapTags.CLEAR_FILTERS)) {
-              Text(stringResource(R.string.events_clear_filters))
-            }
+            StateButton(
+                stringResource(R.string.events_clear_filters),
+                filters.onClearAll,
+                Modifier.testTag(MapTags.CLEAR_FILTERS),
+            )
           }
     }
     // Drawn once, above the states, so the search field keeps its focus when typing switches the
@@ -285,7 +288,7 @@ fun MapScreen(
           filters.onClearAll,
           filters.onSelectDistance,
           Modifier.padding(bottom = 8.dp),
-          showAll = false,
+          clearInsteadOfAll = true,
           offFill = MaterialTheme.colorScheme.surface,
       )
     }

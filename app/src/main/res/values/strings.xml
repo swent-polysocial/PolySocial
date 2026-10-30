@@ -157,6 +157,7 @@
     <string name="map_render_loading">Loading map…</string>
     <string name="map_empty_title">No events nearby</string>
     <string name="map_empty_message">No public events in the next two weeks around here. Try another filter, or create one with +.</string>
+    <string name="map_no_match_body">No event matches your filters in the next two weeks. Try another date or a wider distance.</string>
     <string name="map_events_error">Unable to load events. Previously loaded events remain available.</string>
     <string name="map_tiles_error">Unable to load the map. Check your connection or map setup.</string>
     <string name="map_retry">Retry</string>
