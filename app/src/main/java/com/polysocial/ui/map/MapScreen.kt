@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -467,7 +468,7 @@ private fun EventPreview(
         Box(
             Modifier.padding(top = 11.dp)
                 .fillMaxWidth()
-                .height(48.dp)
+                .heightIn(min = 48.dp)
                 .background(Surface, RoundedCornerShape(12.dp))
                 .padding(horizontal = 12.dp),
             contentAlignment = Alignment.CenterStart,
@@ -487,7 +488,7 @@ private fun EventPreview(
       ) {
         OutlinedButton(
             onDetails,
-            Modifier.weight(123.5f).height(48.dp).testTag(MapTags.DETAILS),
+            Modifier.weight(123.5f).heightIn(min = 48.dp).testTag(MapTags.DETAILS),
             border = BorderStroke(1.dp, Border),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = Ink),
             contentPadding = PaddingValues(0.dp),
@@ -499,7 +500,7 @@ private fun EventPreview(
         }
         Button(
             {},
-            Modifier.weight(170.5f).height(48.dp).testTag(MapTags.FIND_GROUP),
+            Modifier.weight(170.5f).heightIn(min = 48.dp).testTag(MapTags.FIND_GROUP),
             enabled = false,
             colors = ButtonDefaults.buttonColors(containerColor = Accent),
             contentPadding = PaddingValues(0.dp),
