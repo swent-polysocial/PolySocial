@@ -44,6 +44,9 @@ class AssociationOnboardingDeviceTest {
   private val writes = mutableListOf<String>()
   private var clears = 0
   @BindValue @JvmField val auth: AuthRepository = fakeAuth
+  @BindValue @JvmField val authSessionSource: AuthSessionSource = FakeAuthSessionSource()
+  @BindValue @JvmField val sessionOwner: SessionOwnerStore = FakeSessionOwnerStore()
+  @BindValue @JvmField val sessions: SessionGuard = FakeSessionGuard()
   @BindValue @JvmField val events: EventRepository = FakeEventRepository()
   @BindValue
   @JvmField
