@@ -1,3 +1,4 @@
+<!-- Contributors: OpenAI Codex (association onboarding integration notes, #125). -->
 <!-- Contributors: OpenAI Codex (Google sign-in setup and review clarifications for #106). -->
 <!-- Contributors: OpenAI Codex (Google entry behavior for #107). -->
 <!-- Contributors: Claude (drafted the README structure, Setup, Running and testing, Tech stack and Project links sections; Firestore index deployment, #49; Firestore emulator tests, #117); OpenAI Codex (documented startup routing and rebase reconciliation); OpenAI Codex (Mapbox integration and setup, #50; one-off Map location privacy note, #51). -->
@@ -187,7 +188,6 @@ firebase deploy --only functions --project <project-id>
 Keep `--only functions`: a plain `firebase deploy` would also deploy the Security Rules and indexes. The app calls the function in `europe-west6`; if the region changes, change it in both `firebase/functions/deleteAccountHandler.js` (`REGION`) and the app.
 
 **Not in CI yet:** CI runs neither the function's unit tests nor the Functions emulator, and doesn't deploy. Adding them needs a workflow change, which needs team approval, so run both commands above locally and paste their output in any PR that changes `firebase/functions`.
-
 ## Project links
 
 - **Figma mockups:** [First proposal revamped](https://www.figma.com/design/7Gt7tmy1ikpNyNBh1P6QdY/App-Mockup?node-id=123-467) (the team-agreed design)

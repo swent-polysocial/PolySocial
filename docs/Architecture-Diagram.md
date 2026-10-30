@@ -1,5 +1,6 @@
 <!-- Contributors: Claude Opus 5.5 (attendees schema, rules and capacity question, #121). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the account deletion decision, its deletion/failure matrix and the related open questions (#201); Mohamed Khellaf (reviewed and revised). -->
+<!-- Contributors: OpenAI Codex (association signup/setup routing and built/planned integration, #125). -->
 <!-- Contributors: OpenAI Codex (Google authentication architecture, Firebase-managed linking clarification and review cleanup for #106; preserved contributor acknowledgments during rebase); Claude (the shared UI parts, #251). -->
 <!-- Contributors: OpenAI Codex (removed obsolete Google collision UI, #107). -->
 <!-- Contributors: OpenAI Codex (Google entry routing for #107). -->
@@ -57,6 +58,8 @@ flowchart TB
   start(["App starts"]) --> gate{"Routing, see 4.3"}:::s1
   gate -- "not signed in" --> welcome["Welcome"]:::s1
   welcome --> signup["Sign Up"]:::s1
+  welcome --> associationSignup["Association account"]:::s1
+  associationSignup -- "local marker saved, account created" --> verify
   welcome --> login["Log In"]:::s1
   login <-- "Sign up / Log in instead" --> signup
   gate -- "unverified" --> verify["Verify Email"]:::s1
@@ -67,8 +70,20 @@ flowchart TB
   gate -- "no profile yet" --> profile["Profile step"]:::s1
   profile -- "saved" --> main
   profile -- "Back: sign out" --> welcome
-  gate -- "ready" --> main(["Main app: 4 tabs"]):::s1
+  gate -- "student ready" --> main(["Student app: 4 tabs"]):::s1
+  gate -- "association setup missing" --> associationSetup["Association setup"]:::s1
+  associationSetup -- "private account, then identity saved" --> gate
+  gate -- "association pending" --> pending["PendingAssociation handoff: renderer #127 planned"]
+  gate -- "association verified" --> associationMain["AssociationMain handoff: tabs #140 planned"]
 ```
+
+**Association onboarding (#125, implemented):** `SignUpViewModel` persists an association intent in `AssociationSignupStore` before calling `AuthRepository.signUp`. `PreferencesAssociationSignupStore` writes only an email digest and marker, off the main thread; it grants no server permissions. Student signup retains the EPFL restriction, while association signup accepts a valid email on any domain and reuses Verify Email.
+
+`AssociationSetupScreen` forwards actions to `AssociationSetupViewModel`, which validates through the shared framework-free `associationFormErrors` and saves `users/{uid}` with `accountType = association` and an empty `displayName` before creating `associations/{uid}` through the repositories. Only the identity stores the association name. A lost-response retry updates the latest submitted values; failures retain the UID-scoped form. The client never writes the admin verification flag.
+
+`AppStartViewModel` restores `AssociationSetup`, `PendingAssociation` or verified `AssociationMain` from the private account type and identity. Missing non-EPFL profiles resume association setup without a device-local hint; EPFL accounts need the hint to distinguish unfinished student and association setup. Once the private profile records the type, marker cleanup is housekeeping and cannot block entry. Existing profiles remain authoritative.
+
+**Integration still planned:** #127 supplies the pending-review renderer and editing; until it is wired, this slice's pending handoff offers logout only and does not complete #125. #140 supplies verified Events/Map/Organization tabs, and #133 the owner-constrained Map content; #208 owns existing-association login. The first association shell merged (#247 or #261) stays and the second adapts on rebase. Membership/invite behavior is undecided, so setup keeps review-focused copy; Figma's invitation sentence needs a team update. No new setup/configuration is required.
 
 ### 2.2 Main app (one back stack per tab)
 

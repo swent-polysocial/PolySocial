@@ -1,3 +1,4 @@
+<!-- Contributors: OpenAI Codex (association auth and privacy copy, #125). -->
 <!-- Contributors: OpenAI Codex (association setup form copy, #125). -->
 <!-- Contributors: OpenAI Codex (association email validation, #125). -->
 <!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42; Create Event texts, #46; "+" button, #110; app bar actions, #84); OpenAI Codex (Google and welcome copy). OpenAI Codex (sign-up form, startup integration, name hint and unused-title cleanup; Mapbox integration and setup, #50; location permission and distance text, #51). Claude (Retry, app-start loading and error texts, #74; Edit event texts, #131; map association name, #128; Create Event organizer row, #134). -->
@@ -183,7 +184,7 @@
     <string name="verification_inbox">Check your inbox</string>
     <string name="verification_description">We sent a confirmation link to</string>
     <string name="verification_change_address">Wrong address? Change it</string>
-    <string name="verification_spam">Can\'t find it? Check the spam folder of your EPFL mailbox.</string>
+    <string name="verification_spam">Can\'t find it? Check your mailbox and spam folder.</string>
     <string name="verification_continue">I\'ve verified · Continue</string>
     <string name="verification_checking">Checking…</string>
     <string name="verification_resend">Resend email</string>
@@ -217,7 +218,7 @@
     <string name="privacy_unavailable">Not available yet.</string>
     <string name="privacy_dismiss">Dismiss</string>
     <string name="privacy_notice_account_title">Your account and profile</string>
-    <string name="privacy_notice_account_body">Firebase Authentication processes your sign-in details and EPFL email. Your private Firebase profile stores your account identifier, email, name, section, year, account type and creation date. Other students cannot read that profile or your email in the app. The PolySocial student project team administers the Firebase project. Public profiles, interests and friends are not collected by this build.</string>
+    <string name="privacy_notice_account_body">Firebase Authentication processes your sign-in details and email (EPFL for students; your own address for associations). Association setup stores its name, type, about and optional website, with automatic initials. Your private Firebase profile stores your account identifier, email, name, section, year, account type and creation date. Other students cannot read that profile or your email in the app. The PolySocial student project team administers the Firebase project. Public profiles, interests and friends are not collected by this build.</string>
     <string name="privacy_notice_events_title">Events and who can see them</string>
     <string name="privacy_notice_events_body">Event data includes the title, description, category, venue coordinates, date and time, optional capacity and organizer identifiers. Verified EPFL students can read public events and private events that list them on the access list. A manually verified association can also read its own association events. An event venue is a place chosen for the event, not a history of your movements.</string>
     <string name="privacy_notice_location_title">Approximate location for distances</string>
@@ -227,7 +228,7 @@
     <string name="privacy_notice_attendance_title">Attendance, reminders and future features</string>
     <string name="privacy_notice_attendance_body">This build does not store attendance or schedule reminders. Registration and reminders need an updated notice when enabled: organizers will see event registrations, and optional reminder data will stay on the device for local notifications. Attendance-based matching, chats, photo albums, data export and in-app account deletion are not available yet. The matching switch stays Off and does not change any consent setting.</string>
     <string name="privacy_notice_device_title">Data kept on your device</string>
-    <string name="privacy_notice_device_body">Firebase keeps previously loaded data in its device cache for offline use. Mapbox may cache map resources. The app remembers whether location permission has been requested, without storing coordinates in that preference. Event search and filter selections can survive screen or process recreation; location coordinates stay in memory only. Verification resend deadlines are stored as timestamps under an account identifier, retained across sign-out and cleared after successful verification. Account and event data in Firebase are not automatically deleted by leaving a screen.</string>
+    <string name="privacy_notice_device_body">Firebase keeps previously loaded data in its device cache for offline use. Mapbox may cache map resources. The app remembers whether location permission has been requested, without storing coordinates in that preference. Event search and filter selections can survive screen or process recreation; location coordinates stay in memory only. Verification resend deadlines are stored as timestamps under an account identifier, retained across sign-out and cleared after successful verification. A local digest of the association signup email remembers the account type until its private profile is saved; it stores no password or raw email. Account and event data in Firebase are not automatically deleted by leaving a screen.</string>
     <string name="privacy_notice_deletion_title">Requesting deletion</string>
     <string name="privacy_notice_deletion_body">In-app deletion and data export are not available yet. To ask for account and data deletion, contact the PolySocial project team privately. Do not publish your account details in a public GitHub issue.</string>
     <string name="privacy_notice_draft_title">Draft details to be confirmed</string>
@@ -265,4 +266,8 @@
     <string name="association_setup_back">Back and sign out</string>
     <string name="association_website_placeholder">https://</string>
     <string name="association_setup_wrong_account">This account cannot set up an association. Go back to sign out and use your association account.</string>
+    <string name="association_account_title">Your association account</string>
+    <string name="association_account_description">Use your association’s email, on any domain. We’ll send a verification link.</string>
+    <string name="association_email">Association email</string>
+    <string name="association_signup_password_hint">At least 8 characters, including a number.</string>
 </resources>

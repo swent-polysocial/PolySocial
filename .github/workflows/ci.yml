@@ -4,7 +4,6 @@
 # broadcast wait before the device tests, #192).
 
 # Contributors: OpenAI Codex (publish the main APK after the parallel CI jobs, #137).
-
 name: CI - Test Runner
 
 # Run the workflow when commits are pushed on main or when a PR is modified
@@ -311,18 +310,15 @@ jobs:
           # and prints its log
           pre-emulator-launch-script: |
             while [ ! -f "$RUNNER_TEMP/apk-build-status" ]; do sleep 1; done; cat "$RUNNER_TEMP/apk-build.log"
-          # Each line runs in its own shell. The first stops here if the APK build failed (a failed
-          # pre-launch script doesn't stop the step). The next two install the APKs and wait until
-          # the emulator has delivered the broadcasts for that install and its startup: when Android
-          # handles a newly added app late, during the first test, it restarts the app's activity,
-          # which then has no Compose content ("No compose hierarchies found"). connectedCheck then
-          # installs the same APKs again as an update, which Android doesn't handle as a new app. The
-          # install goes through Gradle with connectedCheck's arguments: inside this step, Gradle
-          # signs the APKs again with another debug key, so the background build's APKs can't be
-          # updated. -Pemulator=all runs the @EmulatorTest tests together with the others, in one
-          # run, so the coverage report gets them all. The Firebase emulators stop when the run ends.
+          # The install waits until the emulator has delivered the broadcasts for that install and
+          # its startup: when Android handles a newly added app late, during the first test, it
+          # restarts the app's activity, which then has no Compose content ("No compose hierarchies
+          # found"). connectedCheck then installs the same APKs again as an update, which Android
+          # doesn't handle as a new app. -Pemulator=all runs the @EmulatorTest tests together with
+          # the others, in one run, so the coverage report gets them all. The Firebase emulators
+          # stop when the run ends.
           script: |
-            exit "$(cat "$RUNNER_TEMP/apk-build-status")"
+            status="$(cat "$RUNNER_TEMP/apk-build-status")"; if [ "$status" -ne 0 ]; then cat "$RUNNER_TEMP/apk-build.log"; exit "$status"; fi
             ./gradlew installDebug installDebugAndroidTest -Pemulator=all -Pandroid.testInstrumentationRunnerArguments.numShards=2 -Pandroid.testInstrumentationRunnerArguments.shardIndex=${{ matrix.shard }}
             timeout 180 "$ANDROID_HOME/platform-tools/adb" shell am wait-for-broadcast-idle || echo "::warning::The emulator's broadcasts were still not idle after 180 s."
             firebase emulators:exec --project demo-polysocial --only firestore,auth "./gradlew connectedCheck -Pemulator=all -Pandroid.testInstrumentationRunnerArguments.numShards=2 -Pandroid.testInstrumentationRunnerArguments.shardIndex=${{ matrix.shard }}"
