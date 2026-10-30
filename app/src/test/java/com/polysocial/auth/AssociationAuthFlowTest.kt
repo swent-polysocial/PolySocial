@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (verified association routing regression after stack rebase, #140).
 // Contributors: OpenAI Codex (association onboarding, recreation, session-boundary and validation
 // UI tests and redundant draft-test cleanup, #125).
 package com.polysocial.auth
@@ -136,6 +137,20 @@ class AssociationAuthFlowTest {
             pendingAssociationContent = { done ->
               Column(Modifier.testTag("association_destination")) {
                 Text("Association handoff", Modifier.testTag("association_destination_kind"))
+                TextButton(
+                    {
+                      auth.logOut()
+                      done()
+                    },
+                    Modifier.testTag("association_logout"),
+                ) {
+                  Text("Log out")
+                }
+              }
+            },
+            associationContent = { verified, done ->
+              Column(Modifier.testTag("verified_association_destination")) {
+                Text("Verified: $verified")
                 TextButton(
                     {
                       auth.logOut()
@@ -288,10 +303,12 @@ class AssociationAuthFlowTest {
     login.onEmailChange("previous@example.org")
     login.onPasswordChange("previous1")
     launch()
-    compose.onNodeWithTag("student_destination").assertIsDisplayed()
+    compose.onNodeWithTag("verified_association_destination").assertIsDisplayed()
+    compose.onNodeWithTag("student_destination").assertDoesNotExist()
     restoration.emulateSavedInstanceStateRestore()
-    compose.onNodeWithTag("student_destination").assertIsDisplayed()
-    compose.onNodeWithTag("signed_in_logout").performClick()
+    compose.onNodeWithTag("verified_association_destination").assertIsDisplayed()
+    compose.onNodeWithTag("student_destination").assertDoesNotExist()
+    compose.onNodeWithTag("association_logout").performClick()
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
     assertNull(auth.user)
     assertEquals("", signup.uiState.value.form.email)
