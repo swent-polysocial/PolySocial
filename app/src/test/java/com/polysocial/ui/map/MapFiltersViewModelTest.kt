@@ -1,4 +1,4 @@
-// Contributors: Claude (the Map tab's search and filters on the loaded events, #116).
+// Contributors: Claude (the Map tab's search and filters on the loaded events, #116; review fixes).
 package com.polysocial.ui.map
 
 import androidx.lifecycle.SavedStateHandle
@@ -15,7 +15,11 @@ import com.polysocial.ui.event.list.DateChoice
 import com.polysocial.ui.event.list.EventSelection
 import com.polysocial.ui.event.list.EventsLocationState
 import com.polysocial.utils.MainDispatcherRule
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Rule
@@ -136,6 +140,29 @@ class MapFiltersViewModelTest {
     vm.toggleCategory(EventCategory.PARTY)
     assertEquals(MapContentStatus.ERROR, vm.uiState.value.status)
     assertEquals(listOf("study", "party"), ids(vm))
+  }
+
+  @OptIn(ExperimentalCoroutinesApi::class)
+  @Test
+  fun newEventsAfterAnErrorNeverShowReadyWithTheCachedMarkers() {
+    val vm = loaded(model())
+    result.tryEmit(MapEventResult.Error)
+    settle()
+    // Records every state, not only the latest one, as an unconflated collector would see them.
+    val seen = mutableListOf<MapUiState>()
+    val collector =
+        CoroutineScope(UnconfinedTestDispatcher(mainDispatcherRule.dispatcher.scheduler)).launch {
+          vm.uiState.collect { seen += it }
+        }
+    result.tryEmit(MapEventResult.Events(listOf(party)))
+    settle()
+    collector.cancel()
+
+    assertEquals(MapContentStatus.ERROR, seen.first().status)
+    assertEquals(
+        listOf(MapContentStatus.READY to listOf("party")),
+        seen.drop(1).map { state -> state.status to state.events.map { it.id } },
+    )
   }
 
   @Test
