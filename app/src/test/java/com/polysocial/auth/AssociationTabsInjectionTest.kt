@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (session-guard fake for rebased association integration tests).
 // Contributors: OpenAI Codex (approved association tabs, Privacy return caching and session
 // cleanup, #140).
 package com.polysocial.auth
@@ -20,17 +21,23 @@ import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.AssociationSignupStore
 import com.polysocial.model.auth.AuthModule
 import com.polysocial.model.auth.AuthRepository
+import com.polysocial.model.auth.AuthSessionSource
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.auth.FakeAuthRepository
+import com.polysocial.model.auth.FakeAuthSessionSource
 import com.polysocial.model.auth.VerificationClock
 import com.polysocial.model.auth.VerificationStore
 import com.polysocial.model.event.EventModule
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.firebase.CacheClearResult
+import com.polysocial.model.firebase.FakeSessionGuard
+import com.polysocial.model.firebase.FakeSessionOwnerStore
 import com.polysocial.model.firebase.FirebaseModule
 import com.polysocial.model.firebase.SessionCache
+import com.polysocial.model.firebase.SessionGuard
+import com.polysocial.model.firebase.SessionOwnerStore
 import com.polysocial.model.user.AccountType
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.ProfileResult
@@ -77,6 +84,9 @@ class AssociationTabsInjectionTest {
   private val fakeAuth = FakeAuthRepository(user)
   private val identities = FakeAssociationRepository(AssociationResult.Found(identity))
   private var clears = 0
+  @BindValue @JvmField val authSessionSource: AuthSessionSource = FakeAuthSessionSource()
+  @BindValue @JvmField val sessionOwner: SessionOwnerStore = FakeSessionOwnerStore()
+  @BindValue @JvmField val sessions: SessionGuard = FakeSessionGuard()
   @BindValue @JvmField val auth: AuthRepository = fakeAuth
   @BindValue @JvmField val associations: AssociationRepository = identities
   @BindValue
