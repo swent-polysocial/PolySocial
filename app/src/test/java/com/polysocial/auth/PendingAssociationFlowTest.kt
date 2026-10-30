@@ -1,4 +1,5 @@
 // Contributors: OpenAI Codex (retained the shared logout fixture on rebase, #140).
+// Contributors: OpenAI Codex (distinguish verified association routing after stack rebase, #140).
 // Contributors: OpenAI Codex (preserve association entry and offline retry, #125).
 // Contributors: OpenAI Codex (adapted pending flow to startup recovery and setup handoff).
 // Contributors: Claude (wrote these tests, #127; logging in again in the same activity, after a
@@ -64,10 +65,10 @@ import org.junit.runner.RunWith
 
 /**
  * App start for association accounts (#127): an association an admin hasn't verified yet always
- * opens its pending app, never the students' one; a verified association and a student open the
- * students' app; logging out of the pending app returns to Welcome. Associations log in through the
- * same Log in screen with any email (#208), and a non-EPFL account that is not an association never
- * reaches the student profile step or the students' app.
+ * opens its pending app; verified associations open their own app and students the students' app.
+ * Logging out of the pending app returns to Welcome. Associations log in through the same screen
+ * with any email (#208); non-EPFL accounts without an association profile never reach student setup
+ * or the student app.
  */
 @RunWith(AndroidJUnit4::class)
 class PendingAssociationFlowTest {
@@ -140,7 +141,10 @@ class PendingAssociationFlowTest {
             profileSetupViewModel = profileStep,
             welcomeViewModel = welcome,
             logoutViewModel = logout,
-            // The students' app needs Hilt; these tests only check which app opens.
+            // The real apps need Hilt; these tests only check which app opens.
+            associationContent = { _, _ ->
+              Box(Modifier.fillMaxSize().testTag("verified_association_app"))
+            },
             signedInContent = { Box(Modifier.fillMaxSize().testTag(STUDENT_APP)) },
             associationSetupContent = { back, _ ->
               TextButton(back, Modifier.testTag("setup_back")) { Text("Back and sign out") }
@@ -175,7 +179,8 @@ class PendingAssociationFlowTest {
 
     launch()
 
-    compose.onNodeWithTag(STUDENT_APP).assertIsDisplayed()
+    compose.onNodeWithTag("verified_association_app").assertIsDisplayed()
+    compose.onNodeWithTag(STUDENT_APP).assertDoesNotExist()
     compose.onNodeWithTag(AssociationTags.SHELL).assertDoesNotExist()
     assertEquals(1, associations.requestedUids.size)
   }
