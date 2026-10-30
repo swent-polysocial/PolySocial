@@ -167,7 +167,9 @@
     <string name="map_find_group">Find a group</string>
     <string name="map_category_day">%1$s · %2$s</string>
     <string name="map_tonight">Tonight</string>
-    <string name="map_time_range">%1$s – %2$s</string>
+    <string name="map_time_range">%1$s–%2$s</string>
+    <!-- The map preview's time line (#222): the time, then the place's name. -->
+    <string name="map_time_place">%1$s · %2$s</string>
     <!-- The map preview of an association's event (#128): its time, then its name. -->
     <string name="map_time_by">%1$s · by %2$s</string>
     <string name="event_detail_title">Event details</string>

@@ -1,17 +1,23 @@
 // Contributors: OpenAI Codex (map overlays and event preview for #50; reuse shared category
 // styles; optional location notices and straight-line badges and review fixes for #51).
 // Contributors: Claude (the "+" that opens Create Event among the map overlays, #110; an
-// association's badge and name on the event preview, #128).
+// association's badge and name on the event preview, #128; the preview realigned with its Figma
+// frames, #222).
 package com.polysocial.ui.map
 
 import androidx.annotation.StringRes
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -44,12 +50,15 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.polysocial.R
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
@@ -59,9 +68,15 @@ import com.polysocial.ui.event.create.CreateEventButton
 import com.polysocial.ui.event.create.CreateEventButtonSize
 import com.polysocial.ui.event.style
 import com.polysocial.ui.theme.Accent
+import com.polysocial.ui.theme.Bg
+import com.polysocial.ui.theme.Border
 import com.polysocial.ui.theme.Info
 import com.polysocial.ui.theme.InfoSoft
+import com.polysocial.ui.theme.Ink
+import com.polysocial.ui.theme.Ink2
 import com.polysocial.ui.theme.Ink3
+import com.polysocial.ui.theme.Surface
+import com.polysocial.ui.theme.exact
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import kotlin.math.roundToInt
@@ -364,6 +379,12 @@ private fun MapError(@StringRes message: Int, onRetry: () -> Unit, modifier: Mod
   }
 }
 
+/**
+ * The selected event's card, as in the Figma frames "Map · event preview" (132:550) and "Map ·
+ * event preview · association" (958:180): the icon tile, then a text column with the category and
+ * day, the title and the time line (time, place and, for an association, its name); the
+ * straight-line distance in a grey strip; then the two buttons (#222).
+ */
 @Composable
 private fun EventPreview(
     event: Event,
@@ -375,31 +396,31 @@ private fun EventPreview(
     distanceMeters: Double?,
     modifier: Modifier,
 ) {
-  Card(
-      modifier.fillMaxWidth().testTag(MapTags.PREVIEW),
-      shape = RoundedCornerShape(24.dp),
-      colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+  val typography = MaterialTheme.typography
+  Box(
+      modifier
+          .fillMaxWidth()
+          .shadow(14.dp, PreviewShape, ambientColor = Ink, spotColor = Ink)
+          .background(Bg, PreviewShape)
+          .testTag(MapTags.PREVIEW)
   ) {
-    Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-      Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+    Column(Modifier.padding(16.dp)) {
+      Row {
         Box(
             Modifier.size(52.dp)
-                .background(
-                    event.category.style.tileColor,
-                    RoundedCornerShape(16.dp),
-                ),
+                .background(event.category.style.tileColor, RoundedCornerShape(14.dp)),
             contentAlignment = Alignment.Center,
         ) {
           Icon(
               painterResource(categoryIcon(event.category)),
               null,
-              Modifier.size(28.dp).testTag(MapTags.CATEGORY_ICON),
+              Modifier.size(24.dp).testTag(MapTags.CATEGORY_ICON),
               tint = categoryColor(event.category),
           )
         }
-        Column(Modifier.weight(1f).padding(start = 12.dp)) {
-          // An association's event (#128, Figma "Map · event preview · association"): the
-          // Verified badge 8 dp after the category and day.
+        // Figma's text column runs from x = 80 to 12 dp before the close button.
+        Column(Modifier.weight(1f).padding(start = 12.dp, end = 44.dp)) {
+          // An association's event (#128): the Verified badge 8 dp after the category and day.
           Row(
               horizontalArrangement = Arrangement.spacedBy(8.dp),
               verticalAlignment = Alignment.CenterVertically,
@@ -415,7 +436,7 @@ private fun EventPreview(
                     },
                 ),
                 color = categoryColor(event.category),
-                style = MaterialTheme.typography.labelMedium,
+                style = typography.bodySmall.copy(fontWeight = FontWeight.Bold).figma(15.1f),
                 // Measured after the badge, so a larger text wraps instead of crushing it.
                 modifier = Modifier.weight(1f, fill = false).testTag(MapTags.CATEGORY),
             )
@@ -426,64 +447,115 @@ private fun EventPreview(
               )
             }
           }
+          Spacer(Modifier.height(2.dp))
           Text(
               event.title,
-              style = MaterialTheme.typography.titleLarge,
-              fontWeight = FontWeight.Bold,
+              color = Ink,
+              style = typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold).figma(21.4f),
               modifier = Modifier.testTag(MapTags.TITLE),
           )
-        }
-        IconButton(
-            onClose,
-            Modifier.background(
-                    MaterialTheme.colorScheme.surfaceVariant,
-                    RoundedCornerShape(50),
-                )
-                .testTag(MapTags.CLOSE),
-        ) {
-          Icon(painterResource(R.drawable.ic_close), stringResource(R.string.map_close))
+          Spacer(Modifier.height(3.dp))
+          Text(
+              timeLine(event, associationName),
+              color = Ink2,
+              style = typography.labelMedium.copy(fontWeight = FontWeight.Normal).figma(16.4f),
+              modifier = Modifier.testTag(MapTags.TIME),
+          )
         }
       }
-      val start = previewTimeFormatter.format(event.startTime)
-      val time =
-          if (event.endTime == null) start
-          else
-              stringResource(
-                  R.string.map_time_range,
-                  start,
-                  previewTimeFormatter.format(event.endTime),
-              )
-      val name = associationName?.takeIf { event.isAssociationEvent }
-      Text(
-          if (name == null) time else stringResource(R.string.map_time_by, time, name),
-          style = MaterialTheme.typography.bodyMedium,
-          modifier = Modifier.testTag(MapTags.TIME),
-      )
       distanceMeters?.let { meters ->
         val roundedMeters = meters.roundToInt()
-        Text(
-            if (roundedMeters < 1000) stringResource(R.string.map_distance_meters, roundedMeters)
-            else stringResource(R.string.map_distance_kilometers, meters / 1000),
-            style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.testTag(MapTags.DISTANCE),
-        )
+        Box(
+            Modifier.padding(top = 11.dp)
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .background(Surface, RoundedCornerShape(12.dp))
+                .padding(horizontal = 12.dp),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+          Text(
+              if (roundedMeters < 1000) stringResource(R.string.map_distance_meters, roundedMeters)
+              else stringResource(R.string.map_distance_kilometers, meters / 1000),
+              color = Ink2,
+              style = typography.labelMedium.figma(16.4f),
+              modifier = Modifier.testTag(MapTags.DISTANCE),
+          )
+        }
       }
-      Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        OutlinedButton(onDetails, Modifier.weight(1f).testTag(MapTags.DETAILS)) {
-          Text(stringResource(R.string.map_view_details))
+      Row(
+          Modifier.padding(top = 12.dp).fillMaxWidth(),
+          horizontalArrangement = Arrangement.spacedBy(10.dp),
+      ) {
+        OutlinedButton(
+            onDetails,
+            Modifier.weight(123.5f).heightIn(min = 48.dp).testTag(MapTags.DETAILS),
+            border = BorderStroke(1.dp, Border),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = Ink),
+            contentPadding = PaddingValues(0.dp),
+        ) {
+          Text(
+              stringResource(R.string.map_view_details),
+              style = typography.titleSmall.figma(18.9f),
+          )
         }
         Button(
             {},
-            Modifier.weight(1.4f).testTag(MapTags.FIND_GROUP),
+            Modifier.weight(170.5f).heightIn(min = 48.dp).testTag(MapTags.FIND_GROUP),
             enabled = false,
             colors = ButtonDefaults.buttonColors(containerColor = Accent),
+            contentPadding = PaddingValues(0.dp),
         ) {
-          Text(stringResource(R.string.map_find_group))
+          Text(stringResource(R.string.map_find_group), style = typography.titleSmall.figma(18.9f))
         }
+      }
+    }
+    // A 36 dp circle 12 dp from the card's top and end; the button keeps a 48 dp touch target.
+    IconButton(
+        onClose,
+        Modifier.align(Alignment.TopEnd).padding(top = 6.dp, end = 6.dp).testTag(MapTags.CLOSE),
+    ) {
+      Box(
+          Modifier.size(36.dp).background(Surface, CircleShape),
+          contentAlignment = Alignment.Center,
+      ) {
+        Icon(
+            painterResource(R.drawable.ic_close),
+            stringResource(R.string.map_close),
+            Modifier.size(18.dp),
+            tint = Ink,
+        )
       }
     }
   }
 }
+
+/** "20:00–01:00 · Satellite · by AGEPoly": the place and the association's name when known. */
+@Composable
+private fun timeLine(event: Event, associationName: String?): String {
+  val start = previewTimeFormatter.format(event.startTime)
+  var line =
+      if (event.endTime == null) start
+      else
+          stringResource(R.string.map_time_range, start, previewTimeFormatter.format(event.endTime))
+  if (event.locationName.isNotBlank()) {
+    line = stringResource(R.string.map_time_place, line, event.locationName)
+  }
+  val name = associationName?.takeIf { event.isAssociationEvent }
+  return if (name == null) line else stringResource(R.string.map_time_by, line, name)
+}
+
+private val PreviewShape = RoundedCornerShape(24.dp)
+
+/**
+ * The preview's text as in Figma: its line height, not trimmed, and glyphs at fractional pixels.
+ */
+private fun TextStyle.figma(lineHeightSp: Float): TextStyle =
+    copy(
+            lineHeight = lineHeightSp.sp,
+            lineHeightStyle =
+                LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None),
+        )
+        .exact()
 
 /**
  * Lays this out without any height and draws it centered on the row: like Figma's badge, which is
