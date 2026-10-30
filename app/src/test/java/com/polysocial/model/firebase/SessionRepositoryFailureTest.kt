@@ -1,6 +1,7 @@
 // Contributors: OpenAI Codex (blocked cache errors and SDK cancellation after rebase, #156).
 // Contributors: Claude (Opus 5.5, Anthropic) covered the association repository, event edits and
 // the session guard's block, #198; Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude Opus 5.5 (covered the registration repository, #121).
 package com.polysocial.model.firebase
 
 import com.polysocial.model.association.*
@@ -8,6 +9,7 @@ import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.event.*
 import com.polysocial.model.network.NetworkMonitor
+import com.polysocial.model.registration.*
 import com.polysocial.model.user.*
 import io.mockk.mockk
 import java.time.Clock
@@ -148,6 +150,33 @@ class SessionRepositoryFailureTest {
   @Test
   fun ownEventsListenerReportsBlockedCacheAndCompletes() = runTest {
     assertEquals(listOf(OwnEventsResult.Error), events.getOwnAssociationEvents().toList())
+  }
+
+  private val registrations =
+      FirestoreRegistrationRepository(
+          { throw accessFailure },
+          FakeAuthRepository(AuthUser("fictional", "fictional@epfl.ch", true)),
+          object : NetworkMonitor {
+            override fun isOnline() = true
+          },
+      )
+
+  @Test
+  fun registrationReportsBlockedCache() = runTest {
+    assertEquals(RegisterResult.UnexpectedError, registrations.register("event-1"))
+  }
+
+  @Test
+  fun registrationCancellationReportsBlockedCache() = runTest {
+    assertEquals(CancelRegistrationResult.UnexpectedError, registrations.cancel("event-1"))
+  }
+
+  @Test
+  fun registrationsListenerReportsBlockedCacheAndCompletes() = runTest {
+    assertEquals(
+        listOf(MyRegistrationsResult.Error),
+        registrations.observeMyRegistrations().toList(),
+    )
   }
 
   @Test
