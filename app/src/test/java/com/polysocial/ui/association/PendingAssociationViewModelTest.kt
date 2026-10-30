@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (preserved pending identity tests against the shared controller).
 // Contributors: Claude (wrote these tests, #127; one session after another, after a review,
 // #127).
 package com.polysocial.ui.association
@@ -9,6 +10,10 @@ import com.polysocial.model.association.AssociationType
 import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
+import com.polysocial.model.firebase.CacheClearResult
+import com.polysocial.model.firebase.SessionCache
+import com.polysocial.ui.profile.OrganizationUiState
+import com.polysocial.ui.profile.ProfileViewModel
 import com.polysocial.utils.MainDispatcherRule
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -28,6 +33,41 @@ internal val testClub =
     )
 
 internal val clubUser = AuthUser("club-uid", "club@example.org", isEmailVerified = true)
+
+private class PendingAssociationViewModel(
+    auth: FakeAuthRepository,
+    associations: AssociationRepository,
+) {
+  private val model =
+      ProfileViewModel(
+          auth,
+          object : SessionCache {
+            override suspend fun clear() = CacheClearResult.Cleared
+          },
+          associations,
+      )
+  val uiState = State()
+
+  inner class State {
+    val value: PendingAssociationUiState
+      get() =
+          when (val state = model.organization.value) {
+            OrganizationUiState.Loading -> PendingAssociationUiState.Loading
+            is OrganizationUiState.Ready -> PendingAssociationUiState.Loaded(state.association)
+            OrganizationUiState.Error -> PendingAssociationUiState.Failed
+          }
+  }
+
+  init {
+    model.loadOrganization()
+  }
+
+  fun open() = model.loadOrganization()
+
+  fun close() = model.clearOrganization()
+
+  fun retry() = model.loadOrganization()
+}
 
 class PendingAssociationViewModelTest {
   @get:Rule val mainDispatcherRule = MainDispatcherRule()

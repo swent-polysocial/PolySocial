@@ -1,0 +1,4 @@
+<!-- Contributors: Figma design; OpenAI Codex (Android vector conversion, #140). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="22dp" android:height="22dp" android:viewportWidth="22" android:viewportHeight="22">
+  <path android:pathData="M2.75 2.75H9.16667V9.16667H2.75V2.75ZM12.8333 2.75H19.25V9.16667H12.8333V2.75ZM2.75 12.8333H9.16667V19.25H2.75V12.8333ZM12.8333 12.8333H15.5833V15.5833H12.8333V12.8333ZM16.5 16.5H19.25V19.25H16.5V16.5Z" android:fillColor="#00000000" android:strokeColor="#17171C" android:strokeWidth="1.83333" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

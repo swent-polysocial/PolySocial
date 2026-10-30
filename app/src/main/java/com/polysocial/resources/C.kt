@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (Organization navigation tag, #140).
 // Contributors: Claude (app shell and tab test tags, #41; loading state tag, #43; Create Event
 // tags, #46; "+" button, #110; app bar action tags, #84; error state tags, #74; Create Event
 // organizer row tags, #134).
@@ -42,6 +43,7 @@ object C {
     const val nav_item_map = "nav_item_map"
     const val nav_item_chats = "nav_item_chats"
     const val nav_item_profile = "nav_item_profile"
+    const val nav_item_organization = "nav_item_organization"
 
     const val screen_events = "screen_events"
     const val screen_map = "screen_map"

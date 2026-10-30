@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (account-specific tab presentation, #140).
 // Contributors: Claude (tab definitions for the bottom navigation, #41; loading messages, #43;
 // per-tab routes, #42; Create Event route, #110; app bar actions, #84; event detail route, #112;
 // placeholder detail doc after "View event" moved to the event detail, #211; Edit event route,
@@ -120,3 +121,19 @@ enum class Tab(
   /** The route that opens Edit event for the event [eventId] inside this tab. */
   fun editEventRoute(eventId: String): String = "${eventDetailRoute(eventId)}/edit"
 }
+
+/** Labels, icons and tags for a tab in the current account's shell. */
+internal data class TabPresentation(
+    @StringRes val label: Int,
+    @DrawableRes val icon: Int,
+    val tag: String,
+)
+
+internal fun Tab.presentation(association: Boolean): TabPresentation =
+    if (association && this == Tab.PROFILE)
+        TabPresentation(
+            R.string.tab_organization,
+            R.drawable.ic_organization,
+            C.Tag.nav_item_organization,
+        )
+    else TabPresentation(label, icon, navItemTag)

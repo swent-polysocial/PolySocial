@@ -99,7 +99,8 @@ constructor(
     }
   }
 
-  private fun clearOrganization() {
+  /** Forget session-scoped association data when its app exits after logout. */
+  fun clearOrganization() {
     organizationGeneration++
     organizationRead?.cancel()
     organizationRead = null
