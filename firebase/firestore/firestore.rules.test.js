@@ -40,6 +40,9 @@ before(async () => {
   });
 });
 
+/** A start time far enough ahead that the seeded events never end while the tests run. */
+const FAR_FUTURE = Timestamp.fromDate(new Date("2099-01-01T18:00:00Z"));
+
 beforeEach(async () => {
   await env.clearFirestore();
   await env.withSecurityRulesDisabled(async (context) => {
@@ -47,8 +50,13 @@ beforeEach(async () => {
     await setDoc(doc(db, "groups/g1"), { title: "Seeded" });
     await setDoc(doc(db, "groups/g1/messages/m1"), { text: "Seeded" });
     for (const [id, event] of Object.entries({
-      e1: { isPrivate: false, createdBy: "u2", allowedUids: ["u2"] },
-      private: { isPrivate: true, createdBy: "u2", allowedUids: ["u2", "u3", "u4"] },
+      e1: { isPrivate: false, createdBy: "u2", allowedUids: ["u2"], startTime: FAR_FUTURE },
+      private: {
+        isPrivate: true,
+        createdBy: "u2",
+        allowedUids: ["u2", "u3", "u4"],
+        startTime: FAR_FUTURE,
+      },
       clubPublic: {
         isPrivate: false,
         createdBy: "verifiedClub",
@@ -1760,6 +1768,43 @@ test("a student can cancel their own registration, and cancel again", async () =
   const db = studentDb("u1");
   await assertSucceeds(deleteDoc(doc(db, "events/e1/attendees/u1")));
   await assertSucceeds(deleteDoc(doc(db, "events/e1/attendees/u1")));
+});
+
+/** [minutes] from now (negative: in the past). The emulator compares it with the real request.time. */
+function minutesFromNow(minutes) {
+  return Timestamp.fromMillis(Date.now() + minutes * 60_000);
+}
+
+for (const [name, times] of [
+  ["whose endTime has passed", { startTime: minutesFromNow(-120), endTime: minutesFromNow(-1) }],
+  ["without an endTime, once it has started", { startTime: minutesFromNow(-1), endTime: null }],
+  ["with no time at all", { startTime: null, endTime: null }],
+  ["whose startTime isn't a timestamp", { startTime: "tomorrow", endTime: null }],
+]) {
+  test(`a student can't register for an event ${name}`, async () => {
+    await seedEvent("ended", eventBy("u2", times));
+    await assertFails(
+      setDoc(doc(studentDb("u1"), "events/ended/attendees/u1"), registration("u1")),
+    );
+  });
+}
+
+for (const [name, times] of [
+  ["that has started but not ended", { startTime: minutesFromNow(-60), endTime: minutesFromNow(60) }],
+  ["without an endTime, before it starts", { startTime: minutesFromNow(60), endTime: null }],
+]) {
+  test(`a student can register for an event ${name}`, async () => {
+    await seedEvent("running", eventBy("u2", times));
+    await assertSucceeds(
+      setDoc(doc(studentDb("u1"), "events/running/attendees/u1"), registration("u1")),
+    );
+  });
+}
+
+test("a student can still cancel once the event has ended", async () => {
+  await seedEvent("ended", eventBy("u2", { startTime: minutesFromNow(-120), endTime: minutesFromNow(-1) }));
+  await seedAttendee("ended", "u1");
+  await assertSucceeds(deleteDoc(doc(studentDb("u1"), "events/ended/attendees/u1")));
 });
 
 test("a student can cancel in a transaction, as the app does", async () => {
