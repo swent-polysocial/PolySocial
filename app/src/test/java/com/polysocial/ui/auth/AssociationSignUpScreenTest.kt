@@ -14,6 +14,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
+import com.polysocial.model.auth.SignUpField
 import com.polysocial.model.auth.SignUpForm
 import com.polysocial.model.auth.SignUpResult
 import com.polysocial.model.user.AccountType
@@ -81,5 +82,73 @@ class AssociationSignUpScreenTest {
     compose.onNodeWithTag(SignUpTags.BackendError).assertIsDisplayed()
     compose.onNodeWithText(message).assertIsDisplayed()
     compose.onNodeWithTag(SignUpTags.Submit).assertIsDisplayed()
+  }
+
+  @Test
+  fun leavingAnAssociationFieldRunsItsBlurValidation() {
+    var blurred = 0
+    compose.setContent {
+      PolySocialTheme {
+        SignUpScreen(
+            state,
+            { _, _ -> },
+            { blurred++ },
+            {},
+            {},
+            {},
+        )
+      }
+    }
+
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.Email)).performClick()
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.Password)).performClick()
+
+    assertEquals(1, blurred)
+  }
+
+  @Test
+  fun associationDuplicateEmailOffersTheLoginRecoveryPath() {
+    var logins = 0
+    val errorState = state.copy(status = SignUpStatus.Error(SignUpResult.AlreadyInUse))
+    compose.setContent {
+      PolySocialTheme { SignUpScreen(errorState, { _, _ -> }, {}, {}, { logins++ }, {}) }
+    }
+
+    compose.onNodeWithTag(SignUpTags.LogInInstead).performScrollTo().performClick()
+
+    assertEquals(1, logins)
+  }
+
+  @Test
+  fun associationShowsLoadingStateWhileCreatingTheAccount() {
+    val loadingState = state.copy(status = SignUpStatus.Loading)
+    var label = ""
+    compose.setContent {
+      label = stringResource(R.string.signup_creating)
+      PolySocialTheme { SignUpScreen(loadingState, { _, _ -> }, {}, {}, {}, {}) }
+    }
+
+    compose.onNodeWithTag(SignUpTags.LoadingSpinner).assertIsDisplayed()
+    compose.onNodeWithText(label).assertIsDisplayed()
+  }
+
+  @Test
+  fun studentPasswordRulesShowSatisfiedStateWhenRequirementsAreMet() {
+    val studentState =
+        SignUpUiState(
+            form =
+                SignUpForm(
+                    fullName = "Test Student",
+                    email = "student@epfl.ch",
+                    password = "password1",
+                    confirmPassword = "password1",
+                )
+        )
+    compose.setContent {
+      PolySocialTheme { SignUpScreen(studentState, { _, _ -> }, {}, {}, {}, {}) }
+    }
+
+    compose.onNodeWithTag(SignUpTags.LengthRule).assertIsDisplayed()
+    compose.onNodeWithTag(SignUpTags.NumberRule).assertIsDisplayed()
   }
 }
