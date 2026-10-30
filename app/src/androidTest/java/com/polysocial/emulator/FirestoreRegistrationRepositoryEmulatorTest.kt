@@ -1,4 +1,5 @@
-// Contributors: Claude Opus 5.5 (registration repository tests against the rules, #121).
+// Contributors: Claude Opus 5.5 (registration repository tests against the rules, #121; the ended
+// event after review).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -134,6 +135,26 @@ class FirestoreRegistrationRepositoryEmulatorTest {
     )
 
     assertFalse(isRegistered("missing", uid))
+  }
+
+  @Test
+  fun register_anEventThatHasEnded_isRefusedAndStoresNothing() = runBlocking {
+    val uid = signInStudent()
+    seed(
+        "ended",
+        event()
+            .copy(
+                startTime = Instant.parse("2020-03-02T18:00:00Z"),
+                endTime = Instant.parse("2020-03-02T20:00:00Z"),
+            ),
+    )
+
+    assertEquals(
+        RegisterResult.UnexpectedError,
+        withTimeout(TIMEOUT_MS) { repository.register("ended") },
+    )
+
+    assertFalse(isRegistered("ended", uid))
   }
 
   @Test

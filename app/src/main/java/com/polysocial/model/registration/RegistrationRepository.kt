@@ -1,4 +1,5 @@
-// Contributors: Claude Opus 5.5 (drafted the registration interface, #121).
+// Contributors: Claude Opus 5.5 (drafted the registration interface, #121; the ended-event note
+// after review).
 package com.polysocial.model.registration
 
 import kotlinx.coroutines.flow.Flow
@@ -72,6 +73,10 @@ interface RegistrationRepository {
    * [RegisterResult.NotSignedIn], and an offline device [RegisterResult.NetworkError]. Firestore
    * would queue a write made offline instead of failing, so the repository must not start one.
    * Then, in one step, the event is read and the registration written if it isn't there yet.
+   *
+   * The Security Rules refuse a registration once the event has ended (its `endTime`, or its
+   * `startTime` without one), which returns [RegisterResult.UnexpectedError]: the screens don't
+   * offer to register for a past event.
    */
   suspend fun register(eventId: String): RegisterResult
 

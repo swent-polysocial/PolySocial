@@ -156,10 +156,11 @@ service cloud.firestore {
       // A student's registration for this event (#121), keyed by the student's UID, with that UID
       // again in `uid` (for the collection-group query below) and the server time in
       // `registeredAt`. A student registers only themselves, for an event they can read (the
-      // same check as the event's read rule), and can always remove their own registration, even
-      // once the event is deleted or no longer readable. The event's organizers read its
-      // registrations, to count its attendees. Nobody updates one. The capacity isn't checked
-      // yet: that needs a team decision on how a student may count attendees.
+      // same check as the event's read rule) that hasn't ended yet, and can always remove their
+      // own registration, even once the event has ended, is deleted or is no longer readable.
+      // The event's organizers read its registrations, to count its attendees. Nobody updates
+      // one. The capacity isn't checked yet: that needs a team decision on how a student may
+      // count attendees.
       match /attendees/{uid} {
         function event() {
           return /databases/$(database)/documents/events/$(eventId);
@@ -176,6 +177,17 @@ service cloud.firestore {
                       && get(event()).data.allowedUids.hasAny([request.auth.uid])));
         }
 
+        // Like Event.isPast in the app: an event has ended once its endTime has passed, or
+        // its startTime when it has no endTime. An event with neither as a timestamp counts as
+        // ended, since nobody can tell.
+        function hasNotEnded() {
+          let data = get(event()).data;
+          let end = data.get('endTime', null) is timestamp
+              ? data.endTime
+              : data.get('startTime', null);
+          return end is timestamp && request.time < end;
+        }
+
         // A missing organizerIds (events written before #47) gives no organizer.
         function isEventOrganizer() {
           return canWriteEvents()
@@ -187,6 +199,7 @@ service cloud.firestore {
         allow list: if isEventOrganizer();
         allow create: if isSelf()
             && canReadEvent()
+            && hasNotEnded()
             && request.resource.data.keys().hasOnly(['uid', 'registeredAt'])
             && request.resource.data.uid == uid
             && request.resource.data.registeredAt == request.time;
