@@ -1,7 +1,8 @@
 // Contributors: OpenAI Codex (map overlays and event preview for #50; reuse shared category
 // styles; optional location notices and straight-line badges and review fixes for #51).
 // Contributors: Claude (the "+" that opens Create Event among the map overlays, #110; an
-// association's badge and name on the event preview, #128).
+// association's badge and name on the event preview, #128; the search, filter chips, Filters
+// sheet and "No matching events" card, #116).
 package com.polysocial.ui.map
 
 import androidx.annotation.StringRes
@@ -31,7 +32,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,14 +57,20 @@ import com.polysocial.R
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
 import com.polysocial.resources.C
+import com.polysocial.ui.common.StateButton
 import com.polysocial.ui.event.VerifiedPill
 import com.polysocial.ui.event.create.CreateEventButton
 import com.polysocial.ui.event.create.CreateEventButtonSize
+import com.polysocial.ui.event.list.DateChoice
+import com.polysocial.ui.event.list.EventsChipRow
+import com.polysocial.ui.event.list.EventsFiltersSheet
+import com.polysocial.ui.event.list.EventsSearchField
 import com.polysocial.ui.event.style
 import com.polysocial.ui.theme.Accent
 import com.polysocial.ui.theme.Info
 import com.polysocial.ui.theme.InfoSoft
 import com.polysocial.ui.theme.Ink3
+import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import kotlin.math.roundToInt
@@ -90,9 +99,25 @@ object MapTags {
   const val LOCATION_ICON = "map_location_icon"
   const val DISTANCE = "map_preview_distance"
   const val VERIFIED = "map_preview_verified"
+  const val FILTERS = "map_filters"
+  const val NO_MATCH = "map_no_match"
+  const val CLEAR_FILTERS = "map_clear_filters"
 
   fun marker(id: String) = "map_marker_$id"
 }
+
+/**
+ * What the Map tab's search and filters do (#116); each changes [MapUiState.selection]. "Clear
+ * filters" calls [onClearAll], the Filters sheet's *Clear* [onClearFilters].
+ */
+data class MapFilterActions(
+    val onSearchChange: (String) -> Unit = {},
+    val onSelectDate: (DateChoice) -> Unit = {},
+    val onToggleCategory: (EventCategory) -> Unit = {},
+    val onSelectDistance: (Int?) -> Unit = {},
+    val onClearFilters: () -> Unit = {},
+    val onClearAll: () -> Unit = {},
+)
 
 /** Space between the "+" and the bottom bar, as in the Figma "Map" frames. */
 private val createEventBottom = 20.dp
@@ -119,15 +144,36 @@ fun MapScreen(
     tokenConfigured: Boolean = stringResource(R.string.mapbox_access_token).startsWith("pk."),
     renderer: @Composable (List<Event>, (String) -> Unit, (MapRenderStatus) -> Unit, Dp) -> Unit =
         defaultMapRenderer,
+    filters: MapFilterActions = MapFilterActions(),
+    // The first of the 14 days the Filters sheet offers.
+    today: LocalDate = LocalDate.now(MAP_TIME_ZONE),
 ) {
   var previewHeight by remember { mutableIntStateOf(0) }
   var locationNoticeHeight by remember { mutableIntStateOf(0) }
+  var headerHeight by remember { mutableIntStateOf(0) }
+  var showFilters by rememberSaveable { mutableStateOf(false) }
+  if (showFilters) {
+    EventsFiltersSheet(
+        selection = state.selection,
+        today = today,
+        shownCount = state.events.size,
+        location = state.filterLocation,
+        onSelectDate = filters.onSelectDate,
+        onSelectDistance = filters.onSelectDistance,
+        onTurnOnLocation = onTurnOnLocation,
+        onToggleCategory = filters.onToggleCategory,
+        onClearFilters = filters.onClearFilters,
+        onDismiss = { showFilters = false },
+    )
+  }
   val hasLocationNotice =
       state.locationState == MapLocationState.Denied ||
           state.locationState == MapLocationState.Unavailable
+  // The notices and errors stack under the search and chips (Figma "Map · location off").
+  val headerBottom = with(LocalDensity.current) { headerHeight.toDp() }
   val noticeTop =
       with(LocalDensity.current) {
-        if (hasLocationNotice) locationNoticeHeight.toDp() + 76.dp else 64.dp
+        if (hasLocationNotice) headerBottom + locationNoticeHeight.toDp() + 12.dp else headerBottom
       }
   // Card height excludes padding: reserve its 12 dp bottom margin and a 12 dp ornament gap.
   val bottomInset =
@@ -205,6 +251,46 @@ fun MapScreen(
               MapTags.EMPTY,
               Modifier.align(Alignment.Center).padding(24.dp),
           )
+      tokenConfigured && state.status == MapContentStatus.NO_MATCH ->
+          MapNotice(
+              R.string.events_no_match_title,
+              R.string.map_no_match_body,
+              MapTags.NO_MATCH,
+              Modifier.align(Alignment.Center).padding(24.dp),
+          ) {
+            StateButton(
+                stringResource(R.string.events_clear_filters),
+                filters.onClearAll,
+                Modifier.testTag(MapTags.CLEAR_FILTERS),
+            )
+          }
+    }
+    // Drawn once, above the states, so the search field keeps its focus when typing switches the
+    // map between matching events and none (see CONTEXT.md, Traps).
+    Column(
+        Modifier.align(Alignment.TopCenter)
+            .fillMaxWidth()
+            .onSizeChanged { headerHeight = it.height }
+            .testTag(MapTags.FILTERS)
+    ) {
+      EventsSearchField(
+          state.selection.search,
+          filters.onSearchChange,
+          state.selection.activeFilterCount,
+          onOpenFilters = { showFilters = true },
+          Modifier.padding(start = 12.dp, top = 12.dp, end = 12.dp, bottom = 8.dp)
+              .shadow(4.dp, RoundedCornerShape(22.dp)),
+      )
+      EventsChipRow(
+          state.selection,
+          filters.onSelectDate,
+          filters.onToggleCategory,
+          filters.onClearAll,
+          filters.onSelectDistance,
+          Modifier.padding(bottom = 8.dp),
+          clearInsteadOfAll = true,
+          offFill = MaterialTheme.colorScheme.surface,
+      )
     }
     if (hasLocationNotice) {
       val denied = state.locationState == MapLocationState.Denied
@@ -213,7 +299,7 @@ fun MapScreen(
       val unavailableText = stringResource(R.string.map_location_unavailable)
       Card(
           Modifier.align(Alignment.TopCenter)
-              .padding(start = 12.dp, top = 64.dp, end = 12.dp)
+              .padding(start = 12.dp, top = headerBottom, end = 12.dp)
               .onSizeChanged { locationNoticeHeight = it.height }
               .testTag(MapTags.LOCATION_NOTICE),
           shape = RoundedCornerShape(20.dp),
@@ -313,19 +399,21 @@ private fun MapNotice(
     @StringRes message: Int,
     tag: String,
     modifier: Modifier,
+    action: @Composable () -> Unit = {},
 ) {
   Card(
       modifier.testTag(tag),
       shape = RoundedCornerShape(20.dp),
       colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
   ) {
-    val empty = tag == MapTags.EMPTY
+    // Figma "Map · no events nearby": the empty and no-match cards are centered, with an icon.
+    val empty = tag == MapTags.EMPTY || tag == MapTags.NO_MATCH
     Column(
         Modifier.padding(if (empty) 24.dp else 20.dp),
         verticalArrangement = Arrangement.spacedBy(if (empty) 12.dp else 8.dp),
         horizontalAlignment = if (empty) Alignment.CenterHorizontally else Alignment.Start,
     ) {
-      if (tag == MapTags.EMPTY) {
+      if (empty) {
         Box(
             Modifier.size(64.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
             contentAlignment = Alignment.Center,
@@ -348,6 +436,7 @@ private fun MapNotice(
           style = MaterialTheme.typography.bodyMedium,
           textAlign = if (empty) TextAlign.Center else TextAlign.Start,
       )
+      action()
     }
   }
 }
