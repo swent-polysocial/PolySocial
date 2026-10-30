@@ -18,6 +18,7 @@ import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.MainActivity
+import com.polysocial.R
 import com.polysocial.model.association.AssociationModule
 import com.polysocial.model.association.AssociationRepository
 import com.polysocial.model.association.FakeAssociationRepository
@@ -76,6 +77,7 @@ import java.time.format.DateTimeFormatterBuilder
 import java.time.format.FormatStyle
 import java.util.Locale
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -179,6 +181,8 @@ class ManageEventEndToEndTest {
     val created = fakeEvents.events.single { it.title == TITLE }
     assertEquals(DATE.atTime(LocalTime.of(18, 0)).atZone(ZURICH).toInstant(), created.startTime)
     assertEquals(listOf(UID), created.organizerIds)
+    // The form starts private, so this checks that "Public" took effect.
+    assertFalse(created.isPrivate)
 
     node(C.Tag.event_created_view_event).performClick()
     await(EventDetailTags.SCREEN)
@@ -202,6 +206,7 @@ class ManageEventEndToEndTest {
     assertEquals(EDITED_TITLE, edited.title)
     assertEquals(EventCategory.STUDY, edited.category)
     assertEquals(ROLEX.coordinates, edited.location)
+    assertFalse(edited.isPrivate)
   }
 
   private fun cancelTheEvent(id: String) {
@@ -212,7 +217,7 @@ class ManageEventEndToEndTest {
 
     // Back on the Events tab, which says the event is cancelled and no longer lists it.
     await(EventsTags.LIST)
-    awaitMatch(hasText("Event cancelled", substring = true))
+    awaitMatch(hasText(compose.activity.getString(R.string.event_cancelled)))
     compose.waitUntil(TIMEOUT_MS) { count(EventsTags.card(id)) == 0 }
     node(EventsTags.card(PARTY.id)).assertTextContains(PARTY.title, substring = true)
     assertEquals(
