@@ -284,11 +284,14 @@ constructor(
 
   /**
    * Shows the loaded events that match the selection, and closes the preview of an event that no
-   * longer does. Before the events are loaded, the state stays as it is.
+   * longer does. Before the events are loaded, the state stays as it is. [freshEvents] means
+   * [loadedEvents] just arrived, which ends an error or loading state, in the same update so no
+   * collector sees the new status with the old markers.
    */
-  private fun showMatching() {
+  private fun showMatching(freshEvents: Boolean = false) {
     val loaded = loadedEvents ?: return
-    mutableState.update { previous ->
+    mutableState.update { current ->
+      val previous = if (freshEvents) current.copy(status = MapContentStatus.READY) else current
       val userLocation = (previous.locationState as? MapLocationState.Available)?.coordinates
       val events =
           filterEvents(loaded, previous.selection.toFilter(today), clock.zone, userLocation)
@@ -390,9 +393,7 @@ constructor(
                 val events = publicMapEvents(result.events)
                 loadNamesOf(events)
                 loadedEvents = events
-                // New events end an error or loading state; showMatching sets the status.
-                mutableState.update { it.copy(status = MapContentStatus.READY) }
-                showMatching()
+                showMatching(freshEvents = true)
               }
             }
           }
