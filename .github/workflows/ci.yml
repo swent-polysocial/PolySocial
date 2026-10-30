@@ -301,9 +301,9 @@ jobs:
           disable-animations: true
           # TEMPORARY WORKAROUND for PR #259: the background APK build sometimes never writes its
           # status file, leaving both shards waiting before the emulator launches. This cannot be
-          # merged yet: workflow changes require team approval, and the original build hang still
-          # needs a root-cause fix. Running Gradle here is slower but keeps failures visible and
-          # lets the emulator tests launch.
+          # be merged yet: workflow changes require team approval. The PR's original build failure
+          # was a missing Hilt binding in an Android test and is fixed in the test sources; keep
+          # this slower path until CI confirms the background optimization is safe again.
           # The install waits until the emulator has delivered the broadcasts for that install and
           # its startup: when Android handles a newly added app late, during the first test, it
           # restarts the app's activity, which then has no Compose content ("No compose hierarchies
