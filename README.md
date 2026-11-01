@@ -7,6 +7,7 @@
 
 <!-- Contributors: OpenAI Codex (CI APK download, installation and Mapbox setup instructions, #137). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the Cloud Functions section, #206; Mohamed Khellaf (reviewed and revised). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the Deploying to Firebase section, #228; Franciszek Najda (reviewed). -->
 
 # PolySocial
 
@@ -97,15 +98,18 @@ Without a token, CI and local builds still compile and the map displays a setup 
 
 Before every commit, check that `git status` never lists these files. If it does, fix `.gitignore` first and don't commit them.
 
-**Firestore indexes:** the composite indexes the app's queries need are versioned in `firebase/firestore/firestore.indexes.json`. When that file changes on `main`, someone with access to the Firebase project deploys it with the [Firebase CLI](https://firebase.google.com/docs/cli) (`firebase login` first):
+### Deploying to Firebase
+
+Nothing deploys the Security Rules, the Firestore indexes or the Cloud Functions automatically: CI only tests them. When a PR that changes `firebase/firestore/firestore.rules`, `firebase/firestore/firestore.indexes.json` or `firebase/functions` is merged into `main`, **its author asks the deploy owner, Franciszek (@FranciszekNajda), who has access to the Firebase project**, and notes in the PR that it was deployed. Until then the app on `main` and production disagree: #220's rules and #214's index were missing from production until 2026-10-29.
+
+Deploy with the [Firebase CLI](https://firebase.google.com/docs/cli) (`firebase login` first), and always with `--only`, since a plain `firebase deploy` deploys everything at once:
 
 ```bash
-firebase deploy --only firestore:indexes --project <project-id>
+firebase deploy --only firestore:rules --project <project-id>     # firebase/firestore/firestore.rules
+firebase deploy --only firestore:indexes --project <project-id>   # firebase/firestore/firestore.indexes.json
 ```
 
-`<project-id>` is the `project_id` in your `app/google-services.json`.
-
-Keep `--only firestore:indexes`: a plain `firebase deploy` would also deploy the Security Rules. A new index takes a few minutes to build (Firebase console → Firestore → Indexes). Until it's ready, the query that needs it fails. The local emulator doesn't need indexes.
+`<project-id>` is the `project_id` in your `app/google-services.json`. Functions deploy as described in [Cloud Functions](#cloud-functions). A new index takes a few minutes to build (Firebase console → Firestore → Indexes); until it's ready, the query that needs it fails. The local emulator doesn't need indexes.
 
 ## Downloading the CI APK
 
@@ -179,7 +183,7 @@ firebase emulators:exec --project demo-polysocial --only firestore,auth,function
 
 Use the npm Firebase CLI (`npm install -g firebase-tools`, as CI does) with Node.js 22.12 or newer. The standalone CLI (`curl -sL firebase.tools | bash`) ignores the installed Node.js and runs the function with its own bundled Node 20, which fails to load the function (`ERR_REQUIRE_ESM`) before any test runs; the same applies to the deploy below, which loads the code locally first. The emulator warns if your Node.js isn't version 22; the tests still run on a newer one.
 
-**Deploying is manual.** After a change to `firebase/functions` reaches `main`, a teammate with access to the Firebase project deploys it (`firebase login` first). Cloud Functions need the Blaze plan, which the project uses, with its budget alert:
+**Deploying is manual.** After a change to `firebase/functions` reaches `main`, the deploy owner deploys it (see [Deploying to Firebase](#deploying-to-firebase); `firebase login` first). Cloud Functions need the Blaze plan with its budget alert; whether the project is on it yet is an open question in `CONTEXT.md`:
 
 ```bash
 npm ci --prefix firebase/functions
