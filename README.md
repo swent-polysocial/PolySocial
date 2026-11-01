@@ -43,9 +43,9 @@ The barrier to campus life is social rather than informational: PolySocial answe
 | One-off check-in at the venue (GPS read once, or an entrance QR code) and opt-in location sharing with your group until the event ends | Planned |
 | Shared event album, unlocked by check-in | Planned |
 | Friends (by username or QR code), public or private profiles | Planned |
-| Association accounts: sign up with any email, set up the association, and wait in a pending app until a PolySocial admin verifies it by hand; verified associations' names show on their events | Sprint 3 |
+| Association accounts: sign up with any email, set up the association, and wait in a pending app until a PolySocial admin verifies it by hand; verified associations' names show on their events | Planned; the sign-up foundation, setup form, pending app and names on events landed in Sprint 3, but Welcome's association entry is not wired yet (#259, #208) |
 | Association members and roles | Planned |
-| Account deletion: agreed policy and the `deleteAccount` Cloud Function | Sprint 3; the in-app **Delete account** entry is in review and the function is not deployed yet |
+| Account deletion: agreed policy and the `deleteAccount` Cloud Function | Sprint 3; not available in the app yet (#270), and the function is not deployed to the Firebase project yet |
 | Event reminders (also offline) and in-app notifications | Planned |
 
 **Privacy:** location is never tracked continuously. It is read once for a feature, or shared only with your group, only during the event, and only when you choose to. Profiles, photos, chats and locations are personal data under the Swiss nLPD, and account/data deletion can be requested privately from the project team; in-app deletion and export are not available yet.
@@ -56,7 +56,7 @@ For Map distance badges, the app requests only approximate location. On first en
 
 **Offline:** events you've loaded, your registered events and their schedule, and reminders stay available offline. The map shows cached events on whatever map tiles are already cached.
 
-Signed-out users see Welcome on launch. Unverified sessions reopen Verify Email; verified sessions load their profile before opening the app or profile setup. Association accounts resume their association setup if it is unfinished, then land in the pending app until a PolySocial admin verifies them. The screen sends a verification email, supports resend with a persistent cooldown, and checks verification on Continue or browser return. After verification, shared startup routing loads the profile and opens the app or the profile step; failed profile reads show Retry. Both the system Back action and the back icon sign out and reset the forms, so reopening shows Welcome. Change address also signs out and opens a fresh sign-up form. Verification uses Firebase’s browser action page, so no Hosting or App Links setup is needed.
+Signed-out users see Welcome on launch. Unverified sessions reopen Verify Email; verified sessions load their profile before opening the app or profile setup. Association accounts land in the pending app for now, whether or not their setup is finished; the dedicated setup and verified screens follow (#259, #261). The screen sends a verification email, supports resend with a persistent cooldown, and checks verification on Continue or browser return. After verification, shared startup routing loads the profile and opens the app or the profile step; failed profile reads show Retry. Both the system Back action and the back icon sign out and reset the forms, so reopening shows Welcome. Change address also signs out and opens a fresh sign-up form. Verification uses Firebase’s browser action page, so no Hosting or App Links setup is needed.
 
 ## Tech stack
 
