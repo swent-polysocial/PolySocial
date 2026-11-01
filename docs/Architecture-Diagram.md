@@ -1,3 +1,4 @@
+<!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the groups, chat and public profile model, its rules, the co-organizer model and the deploy owner (#228); Franciszek Najda (decided and reviewed). -->
 <!-- Contributors: Claude Opus 5.5 (attendees schema, rules and capacity question, #121). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the account deletion decision, its deletion/failure matrix and the related open questions (#201); Mohamed Khellaf (reviewed and revised). -->
 <!-- Contributors: OpenAI Codex (Google authentication architecture, Firebase-managed linking clarification and review cleanup for #106; preserved contributor acknowledgments during rebase); Claude (the shared UI parts, #251). -->
@@ -89,8 +90,11 @@ flowchart TB
   privacy --> notice["Full dated notice<br/>#103"]:::s1
   profile --> logout["Confirm Log out<br/>#108, #109"]:::s1
   logout --> welcome["Welcome: empty back stack<br/>#74"]:::s1
+  attend -- "going, #244" --> findg["Find a group: ranked groups<br/>Join · Start a new group, #233"]:::pb
+  findg --> groupS["Group: members · Leave<br/>#234"]:::pb
+  groupS --> chat["Group chat<br/>#238"]:::pb
   profile -.-> friends["Friends · QR · matches"]:::pb
-  chats["Chats list · chat"]:::pb
+  chats["Chats list"]:::pb -.-> chat
 ```
 
 **Integration:** #112 replaces the Map detail placeholder with one shared screen and ViewModel class. Each entry tab registers its own event-ID route (the helper proposed in #157 is `Tab.eventDetailRoute`), so Events, Map and Create Event entry points return to their own tab stack without changing the selected tab. Unbuilt actions (Find a group, download data, attendance-based matching and account deletion) show a not-available Snackbar; they do not open unfinished screens. Account deletion keeps it until #207 connects the agreed flow (decision 15). Privacy's full notice works offline. Logout and account deletion must also cancel the previous account's reminders (#109, #123); #198's `SessionGuard` keeps the cached data away from the next account (decision 15).
@@ -186,17 +190,37 @@ flowchart TB
 - **Create Event screen (#44, #46).** The form follows the Figma (section 04): a date with a start time and an **optional** end time, which tells check-in and "Find my group" when the event is over. An end time earlier than the start time means the next day, shown as "+1 day" under the end field (Figma "Create event · overnight"). Inline errors cover a missing title, a title over 80 characters, a description over 5000, a past date, an end time equal to the start time, a missing location and a capacity below 2, and the *Create* button stays disabled while they remain. Offline, `EventRepository.createEvent` returns `NetworkError` without starting a write (Firestore would queue it and never fail), and the ViewModel shows the error with *Try again*, keeping the form. If location access is denied, the location picker still works with search and the map pin.
 - **Organizer row (#134).** The top of the Create Event and Edit event form shows who organizes the event. `CreateEventViewModel` reads it once at opening: the signed-in user's profile (`UserProfileRepository`), then, only for a verified association, its `associations/{uid}` (`AssociationRepository`, #126). A verified association sees its initials, "Organized by <name>" and the Verified badge (Figma "Create event · association"); everyone else, and any failed read, sees "Organized by you", and the form never waits for the row.
 
-### 3.4 Groups, matching and chat (Product Backlog)
+### 3.4 Groups, matching and chat (Sprint 4, decided in #228)
 
-- **Matching starts on the client.** Following the risk plan, matching starts as a simple deterministic heuristic in a pure Kotlin module and runs on the client. Group creation and joining go through a **Firestore transaction**, so two students can't take the last spot at the same time. We revisit a Cloud Function only if fairness or cheating becomes a problem. The module would move unchanged, and only the caller would change.
-- **Real-time screens.** The matches list (#28) and chat (#25) use Firestore snapshot listeners exposed as `Flow`.
-- **Chat type.** Each group gets a group chat. A one-to-one chat is simply a two-member group, so there is one chat model and one set of rules.
-- **Moderation-ready.** Messages carry `senderId` and `createdAt`, and the rules are written per operation, so report/block and rate limiting can be added later without a rule rewrite.
+```mermaid
+flowchart TB
+  classDef pb fill:#dbe4ff,stroke:#364fc7,color:#000
+  classDef ext fill:#fff3bf,stroke:#e67700,color:#000
+
+  find["Find a group · group card<br/>#233, #244"]:::pb --> findVM["<b>Find a group ViewModel</b><br/>Loading · Groups · Joined · Full<br/>Offline · Error"]:::pb
+  findVM --> match["<b>Matching engine</b><br/><i>domain</i>, pure Kotlin, #231"]:::pb
+  findVM --> groups["<b>GroupRepository</b><br/>observeGroups · observeMyGroup<br/>createGroup · joinGroup · leaveGroup, #232"]:::pb
+  findVM --> pub["<b>PublicProfileRepository</b><br/>one or several by UID, #229"]:::pb
+  chat["Group chat<br/>#238"]:::pb --> chatVM["<b>Chat ViewModel</b>"]:::pb --> msgs["<b>MessageRepository</b><br/>observe · send, #237"]:::pb
+  groups --> fs[("Firestore<br/>events/{e}/groups · groupMembers")]:::ext
+  pub --> fs2[("Firestore<br/>publicProfiles")]:::ext
+  msgs --> fs3[("Firestore<br/>events/{e}/groups/{g}/messages")]:::ext
+```
+
+- **Groups live under their event:** `events/{eventId}/groups/{groupId}`, like the registrations (#121), so the rules reuse the event's readability from the path. A group has a fixed `capacity` of **4** (a product decision, not set by the organizer; stored so it can change without a migration), `memberUids` (1 to `capacity` UIDs, the creator first), `createdBy` and a server-set `createdAt`. A student's own groups, across events, are a collection-group query on `memberUids array-contains <their UID>`.
+- **Joining and leaving touch only your own UID.** Join adds the student's UID to `memberUids`, leave removes it, and the last member to leave deletes the group. The rules check `memberUids.size() <= capacity`, so the capacity needs no counter, and the client's **transaction** makes sure two students can't take the last place at the same time.
+- **One group per student per event:** the marker `events/{eventId}/groupMembers/{uid}` holds the student's `groupId`. It is created and deleted in the same transaction as the `memberUids` change, and the rules tie the two together with `getAfter`. Android transactions can't run queries, so the marker is how the transaction knows the student is already in a group.
+- **Who can join:** a student who can read the event. Requiring "I'm going" first is decided (#228) and built by #244, which also decides whether the rules check it. Associations never reach groups, messages or public profiles.
+- **Matching starts on the client.** The engine (#231) is a deterministic heuristic in a pure Kotlin module: given the student (section, year, interests) and the event's groups with their members' public profiles, it returns the open groups ranked, full groups left out, ties broken by a stable key. We revisit a Cloud Function only if fairness or cheating becomes a problem; the module would move unchanged.
+- **Public profiles (#229):** `publicProfiles/{uid}` holds `displayName`, `section`, `year` and `interests` (codes from #230's fixed list of about ten), never the email. It is written in the same transaction as `users/{uid}`. Public or private visibility of further fields comes later.
+- **Chat (#237, #238):** each group has `messages` (`senderId`, `text` of 1 to 1000 characters, server-set `createdAt`). Only members read and send, each sender writes only their own messages, and nobody edits or deletes one yet. Sending is **refused offline** with Try again, like `createEvent`, rather than queued. A one-to-one chat is a two-member group, so there is one chat model and one set of rules.
+- **Real-time screens.** Groups, my group and messages are Firestore snapshot listeners exposed as `Flow`, usable from the cache offline.
+- **Moderation-ready.** The rules are written per operation and messages carry `senderId` and `createdAt`, so report/block and rate limiting can be added later without a rule rewrite.
 
 ### 3.5 At the venue and social features (Product Backlog)
 
 - **Check-in (#22).** A one-off location check against the venue during the event window. A QR code at the entrance is the indoor fallback. Only checked-in members can upload to the album (README).
-- **Find my group (#20).** Locations are shared **only with the group and only during the event** (README). Each member's position lives in `groups/{groupId}/locations/{uid}`. It is written only during the event window, readable only by group members, and deleted when the event ends. There is no location history.
+- **Find my group (#20).** Locations are shared **only with the group and only during the event** (README). Each member's position lives in `events/{eventId}/groups/{groupId}/locations/{uid}`. It is written only during the event window, readable only by group members, and deleted when the event ends. There is no location history.
 - **Album.** Photos are compressed and resized on the device, then stored in Cloud Storage. A Firestore document holds each photo's metadata. Storage Security Rules enforce size and type limits and check-in membership. Thumbnails are cached.
 - **Reminders (#21, #36).** WorkManager schedules them when the student registers, so they fire offline and survive reboots. The notification permission (Android 13+) is requested at that moment.
 - **QR codes (#17, #22).** Scanned with CameraX + ML Kit barcode scanning. Payloads are typed strings such as `polysocial://checkin/{eventId}/{token}` and `polysocial://friend/{uid}`, validated by a pure parser.
@@ -319,7 +343,7 @@ sequenceDiagram
   App-->>S: preview card
 ```
 
-### 4.5 Find a group (Product Backlog, proposal)
+### 4.5 Find a group (#231–#233, decided in #228)
 
 ```mermaid
 %%{init: {"sequence": {"mirrorActors": false, "actorMargin": 30, "width": 135, "actorFontSize": 15, "messageFontSize": 15, "noteFontSize": 14}}}%%
@@ -327,17 +351,27 @@ sequenceDiagram
   autonumber
   actor S as Student
   participant App as Event detail
-  participant MR as MatchRepository
-  participant ME as Matching engine
   participant GR as GroupRepository
+  participant PR as PublicProfileRepository
+  participant ME as Matching engine
   S->>App: taps Find a group
-  App->>MR: load requests
-  App->>ME: propose(me, candidates)
-  ME-->>App: ranked proposals
-  App-->>S: shows proposals
-  S->>App: accepts one
-  App->>GR: join (transaction)
-  App-->>S: group + group chat
+  App->>GR: observeGroups(eventId)
+  App->>PR: members' public profiles
+  App->>ME: rank(me, groups)
+  ME-->>App: open groups, best fit first
+  App-->>S: groups and why each fits
+  alt joins a group
+    S->>App: Join
+    App->>GR: joinGroup (transaction: marker + memberUids)
+  else starts one
+    S->>App: Start a new group
+    App->>GR: createGroup (transaction)
+  end
+  alt full, already in a group, offline or error
+    App-->>S: the reason, with a way out
+  else done
+    App-->>S: group card on the detail
+  end
 ```
 
 ## 5. Data model
@@ -356,9 +390,10 @@ flowchart LR
   reg["events/{eventId}/attendees/{uid}<br/>#121"]:::s1
   reminders["Device reminder state<br/>WorkManager, #123"]:::s1
   photos["photos"]:::pb
-  groups["groups/{groupId}"]:::pb
-  sub["members · messages<br/>check-ins"]:::pb
-  mreq["matchRequests"]:::pb
+  groups["events/{eventId}/groups/{groupId}<br/>#232"]:::pb
+  marker["events/{eventId}/groupMembers/{uid}<br/>one group per event, #232"]:::pb
+  sub["messages #237 · locations<br/>check-ins"]:::pb
+  mreq["matchRequests<br/>undecided"]:::pb
   friends["friendships"]:::pb
   storage[("Cloud Storage<br/>photo files")]:::ext
 
@@ -369,7 +404,10 @@ flowchart LR
   events --> photos
   photos -.-> storage
   events --> groups
+  events --> marker
+  marker -. "groupId" .-> groups
   groups --> sub
+  pub -. "members' profiles<br/>for matching" .-> groups
   users --> mreq
   users --> friends
 ```
@@ -381,12 +419,15 @@ flowchart LR
 | `users/{uid}` | `uid`, `email`, `displayName` (at most 50, #143), `section`, `year`, `createdAt`, `accountType`, `isAssociationVerified` | 🟩 #34, #45 |
 | `events/{eventId}` | `title`, `description`, `category`, `location`, `locationName?` (#112), `startTime`, `endTime?`, `capacity?`, `isPrivate`, `createdBy`, `organizerIds`, `allowedUids`, `isAssociationEvent` | 🟩 #45 |
 | `associations/{uid}` | `name` (1–60), `type` (`ASSOCIATION`, `COMMISSION`, `CLUB`, `EPFL_UNIT`), `about` (1–1000), `website?` (`https://`, at most 200), `createdAt`. Document ID = the association account's UID | 🟩 #126 |
-| `publicProfiles/{uid}` | `username`, `displayName`, `section`, `year`, `interests` (always visible), `visibility` (public or private), `bio` | 🟦 new issue |
+| `publicProfiles/{uid}` | `displayName`, `section`, `year`, `interests` (codes from #230's fixed list), always visible; never the email. Written in the same transaction as `users/{uid}`. `username`, `visibility` (public or private) and `bio` come later | 🟦 S4 #229, #230 |
 | `events/{eventId}/attendees/{uid}` | student UID as document ID; `uid` (same UID, for the collection-group query) and server-set `registeredAt` | 🟩 S2 #121; no separate top-level registrations collection |
 | Device reminder state | event ID, title and start time for a local notification; unique work, opt-in | 🟩 S2 #123; no Firestore collection |
-| `matchRequests/{id}` | `eventId`, `fromUid`, `toUid`, `status` | 🟦 #26, #27 |
-| `groups/{groupId}` + `members`, `messages`, `checkIns` | `eventId`, `capacity` · `senderId`, `text`, `createdAt` · `method` (gps or qr). A one-to-one chat is a two-member group | 🟦 #14, #22, #25 |
-| `groups/{groupId}/locations/{uid}` | position, `updatedAt`. Only during the event, deleted after | 🟦 #20 |
+| `matchRequests/{id}` | `eventId`, `fromUid`, `toUid`, `status` | ⬜ not used by Find a group, where students join open groups directly (#228); revisit with #26, #27 |
+| `events/{eventId}/groups/{groupId}` | `capacity` (4), `memberUids` (1 to `capacity`, creator first), `createdBy`, server-set `createdAt` | 🟦 S4 #232 |
+| `events/{eventId}/groupMembers/{uid}` | `groupId`: the student's group for this event, written in the same transaction as `memberUids` | 🟦 S4 #232 |
+| `events/{eventId}/groups/{groupId}/messages/{id}` | `senderId`, `text` (1–1000), server-set `createdAt`. A one-to-one chat is a two-member group | 🟦 S4 #237 |
+| `events/{eventId}/groups/{groupId}/checkIns/{uid}` | `method` (gps or qr), `checkedInAt` | 🟦 #22 |
+| `events/{eventId}/groups/{groupId}/locations/{uid}` | position, `updatedAt`. Only during the event, deleted after | 🟦 #20 |
 | `friendships/{id}` | `uidA`, `uidB`, `status` | 🟦 #16 |
 | `events/{id}/photos/{photoId}` | `storagePath`, `uploaderId`, `createdAt`. The file itself is in Cloud Storage. | 🟦 album |
 
@@ -406,8 +447,10 @@ Rules live in `firebase/firestore/firestore.rules` and are tested against the Fi
 | `events/{id}`, public | any EPFL user | any EPFL user or verified association, `createdBy == auth.uid` and in `organizerIds`. `isAssociationEvent` only for a verified association | organizers only | #47, #52 | 🟩 S1 |
 | `events/{id}`, private | `auth.uid in allowedUids` (organizers, members, approved match requesters) | as above | organizers only | #52, #23 | 🟩 S1 |
 | `events/{eventId}/attendees/{uid}` | own attendance; attendee list only for the event's organizers | verified EPFL student, own UID, readable event that hasn't ended; no association registration | student deletes only own document, even once the event has ended or is gone; no writes to another student's attendance; nobody updates one | #121 | 🟩 in place (capacity not checked yet) |
-| `publicProfiles/{uid}` | any EPFL user. Fields beyond the public set only for public profiles or approved connections | owner only | owner only | new issue | 🟦 PB |
-| `groups/**`, `messages` | group members only | members, rate-limit ready | sender only | #25 | 🟦 PB |
+| `publicProfiles/{uid}` | any student; no association | owner only, only the fields above, no email | owner only; no delete except with the account | #229 | 🟦 S4 |
+| `events/{eventId}/groups/{groupId}` | a student who can read the event; a student lists their own groups across events (`memberUids array-contains` their UID) | a student who can read the event, with `memberUids == [own UID]`, `capacity == 4`, `createdBy` = own UID, server `createdAt`, and their `groupMembers` marker in the same write | update: only `memberUids` changes, by adding or removing the caller's own UID, `size() <= capacity`, with the marker created or deleted alongside (`getAfter`); delete: the last member leaving. No association access | #232 | 🟦 S4 |
+| `events/{eventId}/groupMembers/{uid}` | own document only | own UID, `groupId` of a group whose `memberUids` contain them after the write | delete own, when leaving that group; no update | #232 | 🟦 S4 |
+| `events/{eventId}/groups/{groupId}/messages/{id}` | group members only | members, `senderId` = own UID, `text` 1–1000, server `createdAt`; per operation, so rate limiting fits later | nobody yet (report/block later) | #237 | 🟦 S4 |
 | `matchRequests` | sender and recipient | sender | recipient responds | #26, #27 | 🟦 PB |
 | Storage `events/{id}/album/**` | event group members | checked-in members, size and type limits | uploader | album | 🟦 PB |
 
@@ -419,7 +462,7 @@ Every PR that changes rules follows the process in `AGENTS.md`: "Changes Securit
 
 - **Google sign-in (#106):** both entry buttons use Credential Manager through the auth repository. Invalid domains are rejected before Firebase account creation; Firebase validates the token and verified exact `@epfl.ch` identity before profile access. Firebase manages compatible account linking; the owner confirmed automatic linking for EPFL Google accounts through EPFL SSO. Use Firebase's returned UID without client-side linking or a dedicated collision flow.
 
-Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after review, and 5 and 11 revised on 2026-10-06; 15 added on 2026-10-28 (#201). The issues are being updated to match.
+Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after review, and 5 and 11 revised on 2026-10-06; 15 added on 2026-10-28 (#201); 16 to 18 decided by the Sprint 4 PO on 2026-11-01 (#228). The issues are being updated to match.
 
 | # | Topic | Decision |
 |---|---|---|
@@ -429,7 +472,7 @@ Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after re
 | 4 | Private events | `allowedUids` access list, checked by the rules |
 | 5 | Create Event entry | "+" button on the Events and Map tabs. Afterwards, an "Event created" confirmation with *View event* and *Back to map*, as in the Figma (changed on 2026-10-06) |
 | 6 | Matching | On the device: a pure module plus a Firestore transaction. Cloud Functions only if fairness or cheating becomes a problem |
-| 7 | Find my group | `groups/{id}/locations/{uid}`, only during the event, members only, deleted afterwards |
+| 7 | Find my group | `events/{eventId}/groups/{groupId}/locations/{uid}`, only during the event, members only, deleted afterwards (path from decision 16) |
 | 8 | Reminders | Opt-in WorkManager reminder 1 h before the start; Android 13+ permission on first opt-in; Off, cancellation and logout remove unique work (#123) |
 | 9 | QR codes | CameraX + ML Kit. Typed `polysocial://checkin/…` and `polysocial://friend/…` payloads, pure parser |
 | 10 | Section-exclusive events | Deferred. Later `allowedSections` on events, checked in the rules |
@@ -438,6 +481,9 @@ Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after re
 | 13 | Dependency injection | **Hilt** (changed after review). It is Android's recommended DI library, scales as repositories grow, and Hilt test modules swap in the fakes cleanly. The cost is some setup and slower builds |
 | 14 | Back button | At a non-home tab root, go to the Events tab. At the Events root, exit. This is Android's standard pattern (changed after review) |
 | 15 | Account deletion | Self-service for students, unverified accounts included; associations stay admin-assisted and the flow refuses them with the privacy contact. A callable Cloud Function `deleteAccount` (Functions v2, Node 22, `europe-west6`) requires a sign-in under 5 minutes old, then deletes `users/{uid}` and the Auth user with the Admin SDK; both steps are idempotent, so Retry completes a partial deletion. Events are kept unchanged (the UID is opaque; a missing profile shows "Deleted user"). No Security Rules change; deployed by hand on Blaze, expected within the free quotas. The client refuses offline, reauthenticates, then clears the cache and verification keys and opens Welcome. `SessionGuard` clears the cache on any UID change (#198); unverified accounts older than 7 days are deleted on a schedule (#149) (added on 2026-10-28, #201) |
+| 16 | Groups | `events/{eventId}/groups/{groupId}` with a fixed `capacity` of 4, `memberUids`, `createdBy`, `createdAt`; a `groupMembers/{uid}` marker per event keeps a student in one group. Joining and leaving change only the caller's own UID in one transaction, and the rules check the capacity. Find a group requires "I'm going" (#244). Chat messages under the group, refused offline. Interests from a fixed list. Associations get no access (added on 2026-11-01, #228) |
+| 17 | Co-organizers | Sprint 5 (#280): an organizer adds **students** as co-organizers, picked among the event's registered attendees (organizers can already list them), so no student directory is exposed; at most 5 organizers per event, the creator can't be removed, every organizer stays in `allowedUids`. Associations as co-organizers need new rules (an association finding another, reading an event it didn't create), so they are a team decision at Sprint 5 Planning (added on 2026-11-01, #228) |
+| 18 | Deploying rules, indexes and functions | Nothing deploys automatically. After a PR changing `firestore.rules`, `firestore.indexes.json` or `firebase/functions` merges, its author asks the deploy owner (Franciszek, who has access to the project) to deploy with `--only`, and notes it in the PR. #220's rules and #214's index were missing from production until 2026-10-29 (added on 2026-11-01, #228) |
 
 **Sprint 2 decisions:** sign-in is email/password and Google only, not Microsoft, which would need EPFL's admin to whitelist the app, while Google goes through EPFL's SSO (#106, #107, PR #197 review); events store the picked place's name as an optional `locationName` of at most 100 characters (rules #102, app #151; blank for older events); Nominatim remains the approved explicit-search geocoder; one shared detail screen replaces the Map placeholder, using each entry tab's event-ID route; co-organizers wait for Public profiles; associations move to Sprint 3; unbuilt actions show a Snackbar. Sources: #103, #106, #111, #112 and the Sprint Planning record #141.
 
@@ -469,7 +515,11 @@ How each failure behaves:
 | cache clear fails after deletion | blocking Retry, as for logout; the account is already gone |
 | user cancels before the function call (Cancel, or the Google picker dismissed) | nothing changes; the reauthentication step stays open |
 
-**Open questions** (add new ones here and in `CONTEXT.md`):
+**Open questions** (add new ones here and in `CONTEXT.md`), with an owner where one is agreed:
+- **Blaze plan (owner: Franciszek, before #269 merges):** the README and decision 15 say the project runs on Blaze, but #285's description says it doesn't. Cloud Functions, so `deleteAccount` (#269, #270, #285), need Blaze with its budget alert. Check the Firebase console and settle it with the team.
+- **Groups of a deleted event or account (owner: Ayoub with #275 for events, Mohamed for `deleteAccount`):** deleting an event must also delete its `groups`, `groupMembers` and messages, and deleting an account must take its UID out of `memberUids` and delete its marker. Client-side deletion of nested messages doesn't scale; a function triggered by the deletion may be needed, which depends on Blaze.
+- **"I'm going" in the rules (owner: Ayoub, #244):** whether joining a group also requires an `attendees` document in the rules, or only in the app.
+- **Association co-organizers (owner: Sprint 5 PO, at Sprint 5 Planning):** see decision 17.
 - **Mapbox production account:** who adds billing, which usage alert applies, and when does a dedicated token replace the signup token? Mapbox bills separately from Google Cloud. Needed before release.
 - **Shared privacy notice (#103):** Mapbox receives map requests for the viewed area; Mehdi owns Profile → Privacy & data; the private deletion contact and final wording still need confirmation before release.
 - **Association members and event drafts:** Figma has them, but there is no data model yet. How does an association find and add a student as a member, and what can each role do? Drafts are not in the `Event` model.
@@ -514,7 +564,7 @@ Every Scrum Board item mapped to the components it touches.
 | #16 Adding friends | — | Friends screen, FriendRepository, `username` | 🟦 |
 | #17 Meeting people by QR | — | QrScanner, QR payload parsing, FriendRepository | 🟦 |
 | #22 Automatic check-in | — | check-in policy, LocationService, QR fallback, GroupRepository | 🟦 |
-| #20 Find my group | — | group venue map, `groups/{id}/locations` | 🟦 |
+| #20 Find my group | — | group venue map, `events/{e}/groups/{g}/locations` | 🟦 |
 | #21 Event notification | — | `ReminderScheduler`, pure reminder time, WorkManager, local notifications | 🟩 S2 #120, #123 |
 | #103 Privacy notice | Profile | Privacy & data, full dated notice, unavailable actions | 🟩 S2 |
 | #106, #107 Google sign-in | Authentication | `AuthRepository.signInWithGoogle`, Credential Manager, entry ViewModels | 🟩 S2 |
