@@ -10,6 +10,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) removed the unreachable user-mismatch branch and
 // reported too many re-authentication attempts, #206; Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (moved the exact EPFL check to SignUpValidation to share it, #208).
+// Contributors: Claude (Opus 5.5, Anthropic) reported a deleted, disabled or revoked account as
+// signed out on reload, #225 review.
 package com.polysocial.model.auth
 
 import android.content.Context
@@ -178,6 +180,9 @@ private constructor(
       throw cancelled
     } catch (_: FirebaseNetworkException) {
       VerificationResult.NetworkError
+    } catch (_: FirebaseAuthInvalidUserException) {
+      // Deleted, disabled or revoked: the session is over, like a sign-out (#225 review).
+      VerificationResult.NotSignedIn
     } catch (_: Exception) {
       VerificationResult.UnexpectedError
     }

@@ -1,12 +1,15 @@
 // Contributors: Claude (Opus 5.5, Anthropic) wrote these tests for leaving Verify Email through the
 // account deletion and for the address-keyed cooldown, #225; Mohamed Khellaf (reviewed and
 // revised).
+// Contributors: Claude (Opus 5.5, Anthropic) tested that leaving never deletes a verified account
+// and finishes a deletion whose answer was lost, #225 review.
 package com.polysocial.auth
 
 import androidx.lifecycle.ViewModelStore
 import com.polysocial.model.account.AccountDeletionRepository
 import com.polysocial.model.account.AccountDeletionResult
 import com.polysocial.model.account.FakeAccountDeletionRepository
+import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.auth.SendVerificationResult
@@ -52,7 +55,8 @@ class VerifyEmailLeaveTest {
   private fun viewModel(
       deletion: AccountDeletionRepository = this.deletion,
       network: NetworkMonitor = this.network,
-  ) = VerifyEmailViewModel(repository, store, VerificationClock { now }, deletion, network)
+      auth: AuthRepository = repository,
+  ) = VerifyEmailViewModel(auth, store, VerificationClock { now }, deletion, network)
 
   private fun dispose(vm: VerifyEmailViewModel) =
       ViewModelStore().apply {
@@ -64,8 +68,9 @@ class VerifyEmailLeaveTest {
   private fun TestScope.entered(
       deletion: AccountDeletionRepository = this@VerifyEmailLeaveTest.deletion,
       network: NetworkMonitor = this@VerifyEmailLeaveTest.network,
+      auth: AuthRepository = repository,
   ): VerifyEmailViewModel =
-      viewModel(deletion, network).also {
+      viewModel(deletion, network, auth).also {
         it.enter()
         runCurrent()
       }
@@ -108,6 +113,7 @@ class VerifyEmailLeaveTest {
     val vm = entered()
     vm.leave(VerificationLeave.ChangeAddress)
     runCurrent()
+    assertEquals(0, repository.checkCalls)
     assertEquals(0, deletion.calls)
     assertEquals(0, repository.logOutCalls)
     assertEquals(user, repository.currentUser())
@@ -239,7 +245,8 @@ class VerifyEmailLeaveTest {
     assertFalse(state.canResend)
     assertEquals(1, deletion.calls)
     assertEquals(sends, repository.sendCalls)
-    assertEquals(0, repository.checkCalls)
+    // Only the reload that leaving makes itself, before deleting: no check starts meanwhile.
+    assertEquals(1, repository.checkCalls)
     assertEquals(user, repository.currentUser())
 
     deletion.gate!!.complete(Unit)
@@ -267,24 +274,138 @@ class VerifyEmailLeaveTest {
   }
 
   @Test
-  fun leavingCancelsAPendingCheck() = runTest {
+  fun backDuringACheckThatFindsTheAccountVerifiedSignsOutWithoutDeleting() = runTest {
+    // Verified in the browser, then Back while the resume check is still running.
+    store.timings[user.uid] = VerificationTiming(now, now + 45_000)
+    store.addressTimings[user.email] = VerificationTiming(now, now + 45_000)
     val vm = entered()
     repository.checkGate = CompletableDeferred()
     repository.verificationResult = VerificationResult.Verified
-    vm.checkVerified()
+    vm.checkVerified(manual = false)
     runCurrent()
     assertTrue(vm.uiState.value.checking)
-    deletion.gate = CompletableDeferred()
     vm.leave(VerificationLeave.Back)
     runCurrent()
     assertFalse(vm.uiState.value.checking)
+    assertTrue(vm.uiState.value.leaving)
     repository.checkGate!!.complete(Unit)
     runCurrent()
-    assertFalse(vm.uiState.value.verified)
-    deletion.gate!!.complete(Unit)
-    runCurrent()
-    assertEquals(VerificationExit.Welcome, vm.uiState.value.exit)
+    assertEquals(0, deletion.calls)
+    assertEquals(1, repository.logOutCalls)
+    assertNull(repository.currentUser())
+    assertEquals(VerifyEmailUiState(exit = VerificationExit.Welcome), vm.uiState.value)
+    // As after a successful check, a verified account's deadlines are cleared.
+    assertNull(store.timings[user.uid])
+    assertNull(store.addressTimings[user.email])
     dispose(vm)
+  }
+
+  @Test
+  fun aReloadThatFindsTheAccountVerifiedSignsOutWithoutDeleting() = runTest {
+    // Verified from another device: no check ran here, the reload before deleting finds it.
+    for ((action, exit) in
+        listOf(
+            VerificationLeave.Back to VerificationExit.Welcome,
+            VerificationLeave.ChangeAddress to VerificationExit.SignUp(user.email),
+        )) {
+      repository.user = user
+      repository.verificationResult = VerificationResult.Verified
+      val vm = entered()
+      vm.leave(action)
+      runCurrent()
+      assertEquals(action.name, exit, vm.uiState.value.exit)
+      assertNull(action.name, repository.currentUser())
+      // Entry sent the first link, so both deadlines existed; verification clears them.
+      assertNull(action.name, store.timings[user.uid])
+      assertNull(action.name, store.addressTimings[user.email])
+      dispose(vm)
+    }
+    assertEquals(2, repository.checkCalls)
+    assertEquals(0, deletion.calls)
+    assertEquals(2, repository.logOutCalls)
+  }
+
+  @Test
+  fun aReloadThatNoLongerFindsTheAccountFinishesAsAfterADeletion() = runTest {
+    repository.verificationResult = VerificationResult.NotSignedIn
+    val vm = entered()
+    vm.leave(VerificationLeave.ChangeAddress)
+    runCurrent()
+    assertEquals(0, deletion.calls)
+    assertEquals(1, repository.logOutCalls)
+    assertEquals(VerifyEmailUiState(exit = VerificationExit.SignUp(user.email)), vm.uiState.value)
+    assertNull(store.timings[user.uid])
+    assertEquals(VerificationTiming(now, now + 45_000), store.addressTimings[user.email])
+    dispose(vm)
+  }
+
+  @Test
+  fun retryAfterADeletionWhoseAnswerWasLostExitsWithoutAFailure() = runTest {
+    deletion.result = AccountDeletionResult.NetworkError
+    val vm = entered()
+    vm.leave(VerificationLeave.Back)
+    runCurrent()
+    assertEquals(
+        VerificationLeaveError(VerificationLeave.Back, VerificationMessage.DeleteNetworkError),
+        vm.uiState.value.leaveError,
+    )
+    // The function did delete the account; only its answer was lost. The reload now finds no
+    // account, which the real repository reports as NotSignedIn.
+    repository.verificationResult = VerificationResult.NotSignedIn
+    vm.retryLeave()
+    runCurrent()
+    assertEquals(VerifyEmailUiState(exit = VerificationExit.Welcome), vm.uiState.value)
+    assertEquals(1, deletion.calls)
+    assertEquals(1, repository.logOutCalls)
+    assertNull(store.timings[user.uid])
+    assertEquals(VerificationTiming(now, now + 45_000), store.addressTimings[user.email])
+    dispose(vm)
+  }
+
+  @Test
+  fun aFailedReloadNeverDeletesAndRetryDeletesOnceTheReloadWorks() = runTest {
+    var thrown = false
+    val throwingAuth =
+        object : AuthRepository by repository {
+          override suspend fun reloadAndCheckVerified(): VerificationResult =
+              if (thrown) throw IllegalStateException("test reload failure")
+              else repository.reloadAndCheckVerified()
+        }
+    for ((failure, message) in
+        listOf(
+            VerificationResult.NetworkError to VerificationMessage.DeleteNetworkError,
+            VerificationResult.UnexpectedError to VerificationMessage.DeleteError,
+            null to VerificationMessage.DeleteError,
+        )) {
+      val name = failure.toString()
+      repository.user = user
+      thrown = failure == null
+      repository.verificationResult = failure ?: VerificationResult.Unverified
+      val deletions = deletion.calls
+      val logOuts = repository.logOutCalls
+      val vm = entered(auth = throwingAuth)
+      vm.leave(VerificationLeave.Back)
+      runCurrent()
+      assertEquals(
+          name,
+          VerificationLeaveError(VerificationLeave.Back, message),
+          vm.uiState.value.leaveError,
+      )
+      assertFalse(name, vm.uiState.value.leaving)
+      assertNull(name, vm.uiState.value.exit)
+      assertEquals(name, deletions, deletion.calls)
+      assertEquals(name, logOuts, repository.logOutCalls)
+      assertEquals(name, user, repository.currentUser())
+
+      // Retry on the same screen once the reload works deletes the still unverified account.
+      thrown = false
+      repository.verificationResult = VerificationResult.Unverified
+      vm.retryLeave()
+      runCurrent()
+      assertEquals(name, deletions + 1, deletion.calls)
+      assertEquals(name, VerifyEmailUiState(exit = VerificationExit.Welcome), vm.uiState.value)
+      dispose(vm)
+    }
   }
 
   @Test
@@ -327,6 +448,17 @@ class VerifyEmailLeaveTest {
     assertEquals(VerificationExit.SignUp(user.email), vm.uiState.value.exit)
     assertEquals(1, repository.logOutCalls)
     dispose(vm)
+
+    // The same for a verified account found on leave.
+    repository.user = user
+    repository.verificationResult = VerificationResult.Verified
+    val verified = entered()
+    verified.leave(VerificationLeave.Back)
+    runCurrent()
+    assertEquals(VerificationExit.Welcome, verified.uiState.value.exit)
+    assertEquals(2, repository.logOutCalls)
+    assertEquals(1, deletion.calls)
+    dispose(verified)
   }
 
   @Test
