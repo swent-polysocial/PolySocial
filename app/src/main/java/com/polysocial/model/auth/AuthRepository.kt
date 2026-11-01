@@ -9,6 +9,8 @@
 // Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (Opus 5.5, Anthropic) documented the local sign-out on a missing account
 // and added TooManyAttempts, #206; Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) documented when a reload reports NotSignedIn, #225
+// review.
 package com.polysocial.model.auth
 
 import android.content.Context
@@ -174,6 +176,9 @@ sealed interface VerificationResult {
 
   data object Unverified : VerificationResult
 
+  /**
+   * Nobody is signed in, or Firebase no longer accepts the account (deleted, disabled, revoked).
+   */
   data object NotSignedIn : VerificationResult
 
   data object NetworkError : VerificationResult

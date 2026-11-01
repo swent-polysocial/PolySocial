@@ -3,6 +3,8 @@
 // entry; reset retained verification state on logout, #109).
 // Contributors: Claude (Opus 5.5, Anthropic) deleted the unverified account on Back and Change
 // address, and kept the cooldown per address, #225; Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) reloaded the account before deleting it, so leaving
+// never deletes a verified one and finishes a deletion whose answer was lost, #225 review.
 package com.polysocial.ui.auth
 
 import androidx.lifecycle.ViewModel
@@ -10,6 +12,7 @@ import androidx.lifecycle.viewModelScope
 import com.polysocial.model.account.AccountDeletionRepository
 import com.polysocial.model.account.AccountDeletionResult
 import com.polysocial.model.auth.AuthRepository
+import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.SendVerificationResult
 import com.polysocial.model.auth.VerificationClock
 import com.polysocial.model.auth.VerificationResult
@@ -39,7 +42,7 @@ enum class VerificationMessage {
   DeleteError,
 }
 
-/** The two ways out of Verify Email; both delete the unverified account first (#225). */
+/** The two ways out of Verify Email; both try to delete the unverified account first (#225). */
 enum class VerificationLeave {
   Back,
   ChangeAddress,
@@ -135,12 +138,17 @@ constructor(
    * [VerifyEmailUiState.exit].
    *
    * Offline, the deletion is refused before any call (nothing is queued) with the connection
-   * message. A network or unexpected failure keeps the account signed in on Verify Email with a
-   * [VerifyEmailUiState.leaveError] that [retryLeave] repeats; nothing reports the account gone
-   * before the function confirms it. An account signed in too long ago (`RecentLoginRequired`), one
-   * the function refuses (`NotAllowed`) or a lost session only signs out, as before #225, and keeps
-   * the account's cooldown. After a deletion, the account's resend timing is cleared while the
-   * address keeps its cooldown. Duplicate taps are ignored while leaving.
+   * message. Only an account that a fresh reload still reports unverified is deleted. A verified
+   * one (during a pending check this cancels, or on another device) is signed out with its resend
+   * timing cleared, as after a successful check. One that Firebase no longer accepts (usually an
+   * earlier deletion whose answer was lost) is signed out as after a deletion, and a reload that
+   * fails never deletes. A network or unexpected failure keeps the account signed in on Verify
+   * Email with a [VerifyEmailUiState.leaveError] that [retryLeave] repeats; nothing reports the
+   * account gone before the function confirms it. An account signed in too long ago
+   * (`RecentLoginRequired`), one the function refuses (`NotAllowed`) or a lost session only signs
+   * out, as before #225, and keeps the account's cooldown. After a deletion, the account's resend
+   * timing is cleared while the address keeps its cooldown. Duplicate taps are ignored while
+   * leaving.
    */
   fun leave(action: VerificationLeave) {
     val state = mutableState.value
@@ -151,6 +159,7 @@ constructor(
               signOut(action, state.email)
               return
             }
+    // Its answer would race the sign-out; the reload below answers the same question.
     checkJob?.cancel()
     mutableState.update {
       it.copy(leaving = true, checking = false, banner = null, snackbar = null, leaveError = null)
@@ -164,18 +173,18 @@ constructor(
           failLeave(action, VerificationMessage.NetworkError)
           return@launch
         }
-        when (deletion.deleteAccount()) {
-          AccountDeletionResult.Deleted -> {
-            clearAccountTiming(user.uid)
+        when (repository.reloadAndCheckVerified()) {
+          VerificationResult.Unverified -> deleteThenSignOut(action, user)
+          VerificationResult.Verified -> {
+            // As after a successful check: a verified account needs no resend deadline.
+            clearTiming(user.uid, user.email)
             signOut(action, user.email)
           }
-          AccountDeletionResult.RecentLoginRequired,
-          AccountDeletionResult.NotAllowed,
-          AccountDeletionResult.NotSignedIn -> signOut(action, user.email)
-          AccountDeletionResult.NetworkError ->
+          // Usually a Retry after a deletion that went through but whose answer was lost.
+          VerificationResult.NotSignedIn -> signOutDeleted(action, user)
+          VerificationResult.NetworkError ->
               failLeave(action, VerificationMessage.DeleteNetworkError)
-          AccountDeletionResult.UnexpectedError ->
-              failLeave(action, VerificationMessage.DeleteError)
+          VerificationResult.UnexpectedError -> failLeave(action, VerificationMessage.DeleteError)
         }
       } catch (cancelled: CancellationException) {
         mutableState.update { it.copy(leaving = false) }
@@ -184,6 +193,27 @@ constructor(
         failLeave(action, VerificationMessage.DeleteError)
       }
     }
+  }
+
+  /** Deletes the account [leave] found unverified, then signs out unless the deletion failed. */
+  private suspend fun deleteThenSignOut(action: VerificationLeave, user: AuthUser) {
+    when (deletion.deleteAccount()) {
+      AccountDeletionResult.Deleted -> signOutDeleted(action, user)
+      AccountDeletionResult.RecentLoginRequired,
+      AccountDeletionResult.NotAllowed,
+      AccountDeletionResult.NotSignedIn -> signOut(action, user.email)
+      AccountDeletionResult.NetworkError ->
+          failLeave(action, VerificationMessage.DeleteNetworkError)
+      AccountDeletionResult.UnexpectedError -> failLeave(action, VerificationMessage.DeleteError)
+    }
+  }
+
+  /**
+   * Signs out of an account that is gone: its UID is never reused, its address keeps the cooldown.
+   */
+  private suspend fun signOutDeleted(action: VerificationLeave, user: AuthUser) {
+    clearTiming(user.uid)
+    signOut(action, user.email)
   }
 
   /** Repeats the way out that last failed; does nothing if none did. */
@@ -197,14 +227,17 @@ constructor(
     }
   }
 
-  private suspend fun clearAccountTiming(uid: String) {
+  /** Clears the account's resend timing, and [address]'s when given, as far as the store can. */
+  private suspend fun clearTiming(uid: String, address: String? = null) {
     try {
       store.clear(uid)
+      if (address != null) store.clearAddress(address)
     } catch (cancelled: CancellationException) {
       throw cancelled
     } catch (_: Exception) {
-      // The account is already deleted and its UID is never reused, so its stale timestamps can't
-      // affect anyone; failing to remove them must not keep the user on a deleted account.
+      // These deadlines can't hold anyone back any more (a deleted account's UID is never reused,
+      // a verified account needs no new link), and failing to remove them must not keep the user
+      // on Verify Email.
     }
   }
 

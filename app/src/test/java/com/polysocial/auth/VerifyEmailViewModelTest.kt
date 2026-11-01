@@ -5,6 +5,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) made a failing test here fail instead of hang, #292.
 // Contributors: Claude (Opus 5.5, Anthropic) added the address-keyed store fake and adapted the
 // sign-out tests to the account deletion, #225; Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) kept the pending-check test on an unverified account
+// now that leaving reloads it first, #225 review.
 package com.polysocial.auth
 
 import androidx.lifecycle.ViewModelStore
@@ -516,7 +518,16 @@ class VerifyEmailViewModelTest {
   @Test
   fun changingAddressCancelsPendingCheckAndPreservesTheOriginalAccountsTiming() = runVerifyTest {
     store.timings[user.uid] = VerificationTiming(now, now + 45_000)
-    val vm = viewModel()
+    // Only the pending check would answer Verified; leaving's own reload, which a verified answer
+    // would sign out with cleared timing (#225 review), still finds the account unverified.
+    var reloads = 0
+    val auth =
+        object : AuthRepository by repository {
+          override suspend fun reloadAndCheckVerified(): VerificationResult =
+              if (++reloads == 1) repository.reloadAndCheckVerified()
+              else VerificationResult.Unverified
+        }
+    val vm = viewModel(auth)
     vm.enter()
     runCurrent()
     repository.checkGate = CompletableDeferred()
@@ -528,6 +539,8 @@ class VerifyEmailViewModelTest {
     vm.leave(VerificationLeave.ChangeAddress)
     repository.checkGate!!.complete(Unit)
     runCurrent()
+    assertEquals(2, reloads)
+    assertEquals(1, deletion.calls)
     assertEquals(1, repository.logOutCalls)
     assertNull(repository.currentUser())
     assertEquals(VerifyEmailUiState(exit = VerificationExit.SignUp(user.email)), vm.uiState.value)

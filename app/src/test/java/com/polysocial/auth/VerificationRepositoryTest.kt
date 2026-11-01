@@ -1,5 +1,7 @@
 // Contributors: OpenAI Codex (mocked email delivery, reload and token-refresh regression tests for
 // #31).
+// Contributors: Claude (Opus 5.5, Anthropic) tested a reload of a deleted or disabled account, #225
+// review.
 package com.polysocial.auth
 
 import android.app.Application
@@ -7,6 +9,7 @@ import com.google.android.gms.tasks.Tasks
 import com.google.firebase.FirebaseNetworkException
 import com.google.firebase.FirebaseTooManyRequestsException
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseAuthInvalidUserException
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.auth.GetTokenResult
 import com.polysocial.model.auth.FirebaseAuthRepository
@@ -106,6 +109,20 @@ class VerificationRepositoryTest {
       every { user.reload() } returns Tasks.forResult(null)
       every { user.getIdToken(true) } returns Tasks.forException(error)
       assertEquals(result, repository.reloadAndCheckVerified())
+    }
+  }
+
+  @Test
+  fun aDeletedOrDisabledAccountReloadsAsSignedOut() = runTest {
+    // An earlier deletion went through but its answer was lost, or an admin disabled the account.
+    for (code in listOf("ERROR_USER_NOT_FOUND", "ERROR_USER_DISABLED")) {
+      val error = FirebaseAuthInvalidUserException(code, "test failure")
+      signedIn()
+      every { user.reload() } returns Tasks.forException(error)
+      assertEquals(code, VerificationResult.NotSignedIn, repository.reloadAndCheckVerified())
+      signedIn(true)
+      every { user.getIdToken(true) } returns Tasks.forException(error)
+      assertEquals(code, VerificationResult.NotSignedIn, repository.reloadAndCheckVerified())
     }
   }
 
