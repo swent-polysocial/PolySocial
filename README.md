@@ -196,7 +196,7 @@ Keep `--only functions`: a plain `firebase deploy` would also deploy the Securit
 
 ## Project links
 
-- **Figma mockups:** [First proposal revamped](https://www.figma.com/design/7Gt7tmy1ikpNyNBh1P6QdY/App-Mockup?node-id=123-467) (the team-agreed design)
+- **Figma mockups:** [M2](https://www.figma.com/design/7Gt7tmy1ikpNyNBh1P6QdY/App-Mockup?node-id=123-467), the team-agreed design (the page was "First proposal revamped" until M1; the M1 snapshot is linked from the wiki's Home)
 - **Scrum Board:** [GitHub Project](https://github.com/orgs/swent-polysocial/projects/1). The Product Backlog is draft items, and Sprint tasks are issues.
 - **Wiki:** [Home](https://github.com/swent-polysocial/PolySocial/wiki), with the [Team Agreement](https://github.com/swent-polysocial/PolySocial/wiki/Team-Agreement) and [Architecture Diagram](https://github.com/swent-polysocial/PolySocial/wiki/Architecture-Diagram)
 - **Course:** [SwEnt project guidelines](https://github.com/swent-epfl/public/tree/main/project)
