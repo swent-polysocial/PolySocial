@@ -7,6 +7,8 @@
 // Log out from the start error, with the cache cleared first, #208).
 // Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
 // Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) passed the deletion and network fakes, #225;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -25,6 +27,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.model.account.FakeAccountDeletionRepository
 import com.polysocial.model.association.AssociationResult
 import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.AuthUser
@@ -35,6 +38,7 @@ import com.polysocial.model.auth.VerificationClock
 import com.polysocial.model.firebase.CacheClearResult
 import com.polysocial.model.firebase.FakeSessionGuard
 import com.polysocial.model.firebase.SessionCache
+import com.polysocial.model.network.FakeNetworkMonitor
 import com.polysocial.model.user.AccountType
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.ProfileResult
@@ -123,7 +127,13 @@ class PendingAssociationFlowTest {
             sessions = FakeSessionGuard(),
         )
     val verification =
-        VerifyEmailViewModel(auth, MemoryVerificationStore(), VerificationClock { 1000 })
+        VerifyEmailViewModel(
+            auth,
+            MemoryVerificationStore(),
+            VerificationClock { 1000 },
+            FakeAccountDeletionRepository(),
+            FakeNetworkMonitor(),
+        )
     val signUp = SignUpViewModel(auth, EmptyAssociationSignupStore)
     val login = LoginViewModel(auth)
     val profileStep = ProfileSetupViewModel(auth, profiles)

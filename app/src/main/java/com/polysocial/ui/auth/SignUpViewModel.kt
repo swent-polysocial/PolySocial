@@ -2,6 +2,8 @@
 // Contributors: OpenAI Codex (discard previous session form state on logout, #109).
 // Contributors: OpenAI Codex (GPT-6.1 Sol, medium; implemented sign-up form state and submission;
 // reset the form when changing address for #31; ); Claude (fresh form after a sign-out, #74).
+// Contributors: Claude (Opus 5.5, Anthropic) prefilled the address after Change address, #225;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.ui.auth
 
 import androidx.lifecycle.ViewModel
@@ -61,10 +63,11 @@ constructor(
   /**
    * Starts a fresh form: after Verify Email signs out to change the address (#31), and after any
    * sign-out (#74), so a finished sign-up can't send the next person on this device straight to
-   * Verify Email.
+   * Verify Email. Change address passes the address it left in [email], so a typo can be fixed in
+   * place (#225); nothing else of the previous form is kept.
    */
-  fun reset(accountType: AccountType = AccountType.STUDENT) {
-    mutableState.value = SignUpUiState(form = SignUpForm(accountType = accountType))
+  fun reset(accountType: AccountType = AccountType.STUDENT, email: String = "") {
+    mutableState.value = SignUpUiState(form = SignUpForm(email = email, accountType = accountType))
   }
 
   fun update(field: SignUpField, value: String) {

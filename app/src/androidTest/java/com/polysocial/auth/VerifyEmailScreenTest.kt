@@ -6,6 +6,8 @@
 // rebase).
 // Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
 // Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) passed the deletion and network fakes and the Retry
+// callback, #225; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.auth
 
 import android.content.res.Configuration
@@ -33,6 +35,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
+import com.polysocial.model.account.FakeAccountDeletionRepository
 import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.auth.AuthUser
@@ -44,6 +47,7 @@ import com.polysocial.model.auth.VerificationResult
 import com.polysocial.model.auth.VerificationStore
 import com.polysocial.model.auth.VerificationTiming
 import com.polysocial.model.firebase.FakeSessionGuard
+import com.polysocial.model.network.FakeNetworkMonitor
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.UserProfile
 import com.polysocial.model.user.UserProfileRepository
@@ -96,6 +100,12 @@ class VerifyEmailScreenTest {
         override suspend fun clear(uid: String) {
           timings.remove(uid)
         }
+
+        override suspend fun readAddress(email: String) = VerificationTiming()
+
+        override suspend fun writeAddress(email: String, timing: VerificationTiming) = Unit
+
+        override suspend fun clearAddress(email: String) = Unit
       }
   private val now = 1_000_000L
   private lateinit var vm: VerifyEmailViewModel
@@ -131,7 +141,14 @@ class VerifyEmailScreenTest {
             associations = FakeAssociationRepository(),
             sessions = FakeSessionGuard(),
         )
-    vm = VerifyEmailViewModel(repository, store, VerificationClock { now })
+    vm =
+        VerifyEmailViewModel(
+            repository,
+            store,
+            VerificationClock { now },
+            FakeAccountDeletionRepository(),
+            FakeNetworkMonitor(),
+        )
     signup = SignUpViewModel(repository, EmptyAssociationSignupStore)
     login = LoginViewModel(repository)
   }
@@ -213,7 +230,14 @@ class VerifyEmailScreenTest {
             associations = FakeAssociationRepository(),
             sessions = FakeSessionGuard(),
         )
-    vm = VerifyEmailViewModel(repository, store, VerificationClock { now })
+    vm =
+        VerifyEmailViewModel(
+            repository,
+            store,
+            VerificationClock { now },
+            FakeAccountDeletionRepository(),
+            FakeNetworkMonitor(),
+        )
     flow()
     compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
     coVerify(exactly = 0) { repository.reloadAndCheckVerified() }
@@ -301,11 +325,12 @@ class VerifyEmailScreenTest {
   }
 
   @Test
-  fun changeAddressSignsOutAndOpensFreshSignUpForm() {
+  fun changeAddressSignsOutAndOpensSignUpWithTheAddress() {
     flow()
     compose.onNodeWithTag(VerifyEmailTags.ChangeAddress).performScrollTo().performClick()
     compose.onNodeWithTag(SignUpTags.Screen).assertIsDisplayed()
-    compose.onNodeWithTag(SignUpTags.input(SignUpField.Email)).assertTextEquals("")
+    // The deleted account's address comes back so a typo can be fixed in place (#225).
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.Email)).assertTextEquals(user.email)
     compose.onNodeWithTag(VerifyEmailTags.Screen).assertDoesNotExist()
     verify(exactly = 1) { repository.logOut() }
   }
@@ -367,6 +392,7 @@ class VerifyEmailScreenTest {
             {},
             {},
             {},
+            {},
         )
       }
     }
@@ -382,6 +408,7 @@ class VerifyEmailScreenTest {
       PolySocialTheme {
         VerifyEmailScreen(
             VerifyEmailUiState(email = user.email, hasSentEmail = true, remainingSeconds = 45),
+            {},
             {},
             {},
             {},

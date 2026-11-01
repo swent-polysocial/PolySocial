@@ -14,6 +14,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
 // Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (Finish on the interests step, #230).
+// Contributors: Claude (Opus 5.5, Anthropic) passed the deletion and network fakes, #225;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -30,10 +32,12 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
+import com.polysocial.model.account.FakeAccountDeletionRepository
 import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
 import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.firebase.FakeSessionGuard
+import com.polysocial.model.network.FakeNetworkMonitor
 import com.polysocial.model.user.*
 import com.polysocial.resources.C
 import com.polysocial.ui.auth.*
@@ -98,9 +102,14 @@ class AuthFlowTest {
   }
 
   private fun verificationModel() =
-      VerifyEmailViewModel(auth, MemoryVerificationStore(), VerificationClock { 1000 }).also {
-        verificationModels.add(it)
-      }
+      VerifyEmailViewModel(
+              auth,
+              MemoryVerificationStore(),
+              VerificationClock { 1000 },
+              FakeAccountDeletionRepository(),
+              FakeNetworkMonitor(),
+          )
+          .also { verificationModels.add(it) }
 
   private lateinit var start: AppStartViewModel
 
@@ -114,9 +123,14 @@ class AuthFlowTest {
             sessions = FakeSessionGuard(),
         )
     val verification =
-        VerifyEmailViewModel(auth, MemoryVerificationStore(), VerificationClock { 1000 }).also {
-          verificationModels.add(it)
-        }
+        VerifyEmailViewModel(
+                auth,
+                MemoryVerificationStore(),
+                VerificationClock { 1000 },
+                FakeAccountDeletionRepository(),
+                FakeNetworkMonitor(),
+            )
+            .also { verificationModels.add(it) }
     // Like the app's, the step's ViewModel is created with the flow and outlives its screen.
     val profileStep = ProfileSetupViewModel(auth, profiles)
     // The real Events tab needs Hilt; these tests only check that the shell opens.

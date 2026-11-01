@@ -1,5 +1,7 @@
 // Contributors: Figma mockup (verification layout); OpenAI Codex (Compose verification UI and
 // adaptive two-column layout for #31).
+// Contributors: Claude (Opus 5.5, Anthropic) added the deleting state and the Retry after a failed
+// deletion, #225; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.ui.auth
 
 import androidx.compose.animation.core.LinearEasing
@@ -87,6 +89,8 @@ object VerifyEmailTags {
   const val Hero = "verification_hero"
   const val Actions = "verification_actions"
   const val TwoColumns = "verification_two_columns"
+  const val Leaving = "verification_leaving"
+  const val Retry = "verification_retry"
 }
 
 @Composable
@@ -97,6 +101,7 @@ fun VerifyEmailScreen(
     onContinue: () -> Unit,
     onResend: () -> Unit,
     onSnackbarShown: () -> Unit,
+    onRetry: () -> Unit,
 ) {
   val snackbar = remember { SnackbarHostState() }
   val snackbarMessage = state.snackbar?.let { stringResource(it.resource()) }
@@ -124,6 +129,7 @@ fun VerifyEmailScreen(
       ) {
         IconButton(
             onClick = onBack,
+            enabled = !state.leaving,
             modifier =
                 Modifier.align(Alignment.Start)
                     .size(48.dp)
@@ -146,7 +152,7 @@ fun VerifyEmailScreen(
           ) {
             VerificationHero(state, onChangeAddress, Modifier.weight(1f))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-              VerificationBanner(state.banner)
+              VerificationBanner(state, onRetry)
               VerificationActions(state, onContinue, onResend)
             }
           }
@@ -154,7 +160,7 @@ fun VerifyEmailScreen(
           Spacer(Modifier.height((screenHeight * 0.149f).coerceAtMost(120.dp)))
           VerificationHero(state, onChangeAddress)
           Spacer(Modifier.height(20.dp))
-          VerificationBanner(state.banner)
+          VerificationBanner(state, onRetry)
           Spacer(Modifier.weight(1f))
           Spacer(Modifier.height(24.dp))
           VerificationActions(state, onContinue, onResend)
@@ -218,8 +224,12 @@ private fun VerificationHero(
         enabled = !state.busy,
         modifier = Modifier.testTag(VerifyEmailTags.ChangeAddress),
     ) {
+      if (state.leaving) VerificationSpinner(AccentText, VerifyEmailTags.Leaving)
       Text(
-          stringResource(R.string.verification_change_address),
+          stringResource(
+              if (state.leaving) R.string.verification_leaving
+              else R.string.verification_change_address
+          ),
           style =
               MaterialTheme.typography.bodyMedium.copy(
                   fontWeight = FontWeight.Bold,
@@ -288,7 +298,7 @@ private fun VerificationActions(
 }
 
 @Composable
-private fun VerificationSpinner(color: Color) {
+private fun VerificationSpinner(color: Color, tag: String = VerifyEmailTags.Loading) {
   val transition = rememberInfiniteTransition(label = "Verification loading")
   val rotation by
       transition.animateFloat(
@@ -300,18 +310,16 @@ private fun VerificationSpinner(color: Color) {
   Image(
       painterResource(R.drawable.signup_spinner),
       null,
-      modifier =
-          Modifier.size(18.dp)
-              .rotate(rotation)
-              .progressSemantics()
-              .testTag(VerifyEmailTags.Loading),
+      modifier = Modifier.size(18.dp).rotate(rotation).progressSemantics().testTag(tag),
       colorFilter = ColorFilter.tint(color),
   )
   Spacer(Modifier.width(8.dp))
 }
 
 @Composable
-private fun VerificationBanner(message: VerificationMessage?) {
+private fun VerificationBanner(state: VerifyEmailUiState, onRetry: () -> Unit) {
+  // A failed deletion replaces the verification message until the user acts again.
+  val message = state.leaveError?.message ?: state.banner
   val background =
       when (message) {
         VerificationMessage.Throttled -> WarningSoft
@@ -341,16 +349,31 @@ private fun VerificationBanner(message: VerificationMessage?) {
         Modifier.size(18.dp),
         colorFilter = ColorFilter.tint(foreground),
     )
-    Text(
-        stringResource(message?.resource() ?: R.string.verification_spam),
-        color = foreground,
-        style =
-            MaterialTheme.typography.bodyMedium.copy(
-                fontSize = 13.sp,
-                lineHeight = 19.sp,
-                fontWeight = if (message == null) FontWeight.Normal else FontWeight.SemiBold,
-            ),
-    )
+    Column(Modifier.weight(1f)) {
+      Text(
+          stringResource(message?.resource() ?: R.string.verification_spam),
+          color = foreground,
+          style =
+              MaterialTheme.typography.bodyMedium.copy(
+                  fontSize = 13.sp,
+                  lineHeight = 19.sp,
+                  fontWeight = if (message == null) FontWeight.Normal else FontWeight.SemiBold,
+              ),
+      )
+      if (state.leaveError != null) {
+        TextButton(
+            onClick = onRetry,
+            enabled = !state.busy,
+            modifier = Modifier.offset(x = (-12).dp).testTag(VerifyEmailTags.Retry),
+        ) {
+          Text(
+              stringResource(R.string.retry),
+              color = foreground,
+              style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+          )
+        }
+      }
+    }
   }
 }
 
@@ -363,4 +386,6 @@ private fun VerificationMessage.resource(): Int =
       VerificationMessage.NetworkError -> R.string.verification_network
       VerificationMessage.UnexpectedError -> R.string.verification_error
       VerificationMessage.NotSignedIn -> R.string.verification_not_signed_in
+      VerificationMessage.DeleteNetworkError -> R.string.verification_delete_network
+      VerificationMessage.DeleteError -> R.string.verification_delete_error
     }

@@ -3,6 +3,8 @@
 // verification injection after rebase, #109).
 // Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
 // Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) passed the deletion and network fakes, #225;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.ui.profile
 
 import androidx.activity.ComponentActivity
@@ -15,10 +17,12 @@ import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.auth.MemoryVerificationStore
+import com.polysocial.model.account.FakeAccountDeletionRepository
 import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
 import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.firebase.*
+import com.polysocial.model.network.FakeNetworkMonitor
 import com.polysocial.model.user.*
 import com.polysocial.resources.C
 import com.polysocial.ui.auth.*
@@ -47,7 +51,13 @@ class LogoutFlowTest {
   private val signup = SignUpViewModel(auth, EmptyAssociationSignupStore)
   private val login = LoginViewModel(auth)
   private val verification =
-      VerifyEmailViewModel(auth, MemoryVerificationStore(), VerificationClock { 1000 })
+      VerifyEmailViewModel(
+          auth,
+          MemoryVerificationStore(),
+          VerificationClock { 1000 },
+          FakeAccountDeletionRepository(),
+          FakeNetworkMonitor(),
+      )
 
   @After
   fun clearVerification() {

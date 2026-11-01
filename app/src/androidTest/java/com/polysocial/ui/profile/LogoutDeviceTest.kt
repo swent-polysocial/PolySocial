@@ -6,6 +6,8 @@
 // Contributors: OpenAI Codex (Google sign-in contract compatibility during #106 rebase).
 // Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
 // Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) passed the deletion and network fakes, #225;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.ui.profile
 
 import android.content.Context
@@ -15,10 +17,12 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.model.account.FakeAccountDeletionRepository
 import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
 import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.firebase.*
+import com.polysocial.model.network.FakeNetworkMonitor
 import com.polysocial.model.user.*
 import com.polysocial.model.user.AccountType
 import com.polysocial.resources.C
@@ -120,6 +124,8 @@ class LogoutDeviceTest {
               auth,
               PreferencesVerificationStore(ApplicationProvider.getApplicationContext()),
               VerificationClock { 1000 },
+              FakeAccountDeletionRepository(),
+              FakeNetworkMonitor(),
           )
         }
         AuthFlow(

@@ -2,6 +2,8 @@
 // synthetic screenshots for #107).
 // Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
 // Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) passed the deletion and network fakes, #225;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.auth
 
 import android.graphics.Bitmap
@@ -12,6 +14,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
+import com.polysocial.model.account.FakeAccountDeletionRepository
 import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.auth.AuthUser
@@ -19,6 +22,7 @@ import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.auth.GoogleAccount
 import com.polysocial.model.auth.GoogleSignInResult
 import com.polysocial.model.firebase.FakeSessionGuard
+import com.polysocial.model.network.FakeNetworkMonitor
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.UserProfile
 import com.polysocial.model.user.UserProfileRepository
@@ -81,6 +85,8 @@ class GoogleSignInScreenTest {
             auth,
             mockk(),
             com.polysocial.model.auth.VerificationClock { 1000 },
+            FakeAccountDeletionRepository(),
+            FakeNetworkMonitor(),
         )
     compose.setContent {
       PolySocialTheme {

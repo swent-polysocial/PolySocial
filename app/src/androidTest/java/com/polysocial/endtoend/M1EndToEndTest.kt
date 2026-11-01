@@ -10,6 +10,8 @@
 // Contributors: Claude Opus 5.5 (medium) (the My events step, #204).
 // Contributors: Claude (Opus 5.5, Anthropic) bound fake group and public profile repositories,
 // which Find a group's ViewModel needs, #233.
+// Contributors: Claude (Opus 5.5, Anthropic) kept the test store's address cooldown, #225;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.endtoend
 
 import androidx.activity.compose.setContent
@@ -490,6 +492,19 @@ class M1EndToEndTest {
 
     override suspend fun clear(uid: String) {
       timings.remove(uid)
+    }
+
+    private val addresses = mutableMapOf<String, VerificationTiming>()
+
+    override suspend fun readAddress(email: String) =
+        addresses[email.trim().lowercase()] ?: VerificationTiming()
+
+    override suspend fun writeAddress(email: String, timing: VerificationTiming) {
+      addresses[email.trim().lowercase()] = timing
+    }
+
+    override suspend fun clearAddress(email: String) {
+      addresses.remove(email.trim().lowercase())
     }
   }
 

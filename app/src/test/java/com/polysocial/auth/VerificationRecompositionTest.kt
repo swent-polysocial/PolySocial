@@ -3,6 +3,8 @@
 // Contributors: OpenAI Codex (preserved per-session injection after PR #168 rebase).
 // Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
 // Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) passed the deletion and network fakes and expected
+// the prefilled address after Change address, #225; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -20,14 +22,17 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.model.account.FakeAccountDeletionRepository
 import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.auth.SignUpField
+import com.polysocial.model.auth.SignUpForm
 import com.polysocial.model.auth.VerificationClock
 import com.polysocial.model.auth.VerificationTiming
 import com.polysocial.model.firebase.FakeSessionGuard
+import com.polysocial.model.network.FakeNetworkMonitor
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.ui.auth.AuthFlow
 import com.polysocial.ui.auth.SignUpTags
@@ -77,7 +82,13 @@ class VerificationRecompositionTest {
                 associations = FakeAssociationRepository(),
                 sessions = FakeSessionGuard(),
             ),
-            VerifyEmailViewModel(auth, store, VerificationClock { 100_000 }),
+            VerifyEmailViewModel(
+                auth,
+                store,
+                VerificationClock { 100_000 },
+                FakeAccountDeletionRepository(),
+                FakeNetworkMonitor(),
+            ),
             com.polysocial.ui.auth.WelcomeViewModel(auth),
             com.polysocial.ui.profile.ProfileSetupViewModel(auth, FakeUserProfileRepository()),
         )
@@ -160,7 +171,11 @@ class VerificationRecompositionTest {
     compose.onNodeWithTag(SignUpTags.Screen).assertIsDisplayed()
     assertNull(correction.auth.currentUser())
     assertEquals(1, correction.auth.logOutCalls)
-    assertEquals(SignUpUiState(), correction.signup.uiState.value)
+    // Only the deleted account's address is kept, to fix it in place (#225).
+    assertEquals(
+        SignUpUiState(form = SignUpForm(email = "correction.test@epfl.ch")),
+        correction.signup.uiState.value,
+    )
     assertEquals("", correction.login.uiState.value.email)
     assertEquals(1, replacement.auth.logOutCalls)
     assertEquals("Test Student", original.signup.uiState.value.form.fullName)

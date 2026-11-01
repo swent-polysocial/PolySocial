@@ -3,6 +3,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
 // Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (Finish on the interests step, #230).
+// Contributors: Claude (Opus 5.5, Anthropic) passed the deletion and network fakes, #225;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -18,10 +20,12 @@ import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.model.account.FakeAccountDeletionRepository
 import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
 import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.firebase.FakeSessionGuard
+import com.polysocial.model.network.FakeNetworkMonitor
 import com.polysocial.model.user.*
 import com.polysocial.ui.auth.*
 import com.polysocial.ui.login.LoginScreenTestTags
@@ -48,7 +52,13 @@ class GoogleAuthFlowTest {
   private val signUp = SignUpViewModel(auth, EmptyAssociationSignupStore)
   private val profile = ProfileSetupViewModel(auth, profiles)
   private val verification =
-      VerifyEmailViewModel(auth, MemoryVerificationStore(), VerificationClock { 1000 })
+      VerifyEmailViewModel(
+          auth,
+          MemoryVerificationStore(),
+          VerificationClock { 1000 },
+          FakeAccountDeletionRepository(),
+          FakeNetworkMonitor(),
+      )
   private val restore = StateRestorationTester(compose)
 
   private fun launch(existing: Boolean = false) {

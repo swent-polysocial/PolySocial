@@ -2,6 +2,8 @@
 // Contributors: OpenAI Codex (session-guard fake for rebased association integration tests).
 // Contributors: OpenAI Codex (association activity recreation, navigation and logout regression,
 // #140).
+// Contributors: Claude (Opus 5.5, Anthropic) stored the address cooldown in the test store, #225;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.auth
 
 import androidx.compose.ui.test.assertIsDisplayed
@@ -126,6 +128,19 @@ class AssociationTabsDeviceTest {
 
         override suspend fun clear(uid: String) {
           values.remove(uid)
+        }
+
+        private val addresses = mutableMapOf<String, VerificationTiming>()
+
+        override suspend fun readAddress(email: String) =
+            addresses[email.trim().lowercase()] ?: VerificationTiming()
+
+        override suspend fun writeAddress(email: String, timing: VerificationTiming) {
+          addresses[email.trim().lowercase()] = timing
+        }
+
+        override suspend fun clearAddress(email: String) {
+          addresses.remove(email.trim().lowercase())
         }
       }
   @BindValue @JvmField val verificationClock: VerificationClock = VerificationClock { 1000 }

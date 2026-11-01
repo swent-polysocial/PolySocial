@@ -1,6 +1,8 @@
 // Contributors: OpenAI Codex (verified association routing regression after stack rebase, #140).
 // Contributors: OpenAI Codex (association onboarding, recreation, session-boundary and validation
 // UI tests and redundant draft-test cleanup, #125).
+// Contributors: Claude (Opus 5.5, Anthropic) passed the deletion and network fakes, #225;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -15,12 +17,14 @@ import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.model.account.FakeAccountDeletionRepository
 import com.polysocial.model.association.Association
 import com.polysocial.model.association.AssociationResult
 import com.polysocial.model.association.AssociationType
 import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
 import com.polysocial.model.firebase.FakeSessionGuard
+import com.polysocial.model.network.FakeNetworkMonitor
 import com.polysocial.model.user.*
 import com.polysocial.ui.auth.*
 import com.polysocial.ui.login.LoginScreenTestTags
@@ -61,7 +65,13 @@ class AssociationAuthFlowTest {
   private val welcome = WelcomeViewModel(auth)
   private val profileSetup = ProfileSetupViewModel(auth, profiles)
   private val verification =
-      VerifyEmailViewModel(auth, MemoryVerificationStore(), VerificationClock { 1000 })
+      VerifyEmailViewModel(
+          auth,
+          MemoryVerificationStore(),
+          VerificationClock { 1000 },
+          FakeAccountDeletionRepository(),
+          FakeNetworkMonitor(),
+      )
   private val restoration = StateRestorationTester(compose)
   private lateinit var start: AppStartViewModel
   private var setupCompletions = 0
