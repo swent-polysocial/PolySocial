@@ -4,6 +4,8 @@
 // test-first, #277).
 // Contributors: Claude (testing agent: whole-screen neutral texts and the real send's snackbar,
 // #277; tidied after review, #277).
+// Contributors: Claude (Opus 5.5, Anthropic) tested the deleting state and its Retry, #225; Mohamed
+// Khellaf (reviewed and revised).
 package com.polysocial.auth
 
 import androidx.compose.runtime.CompositionLocalProvider
@@ -34,9 +36,13 @@ import androidx.compose.ui.unit.Density
 import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
+import com.polysocial.model.account.FakeAccountDeletionRepository
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.auth.VerificationClock
+import com.polysocial.model.network.FakeNetworkMonitor
+import com.polysocial.ui.auth.VerificationLeave
+import com.polysocial.ui.auth.VerificationLeaveError
 import com.polysocial.ui.auth.VerificationMessage
 import com.polysocial.ui.auth.VerifyEmailScreen
 import com.polysocial.ui.auth.VerifyEmailTags
@@ -67,13 +73,22 @@ class VerifyEmailLayoutTest {
   private var resends = 0
   private var backs = 0
   private var changes = 0
+  private var retries = 0
 
   private fun launch(fontScale: Float = 1f) = compose.setContent {
     CompositionLocalProvider(
         LocalDensity provides Density(LocalDensity.current.density, fontScale)
     ) {
       PolySocialTheme {
-        VerifyEmailScreen(state.value, { backs++ }, { changes++ }, { checks++ }, { resends++ }, {})
+        VerifyEmailScreen(
+            state.value,
+            { backs++ },
+            { changes++ },
+            { checks++ },
+            { resends++ },
+            {},
+            { retries++ },
+        )
       }
     }
   }
@@ -272,7 +287,14 @@ class VerifyEmailLayoutTest {
     // Opening the screen sends the first email through the real ViewModel, which puts Sent in both
     // the banner and the snackbar, as a resend does: neither may offer a Retry or any other action.
     val auth = FakeAuthRepository(AuthUser("club", "club@example.org", false))
-    val viewModel = VerifyEmailViewModel(auth, MemoryVerificationStore(), VerificationClock { 0L })
+    val viewModel =
+        VerifyEmailViewModel(
+            auth,
+            MemoryVerificationStore(),
+            VerificationClock { 0L },
+            FakeAccountDeletionRepository(),
+            FakeNetworkMonitor(),
+        )
     try {
       compose.setContent {
         val screenState by viewModel.uiState.collectAsState()
@@ -284,6 +306,7 @@ class VerifyEmailLayoutTest {
               { viewModel.checkVerified() },
               { viewModel.resend() },
               { viewModel.snackbarShown() },
+              {},
           )
         }
       }
@@ -306,4 +329,54 @@ class VerifyEmailLayoutTest {
       }
     }
   }
+
+  @Test
+  fun deletingShowsProgressAndBlocksEveryWayOut() {
+    state.value = state.value.copy(leaving = true)
+    launch()
+    compose.onNodeWithTag(VerifyEmailTags.Leaving).assertIsDisplayed()
+    compose
+        .onNodeWithTag(VerifyEmailTags.ChangeAddress)
+        .assertIsNotEnabled()
+        .assertTextContains(text(R.string.verification_leaving), substring = true)
+    compose.onNodeWithTag(VerifyEmailTags.Back).assertIsNotEnabled()
+    compose.onNodeWithTag(VerifyEmailTags.Continue).assertIsNotEnabled()
+    compose.onNodeWithTag(VerifyEmailTags.Retry).assertDoesNotExist()
+  }
+
+  @Test
+  fun failedDeletionShowsItsMessageWithRetry() {
+    state.value =
+        state.value.copy(
+            banner = VerificationMessage.Sent,
+            leaveError =
+                VerificationLeaveError(
+                    VerificationLeave.ChangeAddress,
+                    VerificationMessage.DeleteNetworkError,
+                ),
+        )
+    launch()
+    compose
+        .onNodeWithTag(VerifyEmailTags.Banner)
+        .assertTextContains(text(R.string.verification_delete_network))
+    compose.onNodeWithTag(VerifyEmailTags.Retry).assertIsEnabled().performClick()
+    assertEquals(1, retries)
+    compose.runOnIdle {
+      state.value =
+          state.value.copy(
+              leaveError =
+                  VerificationLeaveError(VerificationLeave.Back, VerificationMessage.DeleteError)
+          )
+    }
+    compose
+        .onNodeWithTag(VerifyEmailTags.Banner)
+        .assertTextContains(text(R.string.verification_delete_error))
+    compose.runOnIdle { state.value = state.value.copy(leaveError = null) }
+    compose.onNodeWithTag(VerifyEmailTags.Retry).assertDoesNotExist()
+    compose
+        .onNodeWithTag(VerifyEmailTags.Banner)
+        .assertTextContains(text(R.string.verification_sent))
+  }
+
+  private fun text(id: Int) = RuntimeEnvironment.getApplication().getString(id)
 }

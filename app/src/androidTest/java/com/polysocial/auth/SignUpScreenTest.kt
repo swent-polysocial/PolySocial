@@ -8,6 +8,8 @@
 // #31).
 // Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
 // Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) passed the deletion and network fakes and stored
+// the address cooldown, #225; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -19,10 +21,12 @@ import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.polysocial.R
+import com.polysocial.model.account.FakeAccountDeletionRepository
 import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
 import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.firebase.FakeSessionGuard
+import com.polysocial.model.network.FakeNetworkMonitor
 import com.polysocial.model.user.*
 import com.polysocial.resources.C
 import com.polysocial.ui.auth.*
@@ -68,6 +72,19 @@ class SignUpScreenTest {
         override suspend fun clear(uid: String) {
           timings.remove(uid)
         }
+
+        private val addresses = mutableMapOf<String, VerificationTiming>()
+
+        override suspend fun readAddress(email: String) =
+            addresses[email.trim().lowercase()] ?: VerificationTiming()
+
+        override suspend fun writeAddress(email: String, timing: VerificationTiming) {
+          addresses[email.trim().lowercase()] = timing
+        }
+
+        override suspend fun clearAddress(email: String) {
+          addresses.remove(email.trim().lowercase())
+        }
       }
   private lateinit var verificationViewModel: VerifyEmailViewModel
   private var session: AuthUser? = null
@@ -94,6 +111,8 @@ class SignUpScreenTest {
             repository,
             verificationStore,
             VerificationClock { 1_000_000L },
+            FakeAccountDeletionRepository(),
+            FakeNetworkMonitor(),
         )
     coEvery { repository.signUp(any(), any(), any()) } answers
         {

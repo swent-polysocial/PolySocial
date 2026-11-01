@@ -3,9 +3,13 @@
 // production sign-out/re-entry, sealed-entry behavior and replacement during pending entry;
 // reset without sign-out for #109).
 // Contributors: Claude (Opus 5.5, Anthropic) made a failing test here fail instead of hang, #292.
+// Contributors: Claude (Opus 5.5, Anthropic) added the address-keyed store fake and adapted the
+// sign-out tests to the account deletion, #225; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.auth
 
 import androidx.lifecycle.ViewModelStore
+import com.polysocial.model.account.AccountDeletionResult
+import com.polysocial.model.account.FakeAccountDeletionRepository
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
@@ -15,6 +19,9 @@ import com.polysocial.model.auth.VerificationClock
 import com.polysocial.model.auth.VerificationResult
 import com.polysocial.model.auth.VerificationStore
 import com.polysocial.model.auth.VerificationTiming
+import com.polysocial.model.network.FakeNetworkMonitor
+import com.polysocial.ui.auth.VerificationExit
+import com.polysocial.ui.auth.VerificationLeave
 import com.polysocial.ui.auth.VerificationMessage
 import com.polysocial.ui.auth.VerifyEmailUiState
 import com.polysocial.ui.auth.VerifyEmailViewModel
@@ -34,6 +41,8 @@ import org.junit.Test
 
 class MemoryVerificationStore : VerificationStore {
   val timings = mutableMapOf<String, VerificationTiming>()
+  /** Keyed by the normalised address, like the real store's digest. */
+  val addressTimings = mutableMapOf<String, VerificationTiming>()
   var failure: Exception? = null
   var readGate: CompletableDeferred<Unit>? = null
   var clearFailure: Exception? = null
@@ -53,6 +62,21 @@ class MemoryVerificationStore : VerificationStore {
     clearFailure?.let { throw it }
     timings.remove(uid)
   }
+
+  override suspend fun readAddress(email: String): VerificationTiming {
+    failure?.let { throw it }
+    return addressTimings[email.trim().lowercase()] ?: VerificationTiming()
+  }
+
+  override suspend fun writeAddress(email: String, timing: VerificationTiming) {
+    failure?.let { throw it }
+    addressTimings[email.trim().lowercase()] = timing
+  }
+
+  override suspend fun clearAddress(email: String) {
+    clearFailure?.let { throw it }
+    addressTimings.remove(email.trim().lowercase())
+  }
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -62,12 +86,16 @@ class VerifyEmailViewModelTest {
   private val repository = FakeAuthRepository(user)
   private val store = MemoryVerificationStore()
   private var now = 1_000_000L
+  private val deletion = FakeAccountDeletionRepository()
+  private val network = FakeNetworkMonitor()
 
   /** The view models the test made and hasn't disposed yet. */
   private val models = mutableListOf<VerifyEmailViewModel>()
 
   private fun viewModel(auth: AuthRepository = repository) =
-      VerifyEmailViewModel(auth, store, VerificationClock { now }).also { models += it }
+      VerifyEmailViewModel(auth, store, VerificationClock { now }, deletion, network).also {
+        models += it
+      }
 
   /** Clears [vm]; safe to call again, since a cleared view model ignores a second clear. */
   private fun dispose(vm: VerifyEmailViewModel) {
@@ -200,7 +228,10 @@ class VerifyEmailViewModelTest {
     runCurrent()
     assertNull(vm.uiState.value.snackbar)
     assertEquals(30L, vm.uiState.value.remainingSeconds)
-    vm.changeAddress()
+    // Logging in again needs the account to survive, as when the deletion falls back (#225).
+    deletion.result = AccountDeletionResult.RecentLoginRequired
+    vm.leave(VerificationLeave.ChangeAddress)
+    runCurrent()
     assertNull(repository.currentUser())
     assertEquals(VerificationTiming(now - 15_000, now + 30_000), store.timings[user.uid])
     repository.logInResult = LogInResult.Success(user)
@@ -492,11 +523,14 @@ class VerifyEmailViewModelTest {
     repository.verificationResult = VerificationResult.Verified
     vm.checkVerified()
     runCurrent()
-    vm.changeAddress()
+    // The account survives only when the deletion falls back to signing out (#225).
+    deletion.result = AccountDeletionResult.RecentLoginRequired
+    vm.leave(VerificationLeave.ChangeAddress)
+    repository.checkGate!!.complete(Unit)
     runCurrent()
     assertEquals(1, repository.logOutCalls)
     assertNull(repository.currentUser())
-    assertEquals(VerifyEmailUiState(), vm.uiState.value)
+    assertEquals(VerifyEmailUiState(exit = VerificationExit.SignUp(user.email)), vm.uiState.value)
     assertEquals(VerificationTiming(now, now + 45_000), store.timings[user.uid])
     dispose(vm)
   }
@@ -714,6 +748,8 @@ class VerifyEmailViewModelTest {
       assertEquals(VerificationMessage.Sent, vm.uiState.value.banner)
       assertEquals(VerificationTiming(now, now + 45_000), store.timings[user.uid])
       store.timings.clear()
+      // The address keeps its cooldown across accounts (#225); each round starts afresh.
+      store.addressTimings.clear()
       dispose(vm)
     }
   }

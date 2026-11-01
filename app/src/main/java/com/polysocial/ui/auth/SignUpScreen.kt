@@ -21,6 +21,8 @@
 // OpenAI Codex (password recovery destination and Back routing for #164).
 // Contributors: Claude (Opus 5.5, Anthropic) opened Welcome with "Account deleted" after a
 // deletion, #207; Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) left Verify Email only once its account is deleted,
+// #225; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.ui.auth
 
 import androidx.activity.compose.BackHandler
@@ -194,7 +196,9 @@ private class AssociationSetupCallbacks(start: AppStartViewModel) {
  * Back on the profile step signs out through [AppStartViewModel.logOut]. Profile logout (#109) and
  * the app-start error's Log out (#208) clear the cache and sign out before invoking the signed-out
  * callback. All these paths reset the retained auth screen state and return to Welcome with an
- * empty stack.
+ * empty stack. Verify Email's Back and Change address first delete the unverified account (#225)
+ * and move on only once [VerifyEmailUiState.exit] is set: Back to Welcome, Change address to Sign
+ * up with the address prefilled.
  *
  * @param signedInContent the app once the user is signed in. Tests replace it, because the real
  *   [AppShell] needs Hilt.
@@ -346,11 +350,27 @@ fun AuthFlow(
     if (verificationState.verified) startViewModel.refresh()
   }
   var recoveryInitialized by rememberSaveable { mutableStateOf(false) }
-  val backFromVerification = {
-    latestVerificationViewModel.changeAddress()
-    resetSessionState()
-    startViewModel.refresh()
-    destination = AuthDestination.Welcome
+  val backFromVerification = { latestVerificationViewModel.leave(VerificationLeave.Back) }
+  // Verify Email deletes its account before signing out (#225), so the way out waits for it.
+  LaunchedEffect(verificationState.exit) {
+    when (val exit = verificationState.exit) {
+      null -> Unit
+      VerificationExit.Welcome -> {
+        resetSessionState()
+        startViewModel.refresh()
+        destination = AuthDestination.Welcome
+      }
+      is VerificationExit.SignUp -> {
+        val currentSignup = latestSignUpViewModel.uiState.value
+        // A retained startup hint can belong to an earlier signup on this device.
+        val accountType =
+            if (currentSignup.status is SignUpStatus.SignedUp) currentSignup.form.accountType
+            else startViewModel.accountType.value
+        resetSessionState()
+        latestSignUpViewModel.reset(accountType, exit.email)
+        destination = AuthDestination.SignUp
+      }
+    }
   }
   fun open(target: AuthDestination) {
     // A double tap reports the same screen twice; it must not be stacked on itself.
@@ -457,16 +477,9 @@ fun AuthFlow(
             verificationState,
             onBack = backFromVerification,
             onChangeAddress = {
-              val currentSignup = latestSignUpViewModel.uiState.value
-              // A retained startup hint can belong to an earlier signup on this device.
-              val accountType =
-                  if (currentSignup.status is SignUpStatus.SignedUp) currentSignup.form.accountType
-                  else startViewModel.accountType.value
-              latestVerificationViewModel.changeAddress()
-              resetSessionState()
-              latestSignUpViewModel.reset(accountType)
-              destination = AuthDestination.SignUp
+              latestVerificationViewModel.leave(VerificationLeave.ChangeAddress)
             },
+            onRetry = { latestVerificationViewModel.retryLeave() },
             onContinue = { latestVerificationViewModel.checkVerified() },
             onResend = { latestVerificationViewModel.resend() },
             onSnackbarShown = { latestVerificationViewModel.snackbarShown() },

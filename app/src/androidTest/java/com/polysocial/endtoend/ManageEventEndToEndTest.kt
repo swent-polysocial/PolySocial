@@ -2,6 +2,7 @@
 // #239; every data source bound to a fake, as in M1EndToEndTest, #239 review).
 // Contributors: Claude (Opus 5.5, Anthropic) bound fake group and public profile repositories,
 // which Find a group's ViewModel needs, #233.
+// Contributors: Claude (Opus 5.5, Anthropic) kept the test store's address cooldown, #225.
 package com.polysocial.endtoend
 
 import androidx.compose.ui.test.SemanticsMatcher
@@ -311,6 +312,19 @@ class ManageEventEndToEndTest {
 
     override suspend fun clear(uid: String) {
       timings.remove(uid)
+    }
+
+    private val addresses = mutableMapOf<String, VerificationTiming>()
+
+    override suspend fun readAddress(email: String) =
+        addresses[email.trim().lowercase()] ?: VerificationTiming()
+
+    override suspend fun writeAddress(email: String, timing: VerificationTiming) {
+      addresses[email.trim().lowercase()] = timing
+    }
+
+    override suspend fun clearAddress(email: String) {
+      addresses.remove(email.trim().lowercase())
     }
   }
 

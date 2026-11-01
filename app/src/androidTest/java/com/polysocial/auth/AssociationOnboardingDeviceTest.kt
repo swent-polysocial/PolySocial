@@ -1,5 +1,7 @@
 // Contributors: OpenAI Codex (default association onboarding and session cleanup integration,
 // #125, and the device fixture Firestore binding).
+// Contributors: Claude (Opus 5.5, Anthropic) bound the deletion and network fakes and expected the
+// prefilled address after Change address, #225; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.auth
 
 import android.graphics.Bitmap
@@ -10,10 +12,16 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.google.firebase.firestore.FirebaseFirestore
 import com.polysocial.MainActivity
+import com.polysocial.model.account.AccountDeletionModule
+import com.polysocial.model.account.AccountDeletionRepository
+import com.polysocial.model.account.FakeAccountDeletionRepository
 import com.polysocial.model.association.*
 import com.polysocial.model.auth.*
 import com.polysocial.model.event.*
 import com.polysocial.model.firebase.*
+import com.polysocial.model.network.FakeNetworkMonitor
+import com.polysocial.model.network.NetworkModule
+import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.user.*
 import com.polysocial.resources.C
 import com.polysocial.ui.association.*
@@ -30,11 +38,13 @@ import org.junit.runner.RunWith
 
 @HiltAndroidTest
 @UninstallModules(
+    AccountDeletionModule::class,
     AuthModule::class,
     UserProfileModule::class,
     AssociationModule::class,
     EventModule::class,
     FirebaseModule::class,
+    NetworkModule::class,
 )
 @RunWith(AndroidJUnit4::class)
 class AssociationOnboardingDeviceTest {
@@ -51,6 +61,10 @@ class AssociationOnboardingDeviceTest {
   @BindValue @JvmField val sessionOwner: SessionOwnerStore = FakeSessionOwnerStore()
   @BindValue @JvmField val sessions: SessionGuard = FakeSessionGuard()
   @BindValue @JvmField val events: EventRepository = FakeEventRepository()
+  private val fakeDeletion = FakeAccountDeletionRepository()
+  // Verify Email's Change address deletes the unverified account first (#225).
+  @BindValue @JvmField val deletion: AccountDeletionRepository = fakeDeletion
+  @BindValue @JvmField val network: NetworkMonitor = FakeNetworkMonitor()
   @BindValue
   @JvmField
   val verificationStore: VerificationStore =
@@ -65,6 +79,19 @@ class AssociationOnboardingDeviceTest {
 
         override suspend fun clear(uid: String) {
           values.remove(uid)
+        }
+
+        private val addresses = mutableMapOf<String, VerificationTiming>()
+
+        override suspend fun readAddress(email: String) =
+            addresses[email.trim().lowercase()] ?: VerificationTiming()
+
+        override suspend fun writeAddress(email: String, timing: VerificationTiming) {
+          addresses[email.trim().lowercase()] = timing
+        }
+
+        override suspend fun clearAddress(email: String) {
+          addresses.remove(email.trim().lowercase())
         }
       }
   @BindValue @JvmField val verificationClock: VerificationClock = VerificationClock { 1000 }
@@ -245,10 +272,13 @@ class AssociationOnboardingDeviceTest {
     compose.onNodeWithTag(SignUpTags.Google).assertDoesNotExist()
     assertNull(fakeAuth.currentUser())
     assertEquals(1, fakeAuth.logOutCalls)
+    assertEquals(1, fakeDeletion.calls)
+    // The deleted account's address is prefilled, so a typo can be fixed in place (#225).
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.Email)).assertTextContains(applicant.email)
     capture("association-wrong-address", closeKeyboard = true)
     compose
         .onNodeWithTag(SignUpTags.input(SignUpField.Email))
-        .performTextInput("updated-club@example.org")
+        .performTextReplacement("updated-club@example.org")
     compose.onNodeWithTag(SignUpTags.input(SignUpField.Password)).performTextInput("password1")
     compose
         .onNodeWithTag(SignUpTags.input(SignUpField.ConfirmPassword))

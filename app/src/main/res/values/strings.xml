@@ -5,6 +5,7 @@
 <!-- Contributors: OpenAI Codex (association email validation, #125). -->
 <!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42; Create Event texts, #46; "+" button, #110; app bar actions, #84); OpenAI Codex (Google and welcome copy). OpenAI Codex (sign-up form, startup integration, name hint and unused-title cleanup; Mapbox integration and setup, #50; location permission and distance text, #51). Claude (Retry, app-start loading and error texts, #74; Edit event texts, #131; map association name, #128; Create Event organizer row, #134). Claude (app-start Log out, #208). -->
 <!-- Contributors: OpenAI Codex (verification screen and failure messages for #31). Claude (full name limit message, #143; as a plural after review; account-neutral verification texts, #277). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) wrote the Verify Email deletion texts, #225; Mohamed Khellaf (reviewed and revised). -->
 <!-- Contributors: OpenAI Codex (current-build privacy summary and full notice, #103). -->
 <!-- Contributors: OpenAI Codex (Google authentication errors; removed collision copy for #107). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) updated the privacy notice for in-app account deletion, #207; Mohamed Khellaf (reviewed and revised). -->
@@ -203,6 +204,9 @@
     <string name="verification_error">Something went wrong. Please try again.</string>
     <string name="verification_not_signed_in">Please log in to verify your email.</string>
     <string name="verification_send_description">Send a confirmation link to</string>
+    <string name="verification_leaving">Removing this address…</string>
+    <string name="verification_delete_network">Couldn\'t remove this address. Check your connection and try again.</string>
+    <string name="verification_delete_error">Couldn\'t remove this address. Please try again.</string>
     <string name="privacy_title">Privacy &amp; data</string>
     <string name="privacy_summary">What we keep and who sees it</string>
     <string name="privacy_back">Back</string>

@@ -3,6 +3,8 @@
 // Claude (the profile step's ViewModel, #74).
 // Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
 // Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) passed the deletion and network fakes, #225;
+// Mohamed Khellaf (reviewed and revised).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -11,10 +13,12 @@ import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
+import com.polysocial.model.account.FakeAccountDeletionRepository
 import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
 import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.firebase.FakeSessionGuard
+import com.polysocial.model.network.FakeNetworkMonitor
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.ui.auth.*
 import com.polysocial.ui.login.LoginScreenTestTags
@@ -50,7 +54,13 @@ class PasswordRecoveryFlowTest {
             sessions = FakeSessionGuard(),
         )
     val verification =
-        VerifyEmailViewModel(auth, MemoryVerificationStore(), VerificationClock { 1000 })
+        VerifyEmailViewModel(
+            auth,
+            MemoryVerificationStore(),
+            VerificationClock { 1000 },
+            FakeAccountDeletionRepository(),
+            FakeNetworkMonitor(),
+        )
     val profileStep = ProfileSetupViewModel(auth, FakeUserProfileRepository())
     restore.setContent {
       PolySocialTheme {

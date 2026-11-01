@@ -1,16 +1,21 @@
 // Contributors: OpenAI Codex (verification state, startup routing, persistent cooldown and Back
 // sign-out for #31; documented lifecycle ordering, removed unused leave() and modeled sealed
 // entry; reset retained verification state on logout, #109).
+// Contributors: Claude (Opus 5.5, Anthropic) deleted the unverified account on Back and Change
+// address, and kept the cooldown per address, #225; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.ui.auth
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.polysocial.model.account.AccountDeletionRepository
+import com.polysocial.model.account.AccountDeletionResult
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.auth.SendVerificationResult
 import com.polysocial.model.auth.VerificationClock
 import com.polysocial.model.auth.VerificationResult
 import com.polysocial.model.auth.VerificationStore
 import com.polysocial.model.auth.VerificationTiming
+import com.polysocial.model.network.NetworkMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -30,7 +35,26 @@ enum class VerificationMessage {
   NetworkError,
   UnexpectedError,
   NotSignedIn,
+  DeleteNetworkError,
+  DeleteError,
 }
+
+/** The two ways out of Verify Email; both delete the unverified account first (#225). */
+enum class VerificationLeave {
+  Back,
+  ChangeAddress,
+}
+
+/** Where the app goes once Verify Email has signed out. */
+sealed interface VerificationExit {
+  data object Welcome : VerificationExit
+
+  /** Sign up, with the address of the account that was left in the email field. */
+  data class SignUp(val email: String) : VerificationExit
+}
+
+/** A way out that failed and stays on Verify Email: [message] is shown with a Retry. */
+data class VerificationLeaveError(val leave: VerificationLeave, val message: VerificationMessage)
 
 data class VerifyEmailUiState(
     val email: String = "",
@@ -42,17 +66,21 @@ data class VerifyEmailUiState(
     val remainingSeconds: Long = 0,
     val banner: VerificationMessage? = null,
     val snackbar: VerificationMessage? = null,
+    val leaving: Boolean = false,
+    val leaveError: VerificationLeaveError? = null,
+    val exit: VerificationExit? = null,
 ) {
   val busy: Boolean
-    get() = preparing || sending || checking
+    get() = preparing || sending || checking || leaving
 
   val canResend: Boolean
     get() = !busy && !verified && remainingSeconds == 0L
 }
 
 /**
- * Owns verification and resend timing. Back and change-address actions cancel pending work and sign
- * out; browser return checks verification while the account remains signed in.
+ * Owns verification and resend timing. Back and change-address actions delete the unverified
+ * account, then sign out ([leave]); browser return checks verification while the account remains
+ * signed in.
  */
 @HiltViewModel
 class VerifyEmailViewModel
@@ -61,6 +89,8 @@ constructor(
     private val repository: AuthRepository,
     private val store: VerificationStore,
     private val clock: VerificationClock,
+    private val deletion: AccountDeletionRepository,
+    private val network: NetworkMonitor,
 ) : ViewModel() {
   val startsWithVerification = repository.currentUser()?.isEmailVerified == false
   private var startupRoutingPending = startsWithVerification
@@ -97,15 +127,108 @@ constructor(
   private var entryJob: Job? = null
   private var sendJob: Job? = null
   private var checkJob: Job? = null
+  private var leaveJob: Job? = null
 
-  /** Signs out and resets verification for Back or the explicit change-address action. */
-  fun changeAddress() {
-    reset()
+  /**
+   * Leaves Verify Email by Back or "Change address" (#225): deletes the unverified account through
+   * `deleteAccount`, so a mistyped address isn't left reserved, then signs out and sets
+   * [VerifyEmailUiState.exit].
+   *
+   * Offline, the deletion is refused before any call (nothing is queued) with the connection
+   * message. A network or unexpected failure keeps the account signed in on Verify Email with a
+   * [VerifyEmailUiState.leaveError] that [retryLeave] repeats; nothing reports the account gone
+   * before the function confirms it. An account signed in too long ago (`RecentLoginRequired`), one
+   * the function refuses (`NotAllowed`) or a lost session only signs out, as before #225, and keeps
+   * the account's cooldown. After a deletion, the account's resend timing is cleared while the
+   * address keeps its cooldown. Duplicate taps are ignored while leaving.
+   */
+  fun leave(action: VerificationLeave) {
+    val state = mutableState.value
+    if (state.leaving || state.exit != null) return
+    val user =
+        repository.currentUser()
+            ?: run {
+              signOut(action, state.email)
+              return
+            }
+    checkJob?.cancel()
+    mutableState.update {
+      it.copy(leaving = true, checking = false, banner = null, snackbar = null, leaveError = null)
+    }
+    leaveJob = viewModelScope.launch {
+      try {
+        // A send in flight records the address's cooldown, which must survive the deletion.
+        entryJob?.join()
+        sendJob?.join()
+        if (!network.isOnline()) {
+          failLeave(action, VerificationMessage.NetworkError)
+          return@launch
+        }
+        when (deletion.deleteAccount()) {
+          AccountDeletionResult.Deleted -> {
+            clearAccountTiming(user.uid)
+            signOut(action, user.email)
+          }
+          AccountDeletionResult.RecentLoginRequired,
+          AccountDeletionResult.NotAllowed,
+          AccountDeletionResult.NotSignedIn -> signOut(action, user.email)
+          AccountDeletionResult.NetworkError ->
+              failLeave(action, VerificationMessage.DeleteNetworkError)
+          AccountDeletionResult.UnexpectedError ->
+              failLeave(action, VerificationMessage.DeleteError)
+        }
+      } catch (cancelled: CancellationException) {
+        mutableState.update { it.copy(leaving = false) }
+        throw cancelled
+      } catch (_: Exception) {
+        failLeave(action, VerificationMessage.DeleteError)
+      }
+    }
+  }
+
+  /** Repeats the way out that last failed; does nothing if none did. */
+  fun retryLeave() {
+    mutableState.value.leaveError?.let { leave(it.leave) }
+  }
+
+  private fun failLeave(action: VerificationLeave, message: VerificationMessage) {
+    mutableState.update {
+      it.copy(leaving = false, leaveError = VerificationLeaveError(action, message))
+    }
+  }
+
+  private suspend fun clearAccountTiming(uid: String) {
+    try {
+      store.clear(uid)
+    } catch (cancelled: CancellationException) {
+      throw cancelled
+    } catch (_: Exception) {
+      // The account is already deleted and its UID is never reused, so its stale timestamps can't
+      // affect anyone; failing to remove them must not keep the user on a deleted account.
+    }
+  }
+
+  private fun signOut(action: VerificationLeave, email: String) {
+    cancelAccountWork()
     repository.logOut()
+    mutableState.value =
+        VerifyEmailUiState(
+            exit =
+                when (action) {
+                  VerificationLeave.Back -> VerificationExit.Welcome
+                  VerificationLeave.ChangeAddress -> VerificationExit.SignUp(email)
+                }
+        )
   }
 
   /** Cancels account work and clears screen state without signing out or deleting cooldowns. */
   fun reset() {
+    leaveJob?.cancel()
+    cancelAccountWork()
+    mutableState.value = VerifyEmailUiState()
+  }
+
+  private fun cancelAccountWork() {
     entryJob?.cancel()
     sendJob?.cancel()
     checkJob?.cancel()
@@ -114,7 +237,6 @@ constructor(
     accountUid = null
     entryState = EntryState.NotEntered
     timing = VerificationTiming()
-    mutableState.value = VerifyEmailUiState()
   }
 
   /**
@@ -124,6 +246,9 @@ constructor(
    * recreation idempotent, including snackbar consumption, and owns whether initial delivery has
    * been attempted. A failed/cancelled read returns to NotEntered so entry can retry; a failed
    * delivery stays Ready with its allowance consumed, so further sends require Resend.
+   *
+   * The account's own timing tells whether it was already sent a link; the address's timing can
+   * only lengthen the cooldown, so a new account for an address left a moment ago still waits.
    *
    * ON_RESUME may check verification before entry or during preparation. The check delays initial
    * delivery until it finishes; entry preserves any verification success that arrived first.
@@ -135,6 +260,7 @@ constructor(
       mutableState.update { it.copy(banner = VerificationMessage.NotSignedIn) }
       return
     }
+    if (mutableState.value.leaving) return
     if (entryState is EntryState.Ready && accountUid == user.uid) return
     if (accountUid != null && accountUid != user.uid) {
       entryJob?.cancel()
@@ -151,12 +277,15 @@ constructor(
     mutableState.update { it.copy(email = user.email, preparing = true, verified = false) }
     entryJob = viewModelScope.launch {
       try {
-        timing = store.read(user.uid)
+        val own = store.read(user.uid)
+        val address = store.readAddress(user.email)
         if (repository.currentUser()?.uid != preparation.uid) {
           if (entryState === preparation) entryState = EntryState.NotEntered
           mutableState.update { it.copy(preparing = false) }
           return@launch
         }
+        val deadline = if (address.retryAtMillis > own.retryAtMillis) address else own
+        timing = own.copy(retryAtMillis = deadline.retryAtMillis)
         entryState = EntryState.Ready()
         updateRemaining()
         mutableState.update {
@@ -165,8 +294,8 @@ constructor(
               hasSentEmail = timing.sentAtMillis > 0,
               banner =
                   if (
-                      timing.retryAtMillis > timing.sentAtMillis + RESEND_DELAY_MILLIS &&
-                          timing.retryAtMillis > clock.nowMillis()
+                      deadline.retryAtMillis > deadline.sentAtMillis + RESEND_DELAY_MILLIS &&
+                          deadline.retryAtMillis > clock.nowMillis()
                   )
                       VerificationMessage.Throttled
                   else null,
@@ -198,7 +327,9 @@ constructor(
               return
             }
     accountUid = user.uid
-    mutableState.update { it.copy(sending = true, banner = null, snackbar = null) }
+    mutableState.update {
+      it.copy(sending = true, banner = null, snackbar = null, leaveError = null)
+    }
     sendJob = viewModelScope.launch {
       try {
         val result = repository.sendVerificationEmail()
@@ -209,7 +340,7 @@ constructor(
             timing = VerificationTiming(now, now + RESEND_DELAY_MILLIS)
             // Keep the in-memory deadline even if a local disk write fails.
             updateRemaining()
-            store.write(user.uid, timing)
+            persist(user.uid, user.email)
             mutableState.update {
               it.copy(
                   hasSentEmail = true,
@@ -221,7 +352,7 @@ constructor(
           SendVerificationResult.Throttled -> {
             timing = timing.copy(retryAtMillis = clock.nowMillis() + THROTTLE_DELAY_MILLIS)
             updateRemaining()
-            store.write(user.uid, timing)
+            persist(user.uid, user.email)
             mutableState.update { it.copy(banner = VerificationMessage.Throttled) }
           }
           SendVerificationResult.NetworkError ->
@@ -242,6 +373,12 @@ constructor(
     }
   }
 
+  /** Records the deadline for the account and for its address, which outlives the account. */
+  private suspend fun persist(uid: String, email: String) {
+    store.write(uid, timing)
+    store.writeAddress(email, timing)
+  }
+
   /** Manual checks show an unverified banner; lifecycle checks leave the current message alone. */
   fun checkVerified(manual: Boolean = true) = check(manual)
 
@@ -250,14 +387,15 @@ constructor(
    *
    * An already-verified session that never entered verification needs no reload. Once this flow
    * reports success, later resumes also return immediately, including while the app shell is shown.
-   * An active check suppresses duplicate requests. Joining [entryJob] and [sendJob] lets their
-   * timing writes finish before success clears the account's stored deadline; UID checks discard
-   * results for a session replaced during either await. After an unverified check,
-   * [maybeSendInitialEmail] can deliver the first email if entry has become ready. Only manual
-   * checks show StillUnverified.
+   * An active check suppresses duplicate requests, and none starts while leaving. Joining
+   * [entryJob] and [sendJob] lets their timing writes finish before success clears the account's
+   * and its address's stored deadline; UID checks discard results for a session replaced during
+   * either await. After an unverified check, [maybeSendInitialEmail] can deliver the first email if
+   * entry has become ready. Only manual checks show StillUnverified.
    */
   private fun check(manual: Boolean) {
-    if (mutableState.value.checking || mutableState.value.verified) return
+    val state = mutableState.value
+    if (state.checking || state.verified || state.leaving) return
     val user =
         repository.currentUser()
             ?: run {
@@ -266,7 +404,9 @@ constructor(
             }
     if (!manual && user.isEmailVerified && accountUid == null && !startsWithVerification) return
     accountUid = user.uid
-    mutableState.update { it.copy(checking = true) }
+    mutableState.update {
+      it.copy(checking = true, leaveError = if (manual) null else it.leaveError)
+    }
     checkJob = viewModelScope.launch {
       try {
         // A resume may arrive while the initial email is being persisted. Finish that write
@@ -279,8 +419,11 @@ constructor(
         when (result) {
           VerificationResult.Verified -> {
             ticker?.cancel()
-            mutableState.update { it.copy(verified = true, banner = null, snackbar = null) }
+            mutableState.update {
+              it.copy(verified = true, banner = null, snackbar = null, leaveError = null)
+            }
             store.clear(user.uid)
+            store.clearAddress(user.email)
           }
           VerificationResult.Unverified ->
               if (manual)
