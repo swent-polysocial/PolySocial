@@ -319,7 +319,7 @@ flowchart TD
 ```
 
 - **Association accounts (#127).** The account type decides, never the email. An association an admin hasn't verified yet opens its own app in the pending state (Figma section 02): the review steps on Events, a closed Map and its details on Organization. A verified association opens the main app (with its own Events tab, #132) until #140 gives it its own tabs in the same `AssociationShell`. The admin's verification (#135) takes effect at the next app start.
-- **Edit details (#127).** On the pending app's Organization tab, Edit details (`EditAssociationScreen` → `EditAssociationViewModel`) edits the name, type, about and optional website, starting from the details shown there, and saves them with `AssociationRepository.updateAssociation` (#126's owner-only update rule). A failed save keeps the form and offers Try again, with its own offline message.
+- **Edit details (#127).** On the pending app's Organization tab, Edit details (`EditAssociationScreen` → `EditAssociationViewModel`) edits the name, type, about and optional website, starting from the details shown there, checks them with association setup's `associationFormErrors` (#256), and saves them with `AssociationRepository.updateAssociation` (#126's owner-only update rule). A failed save keeps the form and offers Try again, with its own offline message.
 
 ### 4.4 Map: public events and distances (#49–#51)
 
@@ -524,7 +524,6 @@ How each failure behaves:
 - **Mapbox production account:** who adds billing, which usage alert applies, and when does a dedicated token replace the signup token? Mapbox bills separately from Google Cloud. Needed before release.
 - **Shared privacy notice (#103):** Mapbox receives map requests for the viewed area; Mehdi owns Profile → Privacy & data; the private deletion contact and final wording still need confirmation before release.
 - **Association members and event drafts:** Figma has them, but there is no data model yet. How does an association find and add a student as a member, and what can each role do? Drafts are not in the `Event` model.
-- **Association validation shared between stacks (#125, #127):** setup (#256) and Edit details (#248) would validate the same fields twice, with different website checks. Proposed: whichever merges first owns it, and the other reuses it. Lucas [answered](https://github.com/swent-polysocial/PolySocial/pull/256#issuecomment-6498630706) that #256's `AssociationValidation.kt` owns it and #248 reuses it; open until #248 confirms.
 - **Events without an end time:** `endTime` is optional, but check-in and Find my group only work during the event. Which time window applies when it is not set?
 - **Attendance capacity (#121):** the schema is decided (see the attendees row above). Refusing a full event atomically needs a counter on the event that a student may change by exactly ±1 with their own attendee document, which widens the organizer-only event update rule. The team decides whether to allow it before the second #121 PR.
 - **Logout/reminders (#109, #123):** confirm account-scoped reminder cancellation on logout and account deletion before another account enters; cache isolation is decided (#198, decision 15).
