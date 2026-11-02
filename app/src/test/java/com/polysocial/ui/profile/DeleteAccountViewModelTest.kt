@@ -1,7 +1,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the account deletion flow tests, #207; Mohamed
 // Khellaf (reviewed and revised).
-// Contributors: Claude (Opus 5.5, Anthropic) tested the lost session's cleanup and too many
-// attempts, from #286's review.
+// Contributors: Claude (Opus 5.5, Anthropic) tested the lost session's cleanup, too many attempts
+// and a cancelled cleanup, from #286's review.
 package com.polysocial.ui.profile
 
 import android.content.Context
@@ -60,11 +60,13 @@ class DeleteAccountViewModelTest {
 
   private var cacheResult = CacheClearResult.Cleared
   private var clears = 0
+  private var cacheGate: CompletableDeferred<Unit>? = null
   private val cache =
       object : SessionCache {
         override suspend fun clear(): CacheClearResult {
           clears++
           events += "cache"
+          cacheGate?.await()
           return cacheResult
         }
       }
@@ -592,5 +594,32 @@ class DeleteAccountViewModelTest {
         runCurrent()
         assertEquals(0, deletion.calls)
         assertAccountUntouched()
+      }
+
+  @Test
+  fun callerCancellationDuringCleanupBlocksWithoutSigningOut() =
+      runTest(main.dispatcher) {
+        val gate = CompletableDeferred<Unit>()
+        cacheGate = gate
+        memory.timings[student.uid] = VerificationTiming(1, 2)
+        openReauth()
+        vm.onPasswordChange("fictional-password")
+        vm.submitPassword()
+        runCurrent()
+        assertEquals(DeleteAccountStep.Clearing, step)
+        assertTrue(vm.uiState.value.busy)
+        vm.viewModelScope.cancel()
+        runCurrent()
+        assertEquals(DeleteAccountStep.CleanupFailed, step)
+        assertEquals(true, vm.uiState.value.deleted)
+        assertTrue("not busy: the step offers Retry", !vm.uiState.value.busy)
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(DeleteAccountStep.CleanupFailed, step)
+        assertEquals(1, deletion.calls)
+        assertEquals(listOf("cache"), events)
+        assertNotNull("not signed out while the cache may be dirty", fakeAuth.user)
+        assertEquals(0, fakeAuth.logOutCalls)
+        assertEquals(VerificationTiming(1, 2), memory.timings[student.uid])
       }
 }
