@@ -1,4 +1,5 @@
-// Contributors: Claude (wrote these tests, #251; modifier and label style tests after review).
+// Contributors: Claude (wrote these tests, #251; modifier and label style tests after review;
+// ErrorBanner's text styles, #127).
 package com.polysocial.ui.common
 
 import androidx.activity.ComponentActivity
@@ -129,6 +130,33 @@ class FormPartsTest {
     assertEquals(21.sp, labelLayout("Custom").layoutInput.style.fontSize)
     // Without one, the label keeps the theme's button style (titleSmall, 15 sp).
     assertEquals(15.sp, labelLayout("Default").layoutInput.style.fontSize)
+  }
+
+  @Test
+  fun errorBanner_drawsItsTextInTheStylesItIsGiven_andKeepsFigmasByDefault() {
+    show {
+      Column {
+        ErrorBanner("Default title", "Default message", false, "default")
+        ErrorBanner(
+            "Custom title",
+            "Custom message",
+            false,
+            "custom",
+            titleStyle = TextStyle(fontSize = 21.sp, fontWeight = FontWeight.Black),
+            messageStyle = TextStyle(fontSize = 17.sp),
+        )
+      }
+    }
+
+    val customTitle = labelLayout("Custom title").layoutInput.style
+    assertEquals(21.sp, customTitle.fontSize)
+    assertEquals(FontWeight.Black, customTitle.fontWeight)
+    assertEquals(17.sp, labelLayout("Custom message").layoutInput.style.fontSize)
+    // Without them, Figma's banner text: a 14 sp bold title over a 13 sp message.
+    val defaultTitle = labelLayout("Default title").layoutInput.style
+    assertEquals(14.sp, defaultTitle.fontSize)
+    assertEquals(FontWeight.Bold, defaultTitle.fontWeight)
+    assertEquals(13.sp, labelLayout("Default message").layoutInput.style.fontSize)
   }
 
   private fun labelLayout(text: String): TextLayoutResult {

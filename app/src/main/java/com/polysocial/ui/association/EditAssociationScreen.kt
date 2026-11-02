@@ -1,6 +1,6 @@
 // Contributors: Claude (the pending association's Edit details screen, from the Figma
 // "Association · pending · Edit details" frames, #127; TalkBack labels and errors, keyboard
-// padding, after a review, #127).
+// padding, after a review, #127; the failure banner reuses the shared ErrorBanner, after review).
 package com.polysocial.ui.association
 
 import androidx.activity.compose.BackHandler
@@ -64,8 +64,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
 import com.polysocial.model.association.Association
 import com.polysocial.model.association.AssociationType
+import com.polysocial.ui.common.ErrorBanner
 import com.polysocial.ui.theme.Accent
-import com.polysocial.ui.theme.AccentSoft
 import com.polysocial.ui.theme.AccentText
 import com.polysocial.ui.theme.Bg
 import com.polysocial.ui.theme.Border
@@ -363,38 +363,25 @@ private fun TypeChip(
   }
 }
 
-/** Figma's red banner over the button when a save fails, offline or not. */
+/**
+ * Figma's red banner over the button when a save fails, offline or not: the shared [ErrorBanner]
+ * with this screen's Figma-exact text styles, read by TalkBack as one announcement.
+ */
 @Composable
 private fun FailureBanner(offline: Boolean) {
-  Row(
-      Modifier.fillMaxWidth()
-          .background(AccentSoft, RoundedCornerShape(14.dp))
-          .padding(14.dp)
-          .semantics(mergeDescendants = true) {}
-          .testTag(EditAssociationTags.FAILURE),
-      horizontalArrangement = Arrangement.spacedBy(12.dp),
-  ) {
-    Image(
-        painterResource(if (offline) R.drawable.ic_wifi_off else R.drawable.ic_error),
-        contentDescription = null,
-        modifier = Modifier.size(20.dp),
-    )
-    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-      Text(
-          stringResource(R.string.association_edit_failed_title),
-          style = BANNER_TITLE_STYLE,
-          color = Ink,
-      )
-      Text(
+  ErrorBanner(
+      title = stringResource(R.string.association_edit_failed_title),
+      message =
           stringResource(
               if (offline) R.string.association_edit_offline_body
               else R.string.association_edit_unexpected_body
           ),
-          style = BANNER_BODY_STYLE,
-          color = Ink2,
-      )
-    }
-  }
+      offline = offline,
+      tag = EditAssociationTags.FAILURE,
+      modifier = Modifier.semantics(mergeDescendants = true) {},
+      titleStyle = BANNER_TITLE_STYLE,
+      messageStyle = BANNER_BODY_STYLE,
+  )
 }
 
 /** "Save changes", "Try again" after a failure, greyed out while an error shows. */
