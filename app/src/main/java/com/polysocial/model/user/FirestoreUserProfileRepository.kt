@@ -1,18 +1,13 @@
 // Contributors: OpenAI Codex (refresh Firestore and handle blocked cache access, #156).
 // Contributors: Claude (Firestore profile repository, #34; cancelled tasks and wrong-typed fields
 // reported as errors after review; reading isAssociationVerified, #45; other unexpected failures
-// reported as errors, #182).
+// reported as errors, #182; reportFailures moved to FirestoreFailures.kt to share it, #229).
 package com.polysocial.model.user
 
-import com.google.firebase.FirebaseException
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.FirebaseFirestoreException
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.tasks.await
 
 /** Firestore collection holding the private profiles, one document per Firebase Auth UID. */
@@ -75,27 +70,6 @@ class FirestoreUserProfileRepository(private val database: () -> FirebaseFiresto
         if (updated) UpdateProfileResult.Updated else UpdateProfileResult.NotFound
       }
 }
-
-/**
- * Runs [call] and turns its failures into results, so the caller never hangs on "saving": offline
- * becomes [offline]; any other Firebase failure, a Firebase task cancelled while the caller is
- * still running, or any other exception (for example a Firestore client that was shut down) becomes
- * [failed]. Cancelling the caller's coroutine still cancels it.
- */
-private suspend fun <T> reportFailures(offline: T, failed: T, call: suspend () -> T): T =
-    try {
-      call()
-    } catch (e: FirebaseException) {
-      if (e.isOffline()) offline else failed
-    } catch (e: CancellationException) {
-      currentCoroutineContext().ensureActive()
-      failed
-    } catch (e: Exception) {
-      failed
-    }
-
-private fun FirebaseException.isOffline(): Boolean =
-    this is FirebaseFirestoreException && code == FirebaseFirestoreException.Code.UNAVAILABLE
 
 /** The fields of a new `users/{uid}` document. `isAssociationVerified` is never written here. */
 private fun UserProfile.toNewDocument(): Map<String, Any> =
