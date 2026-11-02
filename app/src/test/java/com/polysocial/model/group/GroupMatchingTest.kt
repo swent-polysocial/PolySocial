@@ -1,4 +1,4 @@
-// Contributors: Claude (wrote these tests, #231).
+// Contributors: Claude (wrote these tests, and the missing-profile cases after review, #231).
 package com.polysocial.model.group
 
 import kotlin.random.Random
@@ -25,7 +25,7 @@ class GroupMatchingTest {
   ) = MatchProfile(uid, section, year, interests)
 
   private fun group(id: String, vararg members: MatchProfile, capacity: Int = 4) =
-      MatchGroup(id, capacity, members.toList())
+      MatchGroup(id, capacity, members.map { it.uid }, members.toList())
 
   private fun rankedIds(groups: List<MatchGroup>, student: MatchProfile = me) =
       rankGroups(student, groups).map { it.group.id }
@@ -45,13 +45,8 @@ class GroupMatchingTest {
             member("m3"),
             member("m4"),
         )
-    val overFull =
-        MatchGroup(
-            "over-full",
-            capacity = 2,
-            members = listOf(member("m5", year = "BA3"), member("m6"), member("m7")),
-        )
-    val noPlaces = MatchGroup("no-places", capacity = 0, members = emptyList())
+    val overFull = group("over-full", member("m5", year = "BA3"), member("m6"), member("m7"), capacity = 2)
+    val noPlaces = group("no-places", capacity = 0)
     val onePlaceLeft = group("one-place-left", member("m8"), member("m9"), member("m10"))
 
     assertEquals(
@@ -77,6 +72,23 @@ class GroupMatchingTest {
   }
 
   @Test
+  fun aMemberWithoutAProfile_stillCounts_forFullAndOwnGroups() {
+    val m1 = member("m1", section = "IN", interests = setOf("music"))
+    // Four stored members, one profile missing: full, whatever the profiles say.
+    val fullByUids = MatchGroup("full", 4, listOf("m1", "m2", "m3", "m4"), listOf(m1, member("m2"), member("m3")))
+    // The student is a stored member whose profile wasn't read: their own group.
+    val mine = MatchGroup("mine", 4, listOf("me", "m5"), listOf(member("m5")))
+    // Two stored members, one profile missing: open, scored on the one profile read.
+    val oneProfile = MatchGroup("open", 4, listOf("m1", "m6"), listOf(m1))
+
+    val ranked = rankGroups(me, listOf(fullByUids, mine, oneProfile))
+
+    assertEquals(listOf("open"), ranked.map { it.group.id })
+    assertEquals(5, ranked.single().score)
+    assertEquals(listOf("music"), ranked.single().sharedInterests)
+  }
+
+  @Test
   fun sharedInterests_rankAGroupHigher_andAreGivenAsReasons() {
     val twoShared = group("g3", member("m1", interests = setOf("hiking", "music", "chess")))
     val oneShared = group("g2", member("m2", interests = setOf("games")))
@@ -88,10 +100,10 @@ class GroupMatchingTest {
     assertEquals(listOf("g3", "g2", "g1", "no-members"), ranked.map { it.group.id })
     assertEquals(listOf(6, 3, 0, 0), ranked.map { it.score })
     assertEquals(
-        listOf(setOf("hiking", "music"), setOf("games"), emptySet(), emptySet()),
+        listOf(listOf("hiking", "music"), listOf("games"), emptyList(), emptyList()),
         ranked.map { it.sharedInterests },
     )
-    assertEquals(RankedGroup(noMembers, 0, emptySet(), 0, 0), ranked.last())
+    assertEquals(RankedGroup(noMembers, 0, emptyList(), 0, 0), ranked.last())
   }
 
   @Test
@@ -148,7 +160,7 @@ class GroupMatchingTest {
 
     // m1: 2 interests × 3 + section 2 + year 1 = 9; m2: 3 + 2 = 5; m3: 1.
     assertEquals(15, ranked.score)
-    assertEquals(listOf("hiking", "music"), ranked.sharedInterests.toList())
+    assertEquals(listOf("hiking", "music"), ranked.sharedInterests)
     assertEquals(2, ranked.membersInSameSection)
     assertEquals(2, ranked.membersInSameYear)
   }
@@ -225,16 +237,19 @@ class GroupMatchingTest {
     val random = Random(231)
     repeat(20) {
       val student = me.copy(interests = me.interests.shuffled(random).toSet())
-      val shuffled = groups.shuffled(random).map { it.copy(members = it.members.shuffled(random)) }
+      val shuffled =
+          groups.shuffled(random).map {
+            it.copy(
+                memberUids = it.memberUids.shuffled(random),
+                members = it.members.shuffled(random),
+            )
+          }
 
       val ranked = rankGroups(student, shuffled)
 
       assertEquals(expected.map { it.group.id }, ranked.map { it.group.id })
       assertEquals(expected.map { it.score }, ranked.map { it.score })
-      assertEquals(
-          expected.map { it.sharedInterests.toList() },
-          ranked.map { it.sharedInterests.toList() },
-      )
+      assertEquals(expected.map { it.sharedInterests }, ranked.map { it.sharedInterests })
       assertEquals(expected.map { it.membersInSameSection }, ranked.map { it.membersInSameSection })
       assertEquals(expected.map { it.membersInSameYear }, ranked.map { it.membersInSameYear })
     }

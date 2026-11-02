@@ -1,4 +1,4 @@
-// Contributors: Claude (matching heuristic, #231).
+// Contributors: Claude (matching heuristic, and member UIDs after review, #231).
 package com.polysocial.model.group
 
 /**
@@ -16,23 +16,33 @@ data class MatchProfile(
 
 /**
  * One group of an event, as matching sees it: its unique [id] (the group's document ID), how many
- * students it can hold ([capacity]) and its [members]' profiles. The caller maps its group model to
- * this, so matching doesn't depend on how groups are stored. [members] are distinct students: a uid
- * listed twice would count twice.
+ * students it can hold ([capacity]), its stored [memberUids] and the [members]' profiles the caller
+ * could read. The caller maps its group model to this, so matching doesn't depend on how groups are
+ * stored. [memberUids] decide how full the group is and whether the student is in it; [members]
+ * only score it. A member whose profile is missing (not written yet, a deleted account, a failed
+ * read) stays in [memberUids] and is simply absent from [members]: the group still counts as full
+ * or as the student's own, and that member adds no points. [memberUids] are distinct: a uid listed
+ * twice would count twice.
  */
-data class MatchGroup(val id: String, val capacity: Int, val members: List<MatchProfile>)
+data class MatchGroup(
+    val id: String,
+    val capacity: Int,
+    val memberUids: List<String>,
+    val members: List<MatchProfile>,
+)
 
 /**
  * A group [rankGroups] suggests, with its [score] and why it fits, which Find a group shows (#233).
  *
- * @property sharedInterests The student's interests that at least one member also has, in id order.
+ * @property sharedInterests The student's interests that at least one member also has, each once,
+ *   in id order.
  * @property membersInSameSection How many members are in the student's section.
  * @property membersInSameYear How many members are in the student's year.
  */
 data class RankedGroup(
     val group: MatchGroup,
     val score: Int,
-    val sharedInterests: Set<String>,
+    val sharedInterests: List<String>,
     val membersInSameSection: Int,
     val membersInSameYear: Int,
 )
@@ -63,9 +73,10 @@ private const val YEAR_POINTS = 1
  * (plain string order, the same in every locale), so the same groups always give the same list,
  * whatever order they come in.
  *
- * **Left out.** Full groups (as many members as their [MatchGroup.capacity], or more) and any group
- * [student] is already a member of. A group with nothing in common is still suggested, last. With
- * no groups, or none left, the list is empty.
+ * **Left out.** Full groups (as many [MatchGroup.memberUids] as their [MatchGroup.capacity], or
+ * more) and any group whose [MatchGroup.memberUids] contain [student]'s uid, whether or not their
+ * profiles were read. A group with nothing in common is still suggested, last. With no groups, or
+ * none left, the list is empty.
  *
  * It has no Android or Firebase dependency, so it runs on the device. If matching moves
  * server-side, only its caller changes.
@@ -73,7 +84,7 @@ private const val YEAR_POINTS = 1
 fun rankGroups(student: MatchProfile, groups: List<MatchGroup>): List<RankedGroup> =
     groups
         .filter { group ->
-          group.members.size < group.capacity && group.members.none { it.uid == student.uid }
+          group.memberUids.size < group.capacity && student.uid !in group.memberUids
         }
         .map { group -> rank(student, group) }
         .sortedWith(compareByDescending<RankedGroup> { it.score }.thenBy { it.group.id })
@@ -88,7 +99,7 @@ private fun rank(student: MatchProfile, group: MatchGroup): RankedGroup {
           sharedByMember.sumOf { it.size } * INTEREST_POINTS +
               inSameSection * SECTION_POINTS +
               inSameYear * YEAR_POINTS,
-      sharedInterests = sharedByMember.flatten().sorted().toSet(),
+      sharedInterests = sharedByMember.flatten().distinct().sorted(),
       membersInSameSection = inSameSection,
       membersInSameYear = inSameYear,
   )
