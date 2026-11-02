@@ -54,6 +54,8 @@ class ReminderTimeTest {
     assertEquals(TimeLeft.Minutes(59), timeLeft(start, now.plusSeconds(60)))
     assertEquals(TimeLeft.Minutes(10), timeLeft(start, now.plusSeconds(50 * 60)))
     assertEquals(TimeLeft.Minutes(1), timeLeft(start, start.minusSeconds(1)))
+    // Under a second left still counts as a minute, never "0 min".
+    assertEquals(TimeLeft.Minutes(1), timeLeft(start, start.minusMillis(500)))
   }
 
   @Test
