@@ -85,6 +85,7 @@ class FakeRegistrationRepository(var currentUid: String? = "test-student") :
     }
   }
 
+  /** Counts for anyone: unlike the rules, it doesn't check that the caller organizes the event. */
   override suspend fun countAttendees(eventId: String): AttendeeCountResult {
     countCalls++
     if (!isReadableEventId(eventId)) return AttendeeCountResult.UnexpectedError
