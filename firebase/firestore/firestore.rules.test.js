@@ -1,4 +1,4 @@
-// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121).
+// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143; publicProfiles/{uid} tests, written test-first, #229; reads by ID only and the fixed section and year lists, after review, #229); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121).
 const { after, before, beforeEach, test } = require("node:test");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
@@ -16,6 +16,7 @@ const {
   documentId,
   getDoc,
   getDocs,
+  limit,
   orderBy,
   query,
   runTransaction,
@@ -694,9 +695,10 @@ test("an account without an email_verified claim can't reach its own users/{uid}
 });
 
 // Collections and paths no rule covers yet, including look-alikes of users/{uid} and paths that
-// end in the caller's own uid. Only users/{uid} itself is reachable.
+// end in the caller's own uid. Only users/{uid} itself is reachable. publicProfiles/{uid} has its
+// own tests since #229 (below).
 const OTHER_PATHS = [
-  "publicProfiles/u1",
+  "publicProfiles/u1/private/x",
   "associations/u1",
   "users_backup/u1",
   "Users/u1",
@@ -1895,4 +1897,321 @@ test("a student can't list other students' registrations across events", async (
   const db = studentDb("u1");
   await assertFails(getDocs(collectionGroup(db, "attendees")));
   await assertFails(getDocs(query(collectionGroup(db, "attendees"), where("uid", "==", "u2"))));
+});
+
+// ---- publicProfiles/{uid} (#229) ----
+// What other students see of a student: exactly displayName, section, year and interests, copied
+// from the owner's users/{uid} in the same write. Never the email. Associations see none.
+
+/** The private profile of a fictional student [uid], with fields overridden by [changes]. */
+function privateProfile(uid, changes = {}) {
+  const profile = {
+    uid,
+    email: `${uid}@epfl.ch`,
+    displayName: "Test Student",
+    section: "IN",
+    year: "BA3",
+    accountType: "student",
+    ...changes,
+  };
+  for (const key of Object.keys(profile)) {
+    if (profile[key] === undefined) delete profile[key];
+  }
+  return profile;
+}
+
+/**
+ * The public profile mirroring [privateProfile]: its displayName, section and year, and no
+ * interests yet (#230 adds them). Fields are overridden, or removed when set to undefined.
+ */
+function publicProfile(changes = {}) {
+  const profile = { displayName: "Test Student", section: "IN", year: "BA3", interests: [], ...changes };
+  for (const key of Object.keys(profile)) {
+    if (profile[key] === undefined) delete profile[key];
+  }
+  return profile;
+}
+
+/** Seeds the private and public profiles of a fictional student [uid] with the rules off. */
+async function seedStudentWithPublicProfile(uid) {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, `users/${uid}`), privateProfile(uid));
+    await setDoc(doc(db, `publicProfiles/${uid}`), publicProfile());
+  });
+}
+
+/** Creates users/[uid] and publicProfiles/[uid] in one batch, as the profile step does. */
+function createBoth(db, uid, privateChanges = {}, publicChanges = {}) {
+  const batch = writeBatch(db);
+  batch.set(doc(db, `users/${uid}`), privateProfile(uid, privateChanges));
+  batch.set(doc(db, `publicProfiles/${uid}`), publicProfile(publicChanges));
+  return batch.commit();
+}
+
+// -- read --
+
+test("a student can read another student's public profile", async () => {
+  await seedStudentWithPublicProfile("u2");
+  const snapshot = await assertSucceeds(getDoc(doc(studentDb("u1"), "publicProfiles/u2")));
+  if (snapshot.data().section !== "IN") throw new Error("Expected u2's public profile");
+});
+
+// No student directory: a student reads public profiles one by one, by UID, never as a list.
+for (const [name, listing] of [
+  ["the whole collection", (profiles) => profiles],
+  ["a page of it", (profiles) => query(profiles, limit(2))],
+  ["several by ID", (profiles) => query(profiles, where(documentId(), "in", ["u2", "u3"]))],
+]) {
+  test(`a student can't list public profiles: ${name}`, async () => {
+    await seedStudentWithPublicProfile("u2");
+    await seedStudentWithPublicProfile("u3");
+    await assertFails(getDocs(listing(collection(studentDb("u1"), "publicProfiles"))));
+  });
+}
+
+test("a student can read a public profile that doesn't exist yet", async () => {
+  await assertSucceeds(getDoc(doc(studentDb("u1"), "publicProfiles/missing")));
+});
+
+for (const [name, db] of [
+  ["a pending association", () => associationDb("club")],
+  ["a verified association", () => associationDb("verifiedClub")],
+  ["an @epfl.ch association", () => epflAssociationDb("verifiedClub")],
+  ["an unverified student", () => firestoreAs("student@epfl.ch", false, "u1")],
+  ["a non-EPFL account without a profile", () => associationDb("nobody")],
+  ["a signed-out user", () => env.unauthenticatedContext().firestore()],
+]) {
+  test(`${name} can't read public profiles`, async () => {
+    await seedStudentWithPublicProfile("u2");
+    await assertFails(getDoc(doc(db(), "publicProfiles/u2")));
+  });
+}
+
+// -- create and update --
+
+/**
+ * The section and year codes the app offers, read from ProfileOptions.kt, so these tests fail if
+ * the app and the rules' lists stop matching.
+ */
+function appProfileOptions() {
+  const source = readFileSync(
+    path.join(__dirname, "../../app/src/main/java/com/polysocial/model/user/ProfileOptions.kt"),
+    "utf8",
+  );
+  const sectionsList = source.match(/val SECTIONS: List<String> =\s*listOf\(([^)]*)\)/);
+  const yearsLine = source.match(/val YEARS: List<String> = (.*)/);
+  if (!sectionsList || !yearsLine) throw new Error("ProfileOptions.kt changed shape: update this test");
+  const sections = [...sectionsList[1].matchAll(/"([A-Z]+)"/g)].map((match) => match[1]);
+  const years = [...yearsLine[1].matchAll(/\((\d+)\.\.(\d+)\)\.map \{ "([A-Z]+)\$it" \}/g)].flatMap(
+    ([, from, to, prefix]) =>
+      Array.from({ length: Number(to) - Number(from) + 1 }, (_, i) => `${prefix}${Number(from) + i}`),
+  );
+  if (sections.length === 0 || years.length === 0) {
+    throw new Error(`Couldn't read ProfileOptions.kt: ${sections.length} sections, ${years.length} years`);
+  }
+  return { sections, years };
+}
+
+/** The codes listed by [functionName] in firestore.rules, such as isKnownSection. */
+function rulesCodes(functionName) {
+  const rules = readFileSync(path.join(__dirname, "firestore.rules"), "utf8");
+  const body = rules.match(new RegExp(`function ${functionName}\\([^)]*\\) \\{[^}]*\\}`));
+  if (!body) throw new Error(`firestore.rules has no ${functionName}: update this test`);
+  return [...body[0].matchAll(/'([A-Z0-9]+)'/g)].map((match) => match[1]);
+}
+
+test("the rules accept exactly the section and year codes the app offers", () => {
+  const { sections, years } = appProfileOptions();
+  const sorted = (codes) => [...codes].sort().join(",");
+  if (sorted(rulesCodes("isKnownSection")) !== sorted(sections)) {
+    throw new Error("isKnownSection in firestore.rules differs from SECTIONS in ProfileOptions.kt");
+  }
+  if (sorted(rulesCodes("isKnownYear")) !== sorted(years)) {
+    throw new Error("isKnownYear in firestore.rules differs from YEARS in ProfileOptions.kt");
+  }
+});
+
+test("every section and year the app offers can be made public", async () => {
+  const { sections, years } = appProfileOptions();
+  const codes = [
+    ...sections.map((section) => ({ section })),
+    ...years.map((year) => ({ year })),
+  ];
+  for (const [i, changes] of codes.entries()) {
+    const uid = `option${i}`;
+    await assertSucceeds(createBoth(studentDb(uid), uid, changes, changes));
+  }
+});
+
+for (const [name, changes] of [
+  ["an unknown section", { section: "XX" }],
+  ["a lowercase section", { section: "in" }],
+  ["an overlong section", { section: "IN".repeat(5000) }],
+  ["a section that isn't a string", { section: 7 }],
+  ["an unknown year", { year: "BA7" }],
+  ["an overlong year", { year: "BA3".repeat(5000) }],
+  ["a year that isn't a string", { year: 3 }],
+]) {
+  test(`a public profile with ${name}, even copied from the private one, is denied`, async () => {
+    await assertFails(createBoth(studentDb("u5"), "u5", changes, changes));
+  });
+
+  test(`updating a public profile to ${name}, even copied from the private one, is denied`, async () => {
+    await seedStudentWithPublicProfile("u5");
+    const db = studentDb("u5");
+    const batch = writeBatch(db);
+    batch.update(doc(db, "users/u5"), changes);
+    batch.set(doc(db, "publicProfiles/u5"), publicProfile(changes));
+    await assertFails(batch.commit());
+  });
+}
+
+test("a student creates their profile and public profile together", async () => {
+  await assertSucceeds(createBoth(studentDb("u5"), "u5"));
+});
+
+test("a student creates their profile and public profile in a transaction", async () => {
+  const db = studentDb("u5");
+  await assertSucceeds(
+    runTransaction(db, async (transaction) => {
+      await transaction.get(doc(db, "users/u5"));
+      transaction.set(doc(db, "users/u5"), privateProfile("u5"));
+      transaction.set(doc(db, "publicProfiles/u5"), publicProfile());
+    }),
+  );
+});
+
+test("a student with a saved profile can add the public profile on its own", async () => {
+  await seedUser("u5", privateProfile("u5"));
+  await assertSucceeds(setDoc(doc(studentDb("u5"), "publicProfiles/u5"), publicProfile()));
+});
+
+test("a student edits their profile and public profile together", async () => {
+  await seedStudentWithPublicProfile("u5");
+  const db = studentDb("u5");
+  const batch = writeBatch(db);
+  batch.update(doc(db, "users/u5"), { displayName: "New Name", section: "SC", year: "MA1" });
+  batch.set(doc(db, "publicProfiles/u5"), publicProfile({ displayName: "New Name", section: "SC", year: "MA1" }));
+  await assertSucceeds(batch.commit());
+});
+
+test("an edit's public profile must match the private profile as edited, not as it was", async () => {
+  await seedStudentWithPublicProfile("u5");
+  const db = studentDb("u5");
+  const batch = writeBatch(db);
+  batch.update(doc(db, "users/u5"), { displayName: "New Name" });
+  batch.set(doc(db, "publicProfiles/u5"), publicProfile());
+  await assertFails(batch.commit());
+});
+
+for (const [name, changes] of [
+  ["another displayName", { displayName: "Someone Else" }],
+  ["another section", { section: "SC" }],
+  ["another year", { year: "MA2" }],
+]) {
+  test(`a public profile with ${name} than the private one is denied`, async () => {
+    await assertFails(createBoth(studentDb("u5"), "u5", {}, changes));
+  });
+
+  test(`updating a public profile to ${name} than the private one is denied`, async () => {
+    await seedStudentWithPublicProfile("u5");
+    await assertFails(updateDoc(doc(studentDb("u5"), "publicProfiles/u5"), changes));
+  });
+}
+
+for (const [name, changes] of [
+  ["the email", { email: "u5@epfl.ch" }],
+  ["the uid", { uid: "u5" }],
+  ["the account type", { accountType: "student" }],
+  ["another field", { bio: "Hello" }],
+  ["no displayName", { displayName: undefined }],
+  ["no section", { section: undefined }],
+  ["no year", { year: undefined }],
+  ["no interests", { interests: undefined }],
+  ["interests before #230 allows them", { interests: ["MUSIC"] }],
+  ["interests that aren't a list", { interests: "MUSIC" }],
+]) {
+  test(`a public profile with ${name} is denied`, async () => {
+    await assertFails(createBoth(studentDb("u5"), "u5", {}, changes));
+  });
+}
+
+test("a student can't add a field to their public profile later", async () => {
+  await seedStudentWithPublicProfile("u5");
+  await assertFails(updateDoc(doc(studentDb("u5"), "publicProfiles/u5"), { email: "u5@epfl.ch" }));
+});
+
+test("a student can't write another student's public profile", async () => {
+  await seedStudentWithPublicProfile("u2");
+  const db = studentDb("u1");
+  await assertFails(setDoc(doc(db, "publicProfiles/u2"), publicProfile({ displayName: "Changed" })));
+  await assertFails(updateDoc(doc(db, "publicProfiles/u2"), { displayName: "Changed" }));
+  await assertFails(setDoc(doc(db, "publicProfiles/u6"), publicProfile()));
+});
+
+test("a student can't write an exact copy of another student's public profile", async () => {
+  // Name, section and year are public, so anyone could rebuild a correct copy.
+  await seedStudentWithPublicProfile("u2");
+  await seedUser("u7", privateProfile("u7"));
+  const db = studentDb("u1");
+  await assertFails(setDoc(doc(db, "publicProfiles/u2"), publicProfile()));
+  await assertFails(setDoc(doc(db, "publicProfiles/u7"), publicProfile()));
+});
+
+test("a public profile without a private profile is denied", async () => {
+  await assertFails(setDoc(doc(studentDb("u5"), "publicProfiles/u5"), publicProfile()));
+});
+
+test("a private profile without a displayName can't get a public profile", async () => {
+  await seedUser("u5", privateProfile("u5", { displayName: undefined }));
+  await assertFails(setDoc(doc(studentDb("u5"), "publicProfiles/u5"), publicProfile()));
+});
+
+for (const [name, db, uid] of [
+  ["A pending association", () => associationDb("club"), "club"],
+  ["A verified association", () => associationDb("verifiedClub"), "verifiedClub"],
+  ["An @epfl.ch association", () => epflAssociationDb("verifiedClub"), "verifiedClub"],
+]) {
+  test(`${name} can't write a public profile`, async () => {
+    await assertFails(setDoc(doc(db(), `publicProfiles/${uid}`), publicProfile()));
+  });
+}
+
+test("an @epfl.ch account creating an association profile can't add a public profile", async () => {
+  await assertFails(
+    createBoth(studentDb("u5"), "u5", { accountType: "association", isAssociationVerified: false }),
+  );
+});
+
+test("a profile without an accountType counts as a student's", async () => {
+  await assertSucceeds(createBoth(studentDb("u5"), "u5", { accountType: undefined }));
+});
+
+test("a non-EPFL account whose profile says student can't write a public profile", async () => {
+  await seedUser("u5", privateProfile("u5", { email: "someone@example.org" }));
+  await assertFails(setDoc(doc(associationDb("u5"), "publicProfiles/u5"), publicProfile()));
+});
+
+for (const [name, db] of [
+  ["an unverified student", () => firestoreAs("u5@epfl.ch", false, "u5")],
+  ["a signed-out user", () => env.unauthenticatedContext().firestore()],
+]) {
+  test(`${name} can't write a public profile`, async () => {
+    await seedUser("u5", privateProfile("u5"));
+    await assertFails(setDoc(doc(db(), "publicProfiles/u5"), publicProfile()));
+  });
+}
+
+// -- delete --
+
+test("a student can't delete their own public profile", async () => {
+  await seedStudentWithPublicProfile("u5");
+  await assertFails(deleteDoc(doc(studentDb("u5"), "publicProfiles/u5")));
+});
+
+test("nobody else can delete a public profile", async () => {
+  await seedStudentWithPublicProfile("u2");
+  await assertFails(deleteDoc(doc(studentDb("u1"), "publicProfiles/u2")));
+  await assertFails(deleteDoc(doc(associationDb("verifiedClub"), "publicProfiles/u2")));
 });
