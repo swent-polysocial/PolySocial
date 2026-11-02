@@ -100,7 +100,7 @@ Before every commit, check that `git status` never lists these files. If it does
 
 ### Deploying to Firebase
 
-Nothing deploys the Security Rules, the Firestore indexes or the Cloud Functions automatically: CI only tests them. When a PR that changes `firebase/firestore/firestore.rules`, `firebase/firestore/firestore.indexes.json` or `firebase/functions` is merged into `main`, **its author asks the deploy owner, Franciszek (@FranciszekNajda), who has access to the Firebase project**, and notes in the PR that it was deployed. Until then the app on `main` and production disagree: #220's rules and #214's index were missing from production until 2026-10-29.
+Nothing deploys the Security Rules, the Firestore indexes or the Cloud Functions automatically: CI only tests them. When a PR that changes `firebase/firestore/firestore.rules`, `firebase/firestore/firestore.indexes.json` or `firebase/functions` is merged into `main`, **its author asks the deploy owner, Franciszek (@FranciszekNajda), who has access to the Firebase project**, and notes in the PR that it was deployed. The deploy owner deploys from an up-to-date `main` (`git switch main && git pull` first), never from a feature branch, which could publish rules that aren't merged yet; the Firebase console (Firestore → Rules) then shows the new version with its publish time. Until then the app on `main` and production disagree: #220's rules and #214's index were missing from production until 2026-10-29.
 
 Deploy with the [Firebase CLI](https://firebase.google.com/docs/cli) (`firebase login` first), and always with `--only`, since a plain `firebase deploy` deploys everything at once:
 
@@ -110,15 +110,6 @@ firebase deploy --only firestore:indexes --project <project-id>   # firebase/fir
 ```
 
 `<project-id>` is the `project_id` in your `app/google-services.json`. Functions deploy as described in [Cloud Functions](#cloud-functions). A new index takes a few minutes to build (Firebase console → Firestore → Indexes); until it's ready, the query that needs it fails. The local emulator doesn't need indexes.
-
-**Firestore Security Rules:** merging a change to `firebase/firestore/firestore.rules` does not deploy it. Until someone deploys it, Firebase keeps the old rules, and the app's new reads and writes are denied in production. Right after such a PR merges, its author deploys the rules from an up-to-date `main` (never from a feature branch, which could publish rules that aren't merged yet):
-
-```bash
-git switch main && git pull
-firebase deploy --only firestore:rules --project <project-id>
-```
-
-The Firebase console (Firestore → Rules) then shows the new version with its publish time.
 
 ## Downloading the CI APK
 
