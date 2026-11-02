@@ -45,7 +45,8 @@ class GroupMatchingTest {
             member("m3"),
             member("m4"),
         )
-    val overFull = group("over-full", member("m5", year = "BA3"), member("m6"), member("m7"), capacity = 2)
+    val overFull =
+        group("over-full", member("m5", year = "BA3"), member("m6"), member("m7"), capacity = 2)
     val noPlaces = group("no-places", capacity = 0)
     val onePlaceLeft = group("one-place-left", member("m8"), member("m9"), member("m10"))
 
@@ -75,7 +76,13 @@ class GroupMatchingTest {
   fun aMemberWithoutAProfile_stillCounts_forFullAndOwnGroups() {
     val m1 = member("m1", section = "IN", interests = setOf("music"))
     // Four stored members, one profile missing: full, whatever the profiles say.
-    val fullByUids = MatchGroup("full", 4, listOf("m1", "m2", "m3", "m4"), listOf(m1, member("m2"), member("m3")))
+    val fullByUids =
+        MatchGroup(
+            "full",
+            4,
+            listOf("m1", "m2", "m3", "m4"),
+            listOf(m1, member("m2"), member("m3")),
+        )
     // The student is a stored member whose profile wasn't read: their own group.
     val mine = MatchGroup("mine", 4, listOf("me", "m5"), listOf(member("m5")))
     // Two stored members, one profile missing: open, scored on the one profile read.
