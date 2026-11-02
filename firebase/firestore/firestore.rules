@@ -7,7 +7,8 @@
 // interests from the fixed list, written test-first, #230);
 // OpenAI Codex (public/private event read rules, #52); Claude Opus 5.5 (event write rules, #47;
 // badge and locationName checks after review; isStudent for writes after #161; organizers
-// stay allowed readers after review; event registrations, #121).
+// stay allowed readers after review; event registrations, #121); Claude (Opus 5.5, Anthropic)
+// (event groups and their groupMembers markers, #232).
 rules_version = '2';
 
 service cloud.firestore {
@@ -313,6 +314,109 @@ service cloud.firestore {
     // query that doesn't constrain uid to the caller is denied.
     match /{path=**}/attendees/{uid} {
       allow list: if isStudent() && resource.data.uid == request.auth.uid;
+    }
+
+    // An event's groups (#228, built by #232), the second reachable event subcollection after
+    // attendees: capacity (4, stored so it can change), memberUids (1 to capacity UIDs, the
+    // creator first), createdBy and the server's createdAt. A student who can read the event
+    // (the same check as the event's read rule) reads its groups, starts one, or joins one.
+    // Each write changes only the caller's own UID in memberUids, always together with their
+    // groupMembers marker (below, checked with getAfter), which keeps a student in at most one
+    // group per event. The capacity is checked here, so it needs no counter; the client's
+    // transaction stops two students taking the last place. The last member to leave deletes
+    // the group. Associations get no access (isStudent).
+    match /events/{eventId}/groups/{groupId} {
+      function event() {
+        return /databases/$(database)/documents/events/$(eventId);
+      }
+
+      function ownMarker() {
+        return /databases/$(database)/documents/events/$(eventId)/groupMembers/$(request.auth.uid);
+      }
+
+      function canReadEvent() {
+        return exists(event())
+            && (get(event()).data.isPrivate == false
+                || (get(event()).data.isPrivate == true
+                    && get(event()).data.allowedUids.hasAny([request.auth.uid])));
+      }
+
+      // After this write, the caller's marker names this group. A missing marker fails.
+      function ownMarkerNamesThisGroupAfter() {
+        return getAfter(ownMarker()).data.groupId == groupId;
+      }
+
+      // Joining appends the caller's UID, within the capacity, and creates their marker.
+      function isJoining() {
+        let before = resource.data.memberUids;
+        let after = request.resource.data.memberUids;
+        return canReadEvent()
+            && !before.hasAny([request.auth.uid])
+            && after == before.concat([request.auth.uid])
+            && after.size() <= resource.data.capacity
+            && !exists(ownMarker())
+            && ownMarkerNamesThisGroupAfter();
+      }
+
+      // Leaving removes only the caller's UID, leaves someone in the group (the last member
+      // deletes it instead), and deletes their marker.
+      function isLeaving() {
+        let before = resource.data.memberUids;
+        let after = request.resource.data.memberUids;
+        return before.hasAny([request.auth.uid])
+            && after == before.removeAll([request.auth.uid])
+            && after.size() > 0
+            && !existsAfter(ownMarker());
+      }
+
+      allow get, list: if isStudent() && canReadEvent();
+      allow create: if isStudent()
+          && canReadEvent()
+          && request.resource.data.keys().hasOnly(['capacity', 'memberUids', 'createdBy', 'createdAt'])
+          && request.resource.data.capacity == 4
+          && request.resource.data.memberUids == [request.auth.uid]
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.createdAt == request.time
+          && ownMarkerNamesThisGroupAfter();
+      allow update: if isStudent()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberUids'])
+          && (isJoining() || isLeaving());
+      allow delete: if isStudent()
+          && resource.data.memberUids == [request.auth.uid]
+          && !existsAfter(ownMarker());
+    }
+
+    // A student's own groups across events (#232): the collection-group query
+    // `groups where memberUids array-contains <their UID>`. Rules aren't filters, so a query that
+    // doesn't constrain memberUids to the caller is denied.
+    match /{path=**}/groups/{groupId} {
+      allow list: if isStudent() && resource.data.memberUids.hasAny([request.auth.uid]);
+    }
+
+    // A student's marker for an event's groups (#232), keyed by their UID: groupId names their
+    // group for the event, so a transaction, which can't run a query, sees whether they are
+    // already in one. Only that student reads, creates or deletes it, in the same write as their
+    // memberUids change: a new marker names a group whose memberUids contain them after the write,
+    // and it is deleted only once they are no longer in that group. Nobody updates one, so a
+    // student can't switch groups without leaving the first. Associations get no access.
+    match /events/{eventId}/groupMembers/{uid} {
+      function isSelf() {
+        return isStudent() && request.auth.uid == uid;
+      }
+
+      function group(id) {
+        return /databases/$(database)/documents/events/$(eventId)/groups/$(id);
+      }
+
+      allow get: if isSelf();
+      allow create: if isSelf()
+          && request.resource.data.keys().hasOnly(['groupId'])
+          && request.resource.data.groupId is string
+          && request.resource.data.groupId.matches('[^/]+')
+          && getAfter(group(request.resource.data.groupId)).data.memberUids.hasAny([uid]);
+      allow delete: if isSelf()
+          && !(existsAfter(group(resource.data.groupId))
+              && getAfter(group(resource.data.groupId)).data.memberUids.hasAny([uid]));
     }
 
     // An association's public profile (#126), keyed by the association account's UID. Its
