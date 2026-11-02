@@ -1,7 +1,8 @@
 // Contributors: Claude (isEpflUser helper, #33; own users/{uid} rule and no catch-all, #35;
 // fixed uid and accountType after review, #35; @epfl.ch associations aren't students and
 // accountType values on create, association profiles not deletable by the client, #161;
-// associations/{uid}, #126; displayName limit, written test-first, #143);
+// associations/{uid}, #126; displayName limit, written test-first, #143; publicProfiles/{uid},
+// written test-first, #229; reads by ID only and fixed section and year lists, after review, #229);
 // OpenAI Codex (public/private event read rules, #52); Claude Opus 5.5 (event write rules, #47;
 // badge and locationName checks after review; isStudent for writes after #161; organizers
 // stay allowed readers after review; event registrations, #121).
@@ -67,6 +68,53 @@ service cloud.firestore {
           && !request.resource.data.diff(resource.data).affectedKeys()
               .hasAny(['uid', 'accountType', 'isAssociationVerified'])
           && hasValidDisplayName();
+    }
+
+    // What other students see of a student (#229): exactly displayName, section, year and
+    // interests, never the email. Any student reads one by its UID, to match with and show group
+    // members, but can't list the collection, so no student directory is exposed; associations
+    // read none. Only its owner writes it, a student, and only as a copy of their users/{uid} as it
+    // is after the same write (getAfter), so it is written with the private profile and can't say
+    // anything else. Because others read them, section and year must be codes the app offers.
+    // interests stays empty until #230 adds the fixed list. Nobody deletes it from the app:
+    // deleteAccount removes it with the account (a client deleting users/{uid} directly, which the
+    // app never does, would leave it behind until then). Each copied field is compared, so a
+    // missing one, or a missing users/{uid}, makes the rule fail and deny.
+    match /publicProfiles/{uid} {
+      // The codes the app offers: keep them equal to SECTIONS and YEARS in
+      // app/src/main/java/com/polysocial/model/user/ProfileOptions.kt. The rules tests read that
+      // file and fail if a code it offers is refused here.
+      function isKnownSection(section) {
+        return section in ['AR', 'CGC', 'CMS', 'EL', 'GC', 'GM', 'IF', 'IN', 'MA', 'MT', 'MTE',
+            'MX', 'NX', 'PH', 'SC', 'SIE', 'SIQ', 'SV'];
+      }
+
+      function isKnownYear(year) {
+        return year in ['BA1', 'BA2', 'BA3', 'BA4', 'BA5', 'BA6', 'MA1', 'MA2', 'MA3', 'MA4'];
+      }
+
+      function privateProfileAfter() {
+        return getAfter(/databases/$(database)/documents/users/$(uid));
+      }
+
+      function copiesPrivateProfile() {
+        let data = request.resource.data;
+        let fields = ['displayName', 'section', 'year', 'interests'];
+        let owner = privateProfileAfter().data;
+        return data.keys().hasOnly(fields)
+            && owner.get('accountType', 'student') == 'student'
+            && data.displayName == owner.displayName
+            && data.section == owner.section
+            && data.year == owner.year
+            && isKnownSection(data.section)
+            && isKnownYear(data.year)
+            && data.interests == [];
+      }
+
+      allow get: if isStudent();
+      allow create, update: if isStudent()
+          && request.auth.uid == uid
+          && copiesPrivateProfile();
     }
 
     // Of the event subcollections, only attendees (below) is reachable. Private queries also need
