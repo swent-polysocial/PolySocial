@@ -1,4 +1,5 @@
-// Contributors: Claude Opus 5.5 (reminder time and notification day, #123; time left after review).
+// Contributors: Claude Opus 5.5 (reminder time and notification day, #123; time left after
+// reviews).
 package com.polysocial.model.reminder
 
 import java.time.Duration
@@ -30,7 +31,7 @@ sealed interface TimeLeft {
  * minimum), and its title then gives the minutes actually left.
  */
 fun timeLeft(startTime: Instant, now: Instant): TimeLeft {
-  val minutes = (Duration.between(now, startTime).seconds + 59) / 60
+  val minutes = (Duration.between(now, startTime).toMillis() + 59_999) / 60_000
   return if (minutes < 60) TimeLeft.Minutes(minutes) else TimeLeft.Hours((minutes + 30) / 60)
 }
 
