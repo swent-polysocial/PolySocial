@@ -1,16 +1,18 @@
 // Contributors: Claude (the Edit details form of a pending association, its checks and its save,
-// #127; no emoji cut at a limit, after a review, #127).
+// #127; no emoji cut at a limit, after a review, #127; the setup form's shared checks, #127).
 package com.polysocial.ui.association
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.polysocial.model.association.Association
+import com.polysocial.model.association.AssociationField
 import com.polysocial.model.association.AssociationRepository
 import com.polysocial.model.association.AssociationType
 import com.polysocial.model.association.MAX_ASSOCIATION_ABOUT_LENGTH
 import com.polysocial.model.association.MAX_ASSOCIATION_NAME_LENGTH
 import com.polysocial.model.association.MAX_ASSOCIATION_WEBSITE_LENGTH
 import com.polysocial.model.association.UpdateAssociationResult
+import com.polysocial.model.association.associationFormErrors
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,21 +33,26 @@ data class AssociationForm(
 enum class AssociationFormError {
   NAME_MISSING,
   ABOUT_MISSING,
-  /** Not empty, and not a link the Security Rules accept: `https://` then no whitespace. */
+  /** Not empty, and not a usable `https://` link with a host. */
   WEBSITE_INVALID,
 }
 
 /**
- * The errors of [form], with the Security Rules' checks (#126): a name and an about that aren't
- * blank, and an optional website of the form `https://…` without whitespace. Spaces around a field
- * don't count, since it is saved trimmed. The lengths can't be exceeded: the form stops at them.
+ * The errors of this form, with association setup's checks (`associationFormErrors`, #256), so both
+ * forms accept the same details: a name and an about that aren't blank, and an optional `https://`
+ * website with a host and a valid port. Spaces around a field don't count, since it is saved
+ * trimmed. The lengths can't be exceeded, since the form stops at them, so an error on a field
+ * always means the one under it.
  */
-fun associationFormErrors(form: AssociationForm): Set<AssociationFormError> = buildSet {
-  if (form.name.isBlank()) add(AssociationFormError.NAME_MISSING)
-  if (form.about.isBlank()) add(AssociationFormError.ABOUT_MISSING)
-  val website = form.website.trim()
-  if (website.isNotEmpty() && !WEBSITE.matches(website)) add(AssociationFormError.WEBSITE_INVALID)
-}
+fun AssociationForm.errors(): Set<AssociationFormError> =
+    associationFormErrors(name, type, about, website).keys.mapNotNullTo(mutableSetOf()) { field ->
+      when (field) {
+        AssociationField.Name -> AssociationFormError.NAME_MISSING
+        AssociationField.About -> AssociationFormError.ABOUT_MISSING
+        AssociationField.Website -> AssociationFormError.WEBSITE_INVALID
+        AssociationField.Type -> null
+      }
+    }
 
 /**
  * At most [length] characters, without cutting a character made of two (an emoji) in half, as the
@@ -55,9 +62,6 @@ private fun String.takeWhole(length: Int): String {
   val cut = take(length)
   return if (cut.length == length && cut.last().isHighSurrogate()) cut.dropLast(1) else cut
 }
-
-/** The Security Rules' website check (`https://[^\s]+`). */
-private val WEBSITE = Regex("https://\\S+")
 
 /** Where saving the form is. */
 sealed interface EditAssociationStatus {
@@ -82,7 +86,7 @@ data class EditAssociationUiState(
     val showErrors: Boolean = false,
 ) {
   val visibleErrors: Set<AssociationFormError>
-    get() = if (showErrors && form != null) associationFormErrors(form) else emptySet()
+    get() = if (showErrors && form != null) form.errors() else emptySet()
 
   val canSave: Boolean
     get() =
@@ -145,7 +149,7 @@ constructor(private val associations: AssociationRepository) : ViewModel() {
     val association = original ?: return
     if (state.status == EditAssociationStatus.Saving || state.status is EditAssociationStatus.Saved)
         return
-    if (associationFormErrors(form).isNotEmpty()) {
+    if (form.errors().isNotEmpty()) {
       _uiState.update { it.copy(showErrors = true) }
       return
     }

@@ -1,4 +1,5 @@
-// Contributors: Claude (wrote these tests, #127; emoji at a limit, after a review, #127).
+// Contributors: Claude (wrote these tests, #127; emoji at a limit, after a review, #127; setup's
+// website checks, #127).
 package com.polysocial.ui.association
 
 import com.polysocial.model.association.AssociationType
@@ -37,18 +38,18 @@ class EditAssociationViewModelTest {
   fun aBlankNameOrAbout_isMissing_spacesIncluded() {
     assertEquals(
         setOf(AssociationFormError.NAME_MISSING, AssociationFormError.ABOUT_MISSING),
-        associationFormErrors(form(name = "  ", about = "\n ")),
+        form(name = "  ", about = "\n ").errors(),
     )
-    assertEquals(emptySet<AssociationFormError>(), associationFormErrors(form()))
+    assertEquals(emptySet<AssociationFormError>(), form().errors())
   }
 
   @Test
-  fun theWebsite_isOptional_butMustBeAnHttpsLinkWithoutSpaces() {
+  fun theWebsite_isOptional_butMustBeAnHttpsLinkWithAHost_likeSetup() {
     for (valid in listOf("", "   ", "https://example.org", " https://example.org/a?b=c ")) {
       assertEquals(
           valid,
           emptySet<AssociationFormError>(),
-          associationFormErrors(form(website = valid)),
+          form(website = valid).errors(),
       )
     }
     for (invalid in
@@ -58,11 +59,14 @@ class EditAssociationViewModelTest {
             "https://",
             "https:// example.org",
             "https://a b",
+            // The same checks as association setup (#256): a host and a valid port.
+            "https:///events",
+            "https://example.org:99999",
         )) {
       assertEquals(
           invalid,
           setOf(AssociationFormError.WEBSITE_INVALID),
-          associationFormErrors(form(website = invalid)),
+          form(website = invalid).errors(),
       )
     }
   }
