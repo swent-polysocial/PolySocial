@@ -23,6 +23,7 @@
 // deletion, #207; Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (Opus 5.5, Anthropic) left Verify Email only once its account is deleted,
 // #225; Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) wired Verify Email's Log out anyway, #225 review.
 package com.polysocial.ui.auth
 
 import androidx.activity.compose.BackHandler
@@ -480,6 +481,7 @@ fun AuthFlow(
               latestVerificationViewModel.leave(VerificationLeave.ChangeAddress)
             },
             onRetry = { latestVerificationViewModel.retryLeave() },
+            onLogOutAnyway = { latestVerificationViewModel.logOutAnyway() },
             onContinue = { latestVerificationViewModel.checkVerified() },
             onResend = { latestVerificationViewModel.resend() },
             onSnackbarShown = { latestVerificationViewModel.snackbarShown() },

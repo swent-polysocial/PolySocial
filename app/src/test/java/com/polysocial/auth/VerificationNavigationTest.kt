@@ -5,6 +5,8 @@
 // Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (Opus 5.5, Anthropic) covered leaving through the account deletion, #225;
 // Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) covered Log out anyway after a failed deletion, #225
+// review.
 package com.polysocial.auth
 
 import androidx.compose.ui.test.assertCountEquals
@@ -241,6 +243,39 @@ class VerificationNavigationTest {
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
     assertNull(repository.currentUser())
     assertEquals(1, repository.logOutCalls)
+    assertEquals(VerificationTiming(1000, 46_000), store.timings[user.uid])
+  }
+
+  @Test
+  fun logOutAnywayAfterAFailedDeletionOnBackOpensWelcomeAndKeepsTheAccount() {
+    // deleteAccount down (not deployed): every attempt fails, Retry too.
+    deletion.result = AccountDeletionResult.UnexpectedError
+    launch()
+    compose.onNodeWithTag(VerifyEmailTags.Back).performClick()
+    compose.onNodeWithTag(VerifyEmailTags.Retry).performClick()
+    compose
+        .onNodeWithTag(VerifyEmailTags.Banner)
+        .assertTextContains("Couldn't remove this address", substring = true)
+    assertEquals(2, deletion.calls)
+
+    compose.onNodeWithTag(VerifyEmailTags.LogOutAnyway).performClick()
+    compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
+    assertNull(repository.currentUser())
+    assertEquals(1, repository.logOutCalls)
+    assertEquals(2, deletion.calls)
+    assertEquals(VerificationTiming(1000, 46_000), store.timings[user.uid])
+  }
+
+  @Test
+  fun logOutAnywayOfflineOnChangeAddressOpensSignUpWithTheAddress() {
+    network.online = false
+    launch()
+    compose.onNodeWithTag(VerifyEmailTags.ChangeAddress).performClick()
+    compose.onNodeWithTag(VerifyEmailTags.LogOutAnyway).performClick()
+    compose.onNodeWithTag(SignUpTags.Screen).assertIsDisplayed()
+    assertEquals(SignUpUiState(form = SignUpForm(email = user.email)), signup.uiState.value)
+    assertNull(repository.currentUser())
+    assertEquals(0, deletion.calls)
     assertEquals(VerificationTiming(1000, 46_000), store.timings[user.uid])
   }
 }

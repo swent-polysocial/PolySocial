@@ -2,8 +2,10 @@
 // adaptive two-column layout for #31).
 // Contributors: Claude (Opus 5.5, Anthropic) added the deleting state and the Retry after a failed
 // deletion, #225; Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) added Log out anyway beside that Retry, #225 review.
 package com.polysocial.ui.auth
 
+import androidx.annotation.StringRes
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -15,6 +17,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -91,6 +94,7 @@ object VerifyEmailTags {
   const val TwoColumns = "verification_two_columns"
   const val Leaving = "verification_leaving"
   const val Retry = "verification_retry"
+  const val LogOutAnyway = "verification_log_out_anyway"
 }
 
 @Composable
@@ -102,6 +106,7 @@ fun VerifyEmailScreen(
     onResend: () -> Unit,
     onSnackbarShown: () -> Unit,
     onRetry: () -> Unit,
+    onLogOutAnyway: () -> Unit,
 ) {
   val snackbar = remember { SnackbarHostState() }
   val snackbarMessage = state.snackbar?.let { stringResource(it.resource()) }
@@ -152,7 +157,7 @@ fun VerifyEmailScreen(
           ) {
             VerificationHero(state, onChangeAddress, Modifier.weight(1f))
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(24.dp)) {
-              VerificationBanner(state, onRetry)
+              VerificationBanner(state, onRetry, onLogOutAnyway)
               VerificationActions(state, onContinue, onResend)
             }
           }
@@ -160,7 +165,7 @@ fun VerifyEmailScreen(
           Spacer(Modifier.height((screenHeight * 0.149f).coerceAtMost(120.dp)))
           VerificationHero(state, onChangeAddress)
           Spacer(Modifier.height(20.dp))
-          VerificationBanner(state, onRetry)
+          VerificationBanner(state, onRetry, onLogOutAnyway)
           Spacer(Modifier.weight(1f))
           Spacer(Modifier.height(24.dp))
           VerificationActions(state, onContinue, onResend)
@@ -317,7 +322,11 @@ private fun VerificationSpinner(color: Color, tag: String = VerifyEmailTags.Load
 }
 
 @Composable
-private fun VerificationBanner(state: VerifyEmailUiState, onRetry: () -> Unit) {
+private fun VerificationBanner(
+    state: VerifyEmailUiState,
+    onRetry: () -> Unit,
+    onLogOutAnyway: () -> Unit,
+) {
   // A failed deletion replaces the verification message until the user acts again.
   val message = state.leaveError?.message ?: state.banner
   val background =
@@ -361,19 +370,41 @@ private fun VerificationBanner(state: VerifyEmailUiState, onRetry: () -> Unit) {
               ),
       )
       if (state.leaveError != null) {
-        TextButton(
-            onClick = onRetry,
-            enabled = !state.busy,
-            modifier = Modifier.offset(x = (-12).dp).testTag(VerifyEmailTags.Retry),
-        ) {
-          Text(
-              stringResource(R.string.retry),
-              color = foreground,
-              style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+        // Signing out without the deletion keeps a way out while it can't run (#225 review).
+        FlowRow(Modifier.offset(x = (-12).dp)) {
+          BannerAction(R.string.retry, onRetry, !state.busy, foreground, VerifyEmailTags.Retry)
+          BannerAction(
+              R.string.verification_log_out_anyway,
+              onLogOutAnyway,
+              !state.busy,
+              foreground,
+              VerifyEmailTags.LogOutAnyway,
           )
         }
       }
     }
+  }
+}
+
+@Composable
+private fun BannerAction(
+    @StringRes text: Int,
+    onClick: () -> Unit,
+    enabled: Boolean,
+    color: Color,
+    tag: String,
+) {
+  // The colour goes through the button, so a disabled action takes the disabled colour.
+  TextButton(
+      onClick = onClick,
+      enabled = enabled,
+      colors = ButtonDefaults.textButtonColors(contentColor = color),
+      modifier = Modifier.testTag(tag),
+  ) {
+    Text(
+        stringResource(text),
+        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+    )
   }
 }
 

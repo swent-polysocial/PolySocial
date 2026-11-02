@@ -4,7 +4,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) deleted the unverified account on Back and Change
 // address, and kept the cooldown per address, #225; Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (Opus 5.5, Anthropic) reloaded the account before deleting it, so leaving
-// never deletes a verified one and finishes a deletion whose answer was lost, #225 review.
+// never deletes a verified one and finishes a deletion whose answer was lost, and added Log out
+// anyway after a failed deletion, #225 review.
 package com.polysocial.ui.auth
 
 import androidx.lifecycle.ViewModel
@@ -56,7 +57,10 @@ sealed interface VerificationExit {
   data class SignUp(val email: String) : VerificationExit
 }
 
-/** A way out that failed and stays on Verify Email: [message] is shown with a Retry. */
+/**
+ * A way out that failed and stays on Verify Email: [message] is shown with Retry and Log out
+ * anyway.
+ */
 data class VerificationLeaveError(val leave: VerificationLeave, val message: VerificationMessage)
 
 data class VerifyEmailUiState(
@@ -143,12 +147,12 @@ constructor(
    * timing cleared, as after a successful check. One that Firebase no longer accepts (usually an
    * earlier deletion whose answer was lost) is signed out as after a deletion, and a reload that
    * fails never deletes. A network or unexpected failure keeps the account signed in on Verify
-   * Email with a [VerifyEmailUiState.leaveError] that [retryLeave] repeats; nothing reports the
-   * account gone before the function confirms it. An account signed in too long ago
-   * (`RecentLoginRequired`), one the function refuses (`NotAllowed`) or a lost session only signs
-   * out, as before #225, and keeps the account's cooldown. After a deletion, the account's resend
-   * timing is cleared while the address keeps its cooldown. Duplicate taps are ignored while
-   * leaving.
+   * Email with a [VerifyEmailUiState.leaveError] that [retryLeave] repeats, or [logOutAnyway]
+   * skips; nothing reports the account gone before the function confirms it. An account signed in
+   * too long ago (`RecentLoginRequired`), one the function refuses (`NotAllowed`) or a lost session
+   * only signs out, as before #225, and keeps the account's cooldown. After a deletion, the
+   * account's resend timing is cleared while the address keeps its cooldown. Duplicate taps are
+   * ignored while leaving.
    */
   fun leave(action: VerificationLeave) {
     val state = mutableState.value
@@ -219,6 +223,20 @@ constructor(
   /** Repeats the way out that last failed; does nothing if none did. */
   fun retryLeave() {
     mutableState.value.leaveError?.let { leave(it.leave) }
+  }
+
+  /**
+   * Takes the way out that last failed without deleting the account, like the `RecentLoginRequired`
+   * fallback: the account and its cooldown stay, so the address stays reserved until the 7-day
+   * cleanup (#226, not built yet). It keeps a way out while the deletion can't run (offline, or
+   * `deleteAccount` down). Does nothing without a failure, or while other work runs, as its button
+   * is then disabled.
+   */
+  fun logOutAnyway() {
+    val state = mutableState.value
+    val failure = state.leaveError ?: return
+    if (state.busy || state.exit != null) return
+    signOut(failure.leave, repository.currentUser()?.email ?: state.email)
   }
 
   private fun failLeave(action: VerificationLeave, message: VerificationMessage) {

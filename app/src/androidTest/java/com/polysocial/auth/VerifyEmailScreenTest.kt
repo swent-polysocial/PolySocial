@@ -8,6 +8,7 @@
 // Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (Opus 5.5, Anthropic) passed the deletion and network fakes and the Retry
 // callback, #225; Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) passed the Log out anyway callback, #225 review.
 package com.polysocial.auth
 
 import android.content.res.Configuration
@@ -393,6 +394,7 @@ class VerifyEmailScreenTest {
             {},
             {},
             {},
+            {},
         )
       }
     }
@@ -408,6 +410,7 @@ class VerifyEmailScreenTest {
       PolySocialTheme {
         VerifyEmailScreen(
             VerifyEmailUiState(email = user.email, hasSentEmail = true, remainingSeconds = 45),
+            {},
             {},
             {},
             {},
