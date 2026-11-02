@@ -358,7 +358,7 @@ sequenceDiagram
   S->>App: taps Find a group
   App->>GR: observeGroups(eventId)
   App->>PR: members' public profiles
-  App->>ME: rank(me, groups)
+  App->>ME: rankGroups(me, groups)
   ME-->>App: open groups, best fit first
   App-->>S: groups and why each fits
   alt joins a group
