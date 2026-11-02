@@ -1,7 +1,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the account deletion flow tests, #207; Mohamed
 // Khellaf (reviewed and revised).
-// Contributors: Claude (Opus 5.5, Anthropic) tested the lost session's cleanup, from #286's
-// review.
+// Contributors: Claude (Opus 5.5, Anthropic) tested the lost session's cleanup and too many
+// attempts, from #286's review.
 package com.polysocial.ui.profile
 
 import android.content.Context
@@ -239,6 +239,21 @@ class DeleteAccountViewModelTest {
         vm.submitPassword()
         runCurrent()
         assertEquals(DeleteAccountStep.Done, step)
+      }
+
+  @Test
+  fun tooManyAttemptsStaysOnTheStepWithoutDeleting() =
+      runTest(main.dispatcher) {
+        fakeAuth.reauthResult = ReauthResult.TooManyAttempts
+        openReauth()
+        vm.onPasswordChange("fictional-password")
+        vm.submitPassword()
+        runCurrent()
+        assertEquals(DeleteAccountStep.Reauthenticate, step)
+        assertEquals(DeleteAccountError.Unexpected, error)
+        assertEquals("", vm.uiState.value.password)
+        assertEquals(0, deletion.calls)
+        assertAccountUntouched()
       }
 
   @Test
