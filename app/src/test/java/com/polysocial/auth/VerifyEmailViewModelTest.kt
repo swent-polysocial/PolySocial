@@ -2,6 +2,7 @@
 // #31; pending-operation account isolation, persistence failures, browser-return entry races and
 // production sign-out/re-entry, sealed-entry behavior and replacement during pending entry;
 // reset without sign-out for #109).
+// Contributors: Claude (Opus 5.5, Anthropic) made a failing test here fail instead of hang, #292.
 package com.polysocial.auth
 
 import androidx.lifecycle.ViewModelStore
@@ -20,6 +21,7 @@ import com.polysocial.ui.auth.VerifyEmailViewModel
 import com.polysocial.utils.MainDispatcherRule
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -61,16 +63,36 @@ class VerifyEmailViewModelTest {
   private val store = MemoryVerificationStore()
   private var now = 1_000_000L
 
-  private fun viewModel() = VerifyEmailViewModel(repository, store, VerificationClock { now })
+  /** The view models the test made and hasn't disposed yet. */
+  private val models = mutableListOf<VerifyEmailViewModel>()
 
-  private fun dispose(vm: VerifyEmailViewModel) =
-      ViewModelStore().apply {
-        put("verification", vm)
-        clear()
-      }
+  private fun viewModel(auth: AuthRepository = repository) =
+      VerifyEmailViewModel(auth, store, VerificationClock { now }).also { models += it }
+
+  /** Clears [vm]; safe to call again, since a cleared view model ignores a second clear. */
+  private fun dispose(vm: VerifyEmailViewModel) {
+    models.remove(vm)
+    ViewModelStore().apply {
+      put("verification", vm)
+      clear()
+    }
+  }
+
+  /**
+   * [runTest] that disposes the test's view models even when an assertion fails. The resend
+   * countdown never ends on the fixed test clock, so a view model left running keeps runTest's
+   * cleanup advancing virtual time forever and the test hangs instead of failing (#292).
+   */
+  private fun runVerifyTest(body: suspend TestScope.() -> Unit) = runTest {
+    try {
+      body()
+    } finally {
+      models.toList().forEach(::dispose)
+    }
+  }
 
   @Test
-  fun resetCancelsPendingVerificationBeforeItCanRestoreThePreviousState() = runTest {
+  fun resetCancelsPendingVerificationBeforeItCanRestoreThePreviousState() = runVerifyTest {
     val vm = viewModel()
     vm.enter()
     runCurrent()
@@ -89,7 +111,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun resetPreservesAccountAndCooldown() = runTest {
+  fun resetPreservesAccountAndCooldown() = runVerifyTest {
     val vm = viewModel()
     vm.enter()
     runCurrent()
@@ -121,7 +143,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun entrySendsFirstEmailAndBlocksDuplicateClicks() = runTest {
+  fun entrySendsFirstEmailAndBlocksDuplicateClicks() = runVerifyTest {
     val vm = viewModel()
     repository.sendGate = CompletableDeferred()
     vm.enter()
@@ -144,7 +166,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun processRestartUsesRemainingDeadlineWithoutSendingAgain() = runTest {
+  fun processRestartUsesRemainingDeadlineWithoutSendingAgain() = runVerifyTest {
     store.timings[user.uid] = VerificationTiming(now - 15_000, now + 30_000)
     val vm = viewModel()
     vm.enter()
@@ -167,7 +189,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun recreationKeepsConsumedSnackbarWhileSignOutReentryAndRestartNotify() = runTest {
+  fun recreationKeepsConsumedSnackbarWhileSignOutReentryAndRestartNotify() = runVerifyTest {
     store.timings[user.uid] = VerificationTiming(now - 15_000, now + 30_000)
     val vm = viewModel()
     vm.enter()
@@ -196,7 +218,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun expiredCooldownDoesNotAutomaticallySendOnRestart() = runTest {
+  fun expiredCooldownDoesNotAutomaticallySendOnRestart() = runVerifyTest {
     store.timings[user.uid] = VerificationTiming(now - 90_000, now - 45_000)
     val vm = viewModel()
     vm.enter()
@@ -207,7 +229,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun cooldownIsSeparateForEachAccount() = runTest {
+  fun cooldownIsSeparateForEachAccount() = runVerifyTest {
     store.timings["another-uid"] = VerificationTiming(now, now + 45_000)
     val vm = viewModel()
     vm.enter()
@@ -218,7 +240,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun throttlingHasDistinctMessageAndSurvivesRestart() = runTest {
+  fun throttlingHasDistinctMessageAndSurvivesRestart() = runVerifyTest {
     repository.sendResult = SendVerificationResult.Throttled
     val first = viewModel()
     first.enter()
@@ -238,7 +260,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun sendFailuresRemainRetryableWithoutClaimingEmailSent() = runTest {
+  fun sendFailuresRemainRetryableWithoutClaimingEmailSent() = runVerifyTest {
     for ((result, message) in
         listOf(
             SendVerificationResult.NetworkError to VerificationMessage.NetworkError,
@@ -259,7 +281,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun failedInitialDeliveryDoesNotRetryOnEntryOrResumeUntilExplicitResend() = runTest {
+  fun failedInitialDeliveryDoesNotRetryOnEntryOrResumeUntilExplicitResend() = runVerifyTest {
     repository.sendResult = SendVerificationResult.NetworkError
     val vm = viewModel()
     try {
@@ -290,7 +312,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun manualDeliveryBeforeEntryIsRestoredWithoutAnotherSend() = runTest {
+  fun manualDeliveryBeforeEntryIsRestoredWithoutAnotherSend() = runVerifyTest {
     val vm = viewModel()
     try {
       vm.resend()
@@ -314,7 +336,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun manualCheckReportsUnverifiedWhileResumeCheckIsQuiet() = runTest {
+  fun manualCheckReportsUnverifiedWhileResumeCheckIsQuiet() = runVerifyTest {
     val vm = viewModel()
     repository.checkGate = CompletableDeferred()
     vm.checkVerified(manual = false)
@@ -333,7 +355,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun successOnResumeClearsTimingAndDoesNotRequireLogin() = runTest {
+  fun successOnResumeClearsTimingAndDoesNotRequireLogin() = runVerifyTest {
     store.timings[user.uid] = VerificationTiming(now, now + 45_000)
     val vm = viewModel()
     vm.enter()
@@ -351,7 +373,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun checkErrorsDoNotGrantAccess() = runTest {
+  fun checkErrorsDoNotGrantAccess() = runVerifyTest {
     for ((result, message) in
         listOf(
             VerificationResult.NetworkError to VerificationMessage.NetworkError,
@@ -370,7 +392,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun changedSessionCannotNavigateFromOldVerificationResult() = runTest {
+  fun changedSessionCannotNavigateFromOldVerificationResult() = runVerifyTest {
     val vm = viewModel()
     repository.checkGate = CompletableDeferred()
     repository.verificationResult = VerificationResult.Verified
@@ -384,7 +406,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun signedOutEntryAndManualCheckShowLoginMessageWithoutBackendCalls() = runTest {
+  fun signedOutEntryAndManualCheckShowLoginMessageWithoutBackendCalls() = runVerifyTest {
     repository.user = null
     val vm = viewModel()
     vm.enter()
@@ -399,7 +421,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun storageFailureReportsErrorAndAllowsRetry() = runTest {
+  fun storageFailureReportsErrorAndAllowsRetry() = runVerifyTest {
     store.failure = IllegalStateException("test failure")
     val vm = viewModel()
     vm.enter()
@@ -415,7 +437,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun cancelledSendResetsLoadingAndPropagatesCancellation() = runTest {
+  fun cancelledSendResetsLoadingAndPropagatesCancellation() = runVerifyTest {
     repository.sendGate = CompletableDeferred<Unit>().apply { cancel() }
     val vm = viewModel()
     vm.enter()
@@ -426,7 +448,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun resumeDuringInitialSendWaitsForPersistenceBeforeClearingTiming() = runTest {
+  fun resumeDuringInitialSendWaitsForPersistenceBeforeClearingTiming() = runVerifyTest {
     repository.sendGate = CompletableDeferred()
     val vm = viewModel()
     vm.enter()
@@ -444,7 +466,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun initialResumeAndScreenEntryDoNotLoseTheFirstEmail() = runTest {
+  fun initialResumeAndScreenEntryDoNotLoseTheFirstEmail() = runVerifyTest {
     repository.checkGate = CompletableDeferred()
     val vm = viewModel()
     vm.checkVerified(manual = false)
@@ -461,7 +483,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun changingAddressCancelsPendingCheckAndPreservesTheOriginalAccountsTiming() = runTest {
+  fun changingAddressCancelsPendingCheckAndPreservesTheOriginalAccountsTiming() = runVerifyTest {
     store.timings[user.uid] = VerificationTiming(now, now + 45_000)
     val vm = viewModel()
     vm.enter()
@@ -480,7 +502,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun browserVerificationBeforeScreenEntryDoesNotSendAnotherEmailOrResetSuccess() = runTest {
+  fun browserVerificationBeforeScreenEntryDoesNotSendAnotherEmailOrResetSuccess() = runVerifyTest {
     store.timings[user.uid] = VerificationTiming(now, now + 45_000)
     val vm = viewModel()
     try {
@@ -511,7 +533,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun alreadyVerifiedSessionDoesNotGetReroutedOnOrdinaryResume() = runTest {
+  fun alreadyVerifiedSessionDoesNotGetReroutedOnOrdinaryResume() = runVerifyTest {
     repository.user = user.copy(isEmailVerified = true)
     val vm = viewModel()
     vm.checkVerified(manual = false)
@@ -522,7 +544,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun cancelledEntryAndCheckClearLoadingWithoutReportingFailure() = runTest {
+  fun cancelledEntryAndCheckClearLoadingWithoutReportingFailure() = runVerifyTest {
     store.failure = kotlinx.coroutines.CancellationException("test cancellation")
     val vm = viewModel()
     vm.enter()
@@ -539,7 +561,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun persistedClockDeadlineIsBoundedAfterClockMovesBackwards() = runTest {
+  fun persistedClockDeadlineIsBoundedAfterClockMovesBackwards() = runVerifyTest {
     store.timings[user.uid] = VerificationTiming(now, now + 1_000_000)
     val vm = viewModel()
     vm.enter()
@@ -550,7 +572,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun replacingAccountCancelsPendingSendAndCheckAndLoadsItsOwnCooldown() = runTest {
+  fun replacingAccountCancelsPendingSendAndCheckAndLoadsItsOwnCooldown() = runVerifyTest {
     val vm = viewModel()
     vm.enter()
     runCurrent()
@@ -591,7 +613,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun replacingAccountDuringEntryRestoresOnlyTheReplacementTiming() = runTest {
+  fun replacingAccountDuringEntryRestoresOnlyTheReplacementTiming() = runVerifyTest {
     val oldRead = CompletableDeferred<Unit>()
     store.readGate = oldRead
     val vm = viewModel()
@@ -635,7 +657,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun sessionLostDuringTimingReadDoesNotSendForTheSignedOutAccount() = runTest {
+  fun sessionLostDuringTimingReadDoesNotSendForTheSignedOutAccount() = runVerifyTest {
     store.readGate = CompletableDeferred()
     val vm = viewModel()
     vm.enter()
@@ -659,7 +681,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun persistenceFailureKeepsTheResendDeadlineWithoutClaimingSuccessfulDelivery() = runTest {
+  fun persistenceFailureKeepsTheResendDeadlineWithoutClaimingSuccessfulDelivery() = runVerifyTest {
     for ((result, deadline) in
         listOf(
             SendVerificationResult.Sent to 45_000L,
@@ -697,7 +719,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun checkFailureAllowsRetryAndCleanupFailureDoesNotUndoVerification() = runTest {
+  fun checkFailureAllowsRetryAndCleanupFailureDoesNotUndoVerification() = runVerifyTest {
     var failCheck = true
     val failingRepository =
         object : AuthRepository by repository {
@@ -707,7 +729,7 @@ class VerifyEmailViewModelTest {
           }
         }
     store.timings[user.uid] = VerificationTiming(now, now + 45_000)
-    val vm = VerifyEmailViewModel(failingRepository, store, VerificationClock { now })
+    val vm = viewModel(failingRepository)
     vm.enter()
     runCurrent()
     vm.checkVerified()
@@ -733,7 +755,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun sessionLostDuringSendDiscardsDeliveryAndTheWaitingVerificationCheck() = runTest {
+  fun sessionLostDuringSendDiscardsDeliveryAndTheWaitingVerificationCheck() = runVerifyTest {
     repository.sendGate = CompletableDeferred()
     val vm = viewModel()
     vm.enter()
@@ -758,7 +780,7 @@ class VerifyEmailViewModelTest {
   }
 
   @Test
-  fun replacingAccountAfterResumeBeforeScreenEntrySendsOnlyForTheNewAccount() = runTest {
+  fun replacingAccountAfterResumeBeforeScreenEntrySendsOnlyForTheNewAccount() = runVerifyTest {
     val vm = viewModel()
     vm.checkVerified(manual = false)
     runCurrent()
