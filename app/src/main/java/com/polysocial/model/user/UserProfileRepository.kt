@@ -1,5 +1,5 @@
 // Contributors: Claude (profile lookup needed by app-start routing, #32; profile model, create and
-// update, #34; isAssociationVerified, #45).
+// update, #34; isAssociationVerified, #45; the public profile written with it, #229).
 package com.polysocial.model.user
 
 import java.time.Instant
@@ -84,15 +84,19 @@ interface UserProfileRepository {
   /**
    * Creates `users/{profile.uid}` from [profile], once: if the document already exists it is left
    * unchanged and [CreateProfileResult.AlreadyExists] is returned. The server sets
-   * [UserProfile.createdAt]. Offline, nothing is queued and [CreateProfileResult.NetworkError] is
-   * returned, so a profile is never left half-created.
+   * [UserProfile.createdAt]. A student's public profile (`publicProfiles/{uid}`, see
+   * [PublicProfile]) is created in the same write; an association's isn't. Offline, nothing is
+   * queued and [CreateProfileResult.NetworkError] is returned, so a profile is never left
+   * half-created.
    */
   suspend fun createProfile(profile: UserProfile): CreateProfileResult
 
   /**
    * Saves the fields a user can edit ([UserProfile.displayName], [UserProfile.section] and
    * [UserProfile.year]) in the existing `users/{profile.uid}`. The other fields never change after
-   * creation. Offline, nothing is queued and [UpdateProfileResult.NetworkError] is returned.
+   * creation. Unless the stored profile is an association's, the public profile is saved with the
+   * same values in the same write, and created if it is missing (a profile saved before #229).
+   * Offline, nothing is queued and [UpdateProfileResult.NetworkError] is returned.
    */
   suspend fun updateProfile(profile: UserProfile): UpdateProfileResult
 }

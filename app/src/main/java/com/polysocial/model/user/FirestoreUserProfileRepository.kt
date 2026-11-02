@@ -1,7 +1,8 @@
 // Contributors: OpenAI Codex (refresh Firestore and handle blocked cache access, #156).
 // Contributors: Claude (Firestore profile repository, #34; cancelled tasks and wrong-typed fields
 // reported as errors after review; reading isAssociationVerified, #45; other unexpected failures
-// reported as errors, #182; reportFailures moved to FirestoreFailures.kt to share it, #229).
+// reported as errors, #182; the student's public profile written in the same transaction, #229;
+// reportFailures moved to FirestoreFailures.kt to share it, after review, #229).
 package com.polysocial.model.user
 
 import com.google.firebase.firestore.DocumentReference
@@ -19,7 +20,11 @@ const val USERS_COLLECTION = "users"
  *
  * Writes run in a transaction: it reads the document before writing, which is how "create once" and
  * "update only if it exists" are checked, and it needs the server, so offline it fails instead of
- * being queued like a plain write.
+ * being queued like a plain write. A student's public profile, `publicProfiles/{uid}` (#229), is
+ * written in the same transaction, so the app always saves the two together, and the Security Rules
+ * accept the public one only as a copy of `users/{uid}` as it is after that write, so it never
+ * holds anything but its owner's own values. An association gets none; the stored account type
+ * decides on an update.
  */
 class FirestoreUserProfileRepository(private val database: () -> FirebaseFirestore) :
     UserProfileRepository {
@@ -30,6 +35,9 @@ class FirestoreUserProfileRepository(private val database: () -> FirebaseFiresto
 
   private fun document(uid: String): DocumentReference =
       db.collection(USERS_COLLECTION).document(uid)
+
+  private fun publicDocument(uid: String): DocumentReference =
+      db.collection(PUBLIC_PROFILES_COLLECTION).document(uid)
 
   override suspend fun getProfile(uid: String): ProfileResult =
       reportFailures(ProfileResult.NetworkError, ProfileResult.UnexpectedError) {
@@ -48,6 +56,11 @@ class FirestoreUserProfileRepository(private val database: () -> FirebaseFiresto
                   if (transaction.get(ref).exists()) false
                   else {
                     transaction.set(ref, profile.toNewDocument())
+                    if (profile.accountType == AccountType.STUDENT)
+                        transaction.set(
+                            publicDocument(profile.uid),
+                            profile.toPublicProfileDocument(),
+                        )
                     true
                   }
                 }
@@ -60,9 +73,16 @@ class FirestoreUserProfileRepository(private val database: () -> FirebaseFiresto
         val ref = document(profile.uid)
         val updated =
             db.runTransaction { transaction ->
-                  if (!transaction.get(ref).exists()) false
+                  val stored = transaction.get(ref)
+                  if (!stored.exists()) false
                   else {
                     transaction.update(ref, profile.toEditableFields())
+                    // Also writes one a student saved before #229 lacks.
+                    if (stored.getString("accountType") != AccountType.ASSOCIATION.value)
+                        transaction.set(
+                            publicDocument(profile.uid),
+                            profile.toPublicProfileDocument(),
+                        )
                     true
                   }
                 }
