@@ -1,6 +1,7 @@
 // Contributors: OpenAI Codex (keep association onboarding dependencies fake in Hilt tests, #125).
 // Contributors: OpenAI Codex (Hilt logout and verification wiring with offline fakes, #109).
-// Contributors: Claude (fake association repository for the association names, #128).
+// Contributors: Claude (fake association repository for the association names, #128; fake
+// registration repository for the manage event's count, #131).
 // Contributors: Claude (Opus 5.5, Anthropic) bound a fake session guard and its parts,
 // #198; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.ui.profile
@@ -18,6 +19,9 @@ import com.polysocial.model.auth.AssociationSignupStore
 import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.event.*
 import com.polysocial.model.firebase.*
+import com.polysocial.model.registration.FakeRegistrationRepository
+import com.polysocial.model.registration.RegistrationModule
+import com.polysocial.model.registration.RegistrationRepository
 import com.polysocial.model.user.*
 import com.polysocial.resources.C
 import com.polysocial.ui.auth.WelcomeTags
@@ -36,6 +40,7 @@ import org.robolectric.annotation.Config
     EventModule::class,
     UserProfileModule::class,
     FirebaseModule::class,
+    RegistrationModule::class,
 )
 @Config(application = HiltTestApplication::class)
 @RunWith(AndroidJUnit4::class)
@@ -56,6 +61,7 @@ class LogoutInjectionTest {
   @BindValue @JvmField val verificationClock: VerificationClock = VerificationClock { 1000 }
   @BindValue @JvmField val auth: AuthRepository = fakeAuth
   @BindValue @JvmField val events: EventRepository = FakeEventRepository()
+  @BindValue @JvmField val registrations: RegistrationRepository = FakeRegistrationRepository()
   @BindValue @JvmField val associations: AssociationRepository = FakeAssociationRepository()
   @BindValue
   @JvmField

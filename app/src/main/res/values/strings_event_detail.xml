@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Contributors: Claude (event detail texts from the Figma "Event detail" frames, #112; Edit
-     and Cancel event from the Figma section 10 frames, #131; the association's name, #128). -->
+     and Cancel event from the Figma section 10 frames, #131; the association's name, #128;
+     the association's manage event from the Figma "Association · manage event" frame, #131). -->
 <resources>
     <string name="event_detail_navigate_back">Back</string>
     <string name="event_detail_loading">Loading event…</string>
@@ -37,4 +38,24 @@
     <!-- Not in Figma, which only has the offline failure; worded like Edit event's. -->
     <string name="cancel_event_unexpected">Something went wrong, so the event wasn\'t cancelled. Try again.</string>
     <string name="event_cancelled">Event cancelled. It\'s no longer on the map.</string>
+    <string name="manage_event_title">Manage event</string>
+    <string name="manage_event_live">Live now</string>
+    <!-- The day, the times and the place, for example "Fri 3 Oct · 20:00 – 01:00 · Satellite". -->
+    <string name="manage_event_when_where">%1$s · %2$s · %3$s</string>
+    <!-- The day and the times, for an event without a place name. -->
+    <string name="manage_event_when">%1$s · %2$s</string>
+    <string name="manage_event_going">Going</string>
+    <string name="manage_event_looking_for_group">Looking for a group</string>
+    <string name="manage_event_groups_formed">Groups formed</string>
+    <string name="manage_event_checked_in">Checked in</string>
+    <!-- Shown instead of a count that isn't built yet or couldn't be read. -->
+    <string name="manage_event_no_count" translatable="false">—</string>
+    <string name="manage_event_count_unavailable">Couldn\'t count who\'s going. Tap to try again.</string>
+    <string name="manage_event_counts_only">Counts only. You never see who is in which group.</string>
+    <string name="manage_event_entrance_qr">Entrance QR</string>
+    <string name="manage_event_entrance_qr_body">Print it or show it at the door. Attendees scan it to check in indoors.</string>
+    <string name="manage_event_show_full_screen">Show full screen</string>
+    <string name="manage_event_download_pdf">Download PDF</string>
+    <string name="manage_event_album">Event album</string>
+    <string name="manage_event_not_available">This isn\'t available yet.</string>
 </resources>

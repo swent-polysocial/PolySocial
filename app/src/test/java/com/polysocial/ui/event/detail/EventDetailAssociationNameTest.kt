@@ -7,6 +7,7 @@ import com.polysocial.model.association.AssociationResult
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.validEvent
 import com.polysocial.model.network.NetworkMonitor
+import com.polysocial.model.registration.FakeRegistrationRepository
 import com.polysocial.ui.event.CLUB_NAME
 import com.polysocial.ui.event.CLUB_UID
 import com.polysocial.ui.event.NamesFixture
@@ -53,6 +54,7 @@ class EventDetailAssociationNameTest {
           fixture.auth,
           clock,
           fixture.names,
+          FakeRegistrationRepository(),
       )
 
   /** Collects [vm]'s state like the screen does, and returns every state it showed. */

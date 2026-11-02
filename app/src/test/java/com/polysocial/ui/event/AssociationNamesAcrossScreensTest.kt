@@ -9,6 +9,7 @@ import com.polysocial.model.location.FakeLocationService
 import com.polysocial.model.map.MapEventResult
 import com.polysocial.model.map.MapEventSource
 import com.polysocial.model.network.NetworkMonitor
+import com.polysocial.model.registration.FakeRegistrationRepository
 import com.polysocial.ui.event.detail.EventDetailUiState
 import com.polysocial.ui.event.detail.EventDetailViewModel
 import com.polysocial.ui.event.list.EventsViewModel
@@ -69,6 +70,7 @@ class AssociationNamesAcrossScreensTest {
             fixture.auth,
             clock,
             fixture.names,
+            FakeRegistrationRepository(),
         )
     var detailState: EventDetailUiState = EventDetailUiState.Loading
     backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {

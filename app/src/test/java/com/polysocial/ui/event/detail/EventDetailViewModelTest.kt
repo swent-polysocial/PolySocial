@@ -1,6 +1,6 @@
 // Contributors: Claude (wrote these tests of the event detail ViewModel, #112; the server timeout
 // and Retry, #194; Edit and Cancel event for organizers, #131; the association names dependency,
-// #128).
+// #128; the manage event's "Going" count, #131).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -14,6 +14,9 @@ import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.validEvent
 import com.polysocial.model.event.withCreator
 import com.polysocial.model.network.NetworkMonitor
+import com.polysocial.model.registration.AttendeeCountResult
+import com.polysocial.model.registration.FakeRegistrationRepository
+import com.polysocial.model.registration.RegistrationRepository
 import com.polysocial.utils.MainDispatcherRule
 import java.time.Clock
 import java.time.Instant
@@ -50,6 +53,7 @@ class EventDetailViewModelTest {
   private val repository = FakeEventRepository()
   private var online = true
   private val auth = FakeAuthRepository()
+  private val registrations = FakeRegistrationRepository()
   private val network =
       object : NetworkMonitor {
         override fun isOnline() = online
@@ -86,6 +90,7 @@ class EventDetailViewModelTest {
           auth,
           clock,
           FakeAssociationNames(),
+          registrations,
       )
 
   /** [repository], except that [getEvent][EventRepository.getEvent] returns [results]. */
@@ -541,5 +546,151 @@ class EventDetailViewModelTest {
       )
       assertEquals(1, repository.events.size)
     }
+  }
+
+  // The association's manage event (#131)
+
+  /** Signs in the verified association that organizes [event], with 3 students going. */
+  private fun seedManagedEvent() {
+    repository.currentUid = "association"
+    auth.user = AuthUser("association", "association@example.com", isEmailVerified = true)
+    repository.seed(event.withCreator("association", isVerifiedAssociation = true))
+    listOf("s1", "s2", "s3").forEach { registrations.seedRegistration("event-1", it) }
+  }
+
+  private fun EventDetailUiState.loaded() = this as EventDetailUiState.Loaded
+
+  @Test
+  fun anAssociationsOwnEvent_isManaged_andShowsHowManyAreGoing() = runTest {
+    seedManagedEvent()
+    val vm = viewModel()
+    observe(vm)
+
+    val state = vm.uiState.value.loaded()
+    assertTrue(state.isManaged)
+    assertEquals(GoingCount.Count(3), state.going)
+  }
+
+  @Test
+  fun whileCounting_theEventShowsWithTheCountLoading() = runTest {
+    seedManagedEvent()
+    val answer = CompletableDeferred<AttendeeCountResult>()
+    val slow =
+        object : RegistrationRepository by registrations {
+          override suspend fun countAttendees(eventId: String) = answer.await()
+        }
+    val vm =
+        EventDetailViewModel(
+            SavedStateHandle(mapOf("eventId" to "event-1")),
+            repository,
+            network,
+            auth,
+            clock,
+            FakeAssociationNames(),
+            slow,
+        )
+    observe(vm)
+    assertEquals(GoingCount.Loading, vm.uiState.value.loaded().going)
+
+    answer.complete(AttendeeCountResult.Count(12))
+    runCurrent()
+
+    assertEquals(GoingCount.Count(12), vm.uiState.value.loaded().going)
+  }
+
+  @Test
+  fun aStudentsOwnEvent_isNotManaged_andCountsNobody() = runTest {
+    seedOwnEvent()
+    val vm = viewModel()
+    observe(vm)
+
+    val state = vm.uiState.value.loaded()
+    assertTrue(state.isOrganizer)
+    assertFalse(state.isManaged)
+    assertEquals(null, state.going)
+    assertEquals(0, registrations.countCalls)
+  }
+
+  @Test
+  fun anAssociationEventSomeoneElseOrganizes_isNotManaged() = runTest {
+    seedManagedEvent()
+    auth.user = AuthUser("student", "student@epfl.ch", isEmailVerified = true)
+    val vm = viewModel()
+    observe(vm)
+
+    assertFalse(vm.uiState.value.loaded().isManaged)
+    assertEquals(0, registrations.countCalls)
+  }
+
+  @Test
+  fun aCountThatFails_isUnavailable_andTappingItCountsAgain() = runTest {
+    seedManagedEvent()
+    registrations.countFailure = AttendeeCountResult.NetworkError
+    val vm = viewModel()
+    observe(vm)
+    assertEquals(GoingCount.Unavailable, vm.uiState.value.loaded().going)
+
+    registrations.countFailure = null
+    vm.retryGoingCount()
+    runCurrent()
+
+    assertEquals(GoingCount.Count(3), vm.uiState.value.loaded().going)
+    assertEquals(2, registrations.countCalls)
+  }
+
+  @Test
+  fun anUnexpectedCountFailure_isUnavailableToo() = runTest {
+    seedManagedEvent()
+    registrations.countFailure = AttendeeCountResult.UnexpectedError
+    val vm = viewModel()
+    observe(vm)
+
+    assertEquals(GoingCount.Unavailable, vm.uiState.value.loaded().going)
+  }
+
+  @Test
+  fun retryingACountThatWorked_countsNothingAgain() = runTest {
+    seedManagedEvent()
+    val vm = viewModel()
+    observe(vm)
+
+    vm.retryGoingCount()
+    runCurrent()
+
+    assertEquals(1, registrations.countCalls)
+  }
+
+  @Test
+  fun aChangeToTheManagedEvent_doesNotCountAgain() = runTest {
+    seedManagedEvent()
+    val vm = viewModel()
+    observe(vm)
+
+    repository.updateEvent(vm.uiState.value.loaded().details.event.copy(title = "Renamed"))
+    runCurrent()
+
+    assertEquals("Renamed", vm.uiState.value.loaded().details.event.title)
+    assertEquals(GoingCount.Count(3), vm.uiState.value.loaded().going)
+    assertEquals(1, registrations.countCalls)
+  }
+
+  @Test
+  fun anEventRunningNow_isLive_andOneLaterIsNot() = runTest {
+    // The clock reads 7 October 2026, 10:00 UTC.
+    repository.seed(
+        event.copy(
+            id = "running",
+            startTime = Instant.parse("2026-10-07T09:00:00Z"),
+            endTime = Instant.parse("2026-10-07T11:00:00Z"),
+        )
+    )
+    val running = viewModel(args = mapOf("eventId" to "running"))
+    observe(running)
+    assertTrue(running.uiState.value.loaded().isLive)
+
+    repository.seed(event)
+    val later = viewModel()
+    observe(later)
+    assertFalse(later.uiState.value.loaded().isLive)
   }
 }
