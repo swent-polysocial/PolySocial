@@ -4,8 +4,8 @@
 // registration repository for the manage event's count, #131).
 // Contributors: Claude (Opus 5.5, Anthropic) bound a fake session guard and its parts,
 // #198; Mohamed Khellaf (reviewed and revised).
-// Contributors: Claude (Opus 5.5, Anthropic) bound a fake account deletion, which Privacy's
-// ViewModel now needs, #207; Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) bound a fake account deletion, #207; Mohamed
+// Khellaf (reviewed and revised); Claude explained why in a comment after #286's review.
 package com.polysocial.ui.profile
 
 import androidx.compose.ui.test.*
@@ -69,6 +69,8 @@ class LogoutInjectionTest {
   @BindValue @JvmField val events: EventRepository = FakeEventRepository()
   @BindValue @JvmField val registrations: RegistrationRepository = FakeRegistrationRepository()
   @BindValue @JvmField val associations: AssociationRepository = FakeAssociationRepository()
+  // Hilt checks at build time that every @HiltViewModel's dependencies are bound, including
+  // DeleteAccountViewModel's, and the real deletion repository needs the uninstalled Firestore.
   @BindValue @JvmField val deletion: AccountDeletionRepository = FakeAccountDeletionRepository()
   @BindValue
   @JvmField
