@@ -10,13 +10,16 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -45,6 +48,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.polysocial.R
@@ -112,7 +116,10 @@ internal fun ManageEventContent(
       ) {
         SummaryCard(state, onRetryGoing, onUnavailable)
         EntranceQrCard()
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(
+            Modifier.height(IntrinsicSize.Min),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
           QrButton(
               R.string.manage_event_show_full_screen,
               filled = true,
@@ -148,7 +155,7 @@ private fun ManageHeader(onBack: () -> Unit, onEdit: () -> Unit) {
       Modifier.fillMaxWidth()
           .background(Bg)
           .windowInsetsPadding(WindowInsets.statusBars)
-          .height(60.dp)
+          .heightIn(min = 60.dp)
   ) {
     // Figma's 22 dp arrow at x = 19 dp, in a 48 dp touch area.
     Box(
@@ -180,7 +187,7 @@ private fun ManageHeader(onBack: () -> Unit, onEdit: () -> Unit) {
         modifier =
             Modifier.align(Alignment.CenterEnd)
                 .padding(end = 12.dp)
-                .height(48.dp)
+                .heightIn(min = 48.dp)
                 .clip(RoundedCornerShape(24.dp))
                 .clickable(role = Role.Button, onClick = onEdit)
                 .padding(horizontal = 4.dp)
@@ -188,10 +195,10 @@ private fun ManageHeader(onBack: () -> Unit, onEdit: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
       Box(
-          Modifier.height(36.dp)
+          Modifier.heightIn(min = 36.dp)
               .background(Bg, RoundedCornerShape(18.dp))
               .border(1.dp, Border, RoundedCornerShape(18.dp))
-              .padding(horizontal = 14.dp),
+              .padding(horizontal = 14.dp, vertical = 4.dp),
           contentAlignment = Alignment.Center,
       ) {
         Text(stringResource(R.string.event_detail_edit), style = BUTTON_SMALL_STYLE, color = Ink)
@@ -241,7 +248,7 @@ private fun SummaryCard(
         modifier = Modifier.testTag(ManageEventTags.WHEN_WHERE),
     )
     Spacer(Modifier.height(14.dp))
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       GoingTile(state.going ?: GoingCount.Loading, onRetryGoing)
       CountTile(
           R.string.manage_event_looking_for_group,
@@ -250,7 +257,7 @@ private fun SummaryCard(
       )
     }
     Spacer(Modifier.height(8.dp))
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    Row(Modifier.height(IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       CountTile(R.string.manage_event_groups_formed, onUnavailable, ManageEventTags.GROUPS_FORMED)
       CountTile(R.string.manage_event_checked_in, onUnavailable, ManageEventTags.CHECKED_IN)
     }
@@ -304,8 +311,10 @@ private fun RowScope.Tile(
     valueDescription: String? = null,
 ) {
   Column(
+      // Figma's 66 dp at the default font size, as tall as the row's other tile with a larger one.
       Modifier.weight(1f)
-          .height(66.dp)
+          .heightIn(min = 66.dp)
+          .fillMaxHeight()
           .clip(RoundedCornerShape(12.dp))
           .background(Surface)
           .let { if (onClick != null) it.clickable(role = Role.Button, onClick = onClick) else it }
@@ -325,7 +334,7 @@ private fun RowScope.Tile(
                 },
     )
     Spacer(Modifier.height(2.dp))
-    Text(label, style = CAPTION_STYLE, color = Ink2, maxLines = 1)
+    Text(label, style = CAPTION_STYLE, color = Ink2)
   }
 }
 
@@ -377,15 +386,22 @@ private fun RowScope.QrButton(
   val shape = RoundedCornerShape(22.dp)
   Box(
       Modifier.weight(1f)
-          .height(48.dp)
+          .heightIn(min = 48.dp)
+          .fillMaxHeight()
           .clip(shape)
           .background(if (filled) Ink else Bg)
           .let { if (filled) it else it.border(1.dp, Border, shape) }
           .clickable(role = Role.Button, onClick = onClick)
+          .padding(horizontal = 12.dp, vertical = 8.dp)
           .testTag(tag),
       contentAlignment = Alignment.Center,
   ) {
-    Text(stringResource(label), style = BUTTON_STYLE, color = if (filled) Bg else Ink)
+    Text(
+        stringResource(label),
+        style = BUTTON_STYLE,
+        color = if (filled) Bg else Ink,
+        textAlign = TextAlign.Center,
+    )
   }
 }
 
@@ -394,11 +410,11 @@ private fun RowScope.QrButton(
 private fun AlbumRow(onClick: () -> Unit) {
   Row(
       Modifier.fillMaxWidth()
-          .height(62.dp)
+          .heightIn(min = 62.dp)
           .clip(RoundedCornerShape(18.dp))
           .background(Bg)
           .clickable(role = Role.Button, onClick = onClick)
-          .padding(horizontal = 16.dp)
+          .padding(horizontal = 16.dp, vertical = 12.dp)
           .testTag(ManageEventTags.ALBUM),
       verticalAlignment = Alignment.CenterVertically,
   ) {
@@ -430,9 +446,9 @@ private fun Chip(@StringRes label: Int, color: Color, background: Color, tag: St
   Box(
       // Read as one label, the text it holds.
       Modifier.semantics(mergeDescendants = true) {}
-          .height(24.dp)
+          .heightIn(min = 24.dp)
           .background(background, RoundedCornerShape(12.dp))
-          .padding(horizontal = 10.dp)
+          .padding(horizontal = 10.dp, vertical = 2.dp)
           .testTag(tag),
       contentAlignment = Alignment.Center,
   ) {
