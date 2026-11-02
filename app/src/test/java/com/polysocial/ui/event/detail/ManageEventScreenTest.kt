@@ -2,16 +2,26 @@
 package com.polysocial.ui.event.detail
 
 import android.content.Context
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -34,9 +44,13 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 @RunWith(AndroidJUnit4::class)
 class ManageEventScreenTest {
@@ -216,6 +230,86 @@ class ManageEventScreenTest {
 
     composeTestRule.onNodeWithTag(ManageEventTags.OFFLINE_BANNER).assertIsDisplayed()
     composeTestRule.onNodeWithTag(ManageEventTags.CANCEL_EVENT).assertIsDisplayed()
+  }
+
+  // The largest font size Android offers, with native graphics, which measure text like a phone.
+  @Config(qualifiers = "w360dp-h800dp", fontScale = 2.0f)
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  @Test
+  fun atTheLargestFontSize_theChipsCountsAndQrButtonsKeepTheirTextWhole() {
+    show(managed(isLive = true))
+
+    assertNothingCutOff(ManageEventTags.SCREEN)
+    assertTextInside(string(R.string.manage_event_live), ManageEventTags.LIVE)
+    assertTextInside(string(R.string.association_events_public), ManageEventTags.VISIBILITY)
+    assertTextInside(string(R.string.manage_event_going), ManageEventTags.GOING)
+    assertTextInside(
+        string(R.string.manage_event_looking_for_group),
+        ManageEventTags.LOOKING_FOR_GROUP,
+    )
+    assertTextInside(string(R.string.manage_event_groups_formed), ManageEventTags.GROUPS_FORMED)
+    assertTextInside(string(R.string.manage_event_checked_in), ManageEventTags.CHECKED_IN)
+    assertTextInside(
+        string(R.string.manage_event_show_full_screen),
+        ManageEventTags.SHOW_FULL_SCREEN,
+    )
+    assertTextInside(string(R.string.manage_event_download_pdf), ManageEventTags.DOWNLOAD_PDF)
+    assertTextInside(string(R.string.manage_event_album), ManageEventTags.ALBUM)
+    assertTextInside(string(R.string.event_detail_edit), ManageEventTags.EDIT)
+  }
+
+  /**
+   * Every text under [container] is drawn whole: no line shortened, nothing overflowing its box,
+   * and inside the screen's width (like PendingAssociationScreensTest's).
+   */
+  private fun assertNothingCutOff(container: String) {
+    val screenWidth = composeTestRule.onRoot().fetchSemanticsNode().size.width
+    val texts =
+        composeTestRule
+            .onAllNodes(
+                hasAnyAncestor(hasTestTag(container)) and
+                    SemanticsMatcher.keyIsDefined(SemanticsActions.GetTextLayoutResult),
+                useUnmergedTree = true,
+            )
+            .fetchSemanticsNodes()
+    assertTrue("No text under $container", texts.isNotEmpty())
+    for (text in texts) {
+      val layout = layoutOf(text)
+      val content = layout.layoutInput.text.text
+      // Only the height: the width a Row first measures text with is reported as overflow.
+      assertFalse("\"$content\" is cut off at the bottom", layout.didOverflowHeight)
+      for (line in 0 until layout.lineCount) {
+        assertFalse("\"$content\" is shortened", layout.isLineEllipsized(line))
+      }
+      val bounds = text.boundsInRoot
+      assertTrue(
+          "\"$content\" ($bounds) leaves the screen",
+          bounds.left >= 0f && bounds.right <= screenWidth,
+      )
+    }
+  }
+
+  /** The text [text] lies wholly inside the node tagged [container] (a tile, a chip, a button). */
+  private fun assertTextInside(text: String, container: String) {
+    val inner =
+        composeTestRule
+            .onNode(hasText(text) and hasAnyAncestor(hasTestTag(container)), useUnmergedTree = true)
+            .getBoundsInRoot()
+    val outer = composeTestRule.onNodeWithTag(container, useUnmergedTree = true).getBoundsInRoot()
+    val slack = 0.5.dp
+    assertTrue(
+        "\"$text\" ($inner) spills out of $container ($outer)",
+        inner.left >= outer.left - slack &&
+            inner.top >= outer.top - slack &&
+            inner.right <= outer.right + slack &&
+            inner.bottom <= outer.bottom + slack,
+    )
+  }
+
+  private fun layoutOf(node: SemanticsNode): TextLayoutResult {
+    val results = mutableListOf<TextLayoutResult>()
+    node.config[SemanticsActions.GetTextLayoutResult].action?.invoke(results)
+    return results.single()
   }
 
   // Through the route and the ViewModel
