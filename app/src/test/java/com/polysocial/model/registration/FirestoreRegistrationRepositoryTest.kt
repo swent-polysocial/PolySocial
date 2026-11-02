@@ -1,9 +1,12 @@
-// Contributors: Claude Opus 5.5 (wrote these tests, #121).
+// Contributors: Claude Opus 5.5 (wrote these tests, #121; the attendee count, #131).
 package com.polysocial.model.registration
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.android.gms.tasks.Tasks
+import com.google.firebase.firestore.AggregateQuery
+import com.google.firebase.firestore.AggregateQuerySnapshot
+import com.google.firebase.firestore.AggregateSource
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
@@ -424,5 +427,85 @@ class FirestoreRegistrationRepositoryTest {
     every { db.collectionGroup(ATTENDEES_COLLECTION) } throws IllegalStateException("terminated")
 
     assertEquals(listOf(MyRegistrationsResult.Error), repository.observeMyRegistrations().toList())
+  }
+
+  // countAttendees
+
+  private val countQuery = mockk<AggregateQuery>()
+
+  /** Makes the server count of `events/event-1/attendees` answer [task]. */
+  private fun stubCount(task: com.google.android.gms.tasks.Task<AggregateQuerySnapshot>) {
+    every { attendees.count() } returns countQuery
+    every { countQuery.get(AggregateSource.SERVER) } returns task
+  }
+
+  @Test
+  fun count_returnsTheServersCountOfTheEventsAttendees() = runTest {
+    val snapshot = mockk<AggregateQuerySnapshot>().also { every { it.count } returns 86L }
+    stubCount(Tasks.forResult(snapshot))
+
+    assertEquals(AttendeeCountResult.Count(86L), repository.countAttendees("event-1"))
+
+    verify { countQuery.get(AggregateSource.SERVER) }
+  }
+
+  @Test
+  fun count_offline_isANetworkErrorWithoutAskingFirestore() = runTest {
+    online = false
+
+    assertEquals(AttendeeCountResult.NetworkError, repository.countAttendees("event-1"))
+
+    verify(exactly = 0) { db.collection(any()) }
+  }
+
+  @Test
+  fun count_anIdThatCannotBeADocumentId_isAnUnexpectedErrorWithoutFirestore() = runTest {
+    assertEquals(AttendeeCountResult.UnexpectedError, repository.countAttendees("events/other"))
+
+    verify(exactly = 0) { db.collection(any()) }
+  }
+
+  @Test
+  fun count_losingTheConnection_isANetworkError() = runTest {
+    stubCount(Tasks.forException(failed(FirebaseFirestoreException.Code.UNAVAILABLE)))
+
+    assertEquals(AttendeeCountResult.NetworkError, repository.countAttendees("event-1"))
+  }
+
+  @Test
+  fun count_theRulesDenyingIt_isAnUnexpectedError() = runTest {
+    stubCount(Tasks.forException(failed(FirebaseFirestoreException.Code.PERMISSION_DENIED)))
+
+    assertEquals(AttendeeCountResult.UnexpectedError, repository.countAttendees("event-1"))
+  }
+
+  @Test
+  fun count_anUnexpectedException_isAnUnexpectedError() = runTest {
+    every { db.collection(EVENTS_COLLECTION) } throws IllegalStateException("terminated")
+
+    assertEquals(AttendeeCountResult.UnexpectedError, repository.countAttendees("event-1"))
+  }
+
+  @Test
+  fun count_aTaskCancelledWhileTheCallerRuns_isAnUnexpectedError() = runTest {
+    stubCount(Tasks.forCanceled())
+
+    assertEquals(AttendeeCountResult.UnexpectedError, repository.countAttendees("event-1"))
+  }
+
+  @Test
+  fun count_cancellingTheCaller_stillCancelsIt() = runTest {
+    stubCount(TaskCompletionSource<AggregateQuerySnapshot>().task)
+    var result: AttendeeCountResult? = null
+    val call =
+        launch(start = CoroutineStart.UNDISPATCHED) {
+          result = repository.countAttendees("event-1")
+        }
+
+    call.cancel()
+    call.join()
+
+    assertTrue(call.isCancelled)
+    assertEquals(null, result)
   }
 }

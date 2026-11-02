@@ -1,7 +1,9 @@
-// Contributors: Claude Opus 5.5 (drafted the Firestore registration repository, #121).
+// Contributors: Claude Opus 5.5 (drafted the Firestore registration repository, #121; the attendee
+// count, #131).
 package com.polysocial.model.registration
 
 import com.google.firebase.FirebaseException
+import com.google.firebase.firestore.AggregateSource
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
@@ -184,6 +186,34 @@ class FirestoreRegistrationRepository(
         if (failure is CancellationException) throw failure
         emit(MyRegistrationsResult.Error)
       }
+
+  /**
+   * Runs Firestore's `count()` aggregation on `events/{eventId}/attendees` against the server: it
+   * reads no attendee document, so the organizer gets only the number. A count the rules deny (not
+   * an organizer, or no such event) is [AttendeeCountResult.UnexpectedError].
+   */
+  override suspend fun countAttendees(eventId: String): AttendeeCountResult {
+    if (!isReadableEventId(eventId)) return AttendeeCountResult.UnexpectedError
+    if (!network.isOnline()) return AttendeeCountResult.NetworkError
+    return try {
+      val snapshot =
+          db.collection(EVENTS_COLLECTION)
+              .document(eventId)
+              .collection(ATTENDEES_COLLECTION)
+              .count()
+              .get(AggregateSource.SERVER)
+              .await()
+      AttendeeCountResult.Count(snapshot.count)
+    } catch (e: FirebaseException) {
+      if (e.isOffline()) AttendeeCountResult.NetworkError else AttendeeCountResult.UnexpectedError
+    } catch (e: CancellationException) {
+      // Like register: a task cancelled while the caller still runs is a failure.
+      currentCoroutineContext().ensureActive()
+      AttendeeCountResult.UnexpectedError
+    } catch (e: Exception) {
+      AttendeeCountResult.UnexpectedError
+    }
+  }
 
   private fun FirebaseException.isOffline() =
       this is FirebaseFirestoreException && code == FirebaseFirestoreException.Code.UNAVAILABLE

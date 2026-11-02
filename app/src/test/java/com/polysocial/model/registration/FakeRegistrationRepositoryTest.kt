@@ -1,4 +1,5 @@
-// Contributors: Claude Opus 5.5 (wrote these tests, #121; the invalid-ID test after review).
+// Contributors: Claude Opus 5.5 (wrote these tests, #121; the invalid-ID test after review; the
+// attendee count, #131).
 package com.polysocial.model.registration
 
 import kotlinx.coroutines.flow.first
@@ -84,5 +85,20 @@ class FakeRegistrationRepositoryTest {
 
     repository.readFailure = true
     assertEquals(MyRegistrationsResult.Error, myRegistrations())
+  }
+
+  @Test
+  fun count_countsEveryStudentRegisteredForTheEvent_orItsFailure() = runTest {
+    repository.register("event-1")
+    repository.seedRegistration("event-1", "other-student")
+    repository.seedRegistration("event-2", "other-student")
+
+    assertEquals(AttendeeCountResult.Count(2), repository.countAttendees("event-1"))
+    assertEquals(AttendeeCountResult.Count(0), repository.countAttendees("empty"))
+    assertEquals(AttendeeCountResult.UnexpectedError, repository.countAttendees("events/x"))
+
+    repository.countFailure = AttendeeCountResult.NetworkError
+    assertEquals(AttendeeCountResult.NetworkError, repository.countAttendees("event-1"))
+    assertEquals(4, repository.countCalls)
   }
 }
