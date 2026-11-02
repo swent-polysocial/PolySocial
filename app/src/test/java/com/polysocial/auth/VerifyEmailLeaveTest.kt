@@ -2,7 +2,8 @@
 // account deletion and for the address-keyed cooldown, #225; Mohamed Khellaf (reviewed and
 // revised).
 // Contributors: Claude (Opus 5.5, Anthropic) tested that leaving never deletes a verified account
-// and finishes a deletion whose answer was lost, #225 review.
+// and finishes a deletion whose answer was lost, and Log out anyway after a failed deletion, #225
+// review.
 package com.polysocial.auth
 
 import androidx.lifecycle.ViewModelStore
@@ -33,6 +34,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -223,6 +225,110 @@ class VerifyEmailLeaveTest {
     }
     assertEquals(0, repository.logOutCalls)
     assertEquals(user, repository.currentUser())
+  }
+
+  @Test
+  fun logOutAnywayAfterAnyFailedWayOutLogsOutWithoutDeleting() = runTest {
+    val timing = VerificationTiming(now - 15_000, now + 30_000)
+    var thrownDeletions = 0
+    val throwingDeletion =
+        object : AccountDeletionRepository {
+          override suspend fun deleteAccount(): AccountDeletionResult {
+            thrownDeletions++
+            throw IllegalStateException("test deletion failure")
+          }
+        }
+    // Calls to either deletion, so the thrown case also proves no new call is made.
+    fun deletions() = deletion.calls + thrownDeletions
+    // Every failure that keeps the user on Verify Email, e.g. while deleteAccount is down.
+    val failures: List<Pair<String, () -> VerifyEmailViewModel>> =
+        listOf(
+            "network" to
+                {
+                  viewModel().also { deletion.result = AccountDeletionResult.NetworkError }
+                },
+            "unexpected" to
+                {
+                  viewModel().also { deletion.result = AccountDeletionResult.UnexpectedError }
+                },
+            "thrown" to { viewModel(deletion = throwingDeletion) },
+            "offline" to { viewModel().also { network.online = false } },
+            "reload" to
+                {
+                  viewModel().also {
+                    repository.verificationResult = VerificationResult.NetworkError
+                  }
+                },
+        )
+    for ((name, failing) in failures) {
+      for ((action, exit) in
+          listOf(
+              VerificationLeave.Back to VerificationExit.Welcome,
+              VerificationLeave.ChangeAddress to VerificationExit.SignUp(user.email),
+          )) {
+        val case = "$name, $action"
+        repository.user = user
+        repository.verificationResult = VerificationResult.Unverified
+        deletion.result = AccountDeletionResult.Deleted
+        network.online = true
+        store.timings[user.uid] = timing
+        val vm = failing()
+        vm.enter()
+        runCurrent()
+        vm.leave(action)
+        runCurrent()
+        assertNotNull(case, vm.uiState.value.leaveError)
+        val callsBefore = deletions()
+        val logOuts = repository.logOutCalls
+
+        vm.logOutAnyway()
+        runCurrent()
+        assertEquals(case, callsBefore, deletions())
+        assertEquals(case, logOuts + 1, repository.logOutCalls)
+        assertNull(case, repository.currentUser())
+        assertEquals(case, VerifyEmailUiState(exit = exit), vm.uiState.value)
+        // The account stays, so does its cooldown, as with RecentLoginRequired.
+        assertEquals(case, timing, store.timings[user.uid])
+        dispose(vm)
+      }
+    }
+  }
+
+  @Test
+  fun logOutAnywayWaitsForAFailureAndForOtherWorkToEnd() = runTest {
+    val vm = entered()
+    vm.logOutAnyway()
+    assertEquals(0, repository.logOutCalls)
+
+    // No failure to skip while the deletion runs.
+    deletion.gate = CompletableDeferred()
+    deletion.result = AccountDeletionResult.NetworkError
+    vm.leave(VerificationLeave.Back)
+    runCurrent()
+    vm.logOutAnyway()
+    assertTrue(vm.uiState.value.leaving)
+    assertEquals(0, repository.logOutCalls)
+    deletion.gate!!.complete(Unit)
+    runCurrent()
+
+    // A resume check keeps the failure, but its button is disabled until the check ends.
+    repository.checkGate = CompletableDeferred()
+    vm.checkVerified(manual = false)
+    runCurrent()
+    assertTrue(vm.uiState.value.checking)
+    assertNotNull(vm.uiState.value.leaveError)
+    vm.logOutAnyway()
+    assertEquals(0, repository.logOutCalls)
+    repository.checkGate!!.complete(Unit)
+    runCurrent()
+
+    vm.logOutAnyway()
+    assertEquals(1, repository.logOutCalls)
+    assertEquals(1, deletion.calls)
+    assertEquals(VerificationExit.Welcome, vm.uiState.value.exit)
+    vm.logOutAnyway()
+    assertEquals(1, repository.logOutCalls)
+    dispose(vm)
   }
 
   @Test

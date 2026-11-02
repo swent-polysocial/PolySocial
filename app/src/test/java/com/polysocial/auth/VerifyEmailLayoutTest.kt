@@ -6,6 +6,7 @@
 // #277; tidied after review, #277).
 // Contributors: Claude (Opus 5.5, Anthropic) tested the deleting state and its Retry, #225; Mohamed
 // Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) tested Log out anyway beside that Retry, #225 review.
 package com.polysocial.auth
 
 import androidx.compose.runtime.CompositionLocalProvider
@@ -74,6 +75,7 @@ class VerifyEmailLayoutTest {
   private var backs = 0
   private var changes = 0
   private var retries = 0
+  private var logOutTaps = 0
 
   private fun launch(fontScale: Float = 1f) = compose.setContent {
     CompositionLocalProvider(
@@ -88,6 +90,7 @@ class VerifyEmailLayoutTest {
             { resends++ },
             {},
             { retries++ },
+            { logOutTaps++ },
         )
       }
     }
@@ -307,6 +310,7 @@ class VerifyEmailLayoutTest {
               { viewModel.resend() },
               { viewModel.snackbarShown() },
               {},
+              {},
           )
         }
       }
@@ -342,6 +346,7 @@ class VerifyEmailLayoutTest {
     compose.onNodeWithTag(VerifyEmailTags.Back).assertIsNotEnabled()
     compose.onNodeWithTag(VerifyEmailTags.Continue).assertIsNotEnabled()
     compose.onNodeWithTag(VerifyEmailTags.Retry).assertDoesNotExist()
+    compose.onNodeWithTag(VerifyEmailTags.LogOutAnyway).assertDoesNotExist()
   }
 
   @Test
@@ -361,6 +366,13 @@ class VerifyEmailLayoutTest {
         .assertTextContains(text(R.string.verification_delete_network))
     compose.onNodeWithTag(VerifyEmailTags.Retry).assertIsEnabled().performClick()
     assertEquals(1, retries)
+    compose
+        .onNodeWithTag(VerifyEmailTags.LogOutAnyway)
+        .assertIsEnabled()
+        .assertTextEquals(text(R.string.verification_log_out_anyway))
+        .performClick()
+    assertEquals(1, logOutTaps)
+    assertEquals(1, retries)
     compose.runOnIdle {
       state.value =
           state.value.copy(
@@ -371,11 +383,53 @@ class VerifyEmailLayoutTest {
     compose
         .onNodeWithTag(VerifyEmailTags.Banner)
         .assertTextContains(text(R.string.verification_delete_error))
+    compose.onNodeWithTag(VerifyEmailTags.LogOutAnyway).assertIsDisplayed()
     compose.runOnIdle { state.value = state.value.copy(leaveError = null) }
     compose.onNodeWithTag(VerifyEmailTags.Retry).assertDoesNotExist()
+    compose.onNodeWithTag(VerifyEmailTags.LogOutAnyway).assertDoesNotExist()
     compose
         .onNodeWithTag(VerifyEmailTags.Banner)
         .assertTextContains(text(R.string.verification_sent))
+  }
+
+  @Test
+  fun failedDeletionsWaysOutAreDisabledWhileACheckRuns() {
+    state.value =
+        state.value.copy(
+            checking = true,
+            leaveError =
+                VerificationLeaveError(VerificationLeave.Back, VerificationMessage.DeleteError),
+        )
+    launch()
+    compose.onNodeWithTag(VerifyEmailTags.Retry).performScrollTo().assertIsNotEnabled()
+    compose.onNodeWithTag(VerifyEmailTags.LogOutAnyway).assertIsNotEnabled()
+    compose.runOnIdle { state.value = state.value.copy(checking = false) }
+    compose.onNodeWithTag(VerifyEmailTags.LogOutAnyway).assertIsEnabled()
+  }
+
+  @Test
+  @Config(qualifiers = "w320dp-h480dp")
+  fun largeTextKeepsBothWaysOutOfAFailedDeletionReachable() {
+    state.value =
+        state.value.copy(
+            leaveError =
+                VerificationLeaveError(
+                    VerificationLeave.ChangeAddress,
+                    VerificationMessage.DeleteNetworkError,
+                )
+        )
+    launch(fontScale = 2f)
+    compose.onNodeWithTag(VerifyEmailTags.Retry).performScrollTo().assertIsDisplayed()
+    compose
+        .onNodeWithTag(VerifyEmailTags.LogOutAnyway)
+        .performScrollTo()
+        .assertIsDisplayed()
+        .performClick()
+    assertEquals(1, logOutTaps)
+    val banner = compose.onNodeWithTag(VerifyEmailTags.Banner).fetchSemanticsNode().boundsInRoot
+    val action =
+        compose.onNodeWithTag(VerifyEmailTags.LogOutAnyway).fetchSemanticsNode().boundsInRoot
+    assertTrue("Log out anyway stays inside the banner", action.right <= banner.right)
   }
 
   private fun text(id: Int) = RuntimeEnvironment.getApplication().getString(id)
