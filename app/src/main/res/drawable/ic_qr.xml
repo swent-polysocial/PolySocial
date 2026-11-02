@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (vector from the Figma "Association · manage event" frame, #131). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="40dp" android:height="40dp" android:viewportWidth="40" android:viewportHeight="40">
+    <path android:pathData="M23.3333,33.3333H26.6667M33.3333,23.3333V26.6667M5,5H16.6667V16.6667H5V5ZM23.3333,5H35V16.6667H23.3333V5ZM5,23.3333H16.6667V35H5V23.3333ZM23.3333,23.3333H28.3333V28.3333H23.3333V23.3333ZM30,30H35V35H30V30Z"
+        android:strokeColor="#FFFFFF" android:strokeWidth="3.33333" android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

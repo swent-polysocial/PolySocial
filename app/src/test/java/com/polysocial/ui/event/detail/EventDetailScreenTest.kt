@@ -30,6 +30,7 @@ import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.validEvent
 import com.polysocial.model.event.withCreator
 import com.polysocial.model.network.NetworkMonitor
+import com.polysocial.model.registration.FakeRegistrationRepository
 import com.polysocial.resources.C
 import com.polysocial.ui.theme.PolySocialTheme
 import com.polysocial.utils.MainDispatcherRule
@@ -342,6 +343,7 @@ class EventDetailScreenTest {
             FakeAuthRepository(),
             clock,
             FakeAssociationNames(),
+            FakeRegistrationRepository(),
         )
     composeTestRule.setContent {
       PolySocialTheme { EventDetailRoute(onBack = { backs++ }, viewModel = viewModel) }
@@ -383,6 +385,7 @@ class EventDetailScreenTest {
             FakeAuthRepository(),
             clock,
             FakeAssociationNames(),
+            FakeRegistrationRepository(),
         )
     composeTestRule.setContent {
       PolySocialTheme { EventDetailRoute(onBack = { backs++ }, viewModel = viewModel) }
@@ -437,6 +440,7 @@ class EventDetailScreenTest {
             FakeAuthRepository(AuthUser("organizer", "organizer@example.com", true)),
             Clock.fixed(Instant.parse("2026-09-30T10:00:00Z"), ZoneId.of("Europe/Zurich")),
             FakeAssociationNames(),
+            FakeRegistrationRepository(),
         )
     composeTestRule.setContent {
       PolySocialTheme {

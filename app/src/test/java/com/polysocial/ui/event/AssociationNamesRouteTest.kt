@@ -16,6 +16,7 @@ import com.polysocial.model.event.TEST_NOW
 import com.polysocial.model.event.validEvent
 import com.polysocial.model.location.FakeLocationService
 import com.polysocial.model.network.NetworkMonitor
+import com.polysocial.model.registration.FakeRegistrationRepository
 import com.polysocial.ui.event.detail.EventDetailRoute
 import com.polysocial.ui.event.detail.EventDetailTags
 import com.polysocial.ui.event.detail.EventDetailViewModel
@@ -93,6 +94,7 @@ class AssociationNamesRouteTest {
             fixture.auth,
             clock,
             fixture.names,
+            FakeRegistrationRepository(),
         )
     composeTestRule.setContent {
       PolySocialTheme { EventDetailRoute(onBack = {}, viewModel = viewModel) }

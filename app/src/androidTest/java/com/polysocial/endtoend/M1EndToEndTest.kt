@@ -1,7 +1,7 @@
 // Contributors: OpenAI Codex (keep association onboarding dependencies fake in Hilt tests, #125).
 // Contributors: Claude (end-to-end test of the M1 student flow with Hilt test bindings and a fake
 // map renderer, #136; a fake association repository for the association names, #128; the
-// student's organizer row, #134).
+// student's organizer row, #134; a fake registration repository, #131).
 // Contributors: Claude (Opus 5.5, Anthropic) bound a fake session guard and its parts,
 // #198; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.endtoend
@@ -73,6 +73,9 @@ import com.polysocial.model.location.LocationModule
 import com.polysocial.model.location.LocationService
 import com.polysocial.model.network.NetworkModule
 import com.polysocial.model.network.NetworkMonitor
+import com.polysocial.model.registration.FakeRegistrationRepository
+import com.polysocial.model.registration.RegistrationModule
+import com.polysocial.model.registration.RegistrationRepository
 import com.polysocial.model.time.ClockModule
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.UserProfileModule
@@ -142,6 +145,7 @@ import org.junit.runner.RunWith
     LocationModule::class,
     NetworkModule::class,
     UserProfileModule::class,
+    RegistrationModule::class,
 )
 @RunWith(AndroidJUnit4::class)
 class M1EndToEndTest {
@@ -158,6 +162,7 @@ class M1EndToEndTest {
 
   @BindValue @JvmField val auth: AuthRepository = fakeAuth
   @BindValue @JvmField val events: EventRepository = fakeEvents
+  @BindValue @JvmField val registrations: RegistrationRepository = FakeRegistrationRepository()
   @BindValue @JvmField val profiles: UserProfileRepository = fakeProfiles
   @BindValue @JvmField val associations: AssociationRepository = FakeAssociationRepository()
   @BindValue @JvmField val clock: Clock = Clock.fixed(NOW, ZURICH)

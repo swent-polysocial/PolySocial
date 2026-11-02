@@ -1,5 +1,6 @@
 // Contributors: Claude (drafted the event detail ViewModel, #112; the server timeout and Retry,
-// #194; Edit and Cancel event for organizers, #131; the association's name, #128).
+// #194; Edit and Cancel event for organizers, #131; the association's name, #128; the "Going"
+// count on an association's manage event, #131).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -11,7 +12,10 @@ import com.polysocial.model.event.DeleteEventResult
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.EventResult
+import com.polysocial.model.event.isLive
 import com.polysocial.model.network.NetworkMonitor
+import com.polysocial.model.registration.AttendeeCountResult
+import com.polysocial.model.registration.RegistrationRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
 import java.time.LocalDate
@@ -66,6 +70,17 @@ fun eventDetails(event: Event, zone: ZoneId): EventDetails {
   )
 }
 
+/** The "Going" count on an association's "manage event" (#131). */
+sealed interface GoingCount {
+  data object Loading : GoingCount
+
+  /** [count] students are registered. */
+  data class Count(val count: Long) : GoingCount
+
+  /** The count couldn't be read (offline or a failure); tapping it counts again. */
+  data object Unavailable : GoingCount
+}
+
 /** What the event detail screen shows (Figma section 03, "Event detail" and its states). */
 sealed interface EventDetailUiState {
   data object Loading : EventDetailUiState
@@ -79,13 +94,25 @@ sealed interface EventDetailUiState {
    *   Edit and Cancel event (#131).
    * @property associationName the name of the association that publishes the event, once read
    *   (#128); null for a student's event, and while or when it can't be read.
+   * @property going the "Going" count, only on [isManaged] events; null otherwise.
+   * @property isLive true while the event runs, when it was read (Figma's "Live now" on the manage
+   *   screen); it is updated with the event's next change.
    */
   data class Loaded(
       val details: EventDetails,
       val isOffline: Boolean,
       val isOrganizer: Boolean = false,
       val associationName: String? = null,
-  ) : EventDetailUiState
+      val going: GoingCount? = null,
+      val isLive: Boolean = false,
+  ) : EventDetailUiState {
+    /**
+     * True when the signed-in association organizes this association event: the screen is then
+     * Figma's "Association · manage event" instead of the detail students see (#131).
+     */
+    val isManaged: Boolean
+      get() = isOrganizer && details.event.isAssociationEvent
+  }
 
   /** The event doesn't exist (anymore), or the user isn't allowed to see it. */
   data object NotFound : EventDetailUiState
@@ -147,8 +174,14 @@ sealed interface CancelEventState {
  * An association's event shows the association's name (#128), read once through the shared
  * [associationNames]; the event shows at once, and the name joins it when it arrives.
  *
+ * On an event it manages ([EventDetailUiState.Loaded.isManaged]), an association also sees how many
+ * students are going (#131), counted once from the server through [registrations] when the event
+ * first shows. The event doesn't wait for it; offline or on a failure the count is
+ * [GoingCount.Unavailable] until [retryGoingCount].
+ *
  * @param auth tells whether the signed-in user is one of the event's organizers.
- * @param clock gives the device's time zone, in which the times are shown.
+ * @param clock gives the device's time zone, in which the times are shown, and the time that tells
+ *   whether the event is live.
  */
 @HiltViewModel
 class EventDetailViewModel
@@ -160,6 +193,7 @@ constructor(
     private val auth: AuthRepository,
     private val clock: Clock,
     private val associationNames: AssociationNames,
+    private val registrations: RegistrationRepository,
 ) : ViewModel() {
 
   private val eventId = savedStateHandle.get<String>(EVENT_ID_ARG).orEmpty()
@@ -176,12 +210,24 @@ constructor(
   /** The association whose name this screen asked for, so it is asked for once. */
   private var requestedName: String? = null
 
+  /** The "Going" count, null until a managed event shows. */
+  private val going = MutableStateFlow<GoingCount?>(null)
+
+  /** Whether this screen counted the managed event's attendees, so they are counted once. */
+  private var goingCounted = false
+
   @OptIn(ExperimentalCoroutinesApi::class)
   val uiState: StateFlow<EventDetailUiState> =
       reads
           .flatMapLatest { eventStates().onStart { emit(EventDetailUiState.Loading) } }
           .onEach(::loadAssociationName)
           .combine(associationNames.names, ::withAssociationName)
+          .onEach(::countGoingOnce)
+          .combine(going) { state, count ->
+            if (state is EventDetailUiState.Loaded && state.isManaged)
+                state.copy(going = count ?: GoingCount.Loading)
+            else state
+          }
           .combine(_cancelState) { state, cancel ->
             val deleting =
                 cancel == CancelEventState.Cancelling || cancel == CancelEventState.Cancelled
@@ -210,6 +256,30 @@ constructor(
     val event = (state as? EventDetailUiState.Loaded)?.details?.event ?: return state
     return if (event.isAssociationEvent) state.copy(associationName = names[event.createdBy])
     else state
+  }
+
+  /** Counts the attendees of the managed event in [state], the first time it shows. */
+  private fun countGoingOnce(state: EventDetailUiState) {
+    if (goingCounted || state !is EventDetailUiState.Loaded || !state.isManaged) return
+    goingCounted = true
+    countGoing()
+  }
+
+  private fun countGoing() {
+    going.value = GoingCount.Loading
+    viewModelScope.launch {
+      going.value =
+          when (val result = registrations.countAttendees(eventId)) {
+            is AttendeeCountResult.Count -> GoingCount.Count(result.count)
+            AttendeeCountResult.NetworkError,
+            AttendeeCountResult.UnexpectedError -> GoingCount.Unavailable
+          }
+    }
+  }
+
+  /** Counts the attendees again after the count failed (tapping the unavailable count). */
+  fun retryGoingCount() {
+    if (going.value == GoingCount.Unavailable) countGoing()
   }
 
   /**
@@ -284,6 +354,7 @@ constructor(
                 eventDetails(result.event, clock.zone),
                 isOffline = result.fromCache && !network.isOnline(),
                 isOrganizer = auth.currentUser()?.uid in result.event.organizerIds,
+                isLive = result.event.isLive(clock.instant()),
             )
         EventResult.NotFound -> EventDetailUiState.NotFound
         // Even offline, the cache answers a moment later and may have the event.

@@ -1,7 +1,7 @@
 // Contributors: Claude (event detail screen from the Figma "Event detail" Sprint 2 frames, #112;
 // Retry in the offline "not saved" state, #194; Edit and Cancel event for organizers, #131;
 // the association's name, #128).
-// Contributors: Claude (the shared offline banner, #251).
+// Contributors: Claude (the shared offline banner, #251; the association's manage event, #131).
 package com.polysocial.ui.event.detail
 
 import androidx.annotation.DrawableRes
@@ -151,6 +151,7 @@ fun EventDetailRoute(
           onConfirmCancel = viewModel::onConfirmCancel,
           onKeepEvent = viewModel::onKeepEvent,
       ),
+      onRetryGoing = viewModel::retryGoingCount,
   )
 }
 
@@ -161,7 +162,9 @@ fun EventDetailRoute(
  * later), so it shows a "not available yet" Snackbar.
  *
  * An organizer also sees Edit, "Organized by you" and Cancel event (Figma section 10, "Event detail
- * · organizer"), and the confirmation while [cancelState] isn't hidden.
+ * · organizer"), and the confirmation while [cancelState] isn't hidden. An association sees its own
+ * events as Figma's "Association · manage event" instead ([ManageEventContent], #131), where
+ * tapping a "Going" count that couldn't be read calls [onRetryGoing].
  */
 @Composable
 fun EventDetailScreen(
@@ -171,10 +174,17 @@ fun EventDetailScreen(
     modifier: Modifier = Modifier,
     cancelState: CancelEventState = CancelEventState.Hidden,
     organizer: EventOrganizerActions = EventOrganizerActions(),
+    onRetryGoing: () -> Unit = {},
 ) {
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
   val unavailable = stringResource(R.string.event_detail_find_group_unavailable)
+  val manageUnavailable = stringResource(R.string.manage_event_not_available)
+  /** Shows [message], replacing a message already shown instead of queueing one per tap. */
+  fun showSnackbar(message: String) {
+    snackbarHostState.currentSnackbarData?.dismiss()
+    scope.launch { snackbarHostState.showSnackbar(message) }
+  }
   Box(modifier.fillMaxSize().background(Bg).testTag(EventDetailTags.SCREEN)) {
     when (state) {
       EventDetailUiState.Loading -> {
@@ -183,17 +193,24 @@ fun EventDetailScreen(
         Header(Surface, onBack)
       }
       is EventDetailUiState.Loaded ->
-          EventContent(
-              state,
-              onBack,
-              snackbarHostState,
-              organizer,
-              onFindGroup = {
-                // Replace a message already shown instead of queueing one per tap.
-                snackbarHostState.currentSnackbarData?.dismiss()
-                scope.launch { snackbarHostState.showSnackbar(unavailable) }
-              },
-          )
+          if (state.isManaged) {
+            ManageEventContent(
+                state,
+                onBack,
+                snackbarHostState,
+                organizer,
+                onRetryGoing = onRetryGoing,
+                onUnavailable = { showSnackbar(manageUnavailable) },
+            )
+          } else {
+            EventContent(
+                state,
+                onBack,
+                snackbarHostState,
+                organizer,
+                onFindGroup = { showSnackbar(unavailable) },
+            )
+          }
       EventDetailUiState.NotFound ->
           MessageState(
               icon = R.drawable.ic_tab_events,
@@ -405,7 +422,11 @@ private fun Header(color: Color, onBack: () -> Unit, onEdit: (() -> Unit)? = nul
 
 /** The organizer's outlined "Cancel event" button, above the action bar. */
 @Composable
-private fun CancelEventButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+internal fun CancelEventButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    tag: String = EventDetailTags.CANCEL_EVENT,
+) {
   Box(
       modifier =
           modifier
@@ -415,7 +436,7 @@ private fun CancelEventButton(onClick: () -> Unit, modifier: Modifier = Modifier
               .background(Bg)
               .border(1.dp, Border, RoundedCornerShape(24.dp))
               .clickable(role = Role.Button, onClick = onClick)
-              .testTag(EventDetailTags.CANCEL_EVENT),
+              .testTag(tag),
       contentAlignment = Alignment.Center,
   ) {
     Text(
@@ -563,7 +584,7 @@ private fun InfoRow(
 
 /** "20:00", "20:00 – 23:00", or "20:00 – 01:00 (+1 day)" when it ends on a later day. */
 @Composable
-private fun timeText(details: EventDetails): String {
+internal fun timeText(details: EventDetails): String {
   val start = details.startTime.format(TIME_FORMAT)
   val end: LocalTime = details.endTime ?: return start
   val endText =
@@ -582,10 +603,13 @@ private fun timeText(details: EventDetails): String {
 
 /** The detail's offline banner: its text can wrap, so the icon stays on the first line. */
 @Composable
-private fun DetailOfflineBanner(modifier: Modifier = Modifier) {
+internal fun DetailOfflineBanner(
+    modifier: Modifier = Modifier,
+    tag: String = EventDetailTags.OFFLINE_BANNER,
+) {
   OfflineBanner(
       message = stringResource(R.string.event_detail_offline),
-      tag = EventDetailTags.OFFLINE_BANNER,
+      tag = tag,
       modifier = modifier,
       textStyle = MaterialTheme.typography.labelMedium.figmaExact(),
       verticalAlignment = Alignment.Top,
@@ -691,7 +715,7 @@ private val HEADER_HEIGHT = 132.dp
  * Draws this style like Figma (see "Matching Figma in Compose" in CONTEXT.md): glyphs aren't
  * rounded to whole pixels, and the first and last lines of a multi-line text aren't trimmed.
  */
-private fun TextStyle.figmaExact(): TextStyle =
+internal fun TextStyle.figmaExact(): TextStyle =
     copy(
         textMotion = TextMotion.Animated,
         lineHeightStyle =
