@@ -1,5 +1,5 @@
 // Contributors: Claude Opus 5.5 (registration repository tests against the rules, #121; the ended
-// event after review).
+// event after review; the organizer's attendee count, #131).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -9,6 +9,7 @@ import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.toFirestoreMap
 import com.polysocial.model.registration.ATTENDEES_COLLECTION
+import com.polysocial.model.registration.AttendeeCountResult
 import com.polysocial.model.registration.CancelRegistrationResult
 import com.polysocial.model.registration.FirestoreRegistrationRepository
 import com.polysocial.model.registration.MyRegistrationsResult
@@ -216,6 +217,52 @@ class FirestoreRegistrationRepositoryEmulatorTest {
 
     assertEquals(setOf("first", "second"), myRegistrations())
   }
+
+  @Test
+  fun count_aVerifiedAssociationCountsWhoIsGoingToItsOwnEvent() = runBlocking {
+    val uid = emulator.signInVerifiedUser(ASSOCIATION_EMAIL).uid
+    emulator.createAsAdmin(
+        USERS_COLLECTION,
+        uid,
+        mapOf("uid" to uid, "accountType" to "association", "isAssociationVerified" to true),
+    )
+    seed("own", event().withOrganizer(uid).copy(isAssociationEvent = true))
+    seedRegistration("own", OTHER_STUDENT_UID)
+    seedRegistration("own", "fictional-student-2")
+    seedRegistration("other", OTHER_STUDENT_UID)
+
+    assertEquals(
+        AttendeeCountResult.Count(2),
+        withTimeout(TIMEOUT_MS) { repository.countAttendees("own") },
+    )
+  }
+
+  @Test
+  fun count_aStudentOrganizerCountsToo_andAnEventWithNobodyGoingIsZero() = runBlocking {
+    val uid = signInStudent()
+    seed("own", event().withOrganizer(uid))
+
+    assertEquals(
+        AttendeeCountResult.Count(0),
+        withTimeout(TIMEOUT_MS) { repository.countAttendees("own") },
+    )
+  }
+
+  @Test
+  fun count_aStudentWhoDoesntOrganizeTheEvent_isRefused() = runBlocking {
+    val uid = signInStudent()
+    seed("public", event())
+    seedRegistration("public", uid)
+
+    assertEquals(
+        AttendeeCountResult.UnexpectedError,
+        withTimeout(TIMEOUT_MS) { repository.countAttendees("public") },
+    )
+  }
+
+  /** This event, organized by [uid] alone, like one [uid] created. */
+  private fun Event.withOrganizer(uid: String) =
+      copy(createdBy = uid, organizerIds = listOf(uid), allowedUids = listOf(uid))
 
   private fun attendeesOf(eventId: String) = "$EVENTS_COLLECTION/$eventId/$ATTENDEES_COLLECTION"
 

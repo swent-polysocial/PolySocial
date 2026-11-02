@@ -1,5 +1,5 @@
 // Contributors: Claude Opus 5.5 (drafted the registration interface, #121; the ended-event note
-// after review).
+// after review; the attendee count, #131).
 package com.polysocial.model.registration
 
 import kotlinx.coroutines.flow.Flow
@@ -57,6 +57,21 @@ sealed interface MyRegistrationsResult {
   data object Error : MyRegistrationsResult
 }
 
+/** Outcome of [RegistrationRepository.countAttendees]. */
+sealed interface AttendeeCountResult {
+  /** [count] students are registered for the event, as the server counted them. */
+  data class Count(val count: Long) : AttendeeCountResult
+
+  /** The device is offline: the count comes only from the server, never from the cache. */
+  data object NetworkError : AttendeeCountResult
+
+  /**
+   * Any other failure, for example a count the Security Rules deny because the user doesn't
+   * organize the event, or a missing event.
+   */
+  data object UnexpectedError : AttendeeCountResult
+}
+
 /**
  * Stores students' registrations for events ("I'm going") in `events/{eventId}/attendees/{uid}`,
  * one document per registered student, so an event's organizers can count its attendees.
@@ -100,4 +115,15 @@ interface RegistrationRepository {
    * collection stops listening.
    */
   fun observeMyRegistrations(): Flow<MyRegistrationsResult>
+
+  /**
+   * Counts the students registered for the event [eventId], for its organizers' "Going" count
+   * (#131). Only an organizer of the event may count them (the Security Rules' `list` on
+   * attendees); the count never says who is registered.
+   *
+   * It is read once from the server: an offline device returns [AttendeeCountResult.NetworkError]
+   * without asking Firestore, and an ID that can't be a document ID
+   * [AttendeeCountResult.UnexpectedError].
+   */
+  suspend fun countAttendees(eventId: String): AttendeeCountResult
 }

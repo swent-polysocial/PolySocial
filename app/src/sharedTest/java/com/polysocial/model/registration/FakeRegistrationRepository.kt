@@ -1,5 +1,5 @@
 // Contributors: Claude Opus 5.5 (wrote this fake for tests, #121; matched the real checks' order
-// after review).
+// after review; the attendee count, #131).
 package com.polysocial.model.registration
 
 import com.polysocial.model.event.isReadableEventId
@@ -38,6 +38,18 @@ class FakeRegistrationRepository(var currentUid: String? = "test-student") :
   /** The `fromCache` flag [observeMyRegistrations] reports, to simulate being offline. */
   var readFromCache = false
 
+  /** When set, [countAttendees] returns this result instead of counting, like a failed read. */
+  var countFailure: AttendeeCountResult? = null
+
+  /** How many times [countAttendees] was called, to check when a screen counts again. */
+  var countCalls = 0
+    private set
+
+  /** Registers [uid] for [eventId] directly, like another student's registration. */
+  fun seedRegistration(eventId: String, uid: String) {
+    attendees.value += eventId to (attendeesOf(eventId) + uid)
+  }
+
   /** The UIDs registered for [eventId]. */
   fun attendeesOf(eventId: String): Set<String> = attendees.value[eventId].orEmpty()
 
@@ -71,5 +83,14 @@ class FakeRegistrationRepository(var currentUid: String? = "test-student") :
           readFromCache,
       )
     }
+  }
+
+  override suspend fun countAttendees(eventId: String): AttendeeCountResult {
+    countCalls++
+    if (!isReadableEventId(eventId)) return AttendeeCountResult.UnexpectedError
+    countFailure?.let {
+      return it
+    }
+    return AttendeeCountResult.Count(attendeesOf(eventId).size.toLong())
   }
 }
