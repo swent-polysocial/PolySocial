@@ -1,4 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the deleteAccount handler, #206; Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (the public profile deleted with the account, #229).
 "use strict";
 
 const { HttpsError } = require("firebase-functions/v2/https");
@@ -38,8 +39,9 @@ const TRANSIENT_CODES = new Set([
 ]);
 
 /**
- * Deletes the signed-in user's account: first their private profile `users/{uid}`, then their
- * Firebase Auth user. Returns `{ deleted: true }` only once both are gone.
+ * Deletes the signed-in user's account: first their private profile `users/{uid}` and their public
+ * profile `publicProfiles/{uid}` (#229), together, then their Firebase Auth user. Returns
+ * `{ deleted: true }` only once all are gone.
  *
  * Refuses, before deleting anything:
  * - a call without a signed-in user (`unauthenticated`);
@@ -95,7 +97,10 @@ function isRecentSignIn(token, nowMillis) {
   return nowMillis - authTime * 1000 <= MAX_AUTH_AGE_MS;
 }
 
-/** Deletes `users/{uid}` unless it is an association's, in one transaction. */
+/**
+ * Deletes `users/{uid}` and the student's public profile `publicProfiles/{uid}` (#229) unless the
+ * account is an association's, in one transaction, so no public copy outlives the account.
+ */
 async function deleteStudentProfile(db, uid) {
   const profile = db.collection("users").doc(uid);
   await db.runTransaction(async (transaction) => {
@@ -107,8 +112,10 @@ async function deleteStudentProfile(db, uid) {
         DETAILS.ASSOCIATION,
       );
     }
-    // Deleting a missing document is a no-op, so a retry after this step still succeeds.
+    // Deleting a missing document is a no-op, so a retry after this step still succeeds, and so
+    // does a student whose profile was saved before public profiles existed.
     transaction.delete(profile);
+    transaction.delete(db.collection("publicProfiles").doc(uid));
   });
 }
 
