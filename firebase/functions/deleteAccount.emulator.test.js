@@ -1,4 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the deleteAccount emulator test, #206; Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (the public profile deleted with the account, #229).
 "use strict";
 
 // Calls the deployed-to-emulator deleteAccount over HTTP, as the Android client does, against the
@@ -61,10 +62,21 @@ async function clearEmulator(url) {
   if (!response.ok) throw new Error(`Could not clear the emulator (${response.status}).`);
 }
 
-/** Creates a fictional verified user, with a profile when `profile` is set, and an event. */
+/**
+ * Creates a fictional verified user, with a profile when `profile` is set (and a student's public
+ * profile, #229), and an event.
+ */
 async function seedUser(email, profile) {
   const { uid } = await auth.createUser({ email, password: PASSWORD, emailVerified: true });
   if (profile) await db.doc(`users/${uid}`).set({ uid, email, ...profile });
+  if (profile && profile.accountType === "student") {
+    await db.doc(`publicProfiles/${uid}`).set({
+      displayName: "Fictional Student",
+      section: "IN",
+      year: "BA3",
+      interests: [],
+    });
+  }
   await db.doc(`events/event-of-${uid}`).set({
     title: "Fictional study session",
     createdBy: uid,
@@ -116,7 +128,7 @@ async function documentExists(path) {
   return (await db.doc(path).get()).exists;
 }
 
-test("a student's profile and Auth user are deleted, their event is kept", async () => {
+test("a student's profiles and Auth user are deleted, their event is kept", async () => {
   const uid = await seedUser("student@epfl.ch", { accountType: "student" });
   const idToken = await signIn("student@epfl.ch");
 
@@ -125,6 +137,7 @@ test("a student's profile and Auth user are deleted, their event is kept", async
   assert.equal(status, 200);
   assert.deepEqual(body, { result: { deleted: true } });
   assert.equal(await documentExists(`users/${uid}`), false);
+  assert.equal(await documentExists(`publicProfiles/${uid}`), false);
   assert.equal(await authUserExists(uid), false);
   assert.equal(await documentExists(`events/event-of-${uid}`), true);
 });

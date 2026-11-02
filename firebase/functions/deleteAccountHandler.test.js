@@ -1,4 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the deleteAccount handler tests, #206; Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (the public profile deleted with the account, written test-first, #229).
 "use strict";
 
 // Unit tests with fakes, no emulator: node firebase/functions/deleteAccountHandler.test.js
@@ -22,13 +23,18 @@ function backendError(code) {
 }
 
 /**
- * A fake Firestore holding at most the user's profile, and a fake Auth. `calls` records every
- * operation in order; a failure set in `fail` makes that operation throw (once, when `once`).
+ * A fake Firestore holding at most the user's private and public profiles, and a fake Auth.
+ * `calls` records every operation in order; a failure set in `fail` makes that operation throw
+ * (once, when `once`).
  */
-function fakeBackend({ profile = { accountType: "student" }, authUserExists = true } = {}) {
+function fakeBackend({
+  profile = { accountType: "student" },
+  publicProfile = { displayName: "Student One", section: "IN", year: "BA3", interests: [] },
+  authUserExists = true,
+} = {}) {
   const calls = [];
   const fail = {};
-  const state = { profile, authUserExists };
+  const state = { profile, publicProfile, authUserExists };
   const failIfAsked = (operation) => {
     const error = fail[operation];
     if (error) {
@@ -64,7 +70,8 @@ function fakeBackend({ profile = { accountType: "student" }, authUserExists = tr
       for (const ref of deletes) {
         calls.push(`delete:${ref.path}`);
         failIfAsked("delete");
-        state.profile = null;
+        if (ref.path.startsWith("users/")) state.profile = null;
+        if (ref.path.startsWith("publicProfiles/")) state.publicProfile = null;
       }
     },
   };
@@ -157,7 +164,10 @@ test("a token without a usable auth_time counts as a stale sign-in", async () =>
 
 test("an association is refused and keeps its profile and Auth user", async () => {
   for (const isAssociationVerified of [true, false]) {
-    const backend = fakeBackend({ profile: { accountType: "association", isAssociationVerified } });
+    const backend = fakeBackend({
+      profile: { accountType: "association", isAssociationVerified },
+      publicProfile: null,
+    });
     await assertHttpsError(call(backend), "failed-precondition", DETAILS.ASSOCIATION);
     assert.deepEqual(backend.calls, ["collection:users", `get:users/${UID}`]);
     assert.notEqual(backend.state.profile, null);
@@ -165,15 +175,25 @@ test("an association is refused and keeps its profile and Auth user", async () =
   }
 });
 
-test("a student's profile is deleted, then the Auth user, and only then success", async () => {
+test("a student's profiles are deleted, then the Auth user, and only then success", async () => {
   const backend = fakeBackend();
   assert.deepEqual(await call(backend), { deleted: true });
   assert.deepEqual(backend.calls, [
     "collection:users",
     `get:users/${UID}`,
+    "collection:publicProfiles",
     `delete:users/${UID}`,
+    `delete:publicProfiles/${UID}`,
     `deleteUser:${UID}`,
   ]);
+  assert.equal(backend.state.profile, null);
+  assert.equal(backend.state.publicProfile, null);
+  assert.equal(backend.state.authUserExists, false);
+});
+
+test("a student without a public profile (saved before #229) is deleted too", async () => {
+  const backend = fakeBackend({ publicProfile: null });
+  assert.deepEqual(await call(backend), { deleted: true });
   assert.equal(backend.state.profile, null);
   assert.equal(backend.state.authUserExists, false);
 });
@@ -182,6 +202,7 @@ test("a profile without accountType is a student's and is deleted", async () => 
   const backend = fakeBackend({ profile: { displayName: "Student One" } });
   assert.deepEqual(await call(backend), { deleted: true });
   assert.equal(backend.state.profile, null);
+  assert.equal(backend.state.publicProfile, null);
   assert.equal(backend.state.authUserExists, false);
 });
 
@@ -191,11 +212,11 @@ test("an account without a profile (never verified) can delete itself", async ()
   assert.equal(backend.state.authUserExists, false);
 });
 
-test("only the users collection is touched, never the user's events", async () => {
+test("only the user's two profiles are touched, never the user's events", async () => {
   const backend = fakeBackend();
   await call(backend);
   const collections = backend.calls.filter((c) => c.startsWith("collection:"));
-  assert.deepEqual(collections, ["collection:users"]);
+  assert.deepEqual(collections, ["collection:users", "collection:publicProfiles"]);
   assert.ok(backend.calls.every((c) => !c.includes("events")));
 });
 
