@@ -1,5 +1,6 @@
 // Contributors: Claude (shared from the copies in Create Event, Log in, Profile setup, Events and
-// Event detail, #251; modifiers, and the location picker's button, after review).
+// Event detail, #251; modifiers, and the location picker's button, after review; ErrorBanner's text
+// styles, for Edit details, #127).
 package com.polysocial.ui.common
 
 import androidx.annotation.StringRes
@@ -88,7 +89,9 @@ fun secondaryTextStyle(): TextStyle =
 
 /**
  * Figma's red banner over a form's button when saving fails: the offline icon when [offline],
- * otherwise the error icon, then [title] in bold and [message]. [tag] is its test tag.
+ * otherwise the error icon, then [title] in bold and [message]. [tag] is its test tag. [titleStyle]
+ * and [messageStyle] let a screen keep its own measured variant of the text styles, for example one
+ * rendered exactly as in Figma.
  */
 @Composable
 fun ErrorBanner(
@@ -97,6 +100,9 @@ fun ErrorBanner(
     offline: Boolean,
     tag: String,
     modifier: Modifier = Modifier,
+    titleStyle: TextStyle =
+        secondaryTextStyle().copy(fontSize = 14.sp, fontWeight = FontWeight.Bold),
+    messageStyle: TextStyle = secondaryTextStyle(),
 ) {
   Row(
       modifier
@@ -112,12 +118,8 @@ fun ErrorBanner(
         modifier = Modifier.size(20.dp),
     )
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-      Text(
-          title,
-          style = secondaryTextStyle().copy(fontSize = 14.sp, fontWeight = FontWeight.Bold),
-          color = Ink,
-      )
-      Text(message, style = secondaryTextStyle(), color = Ink2)
+      Text(title, style = titleStyle, color = Ink)
+      Text(message, style = messageStyle, color = Ink2)
     }
   }
 }

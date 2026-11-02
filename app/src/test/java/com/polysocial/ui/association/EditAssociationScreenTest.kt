@@ -1,5 +1,6 @@
 // Contributors: Claude (testing agent: Edit details while saving, after recreation, for TalkBack
-// and at the largest font size, #127; field labels and errors for TalkBack, after a review, #127).
+// and at the largest font size, #127; field labels and errors for TalkBack, after a review, #127;
+// the failure banner's announcement and text style, after review).
 package com.polysocial.ui.association
 
 import android.app.Application
@@ -27,6 +28,7 @@ import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.style.TextMotion
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.association.Association
@@ -257,6 +259,42 @@ class EditAssociationScreenTest {
         "Use a link starting with https://",
         EditAssociationTags.error(AssociationFormError.WEBSITE_INVALID),
     )
+  }
+
+  @Test
+  fun aFailedSave_isOneAnnouncement_inTheScreensExactTextStyle() {
+    associations.updateAssociationResult = UpdateAssociationResult.NetworkError
+    show()
+
+    node(EditAssociationTags.SAVE).performClick()
+    compose.waitForIdle()
+
+    // TalkBack reads the title and the message together, as one node.
+    assertEquals(
+        listOf(
+            "Couldn't save your details",
+            "You're offline. Your changes are kept, so try again once you're back online.",
+        ),
+        node(EditAssociationTags.FAILURE)
+            .fetchSemanticsNode()
+            .config[SemanticsProperties.Text]
+            .map { it.text },
+    )
+    // The shared banner keeps this screen's Figma-exact rendering, like the rest of the screen.
+    for (text in listOf("Couldn't save your details", "You're offline.")) {
+      val layouts = mutableListOf<TextLayoutResult>()
+      compose
+          .onNode(
+              hasText(text, substring = true) and
+                  hasAnyAncestor(hasTestTag(EditAssociationTags.FAILURE)),
+              useUnmergedTree = true,
+          )
+          .fetchSemanticsNode()
+          .config[SemanticsActions.GetTextLayoutResult]
+          .action!!
+          .invoke(layouts)
+      assertEquals(TextMotion.Animated, layouts.single().layoutInput.style.textMotion)
+    }
   }
 
   @Config(qualifiers = "w360dp-h800dp", fontScale = 2.0f)
