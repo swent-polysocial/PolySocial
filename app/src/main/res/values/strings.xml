@@ -5,6 +5,7 @@
 <!-- Contributors: OpenAI Codex (current-build privacy summary and full notice, #103). -->
 <!-- Contributors: OpenAI Codex (Google authentication errors; removed collision copy for #107). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) updated the privacy notice for in-app account deletion, #207; Mohamed Khellaf (reviewed and revised). -->
+<!-- Contributors: Claude (privacy notice text for public profiles, #229). -->
 <resources>
     <string name="app_start_loading">Loading your profile…</string>
     <string name="app_start_error_title">Couldn\'t load your profile</string>
@@ -199,7 +200,7 @@
     <string name="privacy_summary">What we keep and who sees it</string>
     <string name="privacy_back">Back</string>
     <string name="privacy_profile_title">Name, section and year</string>
-    <string name="privacy_profile_body">Your profile is private in the app. Your email is not shown to other students.</string>
+    <string name="privacy_profile_body">Other students see your name, section and year. Your email stays private.</string>
     <string name="privacy_location_title">Location</string>
     <string name="privacy_location_body">Read once for distances on Map or Events. Kept in memory; map requests go to Mapbox.</string>
     <string name="privacy_reminders_title">Reminders</string>
@@ -210,12 +211,12 @@
     <string name="privacy_matching_unavailable">Not available yet</string>
     <string name="privacy_download">Download my data</string>
     <string name="privacy_full_notice">Full privacy notice</string>
-    <string name="privacy_updated">Updated 29 October 2026</string>
+    <string name="privacy_updated">Updated 2 November 2026</string>
     <string name="privacy_delete">Delete account</string>
     <string name="privacy_unavailable">Not available yet.</string>
     <string name="privacy_dismiss">Dismiss</string>
     <string name="privacy_notice_account_title">Your account and profile</string>
-    <string name="privacy_notice_account_body">Firebase Authentication processes your sign-in details and EPFL email. Your private Firebase profile stores your account identifier, email, name, section, year, account type and creation date. Other students cannot read that profile or your email in the app. The PolySocial student project team administers the Firebase project. Public profiles, interests and friends are not collected by this build.</string>
+    <string name="privacy_notice_account_body">Firebase Authentication processes your sign-in details and EPFL email. Your private Firebase profile stores your account identifier, email, name, section, year, account type and creation date. Other students cannot read that profile or your email in the app. A separate public profile holds only your name, section and year, copied from your private profile when you save it. Any verified EPFL student can read it by your account identifier, so that students can be matched and see who is in their group; nobody can list all public profiles, associations cannot read it, and it is deleted with your account. The PolySocial student project team administers the Firebase project. Interests and friends are not collected by this build.</string>
     <string name="privacy_notice_events_title">Events and who can see them</string>
     <string name="privacy_notice_events_body">Event data includes the title, description, category, venue coordinates, date and time, optional capacity and organizer identifiers. Verified EPFL students can read public events and private events that list them on the access list. A manually verified association can also read its own association events. An event venue is a place chosen for the event, not a history of your movements.</string>
     <string name="privacy_notice_location_title">Approximate location for distances</string>
@@ -227,7 +228,7 @@
     <string name="privacy_notice_device_title">Data kept on your device</string>
     <string name="privacy_notice_device_body">Firebase keeps previously loaded data in its device cache for offline use. Mapbox may cache map resources. The app remembers whether location permission has been requested, without storing coordinates in that preference. Event search and filter selections can survive screen or process recreation; location coordinates stay in memory only. Verification resend deadlines are stored as timestamps under an account identifier, retained across sign-out and cleared after successful verification or account deletion. Deleting your account also clears the Firebase device cache. Account and event data in Firebase are not automatically deleted by leaving a screen.</string>
     <string name="privacy_notice_deletion_title">Deleting your account</string>
-    <string name="privacy_notice_deletion_body">Students can delete their account in Privacy &amp; data after confirming their password or Google sign-in. This deletes your private profile and your sign-in, then clears this device\'s cache and resend timing. Events you created stay, without your name; they keep only your account identifier as organizer. Association accounts are deleted by the PolySocial project team: contact the team privately. Data export is not available yet. Do not publish your account details in a public GitHub issue.</string>
+    <string name="privacy_notice_deletion_body">Students can delete their account in Privacy &amp; data after confirming their password or Google sign-in. This deletes your private and public profiles and your sign-in, then clears this device\'s cache and resend timing. Events you created stay, without your name; they keep only your account identifier as organizer. Association accounts are deleted by the PolySocial project team: contact the team privately. Data export is not available yet. Do not publish your account details in a public GitHub issue.</string>
     <string name="privacy_notice_draft_title">Draft details to be confirmed</string>
     <string name="privacy_notice_draft_body">This is a school project prototype. The team is confirming the responsible contact, its private deletion address, and the countries of processing and transfer safeguards for Firebase and Mapbox. These details are not established yet and will replace this draft section. No specific country or safeguard is claimed here.</string>
     <string name="privacy_contact_team">Contact the team privately</string>
