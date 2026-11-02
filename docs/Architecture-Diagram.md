@@ -1,5 +1,6 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the groups, chat and public profile model, its rules, the co-organizer model and the deploy owner (#228); Franciszek Najda (decided and reviewed). -->
 <!-- Contributors: Claude Opus 5.5 (attendees schema, rules and capacity question, #121; the organizers' attendee count and the association's manage event, #131). -->
+<!-- Contributors: Claude (public profiles marked as built, #229). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the account deletion decision, its deletion/failure matrix and the related open questions (#201); Mohamed Khellaf (reviewed and revised). -->
 <!-- Contributors: OpenAI Codex (Google authentication architecture, Firebase-managed linking clarification and review cleanup for #106; preserved contributor acknowledgments during rebase); Claude (the shared UI parts, #251). -->
 <!-- Contributors: OpenAI Codex (removed obsolete Google collision UI, #107). -->
@@ -124,7 +125,7 @@ flowchart TB
   auth["<b>AuthRepository</b><br/>signUp · logIn · logOut · currentUser<br/>sendVerificationEmail<br/>reloadAndCheckVerified"]:::s1
   prof["<b>UserProfileRepository</b><br/>createProfile · getProfile<br/>updateProfile"]:::s1
   fa[("Firebase Auth")]:::ext
-  fs[("Firestore<br/>users/{uid}")]:::ext
+  fs[("Firestore<br/>users/{uid}<br/>publicProfiles/{uid}, #229")]:::ext
 
   screens --> vm
   vm --> val
@@ -197,10 +198,12 @@ flowchart TB
   classDef pb fill:#dbe4ff,stroke:#364fc7,color:#000
   classDef ext fill:#fff3bf,stroke:#e67700,color:#000
 
+  classDef s1 fill:#d3f9d8,stroke:#2b8a3e,color:#000
+
   find["Find a group · group card<br/>#233, #244"]:::pb --> findVM["<b>Find a group ViewModel</b><br/>Loading · Groups · Joined · Full<br/>Offline · Error"]:::pb
   findVM --> match["<b>Matching engine</b><br/><i>domain</i>, pure Kotlin, #231"]:::pb
   findVM --> groups["<b>GroupRepository</b><br/>observeGroups · observeMyGroup<br/>createGroup · joinGroup · leaveGroup, #232"]:::pb
-  findVM --> pub["<b>PublicProfileRepository</b><br/>one or several by UID, #229"]:::pb
+  findVM --> pub["<b>PublicProfileRepository</b><br/>getPublicProfile · getPublicProfiles<br/>by UID only, built, #229"]:::s1
   chat["Group chat<br/>#238"]:::pb --> chatVM["<b>Chat ViewModel</b>"]:::pb --> msgs["<b>MessageRepository</b><br/>observe · send, #237"]:::pb
   groups --> fs[("Firestore<br/>events/{e}/groups · groupMembers")]:::ext
   pub --> fs2[("Firestore<br/>publicProfiles")]:::ext
@@ -386,7 +389,7 @@ flowchart LR
   classDef ext fill:#fff3bf,stroke:#e67700,color:#000
 
   users["users/{uid}<br/>private"]:::s1
-  pub["publicProfiles/{uid}<br/>visible to others"]:::pb
+  pub["publicProfiles/{uid}<br/>visible to others, #229"]:::s1
   events["events/{eventId}"]:::s1
   reg["events/{eventId}/attendees/{uid}<br/>#121"]:::s1
   reminders["Device reminder state<br/>WorkManager, #123"]:::s1
@@ -420,7 +423,7 @@ flowchart LR
 | `users/{uid}` | `uid`, `email`, `displayName` (at most 50, #143), `section`, `year`, `createdAt`, `accountType`, `isAssociationVerified` | 🟩 #34, #45 |
 | `events/{eventId}` | `title`, `description`, `category`, `location`, `locationName?` (#112), `startTime`, `endTime?`, `capacity?`, `isPrivate`, `createdBy`, `organizerIds`, `allowedUids`, `isAssociationEvent` | 🟩 #45 |
 | `associations/{uid}` | `name` (1–60), `type` (`ASSOCIATION`, `COMMISSION`, `CLUB`, `EPFL_UNIT`), `about` (1–1000), `website?` (`https://`, at most 200), `createdAt`. Document ID = the association account's UID | 🟩 #126 |
-| `publicProfiles/{uid}` | `displayName`, `section`, `year`, `interests` (codes from #230's fixed list), always visible; never the email. Written in the same transaction as `users/{uid}`. `username`, `visibility` (public or private) and `bio` come later | 🟦 S4 #229, #230 |
+| `publicProfiles/{uid}` | `displayName`, `section`, `year`, `interests` (codes from #230's fixed list), always visible; never the email. Written in the same transaction as `users/{uid}`. `section` and `year` must be codes from `ProfileOptions.kt`. `interests` stays `[]` until #230. A profile saved before #229 has none until #291. `username`, `visibility` (public or private) and `bio` come later | 🟩 S4 #229 (built); `interests` 🟦 #230 |
 | `events/{eventId}/attendees/{uid}` | student UID as document ID; `uid` (same UID, for the collection-group query) and server-set `registeredAt` | 🟩 S2 #121; no separate top-level registrations collection |
 | Device reminder state | event ID, title and start time for a local notification; unique work, opt-in | 🟩 S2 #123; no Firestore collection |
 | `matchRequests/{id}` | `eventId`, `fromUid`, `toUid`, `status` | ⬜ not used by Find a group, where students join open groups directly (#228); revisit with #26, #27 |
@@ -448,7 +451,7 @@ Rules live in `firebase/firestore/firestore.rules` and are tested against the Fi
 | `events/{id}`, public | any EPFL user | any EPFL user or verified association, `createdBy == auth.uid` and in `organizerIds`. `isAssociationEvent` only for a verified association | organizers only | #47, #52 | 🟩 S1 |
 | `events/{id}`, private | `auth.uid in allowedUids` (organizers, members, approved match requesters) | as above | organizers only | #52, #23 | 🟩 S1 |
 | `events/{eventId}/attendees/{uid}` | own attendance; attendee list only for the event's organizers | verified EPFL student, own UID, readable event that hasn't ended; no association registration | student deletes only own document, even once the event has ended or is gone; no writes to another student's attendance; nobody updates one | #121 | 🟩 in place (capacity not checked yet) |
-| `publicProfiles/{uid}` | any student; no association | owner only, only the fields above, no email | owner only; no delete except with the account | #229 | 🟦 S4 |
+| `publicProfiles/{uid}` | any student, one document by UID (no list, so no student directory); no association | owner only, only the fields above, no email; `section` and `year` from the app's fixed lists | owner only, as an exact copy of their `users/{uid}` after the same write (`getAfter`); no delete except with the account (`deleteAccount`) | #229 | 🟩 S4 (built) |
 | `events/{eventId}/groups/{groupId}` | a student who can read the event; a student lists their own groups across events (`memberUids array-contains` their UID) | a student who can read the event, with `memberUids == [own UID]`, `capacity == 4`, `createdBy` = own UID, server `createdAt`, and their `groupMembers` marker in the same write | update: only `memberUids` changes, by adding or removing the caller's own UID, `size() <= capacity`, with the marker created or deleted alongside (`getAfter`); delete: the last member leaving. No association access | #232 | 🟦 S4 |
 | `events/{eventId}/groupMembers/{uid}` | own document only | own UID, `groupId` of a group whose `memberUids` contain them after the write | delete own, when leaving that group; no update | #232 | 🟦 S4 |
 | `events/{eventId}/groups/{groupId}/messages/{id}` | group members only | members, `senderId` = own UID, `text` 1–1000, server `createdAt`; per operation, so rate limiting fits later | nobody yet (report/block later) | #237 | 🟦 S4 |
@@ -481,7 +484,7 @@ Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after re
 | 12 | One-to-one chat | A two-member group (one chat model) |
 | 13 | Dependency injection | **Hilt** (changed after review). It is Android's recommended DI library, scales as repositories grow, and Hilt test modules swap in the fakes cleanly. The cost is some setup and slower builds |
 | 14 | Back button | At a non-home tab root, go to the Events tab. At the Events root, exit. This is Android's standard pattern (changed after review) |
-| 15 | Account deletion | Self-service for students, unverified accounts included; associations stay admin-assisted and the flow refuses them with the privacy contact. A callable Cloud Function `deleteAccount` (Functions v2, Node 22, `europe-west6`) requires a sign-in under 5 minutes old, then deletes `users/{uid}` and the Auth user with the Admin SDK; both steps are idempotent, so Retry completes a partial deletion. Events are kept unchanged (the UID is opaque; a missing profile shows "Deleted user"). No Security Rules change; deployed by hand on Blaze, expected within the free quotas. The client refuses offline, reauthenticates, then clears the cache and verification keys and opens Welcome. `SessionGuard` clears the cache on any UID change (#198); unverified accounts older than 7 days are deleted on a schedule (#149) (added on 2026-10-28, #201) |
+| 15 | Account deletion | Self-service for students, unverified accounts included; associations stay admin-assisted and the flow refuses them with the privacy contact. A callable Cloud Function `deleteAccount` (Functions v2, Node 22, `europe-west6`) requires a sign-in under 5 minutes old, then deletes `users/{uid}` (with `publicProfiles/{uid}` in the same transaction since #229) and the Auth user with the Admin SDK; both steps are idempotent, so Retry completes a partial deletion. Events are kept unchanged (the UID is opaque; a missing public profile isn't proof of a deletion, see #291). No Security Rules change; deployed by hand on Blaze, expected within the free quotas. The client refuses offline, reauthenticates, then clears the cache and verification keys and opens Welcome. `SessionGuard` clears the cache on any UID change (#198); unverified accounts older than 7 days are deleted on a schedule (#149) (added on 2026-10-28, #201) |
 | 16 | Groups | `events/{eventId}/groups/{groupId}` with a fixed `capacity` of 4, `memberUids`, `createdBy`, `createdAt`; a `groupMembers/{uid}` marker per event keeps a student in one group. Joining and leaving change only the caller's own UID in one transaction, and the rules check the capacity. Find a group requires "I'm going" (#244). Chat messages under the group, refused offline. Interests from a fixed list. Associations get no access (added on 2026-11-01, #228) |
 | 17 | Co-organizers | Sprint 5 (#280): an organizer adds **students** as co-organizers, picked among the event's registered attendees (organizers can already list them), so no student directory is exposed; at most 5 organizers per event, the creator can't be removed, every organizer stays in `allowedUids`. Associations as co-organizers need new rules (an association finding another, reading an event it didn't create), so they are a team decision at Sprint 5 Planning (added on 2026-11-01, #228) |
 | 18 | Deploying rules, indexes and functions | Nothing deploys automatically. After a PR changing `firestore.rules`, `firestore.indexes.json` or `firebase/functions` merges, its author asks the deploy owner (Franciszek, who has access to the project) to deploy with `--only`, and notes it in the PR. #220's rules and #214's index were missing from production until 2026-10-29 (added on 2026-11-01, #228) |
@@ -494,7 +497,7 @@ Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after re
 |---|---|---|
 | Firebase Auth user | deleted (step 2) | function (Admin SDK) |
 | `users/{uid}` | deleted (step 1) | function (Admin SDK) |
-| `events/*` the user created or organizes | kept unchanged; co-organizers keep managing it, a sole organizer's event can't be edited any more; "Deleted user" where a profile lookup fails | none |
+| `events/*` the user created or organizes | kept unchanged; co-organizers keep managing it, a sole organizer's event can't be edited any more; a missing public profile is a deleted account, an association or a profile saved before #229 (#291), so not shown as "Deleted user" on its own | none |
 | `allowedUids` entries on others' private events | kept (opaque UID, no personal data) | none |
 | attendees (#121), reminders (#123) | not built yet; their issues add cleanup to the function or the reminder worker | — |
 | Firestore disk cache | cleared after `Deleted` (`SessionCache.clear()`) | client |
