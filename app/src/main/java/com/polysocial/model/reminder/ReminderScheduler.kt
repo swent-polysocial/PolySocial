@@ -1,4 +1,4 @@
-// Contributors: Claude Opus 5.5 (reminder scheduling contract, #123).
+// Contributors: Claude Opus 5.5 (reminder scheduling contract, #123; KDoc wording after review).
 package com.polysocial.model.reminder
 
 import java.time.Instant
@@ -43,8 +43,8 @@ sealed interface CancelReminderResult {
  */
 interface ReminderScheduler {
   /**
-   * Schedules [reminder] at [reminderTime] of its start, replacing the event's earlier reminder, so
-   * an event never has two.
+   * Schedules [reminder] [REMINDER_LEAD] before its start (see [reminderTime]), replacing the
+   * event's earlier reminder, so an event never has two.
    */
   suspend fun schedule(reminder: EventReminder): ScheduleReminderResult
 
