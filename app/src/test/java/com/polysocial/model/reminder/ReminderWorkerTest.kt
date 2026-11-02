@@ -1,5 +1,5 @@
 // Contributors: Claude Opus 5.5 (wrote these tests, #123; late reminder title after review;
-// deleted events, #130).
+// deleted events, #130; failed reads after review).
 package com.polysocial.model.reminder
 
 import android.Manifest
@@ -249,7 +249,8 @@ class ReminderWorkerTest {
   }
 
   @Test
-  fun aFailedOrEndedRead_stillNotifies() = runTest {
+  fun aRepositoryThatThrowsOrEndsWithoutAnswer_stillNotifies() = runTest {
+    // FirestoreEventRepository reports a failed read as NotFound instead (see eventStillExists).
     val failing = flow<EventResult> { throw IllegalStateException("read failed") }
     run(balelec.toWorkData(), repository = reading(failing))
     run(balelec.copy(eventId = "e2").toWorkData(), repository = reading(emptyFlow()))

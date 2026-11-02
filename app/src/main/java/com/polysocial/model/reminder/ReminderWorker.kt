@@ -1,5 +1,6 @@
 // Contributors: Claude Opus 5.5 (reminder worker and notification, from the Figma frame
-// "Reminder · system notification", #123; time left after review; skipping deleted events, #130).
+// "Reminder · system notification", #123; time left after review; skipping deleted events, #130;
+// failed reads documented after review).
 package com.polysocial.model.reminder
 
 import android.Manifest
@@ -74,8 +75,13 @@ internal fun eventReminderFrom(data: Data): EventReminder? {
  *
  * The server's answer decides. If it doesn't come within [EVENT_CHECK_TIMEOUT] (offline), the
  * latest cached answer does, and an event the cache doesn't hold counts as still there, so a
- * reminder still fires offline. A read that fails unexpectedly also keeps the reminder: a late
- * cancellation is better than a reminder the student never gets.
+ * reminder still fires offline.
+ *
+ * A failed read counts as gone: the app's repository can't tell a denied read from a failed one, so
+ * it reports any read error, and a database blocked by the session guard (#198), as
+ * [EventResult.NotFound], and the reminder is skipped. During an account switch, that is what we
+ * want. Only a flow that ends without an answer or throws keeps the reminder, which
+ * `FirestoreEventRepository` never does.
  */
 internal suspend fun eventStillExists(events: EventRepository, eventId: String): Boolean {
   var latest: EventResult? = null
@@ -90,7 +96,7 @@ internal suspend fun eventStillExists(events: EventRepository, eventId: String):
       } catch (e: CancellationException) {
         throw e
       } catch (_: Exception) {
-        // The flow ended without an answer or failed: keep the reminder (see above).
+        // The flow ended without an answer or threw: keep the reminder (see above).
         null
       }
   return (confirmed ?: latest) !is EventResult.NotFound
