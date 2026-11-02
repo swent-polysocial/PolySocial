@@ -1,5 +1,6 @@
 // Contributors: Claude Opus 5.5 (wrote these tests; cancelled tasks and wrong-typed fields);
-// Claude (isAssociationVerified tests, #45; unexpected failures and cancelled writes, #182).
+// Claude (isAssociationVerified tests, #45; unexpected failures and cancelled writes, #182; the
+// public profile written with the private one, written test-first, #229).
 package com.polysocial.model.user
 
 import com.google.android.gms.tasks.TaskCompletionSource
@@ -29,6 +30,8 @@ class FirestoreUserProfileRepositoryTest {
   private val db = mockk<FirebaseFirestore>()
   private val users = mockk<CollectionReference>()
   private val ref = mockk<DocumentReference>()
+  private val publicProfiles = mockk<CollectionReference>()
+  private val publicRef = mockk<DocumentReference>()
   private val transaction = mockk<Transaction>()
   private val repository = FirestoreUserProfileRepository(db)
 
@@ -44,7 +47,19 @@ class FirestoreUserProfileRepositoryTest {
   init {
     every { db.collection(USERS_COLLECTION) } returns users
     every { users.document("u1") } returns ref
+    // The literal name, not the constant: it is the collection the Security Rules protect.
+    every { db.collection("publicProfiles") } returns publicProfiles
+    every { publicProfiles.document("u1") } returns publicRef
   }
+
+  /** The `publicProfiles/u1` the rules accept for [profile]: a copy, never the email (#229). */
+  private fun publicFieldsOf(profile: UserProfile) =
+      mapOf(
+          "displayName" to profile.displayName,
+          "section" to profile.section,
+          "year" to profile.year,
+          "interests" to emptyList<String>(),
+      )
 
   private fun offline() =
       FirebaseFirestoreException("offline", FirebaseFirestoreException.Code.UNAVAILABLE)
@@ -75,6 +90,7 @@ class FirestoreUserProfileRepositoryTest {
   private fun transactionsSee(existing: DocumentSnapshot) {
     every { transaction.get(ref) } returns existing
     every { transaction.set(ref, any()) } returns transaction
+    every { transaction.set(publicRef, any()) } returns transaction
     every { transaction.update(ref, any<Map<String, Any>>()) } returns transaction
     every { db.runTransaction(any<Transaction.Function<Boolean>>()) } answers
         {
@@ -271,7 +287,63 @@ class FirestoreUserProfileRepositoryTest {
     assertEquals(CreateProfileResult.UnexpectedError, repository.createProfile(profile))
   }
 
+  @Test
+  fun createProfile_aStudent_alsoWritesTheirPublicProfile_inTheSameTransaction() = runTest {
+    transactionsSee(snapshot(null))
+    val written = slot<Any>()
+    every { transaction.set(publicRef, capture(written)) } returns transaction
+
+    assertEquals(CreateProfileResult.Created, repository.createProfile(profile))
+
+    verify { publicProfiles.document("u1") }
+    verify(exactly = 1) { db.runTransaction(any<Transaction.Function<Boolean>>()) }
+    assertEquals(publicFieldsOf(profile), written.captured)
+  }
+
+  @Test
+  fun createProfile_anAssociation_writesNoPublicProfile() = runTest {
+    transactionsSee(snapshot(null))
+
+    repository.createProfile(profile.copy(accountType = AccountType.ASSOCIATION))
+
+    verify(exactly = 1) { transaction.set(ref, any()) }
+    verify(exactly = 0) { transaction.set(publicRef, any()) }
+  }
+
   // ---- updateProfile ----
+
+  @Test
+  fun updateProfile_aStudent_alsoWritesTheirPublicProfile_withTheNewValues() = runTest {
+    transactionsSee(snapshot(storedFields))
+    val written = slot<Any>()
+    every { transaction.set(publicRef, capture(written)) } returns transaction
+    val edited = profile.copy(displayName = "New Name", section = "SC", year = "MA1")
+
+    assertEquals(UpdateProfileResult.Updated, repository.updateProfile(edited))
+
+    verify(exactly = 1) { db.runTransaction(any<Transaction.Function<Boolean>>()) }
+    assertEquals(publicFieldsOf(edited), written.captured)
+  }
+
+  @Test
+  fun updateProfile_aStoredProfileWithoutAnAccountType_isAStudents() = runTest {
+    transactionsSee(snapshot(storedFields - "accountType"))
+
+    repository.updateProfile(profile)
+
+    verify(exactly = 1) { transaction.set(publicRef, publicFieldsOf(profile)) }
+  }
+
+  @Test
+  fun updateProfile_anAssociation_writesNoPublicProfile_whateverTheCallerSays() = runTest {
+    // The stored account type decides, not the one in the profile passed in.
+    transactionsSee(snapshot(storedFields + ("accountType" to "association")))
+
+    assertEquals(UpdateProfileResult.Updated, repository.updateProfile(profile))
+
+    verify(exactly = 1) { transaction.update(ref, any<Map<String, Any>>()) }
+    verify(exactly = 0) { transaction.set(publicRef, any()) }
+  }
 
   @Test
   fun updateProfile_writesOnlyTheEditableFields() = runTest {
@@ -298,6 +370,7 @@ class FirestoreUserProfileRepositoryTest {
     assertEquals(UpdateProfileResult.NotFound, repository.updateProfile(profile))
 
     verify(exactly = 0) { transaction.update(any(), any<Map<String, Any>>()) }
+    verify(exactly = 0) { transaction.set(any(), any()) }
   }
 
   @Test
