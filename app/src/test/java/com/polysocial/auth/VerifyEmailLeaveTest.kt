@@ -4,6 +4,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) tested that leaving never deletes a verified account
 // and finishes a deletion whose answer was lost, and Log out anyway after a failed deletion, #225
 // review.
+// Contributors: Claude (Opus 5.5, Anthropic) made a failing test here fail instead of hang, #225
+// review.
 package com.polysocial.auth
 
 import androidx.lifecycle.ViewModelStore
@@ -53,18 +55,38 @@ class VerifyEmailLeaveTest {
   private val deletion = FakeAccountDeletionRepository()
   private val network = FakeNetworkMonitor()
   private var now = 1_000_000L
+  /** The view models a test made and hasn't disposed yet. */
+  private val models = mutableListOf<VerifyEmailViewModel>()
 
   private fun viewModel(
       deletion: AccountDeletionRepository = this.deletion,
       network: NetworkMonitor = this.network,
       auth: AuthRepository = repository,
-  ) = VerifyEmailViewModel(auth, store, VerificationClock { now }, deletion, network)
-
-  private fun dispose(vm: VerifyEmailViewModel) =
-      ViewModelStore().apply {
-        put("verification", vm)
-        clear()
+  ) =
+      VerifyEmailViewModel(auth, store, VerificationClock { now }, deletion, network).also {
+        models += it
       }
+
+  private fun dispose(vm: VerifyEmailViewModel) {
+    models.remove(vm)
+    ViewModelStore().apply {
+      put("verification", vm)
+      clear()
+    }
+  }
+
+  /**
+   * [runTest] that disposes the test's view models even when an assertion fails. The resend
+   * countdown never ends on the fixed test clock, so a view model left running would keep the
+   * scheduler busy forever and hang the test instead of reporting the failure.
+   */
+  private fun runLeaveTest(body: suspend TestScope.() -> Unit) = runTest {
+    try {
+      body()
+    } finally {
+      models.toList().forEach(::dispose)
+    }
+  }
 
   /** A view model that has entered Verify Email for [user]. */
   private fun TestScope.entered(
@@ -78,7 +100,7 @@ class VerifyEmailLeaveTest {
       }
 
   @Test
-  fun changeAddressDeletesTheAccountThenSignsOutAndKeepsOnlyTheAddressCooldown() = runTest {
+  fun changeAddressDeletesTheAccountThenSignsOutAndKeepsOnlyTheAddressCooldown() = runLeaveTest {
     store.timings[user.uid] = VerificationTiming(now, now + 45_000)
     store.addressTimings[user.email] = VerificationTiming(now, now + 45_000)
     val vm = entered()
@@ -95,7 +117,7 @@ class VerifyEmailLeaveTest {
   }
 
   @Test
-  fun backDeletesTheAccountThenExitsToWelcomeOnce() = runTest {
+  fun backDeletesTheAccountThenExitsToWelcomeOnce() = runLeaveTest {
     val vm = entered()
     vm.leave(VerificationLeave.Back)
     runCurrent()
@@ -109,7 +131,7 @@ class VerifyEmailLeaveTest {
   }
 
   @Test
-  fun offlineLeaveIsRefusedBeforeAnyCallAndKeepsTheAccount() = runTest {
+  fun offlineLeaveIsRefusedBeforeAnyCallAndKeepsTheAccount() = runLeaveTest {
     network.online = false
     store.timings[user.uid] = VerificationTiming(now, now + 45_000)
     val vm = entered()
@@ -139,7 +161,7 @@ class VerifyEmailLeaveTest {
   }
 
   @Test
-  fun fallbackAnswersOnlySignOutAndKeepTheAccountsCooldown() = runTest {
+  fun fallbackAnswersOnlySignOutAndKeepTheAccountsCooldown() = runLeaveTest {
     for (answer in
         listOf(
             AccountDeletionResult.RecentLoginRequired,
@@ -164,7 +186,7 @@ class VerifyEmailLeaveTest {
   }
 
   @Test
-  fun networkFailureKeepsTheUserSignedInAndRetryRepeatsTheSameWayOut() = runTest {
+  fun networkFailureKeepsTheUserSignedInAndRetryRepeatsTheSameWayOut() = runLeaveTest {
     deletion.result = AccountDeletionResult.NetworkError
     val vm = entered()
     vm.leave(VerificationLeave.Back)
@@ -188,7 +210,7 @@ class VerifyEmailLeaveTest {
   }
 
   @Test
-  fun unexpectedAnswerKeepsTheUserOnVerifyEmail() = runTest {
+  fun unexpectedAnswerKeepsTheUserOnVerifyEmail() = runLeaveTest {
     deletion.result = AccountDeletionResult.UnexpectedError
     val vm = entered()
     vm.leave(VerificationLeave.ChangeAddress)
@@ -202,7 +224,7 @@ class VerifyEmailLeaveTest {
   }
 
   @Test
-  fun thrownFailuresKeepTheUserOnVerifyEmail() = runTest {
+  fun thrownFailuresKeepTheUserOnVerifyEmail() = runLeaveTest {
     val throwingDeletion =
         object : AccountDeletionRepository {
           override suspend fun deleteAccount(): AccountDeletionResult =
@@ -228,7 +250,7 @@ class VerifyEmailLeaveTest {
   }
 
   @Test
-  fun logOutAnywayAfterAnyFailedWayOutLogsOutWithoutDeleting() = runTest {
+  fun logOutAnywayAfterAnyFailedWayOutLogsOutWithoutDeleting() = runLeaveTest {
     val timing = VerificationTiming(now - 15_000, now + 30_000)
     var thrownDeletions = 0
     val throwingDeletion =
@@ -295,7 +317,7 @@ class VerifyEmailLeaveTest {
   }
 
   @Test
-  fun logOutAnywayWaitsForAFailureAndForOtherWorkToEnd() = runTest {
+  fun logOutAnywayWaitsForAFailureAndForOtherWorkToEnd() = runLeaveTest {
     val vm = entered()
     vm.logOutAnyway()
     assertEquals(0, repository.logOutCalls)
@@ -332,7 +354,7 @@ class VerifyEmailLeaveTest {
   }
 
   @Test
-  fun duplicateTapsWhileDeletingCallTheFunctionOnceAndBlockOtherActions() = runTest {
+  fun duplicateTapsWhileDeletingCallTheFunctionOnceAndBlockOtherActions() = runLeaveTest {
     deletion.gate = CompletableDeferred()
     val vm = entered()
     val sends = repository.sendCalls
@@ -366,7 +388,7 @@ class VerifyEmailLeaveTest {
   }
 
   @Test
-  fun resetDuringTheDeletionIgnoresItsLateAnswer() = runTest {
+  fun resetDuringTheDeletionIgnoresItsLateAnswer() = runLeaveTest {
     deletion.gate = CompletableDeferred()
     val vm = entered()
     vm.leave(VerificationLeave.Back)
@@ -380,7 +402,7 @@ class VerifyEmailLeaveTest {
   }
 
   @Test
-  fun backDuringACheckThatFindsTheAccountVerifiedSignsOutWithoutDeleting() = runTest {
+  fun backDuringACheckThatFindsTheAccountVerifiedSignsOutWithoutDeleting() = runLeaveTest {
     // Verified in the browser, then Back while the resume check is still running.
     store.timings[user.uid] = VerificationTiming(now, now + 45_000)
     store.addressTimings[user.email] = VerificationTiming(now, now + 45_000)
@@ -407,7 +429,7 @@ class VerifyEmailLeaveTest {
   }
 
   @Test
-  fun aReloadThatFindsTheAccountVerifiedSignsOutWithoutDeleting() = runTest {
+  fun aReloadThatFindsTheAccountVerifiedSignsOutWithoutDeleting() = runLeaveTest {
     // Verified from another device: no check ran here, the reload before deleting finds it.
     for ((action, exit) in
         listOf(
@@ -432,7 +454,7 @@ class VerifyEmailLeaveTest {
   }
 
   @Test
-  fun aReloadThatNoLongerFindsTheAccountFinishesAsAfterADeletion() = runTest {
+  fun aReloadThatNoLongerFindsTheAccountFinishesAsAfterADeletion() = runLeaveTest {
     repository.verificationResult = VerificationResult.NotSignedIn
     val vm = entered()
     vm.leave(VerificationLeave.ChangeAddress)
@@ -446,7 +468,7 @@ class VerifyEmailLeaveTest {
   }
 
   @Test
-  fun retryAfterADeletionWhoseAnswerWasLostExitsWithoutAFailure() = runTest {
+  fun retryAfterADeletionWhoseAnswerWasLostExitsWithoutAFailure() = runLeaveTest {
     deletion.result = AccountDeletionResult.NetworkError
     val vm = entered()
     vm.leave(VerificationLeave.Back)
@@ -469,7 +491,7 @@ class VerifyEmailLeaveTest {
   }
 
   @Test
-  fun aFailedReloadNeverDeletesAndRetryDeletesOnceTheReloadWorks() = runTest {
+  fun aFailedReloadNeverDeletesAndRetryDeletesOnceTheReloadWorks() = runLeaveTest {
     var thrown = false
     val throwingAuth =
         object : AuthRepository by repository {
@@ -515,7 +537,7 @@ class VerifyEmailLeaveTest {
   }
 
   @Test
-  fun leavingWaitsForASendInFlightSoTheAddressKeepsItsCooldown() = runTest {
+  fun leavingWaitsForASendInFlightSoTheAddressKeepsItsCooldown() = runLeaveTest {
     repository.sendGate = CompletableDeferred()
     val vm = entered()
     assertTrue(vm.uiState.value.sending)
@@ -533,7 +555,7 @@ class VerifyEmailLeaveTest {
   }
 
   @Test
-  fun cancellingTheViewModelWhileDeletingStopsLeaving() = runTest {
+  fun cancellingTheViewModelWhileDeletingStopsLeaving() = runLeaveTest {
     deletion.gate = CompletableDeferred()
     val vm = entered()
     vm.leave(VerificationLeave.Back)
@@ -546,7 +568,7 @@ class VerifyEmailLeaveTest {
   }
 
   @Test
-  fun aFailedTimingCleanupAfterTheDeletionStillSignsOut() = runTest {
+  fun aFailedTimingCleanupAfterTheDeletionStillSignsOut() = runLeaveTest {
     val vm = entered()
     store.clearFailure = IllegalStateException("test cleanup failure")
     vm.leave(VerificationLeave.ChangeAddress)
@@ -568,7 +590,7 @@ class VerifyEmailLeaveTest {
   }
 
   @Test
-  fun leavingWithNobodySignedInOnlySignsOut() = runTest {
+  fun leavingWithNobodySignedInOnlySignsOut() = runLeaveTest {
     repository.user = null
     val vm = viewModel()
     vm.retryLeave()
@@ -583,7 +605,7 @@ class VerifyEmailLeaveTest {
   }
 
   @Test
-  fun aNewActionClearsTheFailedWayOutButAResumeKeepsIt() = runTest {
+  fun aNewActionClearsTheFailedWayOutButAResumeKeepsIt() = runLeaveTest {
     store.timings[user.uid] = VerificationTiming(now - 60_000, now - 15_000)
     network.online = false
     val vm = entered()
@@ -610,7 +632,7 @@ class VerifyEmailLeaveTest {
   }
 
   @Test
-  fun aNewAccountForAnAddressLeftAMomentAgoKeepsItsCooldown() = runTest {
+  fun aNewAccountForAnAddressLeftAMomentAgoKeepsItsCooldown() = runLeaveTest {
     // Signed up again with the same address after deleting the first account (#99, #225).
     store.addressTimings[user.email] = VerificationTiming(now - 10_000, now + 35_000)
     repository.user = user.copy(uid = "new-uid", email = " Student.Test@EPFL.ch ")
@@ -627,7 +649,7 @@ class VerifyEmailLeaveTest {
   }
 
   @Test
-  fun aThrottledAddressShowsTheThrottleBannerForANewAccount() = runTest {
+  fun aThrottledAddressShowsTheThrottleBannerForANewAccount() = runLeaveTest {
     store.addressTimings[user.email] = VerificationTiming(now - 10_000, now + 170_000)
     repository.user = user.copy(uid = "new-uid")
     val vm = entered()
@@ -637,7 +659,7 @@ class VerifyEmailLeaveTest {
   }
 
   @Test
-  fun theAccountsOwnLongerDeadlineWinsOverItsAddress() = runTest {
+  fun theAccountsOwnLongerDeadlineWinsOverItsAddress() = runLeaveTest {
     store.timings[user.uid] = VerificationTiming(now - 10_000, now + 170_000)
     store.addressTimings[user.email] = VerificationTiming(now - 40_000, now + 5_000)
     val vm = entered()
@@ -648,7 +670,7 @@ class VerifyEmailLeaveTest {
   }
 
   @Test
-  fun sendsRecordTheAddressAndVerificationClearsIt() = runTest {
+  fun sendsRecordTheAddressAndVerificationClearsIt() = runLeaveTest {
     val vm = entered()
     assertEquals(VerificationTiming(now, now + 45_000), store.addressTimings[user.email])
     now += 45_000
