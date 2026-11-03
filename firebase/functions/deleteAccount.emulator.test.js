@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the deleteAccount emulator test, #206; Mohamed Khellaf (reviewed and revised).
-// Contributors: Claude (the public profile deleted with the account, #229).
+// Contributors: Claude (the public profile deleted with the account, #229; profiles can't be saved
+// again once deleted, after review, #229).
 "use strict";
 
 // Calls the deployed-to-emulator deleteAccount over HTTP, as the Android client does, against the
@@ -10,7 +11,7 @@ const assert = require("node:assert/strict");
 const { deleteApp, initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const { getFirestore } = require("firebase-admin/firestore");
-const { DETAILS, REGION } = require("./deleteAccountHandler");
+const { DETAILS, REGION, deleteAccountHandler } = require("./deleteAccountHandler");
 
 // A "demo-" project never reaches a real Firebase project.
 const PROJECT_ID = "demo-polysocial";
@@ -138,6 +139,7 @@ test("a student's profiles and Auth user are deleted, their event is kept", asyn
   assert.deepEqual(body, { result: { deleted: true } });
   assert.equal(await documentExists(`users/${uid}`), false);
   assert.equal(await documentExists(`publicProfiles/${uid}`), false);
+  assert.equal(await documentExists(`deletedAccounts/${uid}`), true);
   assert.equal(await authUserExists(uid), false);
   assert.equal(await documentExists(`events/event-of-${uid}`), true);
 });
@@ -181,6 +183,7 @@ test("an association is refused and keeps its profile and Auth user", async () =
   assert.equal(body.error.status, "FAILED_PRECONDITION");
   assert.equal(body.error.details, DETAILS.ASSOCIATION);
   assert.equal(await documentExists(`users/${uid}`), true);
+  assert.equal(await documentExists(`deletedAccounts/${uid}`), false);
   assert.equal(await authUserExists(uid), true);
 });
 
@@ -193,4 +196,95 @@ test("a call without a signed-in user is refused and deletes nothing", async () 
   assert.equal(body.error.status, "UNAUTHENTICATED");
   assert.equal(await documentExists(`users/${uid}`), true);
   assert.equal(await authUserExists(uid), true);
+});
+
+/** The fields of a Firestore REST document holding these strings and string lists. */
+function restFields(fields) {
+  return Object.fromEntries(
+    Object.entries(fields).map(([key, value]) => [
+      key,
+      Array.isArray(value)
+        ? { arrayValue: { values: value.map((item) => ({ stringValue: item })) } }
+        : { stringValue: value },
+    ]),
+  );
+}
+
+/**
+ * Saves the student's private and public profiles in one commit, as the profile step does, through
+ * the Firestore emulator's REST API with `idToken`, so the Security Rules apply. Returns the HTTP
+ * status: 200 when saved, 403 when the rules refuse it.
+ */
+async function saveProfilesAs(idToken, uid) {
+  const base = `projects/${PROJECT_ID}/databases/(default)/documents`;
+  const profile = { displayName: "Fictional Student", section: "IN", year: "BA3" };
+  const documents = {
+    [`users/${uid}`]: { uid, email: "student@epfl.ch", accountType: "student", ...profile },
+    [`publicProfiles/${uid}`]: { ...profile, interests: [] },
+  };
+  const writes = Object.entries(documents).map(([path, fields]) => ({
+    update: { name: `${base}/${path}`, fields: restFields(fields) },
+  }));
+  const response = await fetch(`http://${FIRESTORE_HOST}/v1/${base}:commit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${idToken}` },
+    body: JSON.stringify({ writes }),
+  });
+  return response.status;
+}
+
+// The deleted user's ID token stays valid until it expires (see above), so another of their devices
+// could save the profiles again from the profile step: between the profile cleanup and the Auth
+// deletion, or after both. The public profile would then be readable by other students. The
+// deletion marker deleteAccount writes makes the Security Rules refuse it (#229 review).
+
+test("a profile save between the cleanup and the Auth deletion is refused", async () => {
+  const uid = await seedUser("student@epfl.ch", { accountType: "student" });
+  const idToken = await signIn("student@epfl.ch");
+  let statusDuringDeletion = null;
+  // The real handler and Firestore; Auth tries the save just before deleting the user.
+  const adminAuth = {
+    async deleteUser(uidToDelete) {
+      statusDuringDeletion = await saveProfilesAs(idToken, uid);
+      await auth.deleteUser(uidToDelete);
+    },
+  };
+
+  const result = await deleteAccountHandler({
+    auth: { uid, token: { auth_time: 1_000_000 } },
+    db,
+    adminAuth,
+    now: () => 1_000_000 * 1000,
+    logger: { error: () => {} },
+  });
+
+  assert.deepEqual(result, { deleted: true });
+  assert.equal(statusDuringDeletion, 403);
+  assert.equal(await documentExists(`users/${uid}`), false);
+  assert.equal(await documentExists(`publicProfiles/${uid}`), false);
+  assert.equal(await authUserExists(uid), false);
+});
+
+test("the deleted user's token can't save the profiles again after the deletion", async () => {
+  const uid = await seedUser("student@epfl.ch", { accountType: "student" });
+  const idToken = await signIn("student@epfl.ch");
+  assert.equal((await callDeleteAccount(idToken)).status, 200);
+  assert.equal(await documentExists(`deletedAccounts/${uid}`), true);
+
+  assert.equal(await saveProfilesAs(idToken, uid), 403);
+  assert.equal(await documentExists(`users/${uid}`), false);
+  assert.equal(await documentExists(`publicProfiles/${uid}`), false);
+
+  // Without the marker the same token can still save them, so the marker is what refuses it.
+  await db.doc(`deletedAccounts/${uid}`).delete();
+  assert.equal(await saveProfilesAs(idToken, uid), 200);
+});
+
+test("without a deletion, the same save succeeds", async () => {
+  // The control for the two tests above: the REST save itself is accepted by the rules.
+  await seedUser("student@epfl.ch", null);
+  const idToken = await signIn("student@epfl.ch");
+  const uid = (await auth.getUserByEmail("student@epfl.ch")).uid;
+  assert.equal(await saveProfilesAs(idToken, uid), 200);
+  assert.equal(await documentExists(`publicProfiles/${uid}`), true);
 });

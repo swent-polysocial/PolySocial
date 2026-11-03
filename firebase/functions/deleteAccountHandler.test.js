@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the deleteAccount handler tests, #206; Mohamed Khellaf (reviewed and revised).
-// Contributors: Claude (the public profile deleted with the account, written test-first, #229).
+// Contributors: Claude (the public profile deleted with the account, written test-first, #229;
+// the deletion marker, test-first, after review, #229).
 "use strict";
 
 // Unit tests with fakes, no emulator: node firebase/functions/deleteAccountHandler.test.js
@@ -23,9 +24,10 @@ function backendError(code) {
 }
 
 /**
- * A fake Firestore holding at most the user's private and public profiles, and a fake Auth.
- * `calls` records every operation in order; a failure set in `fail` makes that operation throw
- * (once, when `once`).
+ * A fake Firestore holding at most the user's private and public profiles and deletion marker,
+ * and a fake Auth. A transaction's writes are applied together at its end, or none of them when
+ * one fails, as in Firestore. `calls` records every operation in order; a failure set in `fail`
+ * makes that operation throw (once, when `once`).
  */
 function fakeBackend({
   profile = { accountType: "student" },
@@ -34,7 +36,7 @@ function fakeBackend({
 } = {}) {
   const calls = [];
   const fail = {};
-  const state = { profile, publicProfile, authUserExists };
+  const state = { profile, publicProfile, deletionMarker: null, authUserExists };
   const failIfAsked = (operation) => {
     const error = fail[operation];
     if (error) {
@@ -52,7 +54,7 @@ function fakeBackend({
       };
     },
     async runTransaction(updateFunction) {
-      const deletes = [];
+      const writes = [];
       await updateFunction({
         async get(ref) {
           calls.push(`get:${ref.path}`);
@@ -63,15 +65,21 @@ function fakeBackend({
             get: (field) => (data === null ? undefined : data[field]),
           };
         },
+        set(ref, data) {
+          writes.push({ kind: "set", ref, data });
+        },
         delete(ref) {
-          deletes.push(ref);
+          writes.push({ kind: "delete", ref });
         },
       });
-      for (const ref of deletes) {
-        calls.push(`delete:${ref.path}`);
-        failIfAsked("delete");
-        if (ref.path.startsWith("users/")) state.profile = null;
-        if (ref.path.startsWith("publicProfiles/")) state.publicProfile = null;
+      for (const write of writes) {
+        calls.push(`${write.kind}:${write.ref.path}`);
+        failIfAsked(write.kind);
+      }
+      for (const { kind, ref, data } of writes) {
+        if (kind === "set" && ref.path.startsWith("deletedAccounts/")) state.deletionMarker = data;
+        if (kind === "delete" && ref.path.startsWith("users/")) state.profile = null;
+        if (kind === "delete" && ref.path.startsWith("publicProfiles/")) state.publicProfile = null;
       }
     },
   };
@@ -171,17 +179,20 @@ test("an association is refused and keeps its profile and Auth user", async () =
     await assertHttpsError(call(backend), "failed-precondition", DETAILS.ASSOCIATION);
     assert.deepEqual(backend.calls, ["collection:users", `get:users/${UID}`]);
     assert.notEqual(backend.state.profile, null);
+    assert.equal(backend.state.deletionMarker, null);
     assert.equal(backend.state.authUserExists, true);
   }
 });
 
-test("a student's profiles are deleted, then the Auth user, and only then success", async () => {
+test("a student's profiles are deleted and marked deleted, then the Auth user, then success", async () => {
   const backend = fakeBackend();
   assert.deepEqual(await call(backend), { deleted: true });
   assert.deepEqual(backend.calls, [
     "collection:users",
     `get:users/${UID}`,
+    "collection:deletedAccounts",
     "collection:publicProfiles",
+    `set:deletedAccounts/${UID}`,
     `delete:users/${UID}`,
     `delete:publicProfiles/${UID}`,
     `deleteUser:${UID}`,
@@ -189,6 +200,34 @@ test("a student's profiles are deleted, then the Auth user, and only then succes
   assert.equal(backend.state.profile, null);
   assert.equal(backend.state.publicProfile, null);
   assert.equal(backend.state.authUserExists, false);
+});
+
+// The marker is what the Security Rules check to refuse recreating the profiles with the deleted
+// user's still-valid ID token, so it holds no personal data: only its document ID, the UID.
+test("the deletion marker holds nothing but its UID as document ID", async () => {
+  const backend = fakeBackend();
+  await call(backend);
+  assert.deepEqual(backend.state.deletionMarker, {});
+});
+
+test("the marker and the profile deletions are one transaction: all or nothing", async () => {
+  const markerFails = fakeBackend();
+  markerFails.fail.set = { error: backendError(14) };
+  await assertHttpsError(call(markerFails), "unavailable", undefined);
+  assert.notEqual(markerFails.state.profile, null);
+  assert.notEqual(markerFails.state.publicProfile, null);
+  assert.equal(markerFails.state.authUserExists, true);
+
+  const deleteFails = fakeBackend();
+  deleteFails.fail.delete = { error: backendError(14) };
+  await assertHttpsError(call(deleteFails), "unavailable", undefined);
+  assert.equal(deleteFails.state.deletionMarker, null);
+});
+
+test("a student without a profile is marked deleted too", async () => {
+  const backend = fakeBackend({ profile: null, publicProfile: null });
+  await call(backend);
+  assert.deepEqual(backend.state.deletionMarker, {});
 });
 
 test("a student without a public profile (saved before #229) is deleted too", async () => {
@@ -212,11 +251,15 @@ test("an account without a profile (never verified) can delete itself", async ()
   assert.equal(backend.state.authUserExists, false);
 });
 
-test("only the user's two profiles are touched, never the user's events", async () => {
+test("only the user's profiles and deletion marker are touched, never the user's events", async () => {
   const backend = fakeBackend();
   await call(backend);
   const collections = backend.calls.filter((c) => c.startsWith("collection:"));
-  assert.deepEqual(collections, ["collection:users", "collection:publicProfiles"]);
+  assert.deepEqual(collections, [
+    "collection:users",
+    "collection:deletedAccounts",
+    "collection:publicProfiles",
+  ]);
   assert.ok(backend.calls.every((c) => !c.includes("events")));
 });
 

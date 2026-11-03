@@ -1,4 +1,4 @@
-// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143; publicProfiles/{uid} tests, written test-first, #229; reads by ID only and the fixed section and year lists, after review, #229; private edits keep the public copy, after review, #229); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121).
+// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143; publicProfiles/{uid} tests, written test-first, #229; reads by ID only and the fixed section and year lists, after review, #229; private edits keep the public copy, and deleted accounts stay deleted, after review, #229); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121).
 const { after, before, beforeEach, test } = require("node:test");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
@@ -2271,3 +2271,54 @@ test("an association can rename itself in its users/{uid}, having no public prof
   await assertSucceeds(updateDoc(doc(associationDb("club"), "users/club"), { displayName: "Club" }));
 });
 
+// -- a deleted account stays deleted (#229 review) --
+// deleteAccount writes deletedAccounts/{uid} in the transaction that deletes both profiles. The
+// deleted user's ID token stays valid until it expires, so without the marker another of their
+// devices could recreate the profiles, and the public one would be readable after the deletion.
+
+/** Seeds the deletion marker deleteAccount leaves for [uid], with the rules off. */
+async function seedDeletedAccount(uid) {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), `deletedAccounts/${uid}`), {});
+  });
+}
+
+test("a deleted account can't recreate its profile and public profile", async () => {
+  await seedDeletedAccount("u5");
+  await assertFails(createBoth(studentDb("u5"), "u5"));
+  await assertFails(setDoc(doc(studentDb("u5"), "users/u5"), privateProfile("u5")));
+});
+
+test("a deleted account can't write a public profile, even with a private one left", async () => {
+  // Not reachable through deleteAccount, which removes both in one transaction; checked anyway.
+  await seedUser("u5", privateProfile("u5"));
+  await seedDeletedAccount("u5");
+  await assertFails(setDoc(doc(studentDb("u5"), "publicProfiles/u5"), publicProfile()));
+});
+
+test("an association whose account was deleted can't recreate its profile", async () => {
+  await seedDeletedAccount("goneClub");
+  await assertFails(
+    setDoc(doc(associationDb("goneClub"), "users/goneClub"), {
+      uid: "goneClub",
+      email: "club@example.org",
+      accountType: "association",
+      displayName: "",
+    }),
+  );
+});
+
+test("another account's deletion marker doesn't stop a student creating their profile", async () => {
+  await seedDeletedAccount("u2");
+  await assertSucceeds(createBoth(studentDb("u5"), "u5"));
+});
+
+test("nobody can read, write or delete a deletion marker from the app", async () => {
+  await seedDeletedAccount("u5");
+  for (const db of [studentDb("u5"), studentDb("u1"), associationDb("verifiedClub")]) {
+    await assertFails(getDoc(doc(db, "deletedAccounts/u5")));
+    await assertFails(deleteDoc(doc(db, "deletedAccounts/u5")));
+    await assertFails(setDoc(doc(db, "deletedAccounts/u1"), {}));
+  }
+  await assertFails(getDocs(collection(studentDb("u1"), "deletedAccounts")));
+});
