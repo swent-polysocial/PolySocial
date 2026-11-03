@@ -1,6 +1,7 @@
 // Contributors: Claude (profile repository tests against the Firestore emulator, #119; offline,
 // wrong-typed field and createdAt tests after an adversarial test review; offline helper's
-// Wi-Fi hint and failure reporting, #181; offline helper moved to OfflineDevice.kt, #126).
+// Wi-Fi hint and failure reporting, #181; offline helper moved to OfflineDevice.kt, #126; the flag
+// test's control edit through the repository, #229).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -246,8 +247,10 @@ class FirestoreUserProfileRepositoryEmulatorTest {
     assertPermissionDenied { document(profile.uid).update(VERIFIED).await() }
 
     assertFalse(storedProfile(profile.uid).isAssociationVerified)
-    // An update of an editable field is accepted, so the denial comes from the flag.
-    document(profile.uid).update("year", "MA1").await()
+    // An edit of an editable field is accepted, so the denial comes from the flag. It goes through
+    // the repository, as the app's edits do: the rules refuse a year change that leaves the public
+    // profile behind (#229 review).
+    assertEquals(UpdateProfileResult.Updated, repository.updateProfile(profile.copy(year = "MA1")))
     assertEquals("MA1", storedProfile(profile.uid).year)
   }
 
