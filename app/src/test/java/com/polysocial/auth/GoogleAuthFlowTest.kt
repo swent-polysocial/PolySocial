@@ -2,6 +2,7 @@
 // for #107, including progress placement and pending-attempt state restoration).
 // Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
 // Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Finish on the interests step, #230).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -346,6 +347,7 @@ class GoogleAuthFlowTest {
       profile.onYearChange("BA1")
     }
     compose.onNodeWithTag(ProfileSetupTestTags.CONTINUE).performScrollTo().performClick()
+    compose.onNodeWithTag(ProfileSetupTestTags.FINISH).performScrollTo().performClick()
     compose.onNodeWithTag(ProfileSetupTestTags.BACK).assertIsNotEnabled()
     compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
     assertEquals(user, auth.currentUser())
