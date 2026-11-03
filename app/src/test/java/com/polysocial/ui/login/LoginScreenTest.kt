@@ -3,13 +3,18 @@
 // compact-height scrolling and locked fields while redirecting after review); OpenAI Codex
 // (GPT-6.1 Sol, medium; checked the official Google button label and placeholder behavior);
 // OpenAI Codex (enabled recovery action regression for #164); Claude (accounts helper line and
-// email label for associations, #208).
+// email label for associations, #208); Claude (both fields flagged on wrong credentials and a
+// neutral placeholder, written test-first, #277).
 package com.polysocial.ui.login
 
 import android.app.Application
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -19,6 +24,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasContentDescription
@@ -26,6 +32,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
@@ -38,11 +45,15 @@ import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.auth.LogInResult
 import com.polysocial.ui.theme.PolySocialTheme
+import kotlin.math.abs
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 @RunWith(AndroidJUnit4::class)
 class LoginScreenTest {
@@ -476,12 +487,97 @@ class LoginScreenTest {
   }
 
   @Test
-  fun emailLabel_isAccountNeutral_whileThePlaceholderKeepsTheStudentExample() {
-    // Figma labels the field "Email": associations log in here with their own address (#208).
+  fun emailLabelAndPlaceholder_areAccountNeutral() {
+    // Figma labels the field "Email" (#208) with the placeholder "name@example.com" (#277):
+    // associations log in here with their own address, so nothing says EPFL.
     setContent(LoginUiState())
 
     composeTestRule.onNodeWithText("Email").assertIsDisplayed()
+    composeTestRule.onNodeWithText("name@example.com").assertIsDisplayed()
     composeTestRule.onNodeWithText("EPFL email").assertDoesNotExist()
-    composeTestRule.onNodeWithText("name@epfl.ch").assertIsDisplayed()
+    composeTestRule.onNodeWithText("name@epfl.ch").assertDoesNotExist()
+  }
+
+  // ---- Wrong credentials flag both fields (#277) ----
+
+  private val wrongCredentialsError =
+      SemanticsMatcher.expectValue(SemanticsProperties.Error, "Email or password is wrong.")
+
+  private val noError = SemanticsMatcher.keyNotDefined(SemanticsProperties.Error)
+
+  @Test
+  fun wrongCredentials_flagBothTheEmailAndThePassword() {
+    // Firebase doesn't say which of the two is wrong, so both are marked.
+    setContent(filled.copy(status = LoginStatus.WrongCredentials))
+
+    node(LoginScreenTestTags.EMAIL).assert(wrongCredentialsError)
+    node(LoginScreenTestTags.PASSWORD).assert(wrongCredentialsError)
+  }
+
+  @Test
+  fun otherStates_flagNeitherField() {
+    var state by mutableStateOf(filled)
+    composeTestRule.setContent {
+      PolySocialTheme {
+        LoginContent(
+            state = state,
+            onBack = {},
+            onEmailChange = {},
+            onPasswordChange = {},
+            onTogglePasswordVisibility = {},
+            onLogIn = {},
+            onCreateAccount = {},
+        )
+      }
+    }
+
+    for (status in listOf(LoginStatus.Idle, LoginStatus.CantConnect, LoginStatus.Loading)) {
+      state = filled.copy(status = status)
+      composeTestRule.waitForIdle()
+      node(LoginScreenTestTags.EMAIL).assert(noError)
+      node(LoginScreenTestTags.PASSWORD).assert(noError)
+    }
+  }
+
+  @Test
+  fun typingInEitherField_afterWrongCredentials_clearsBothFlags() {
+    auth.logInResult = LogInResult.WrongCredentials
+    setScreen()
+    typeCredentials()
+
+    for (field in listOf(LoginScreenTestTags.EMAIL, LoginScreenTestTags.PASSWORD)) {
+      node(LoginScreenTestTags.LOG_IN).performClick()
+      composeTestRule.waitForIdle()
+      node(LoginScreenTestTags.EMAIL).assert(wrongCredentialsError)
+      node(LoginScreenTestTags.PASSWORD).assert(wrongCredentialsError)
+
+      node(field).performTextInput("x")
+
+      node(LoginScreenTestTags.EMAIL).assert(noError)
+      node(LoginScreenTestTags.PASSWORD).assert(noError)
+      node(LoginScreenTestTags.ERROR).assertDoesNotExist()
+    }
+  }
+
+  @Test
+  @Config(qualifiers = "w360dp-h800dp-xhdpi")
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  fun wrongCredentials_drawBothBordersInTheErrorRed() {
+    // Figma "Log in · error": both fields get the 2 dp Accent (#D6303A) border.
+    setContent(filled.copy(status = LoginStatus.WrongCredentials))
+    val image = composeTestRule.onRoot().captureToImage().toPixelMap()
+    val density = composeTestRule.density.density
+
+    for (tag in listOf(LoginScreenTestTags.EMAIL, LoginScreenTestTags.PASSWORD)) {
+      val field = node(tag).fetchSemanticsNode()
+      val y = (field.positionInRoot.y + field.size.height / 2).toInt()
+      val edge = image[field.positionInRoot.x.toInt() + (0.5f * density).toInt(), y]
+      assertTrue(
+          "$tag's border isn't the error red",
+          abs(edge.red - 0xD6 / 255f) < 0.06f &&
+              abs(edge.green - 0x30 / 255f) < 0.06f &&
+              abs(edge.blue - 0x3A / 255f) < 0.06f,
+      )
+    }
   }
 }

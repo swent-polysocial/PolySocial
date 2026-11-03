@@ -5,7 +5,8 @@
 // lock navigation actions during login and verification handoffs);
 // OpenAI Codex (recovery navigation and shared email field for #164).
 // Contributors: Claude (the shared field label, #251; accounts helper line and account-neutral
-// email label for associations; the shared TextLink, #208).
+// email label for associations; the shared TextLink, #208; both fields flagged on wrong
+// credentials, #277).
 package com.polysocial.ui.login
 
 import androidx.activity.compose.BackHandler
@@ -54,6 +55,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -237,12 +240,19 @@ fun LoginContent(
 
           FieldLabel(R.string.login_email_label)
           Spacer(Modifier.height(6.dp))
+          // Firebase doesn't say whether the email or the password is wrong, so both are flagged.
+          val wrongCredentials =
+              if (state.status == LoginStatus.WrongCredentials)
+                  stringResource(R.string.login_wrong_credentials)
+              else null
           LoginField(
               value = state.email,
               onValueChange = onEmailChange,
               height = 50.dp,
               enabled = !fieldsLocked,
               faded = busy,
+              isError = wrongCredentials != null,
+              errorMessage = wrongCredentials,
               placeholder = stringResource(R.string.login_email_placeholder),
               keyboardType = KeyboardType.Email,
               modifier = Modifier.testTag(LoginScreenTestTags.EMAIL),
@@ -256,7 +266,8 @@ fun LoginContent(
               height = 48.dp,
               enabled = !fieldsLocked,
               faded = busy,
-              isError = state.status == LoginStatus.WrongCredentials,
+              isError = wrongCredentials != null,
+              errorMessage = wrongCredentials,
               keyboardType = KeyboardType.Password,
               visualTransformation =
                   if (state.passwordVisible) VisualTransformation.None
@@ -357,6 +368,10 @@ private fun OrWithEmailDivider() {
   }
 }
 
+/**
+ * A Figma text field of the Log in family (also used by password recovery and account deletion).
+ * When [isError], its border turns red, and with an [errorMessage] screen readers announce it too.
+ */
 @Composable
 internal fun LoginField(
     value: String,
@@ -367,6 +382,7 @@ internal fun LoginField(
     keyboardType: KeyboardType,
     modifier: Modifier = Modifier,
     isError: Boolean = false,
+    errorMessage: String? = null,
     placeholder: String = "",
     visualTransformation: VisualTransformation = VisualTransformation.None,
     trailing: (@Composable () -> Unit)? = null,
@@ -386,7 +402,11 @@ internal fun LoginField(
       cursorBrush = SolidColor(Ink),
       visualTransformation = visualTransformation,
       keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
-      modifier = modifier.fillMaxWidth(),
+      // Screen readers announce the field as in error, with [errorMessage].
+      modifier =
+          modifier.fillMaxWidth().semantics {
+            if (isError && errorMessage != null) error(errorMessage)
+          },
       decorationBox = { innerTextField ->
         Row(
             Modifier.fillMaxWidth()
