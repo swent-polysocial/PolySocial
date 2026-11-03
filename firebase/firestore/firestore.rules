@@ -52,8 +52,8 @@ service cloud.firestore {
           'cooking', 'tech', 'startups', 'arts', 'volunteering'];
     }
 
-    // No interests (a profile saved before #230, or an association's), or a list of known codes,
-    // each at most once, so at most one of each.
+    // No interests (a profile saved before #230), or a list of known codes, each at most once, so
+    // at most one of each. An association's profile holds an empty list: it gets no matching.
     function hasKnownInterests(data) {
       return !('interests' in data)
           || (data.interests is list

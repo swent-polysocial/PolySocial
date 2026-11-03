@@ -1,4 +1,5 @@
-// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143; publicProfiles/{uid} tests, written test-first, #229; reads by ID only and the fixed section and year lists, after review, #229; private edits keep the public copy, and deleted accounts stay deleted, after review, #229; interests from the fixed list, test-first, #230); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121).
+// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143; publicProfiles/{uid} tests, written test-first, #229; reads by ID only and the fixed section and year lists, after review, #229; private edits keep the public copy, and deleted accounts stay deleted, after review, #229; interests from the fixed list, test-first, #230; any code read in the list check, after
+// review, #230); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121).
 const { after, before, beforeEach, test } = require("node:test");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
@@ -2018,7 +2019,7 @@ function rulesCodes(functionName) {
   const rules = readFileSync(path.join(__dirname, "firestore.rules"), "utf8");
   const body = rules.match(new RegExp(`function ${functionName}\\([^)]*\\) \\{[^}]*\\}`));
   if (!body) throw new Error(`firestore.rules has no ${functionName}: update this test`);
-  return [...body[0].matchAll(/'([A-Za-z0-9]+)'/g)].map((match) => match[1]);
+  return [...body[0].matchAll(/'([^']+)'/g)].map((match) => match[1]);
 }
 
 /**
@@ -2032,7 +2033,7 @@ function appInterests() {
   );
   const list = source.match(/val INTERESTS: List<String> =\s*listOf\(([^)]*)\)/);
   if (!list) throw new Error("ProfileOptions.kt has no INTERESTS list: update this test");
-  const interests = [...list[1].matchAll(/"([a-z]+)"/g)].map((match) => match[1]);
+  const interests = [...list[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]);
   if (interests.length === 0) throw new Error("Couldn't read INTERESTS in ProfileOptions.kt");
   return interests;
 }
