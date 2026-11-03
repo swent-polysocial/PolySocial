@@ -2,7 +2,8 @@
 // fixed uid and accountType after review, #35; @epfl.ch associations aren't students and
 // accountType values on create, association profiles not deletable by the client, #161;
 // associations/{uid}, #126; displayName limit, written test-first, #143; publicProfiles/{uid},
-// written test-first, #229; reads by ID only and fixed section and year lists, after review, #229);
+// written test-first, #229; reads by ID only and fixed section and year lists, after review, #229;
+// private edits keep the public copy, after review, #229);
 // OpenAI Codex (public/private event read rules, #52); Claude Opus 5.5 (event write rules, #47;
 // badge and locationName checks after review; isStudent for writes after #161; organizers
 // stay allowed readers after review; event registrations, #121).
@@ -54,6 +55,21 @@ service cloud.firestore {
                 && request.resource.data.displayName.size() <= 50);
       }
 
+      // Once a public profile exists, a change to a field it copies must update it in the same
+      // write, so other students never see stale values (#229 review). A profile saved before #229
+      // has no public copy yet, and an association never gets one: neither needs it. Removing a
+      // copied field fails the comparison too.
+      function keepsPublicProfile() {
+        let copied = ['displayName', 'section', 'year'];
+        let publicProfile = /databases/$(database)/documents/publicProfiles/$(uid);
+        let data = request.resource.data;
+        return !data.diff(resource.data).affectedKeys().hasAny(copied)
+            || !exists(publicProfile)
+            || (getAfter(publicProfile).data.displayName == data.get('displayName', null)
+                && getAfter(publicProfile).data.section == data.get('section', null)
+                && getAfter(publicProfile).data.year == data.get('year', null));
+      }
+
       allow read: if isOwner();
       allow delete: if isOwner()
           && (resource == null || resource.data.get('accountType', 'student') != 'association');
@@ -67,7 +83,8 @@ service cloud.firestore {
       allow update: if isOwner()
           && !request.resource.data.diff(resource.data).affectedKeys()
               .hasAny(['uid', 'accountType', 'isAssociationVerified'])
-          && hasValidDisplayName();
+          && hasValidDisplayName()
+          && keepsPublicProfile();
     }
 
     // What other students see of a student (#229): exactly displayName, section, year and
@@ -76,6 +93,7 @@ service cloud.firestore {
     // read none. Only its owner writes it, a student, and only as a copy of their users/{uid} as it
     // is after the same write (getAfter), so it is written with the private profile and can't say
     // anything else. Because others read them, section and year must be codes the app offers.
+    // users/{uid} can't change a copied field without it (keepsPublicProfile).
     // interests stays empty until #230 adds the fixed list. Nobody deletes it from the app:
     // deleteAccount removes it with the account (a client deleting users/{uid} directly, which the
     // app never does, would leave it behind until then). Each copied field is compared, so a
