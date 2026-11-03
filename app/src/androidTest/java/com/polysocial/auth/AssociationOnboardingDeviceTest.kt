@@ -1,5 +1,5 @@
 // Contributors: OpenAI Codex (default association onboarding and session cleanup integration,
-// #125).
+// #125, and the device fixture Firestore binding).
 package com.polysocial.auth
 
 import android.graphics.Bitmap
@@ -8,6 +8,7 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import com.google.firebase.firestore.FirebaseFirestore
 import com.polysocial.MainActivity
 import com.polysocial.model.association.*
 import com.polysocial.model.auth.*
@@ -20,6 +21,7 @@ import com.polysocial.ui.auth.*
 import com.polysocial.ui.profile.ProfileSetupTestTags
 import com.polysocial.ui.profile.ProfileTags
 import dagger.hilt.android.testing.*
+import io.mockk.mockk
 import java.io.File
 import org.junit.Assert.*
 import org.junit.Rule
@@ -43,6 +45,7 @@ class AssociationOnboardingDeviceTest {
   private val identities = FakeAssociationRepository()
   private val writes = mutableListOf<String>()
   private var clears = 0
+  @BindValue @JvmField val firestore: FirebaseFirestore = mockk()
   @BindValue @JvmField val auth: AuthRepository = fakeAuth
   @BindValue @JvmField val authSessionSource: AuthSessionSource = FakeAuthSessionSource()
   @BindValue @JvmField val sessionOwner: SessionOwnerStore = FakeSessionOwnerStore()
