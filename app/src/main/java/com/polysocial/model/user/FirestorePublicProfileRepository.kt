@@ -1,5 +1,6 @@
 // Contributors: Claude (Firestore public profile repository and its stored fields, #229; several
-// profiles read one document each, in parallel, after review, #229; interests, #230).
+// profiles read one document each, in parallel, after review, #229; interests, and unknown codes
+// left out after review, #230).
 package com.polysocial.model.user
 
 import com.google.firebase.firestore.DocumentSnapshot
@@ -69,7 +70,8 @@ internal fun UserProfile.toPublicProfileDocument(): Map<String, Any> =
 
 /**
  * The public profile in this document, or `null` if a field is missing or stored with the wrong
- * type (Firestore throws for a field of another type).
+ * type (Firestore throws for a field of another type). Interest codes no longer in [INTERESTS] are
+ * left out.
  */
 private fun DocumentSnapshot.toPublicProfile(): PublicProfile? =
     try {
@@ -85,6 +87,7 @@ private fun DocumentSnapshot.readPublicProfile(): PublicProfile? {
       displayName = getString("displayName") ?: return null,
       section = getString("section") ?: return null,
       year = getString("year") ?: return null,
-      interests = interests.map { it as? String ?: return null }.toSet(),
+      // A code no longer in INTERESTS is left out, so no screen gets one it has no label for.
+      interests = interests.map { it as? String ?: return null }.filter { it in INTERESTS }.toSet(),
   )
 }

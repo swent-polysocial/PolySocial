@@ -1,6 +1,7 @@
 // Contributors: Claude (wrote these tests, written test-first, #229; unreadable documents in a
 // batch, tests added in the test audit, #229; several profiles read one document each, in
-// parallel, one failing read failing them all, after review, #229).
+// parallel, one failing read failing them all, after review, #229; unknown interest codes left
+// out, after review, #230).
 package com.polysocial.model.user
 
 import com.google.android.gms.tasks.TaskCompletionSource
@@ -41,7 +42,7 @@ class FirestorePublicProfileRepositoryTest {
           displayName = "Test Student",
           section = "IN",
           year = "BA3",
-          interests = setOf("MUSIC", "SPORTS"),
+          interests = setOf("music", "sports"),
       )
 
   private val storedFields =
@@ -49,7 +50,7 @@ class FirestorePublicProfileRepositoryTest {
           "displayName" to "Test Student",
           "section" to "IN",
           "year" to "BA3",
-          "interests" to listOf("MUSIC", "SPORTS"),
+          "interests" to listOf("music", "sports"),
       )
 
   init {
@@ -100,6 +101,19 @@ class FirestorePublicProfileRepositoryTest {
 
     assertEquals(
         PublicProfileResult.Found(profile.copy(interests = emptySet())),
+        repository.getPublicProfile("u1"),
+    )
+  }
+
+  @Test
+  fun getPublicProfile_anInterestNoLongerInTheList_isLeftOut() = runTest {
+    // A code removed from INTERESTS later may still be in other students' copies; a screen that
+    // labels their interests must never get one it has no label for.
+    every { refFor("u1").get() } returns
+        Tasks.forResult(snapshot(fields = storedFields + ("interests" to listOf("music", "chess"))))
+
+    assertEquals(
+        PublicProfileResult.Found(profile.copy(interests = setOf("music"))),
         repository.getPublicProfile("u1"),
     )
   }
@@ -161,8 +175,8 @@ class FirestorePublicProfileRepositoryTest {
             "no section" to storedFields - "section",
             "no year" to storedFields - "year",
             "no interests" to storedFields - "interests",
-            "interests not a list" to storedFields + ("interests" to "MUSIC"),
-            "an interest not a string" to storedFields + ("interests" to listOf("MUSIC", 3L)),
+            "interests not a list" to storedFields + ("interests" to "music"),
+            "an interest not a string" to storedFields + ("interests" to listOf("music", 3L)),
         )) {
       every { ref.get() } returns Tasks.forResult(snapshot(fields = fields))
 
