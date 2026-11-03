@@ -1,6 +1,7 @@
 // Contributors: Claude Opus 5.5 (wrote these tests; cancelled tasks and wrong-typed fields);
 // Claude (isAssociationVerified tests, #45; unexpected failures and cancelled writes, #182; the
-// public profile written with the private one, written test-first, #229).
+// public profile written with the private one, written test-first, #229; interests, test-first,
+// #230).
 package com.polysocial.model.user
 
 import com.google.android.gms.tasks.TaskCompletionSource
@@ -52,13 +53,16 @@ class FirestoreUserProfileRepositoryTest {
     every { publicProfiles.document("u1") } returns publicRef
   }
 
-  /** The `publicProfiles/u1` the rules accept for [profile]: a copy, never the email (#229). */
+  /**
+   * The `publicProfiles/u1` the rules accept for [profile]: a copy, never the email (#229), with
+   * the interests in the fixed list's order (#230).
+   */
   private fun publicFieldsOf(profile: UserProfile) =
       mapOf(
           "displayName" to profile.displayName,
           "section" to profile.section,
           "year" to profile.year,
-          "interests" to emptyList<String>(),
+          "interests" to INTERESTS.filter { it in profile.interests },
       )
 
   private fun offline() =
@@ -233,9 +237,37 @@ class FirestoreUserProfileRepositoryTest {
             "year" to "BA3",
             "accountType" to "student",
             "createdAt" to FieldValue.serverTimestamp(),
+            "interests" to emptyList<String>(),
         ),
         written.captured,
     )
+  }
+
+  @Test
+  fun createProfile_writesTheInterests_inTheFixedListsOrder_toBothProfiles() = runTest {
+    transactionsSee(snapshot(null))
+    val private = slot<Any>()
+    val public = slot<Any>()
+    every { transaction.set(ref, capture(private)) } returns transaction
+    every { transaction.set(publicRef, capture(public)) } returns transaction
+
+    repository.createProfile(profile.copy(interests = setOf("tech", "music", "sports")))
+
+    // The rules compare the two lists with ==, so both must be in the same, fixed order.
+    val ordered = listOf("sports", "music", "tech")
+    assertEquals(ordered, (private.captured as Map<*, *>)["interests"])
+    assertEquals(ordered, (public.captured as Map<*, *>)["interests"])
+  }
+
+  @Test
+  fun createProfile_anUnknownInterest_isNotWritten() = runTest {
+    transactionsSee(snapshot(null))
+    val private = slot<Any>()
+    every { transaction.set(ref, capture(private)) } returns transaction
+
+    repository.createProfile(profile.copy(interests = setOf("music", "chess")))
+
+    assertEquals(listOf("music"), (private.captured as Map<*, *>)["interests"])
   }
 
   @Test
@@ -358,9 +390,29 @@ class FirestoreUserProfileRepositoryTest {
 
     assertEquals(UpdateProfileResult.Updated, result)
     assertEquals(
-        mapOf("displayName" to "New Name", "section" to "SC", "year" to "MA1"),
+        mapOf(
+            "displayName" to "New Name",
+            "section" to "SC",
+            "year" to "MA1",
+            "interests" to emptyList<String>(),
+        ),
         written.captured,
     )
+  }
+
+  @Test
+  fun updateProfile_writesTheInterests_toBothProfiles() = runTest {
+    transactionsSee(snapshot(storedFields))
+    val private = slot<Map<String, Any>>()
+    val public = slot<Any>()
+    every { transaction.update(ref, capture(private)) } returns transaction
+    every { transaction.set(publicRef, capture(public)) } returns transaction
+    val edited = profile.copy(interests = setOf("cinema", "games"))
+
+    assertEquals(UpdateProfileResult.Updated, repository.updateProfile(edited))
+
+    assertEquals(listOf("cinema", "games"), private.captured["interests"])
+    assertEquals(publicFieldsOf(edited), public.captured)
   }
 
   @Test
@@ -408,6 +460,52 @@ class FirestoreUserProfileRepositoryTest {
     every { db.runTransaction(any<Transaction.Function<Boolean>>()) } returns Tasks.forCanceled()
 
     assertEquals(UpdateProfileResult.UnexpectedError, repository.updateProfile(profile))
+  }
+
+  @Test
+  fun getProfile_readsTheInterests() = runTest {
+    every { ref.get() } returns
+        Tasks.forResult(snapshot(storedFields + ("interests" to listOf("tech", "music"))))
+
+    val result = repository.getProfile("u1")
+
+    assertEquals(setOf("music", "tech"), (result as ProfileResult.Found).profile.interests)
+  }
+
+  @Test
+  fun getProfile_aProfileSavedBeforeInterests_hasNone() = runTest {
+    every { ref.get() } returns Tasks.forResult(snapshot(storedFields))
+
+    val result = repository.getProfile("u1")
+
+    assertEquals(emptySet<String>(), (result as ProfileResult.Found).profile.interests)
+  }
+
+  @Test
+  fun getProfile_anUnknownInterest_isLeftOut() = runTest {
+    // A code removed from the list later must not make the profile unreadable, nor be saved back,
+    // which the rules would refuse.
+    every { ref.get() } returns
+        Tasks.forResult(snapshot(storedFields + ("interests" to listOf("music", "chess"))))
+
+    val result = repository.getProfile("u1")
+
+    assertEquals(setOf("music"), (result as ProfileResult.Found).profile.interests)
+  }
+
+  @Test
+  fun getProfile_interestsThatArentAList_returnsUnexpectedError() = runTest {
+    every { ref.get() } returns Tasks.forResult(snapshot(storedFields + ("interests" to "music")))
+
+    assertEquals(ProfileResult.UnexpectedError, repository.getProfile("u1"))
+  }
+
+  @Test
+  fun getProfile_anInterestThatIsntAString_returnsUnexpectedError() = runTest {
+    every { ref.get() } returns
+        Tasks.forResult(snapshot(storedFields + ("interests" to listOf("music", 7L))))
+
+    assertEquals(ProfileResult.UnexpectedError, repository.getProfile("u1"))
   }
 
   @Test

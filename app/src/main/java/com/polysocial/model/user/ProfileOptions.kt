@@ -53,3 +53,12 @@ val INTERESTS: List<String> =
         "arts",
         "volunteering",
     )
+
+/**
+ * [interests] as stored: the codes of [INTERESTS] among them, in that list's order. The private and
+ * public profiles both store this list, and the Security Rules compare the two with `==`, so the
+ * order must be the same. Unknown codes are left out, since the rules refuse them.
+ */
+fun orderedInterests(interests: Collection<String>): List<String> = INTERESTS.filter {
+  it in interests
+}
