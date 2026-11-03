@@ -1,4 +1,4 @@
-// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143; publicProfiles/{uid} tests, written test-first, #229; reads by ID only and the fixed section and year lists, after review, #229); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121).
+// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143; publicProfiles/{uid} tests, written test-first, #229; reads by ID only and the fixed section and year lists, after review, #229; private edits keep the public copy, after review, #229); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121).
 const { after, before, beforeEach, test } = require("node:test");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
@@ -2215,3 +2215,59 @@ test("nobody else can delete a public profile", async () => {
   await assertFails(deleteDoc(doc(studentDb("u1"), "publicProfiles/u2")));
   await assertFails(deleteDoc(doc(associationDb("verifiedClub"), "publicProfiles/u2")));
 });
+
+// -- a private edit keeps the public copy in step (#229 review) --
+// Once a public profile exists, a change to a field it mirrors must update it in the same write,
+// or other students would keep seeing the old values.
+
+for (const [name, changes] of [
+  ["displayName", { displayName: "New Name" }],
+  ["section", { section: "SC" }],
+  ["year", { year: "MA1" }],
+]) {
+  test(`changing only the private ${name} is denied once a public profile exists`, async () => {
+    await seedStudentWithPublicProfile("u5");
+    await assertFails(updateDoc(doc(studentDb("u5"), "users/u5"), changes));
+  });
+
+  test(`changing the private ${name} with a public copy that keeps the old value is denied`, async () => {
+    await seedStudentWithPublicProfile("u5");
+    const db = studentDb("u5");
+    const batch = writeBatch(db);
+    batch.update(doc(db, "users/u5"), changes);
+    batch.update(doc(db, "publicProfiles/u5"), { interests: [] });
+    await assertFails(batch.commit());
+  });
+
+  test(`changing the private ${name} is allowed without a public profile (saved before #229)`, async () => {
+    await seedUser("u5", privateProfile("u5"));
+    await assertSucceeds(updateDoc(doc(studentDb("u5"), "users/u5"), changes));
+  });
+}
+
+test("removing the private displayName is denied once a public profile exists", async () => {
+  await seedStudentWithPublicProfile("u5");
+  await assertFails(updateDoc(doc(studentDb("u5"), "users/u5"), { displayName: deleteField() }));
+});
+
+test("a private edit that leaves the mirrored fields unchanged doesn't need the public copy", async () => {
+  await seedStudentWithPublicProfile("u5");
+  await assertSucceeds(
+    updateDoc(doc(studentDb("u5"), "users/u5"), { displayName: "Test Student", email: "u5@epfl.ch" }),
+  );
+});
+
+test("an edit adding the public copy of a profile saved before #229 is allowed", async () => {
+  await seedUser("u5", privateProfile("u5"));
+  const db = studentDb("u5");
+  const batch = writeBatch(db);
+  batch.update(doc(db, "users/u5"), { displayName: "New Name" });
+  batch.set(doc(db, "publicProfiles/u5"), publicProfile({ displayName: "New Name" }));
+  await assertSucceeds(batch.commit());
+});
+
+test("an association can rename itself in its users/{uid}, having no public profile", async () => {
+  await seedUser("club", { email: "club@example.org", accountType: "association", displayName: "" });
+  await assertSucceeds(updateDoc(doc(associationDb("club"), "users/club"), { displayName: "Club" }));
+});
+
