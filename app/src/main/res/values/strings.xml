@@ -4,7 +4,7 @@
 <!-- Contributors: OpenAI Codex (association setup form copy, #125). -->
 <!-- Contributors: OpenAI Codex (association email validation, #125). -->
 <!-- Contributors: Claude (tab names and placeholder text, #41; loading messages, #43; detail placeholder, #42; Create Event texts, #46; "+" button, #110; app bar actions, #84); OpenAI Codex (Google and welcome copy). OpenAI Codex (sign-up form, startup integration, name hint and unused-title cleanup; Mapbox integration and setup, #50; location permission and distance text, #51). Claude (Retry, app-start loading and error texts, #74; Edit event texts, #131; map association name, #128; Create Event organizer row, #134). Claude (app-start Log out, #208). -->
-<!-- Contributors: OpenAI Codex (verification screen and failure messages for #31). Claude (full name limit message, #143; as a plural after review). -->
+<!-- Contributors: OpenAI Codex (verification screen and failure messages for #31). Claude (full name limit message, #143; as a plural after review; account-neutral verification texts, #277). -->
 <!-- Contributors: OpenAI Codex (current-build privacy summary and full notice, #103). -->
 <!-- Contributors: OpenAI Codex (Google authentication errors; removed collision copy for #107). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) updated the privacy notice for in-app account deletion, #207; Mohamed Khellaf (reviewed and revised). -->
@@ -194,7 +194,7 @@
     <string name="verification_resend">Resend email</string>
     <string name="verification_sending">Sending…</string>
     <string name="verification_countdown">Resend email in %1$d:%2$02d</string>
-    <string name="verification_sent">We sent a new link to your EPFL inbox. It can take a minute to arrive.</string>
+    <string name="verification_sent">We sent a new link to your inbox. It can take a minute to arrive.</string>
     <string name="verification_already_sent">A verification email has already been sent.</string>
     <string name="verification_throttled">Too many requests in a row. Wait a few minutes, then ask for a new email.</string>
     <string name="verification_unverified">Your email isn\'t verified yet. Open the link we sent, then tap Continue again.</string>
