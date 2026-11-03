@@ -1,6 +1,6 @@
 // Contributors: OpenAI Codex (verify profile isolation through replaceable Firestore provider,
 // #109).
-// Contributors: Claude (wrote this test, #45).
+// Contributors: Claude (wrote this test, #45; a stored profile without interests, #230).
 package com.polysocial.model.user
 
 import com.google.android.gms.tasks.Tasks
@@ -48,6 +48,8 @@ class UserProfileModuleTest {
     every { previous.getString(any()) } answers { fields[firstArg<String>()] }
     every { previous.get("isAssociationVerified") } returns false
     every { previous.getTimestamp("createdAt") } returns null
+    // Saved before interests existed (#230).
+    every { previous.get("interests") } returns null
     every { oldRef.get() } returns Tasks.forResult(previous)
     every { freshRef.get() } returns Tasks.forResult(missing)
     val repository = UserProfileModule.userProfileRepository(Provider { current })

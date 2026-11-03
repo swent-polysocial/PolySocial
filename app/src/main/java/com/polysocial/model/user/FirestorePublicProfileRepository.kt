@@ -1,5 +1,5 @@
 // Contributors: Claude (Firestore public profile repository and its stored fields, #229; several
-// profiles read one document each, in parallel, after review, #229).
+// profiles read one document each, in parallel, after review, #229; interests, #230).
 package com.polysocial.model.user
 
 import com.google.firebase.firestore.DocumentSnapshot
@@ -56,14 +56,15 @@ class FirestorePublicProfileRepository(private val database: () -> FirebaseFires
 
 /**
  * The `publicProfiles/{uid}` document of this private profile: exactly the fields the Security
- * Rules require, copied from it, and no interests until #230. It never holds the email.
+ * Rules require, copied from it, with the interests in the same order as in `users/{uid}`
+ * ([orderedInterests]). It never holds the email.
  */
 internal fun UserProfile.toPublicProfileDocument(): Map<String, Any> =
     mapOf(
         "displayName" to displayName,
         "section" to section,
         "year" to year,
-        "interests" to emptyList<String>(),
+        "interests" to orderedInterests(interests),
     )
 
 /**

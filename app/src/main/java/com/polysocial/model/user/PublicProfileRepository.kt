@@ -1,12 +1,12 @@
 // Contributors: Claude (public profile model and repository contract, #229; reads by UID only and
-// what a missing profile means, after review, #229).
+// what a missing profile means, after review, #229; interests, #230).
 package com.polysocial.model.user
 
 /**
  * What other students see of a student, `publicProfiles/{uid}` (#229): the fields matching needs
  * and a group shows, never the email. [uid] is the document ID, the student's Firebase Auth UID.
  * [section] and [year] are codes such as `IN` and `BA3`, as in [UserProfile]. [interests] are codes
- * from #230's fixed list, empty until it lands.
+ * from [INTERESTS] (#230), empty when the student picked none.
  *
  * The Security Rules let any student read it and associations none, and let its owner write it only
  * as a copy of their `users/{uid}` in the same write, so it is written by [UserProfileRepository],

@@ -2,7 +2,7 @@
 // Contributors: Claude (Firestore profile repository, #34; cancelled tasks and wrong-typed fields
 // reported as errors after review; reading isAssociationVerified, #45; other unexpected failures
 // reported as errors, #182; the student's public profile written in the same transaction, #229;
-// reportFailures moved to FirestoreFailures.kt to share it, after review, #229).
+// reportFailures moved to FirestoreFailures.kt to share it, after review, #229; interests, #230).
 package com.polysocial.model.user
 
 import com.google.firebase.firestore.DocumentReference
@@ -102,7 +102,12 @@ private fun UserProfile.toNewDocument(): Map<String, Any> =
         )
 
 private fun UserProfile.toEditableFields(): Map<String, Any> =
-    mapOf("displayName" to displayName, "section" to section, "year" to year)
+    mapOf(
+        "displayName" to displayName,
+        "section" to section,
+        "year" to year,
+        "interests" to orderedInterests(interests),
+    )
 
 /**
  * The profile in this document, or `null` if a required field is missing, unknown, or stored with
@@ -130,5 +135,17 @@ private fun DocumentSnapshot.readUserProfile(): UserProfile? {
       accountType = accountType,
       isAssociationVerified = get("isAssociationVerified") == true,
       createdAt = getTimestamp("createdAt")?.toInstant(),
+      interests = readInterests() ?: return null,
   )
+}
+
+/**
+ * The stored interests (#230): none for a profile saved before them, `null` (unreadable) if they
+ * aren't a list of strings. A code no longer in [INTERESTS] is left out, so the profile stays
+ * readable and is never saved back with it, which the rules would refuse.
+ */
+private fun DocumentSnapshot.readInterests(): Set<String>? {
+  val stored = get("interests") ?: return emptySet()
+  val codes = (stored as? List<*>)?.map { it as? String ?: return null } ?: return null
+  return codes.filter { it in INTERESTS }.toSet()
 }

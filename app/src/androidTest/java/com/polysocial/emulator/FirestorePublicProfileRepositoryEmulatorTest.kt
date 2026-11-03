@@ -1,4 +1,5 @@
-// Contributors: Claude (public profile tests against the Firestore emulator, #229).
+// Contributors: Claude (public profile tests against the Firestore emulator, #229; interests,
+// #230).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -7,6 +8,7 @@ import com.polysocial.model.user.CreateProfileResult
 import com.polysocial.model.user.FirestorePublicProfileRepository
 import com.polysocial.model.user.FirestoreUserProfileRepository
 import com.polysocial.model.user.PUBLIC_PROFILES_COLLECTION
+import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileResult
 import com.polysocial.model.user.PublicProfilesResult
@@ -53,6 +55,41 @@ class FirestorePublicProfileRepositoryEmulatorTest {
     assertEquals(
         PublicProfileResult.Found(PublicProfile(first.uid, "First Student", "IN", "BA3")),
         publicProfiles.getPublicProfile(first.uid),
+    )
+  }
+
+  @Test
+  fun theChosenInterests_areSavedInBothProfiles() = runBlocking {
+    val email = FIRST_EMAIL
+    val uid = emulator.signInVerifiedUser(email).uid
+    val profile = student(uid, email, "First Student").copy(interests = setOf("tech", "music"))
+
+    assertEquals(CreateProfileResult.Created, profiles.createProfile(profile))
+
+    val stored = profiles.getProfile(uid) as ProfileResult.Found
+    assertEquals(setOf("music", "tech"), stored.profile.interests)
+    assertEquals(
+        PublicProfileResult.Found(
+            PublicProfile(uid, "First Student", "IN", "BA3", setOf("music", "tech"))
+        ),
+        publicProfiles.getPublicProfile(uid),
+    )
+  }
+
+  @Test
+  fun anEditOfTheInterests_changesThePublicProfileToo() = runBlocking {
+    val student = studentWithProfile(FIRST_EMAIL, "First Student")
+
+    assertEquals(
+        UpdateProfileResult.Updated,
+        profiles.updateProfile(student.copy(interests = setOf("cinema"))),
+    )
+
+    assertEquals(
+        PublicProfileResult.Found(
+            PublicProfile(student.uid, "First Student", "IN", "BA3", setOf("cinema"))
+        ),
+        publicProfiles.getPublicProfile(student.uid),
     )
   }
 
