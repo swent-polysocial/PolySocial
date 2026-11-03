@@ -4,7 +4,7 @@
 // Back locked while saving, #74; generic save error with Log out, #142; full name limit, #143, as a
 // plural after review).
 // Contributors: Claude (the shared field label, #251; split into the details and interests screens,
-// with a shared frame, heading, top bar and button, #230).
+// with a shared frame, heading, top bar and button, #230; the button's role, after review, #230).
 package com.polysocial.ui.profile
 
 import androidx.activity.compose.BackHandler
@@ -735,7 +735,7 @@ internal fun StepButton(
               shape,
           )
           .then(if (saving) Modifier.border(1.dp, Border, shape) else Modifier)
-          .clickable(enabled = enabled, onClick = onClick)
+          .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
           .testTag(tag),
       horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
       verticalAlignment = Alignment.CenterVertically,
