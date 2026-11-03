@@ -3,7 +3,7 @@
 // accountType values on create, association profiles not deletable by the client, #161;
 // associations/{uid}, #126; displayName limit, written test-first, #143; publicProfiles/{uid},
 // written test-first, #229; reads by ID only and fixed section and year lists, after review, #229;
-// private edits keep the public copy, after review, #229);
+// deleted accounts stay deleted and private edits keep the public copy, after review, #229);
 // OpenAI Codex (public/private event read rules, #52); Claude Opus 5.5 (event write rules, #47;
 // badge and locationName checks after review; isStudent for writes after #161; organizers
 // stay allowed readers after review; event registrations, #121).
@@ -32,6 +32,15 @@ service cloud.firestore {
       let profile = /databases/$(database)/documents/users/$(request.auth.uid);
       return isEpflUser()
           && !(exists(profile) && get(profile).data.get('accountType', 'student') == 'association');
+    }
+
+    // Whether deleteAccount deleted this account: it writes deletedAccounts/{uid} in the transaction
+    // that deletes both profiles (#229 review). The deleted user's ID token stays valid until it
+    // expires, so without it another of their devices could recreate the profiles afterwards, and
+    // other students could read the public one. Firebase never reuses a UID. The app can't read or
+    // write deletedAccounts: no rule matches it.
+    function isDeletedAccount(uid) {
+      return exists(/databases/$(database)/documents/deletedAccounts/$(uid));
     }
 
     // Each account's private profile. Open to any verified email (most associations have no
@@ -74,6 +83,7 @@ service cloud.firestore {
       allow delete: if isOwner()
           && (resource == null || resource.data.get('accountType', 'student') != 'association');
       allow create: if isOwner()
+          && !isDeletedAccount(uid)
           && request.resource.data.uid == uid
           && (!('accountType' in request.resource.data)
               || request.resource.data.accountType in ['student', 'association'])
@@ -93,7 +103,8 @@ service cloud.firestore {
     // read none. Only its owner writes it, a student, and only as a copy of their users/{uid} as it
     // is after the same write (getAfter), so it is written with the private profile and can't say
     // anything else. Because others read them, section and year must be codes the app offers.
-    // users/{uid} can't change a copied field without it (keepsPublicProfile).
+    // users/{uid} can't change a copied field without it (keepsPublicProfile), and a deleted
+    // account can't write it again (isDeletedAccount).
     // interests stays empty until #230 adds the fixed list. Nobody deletes it from the app:
     // deleteAccount removes it with the account (a client deleting users/{uid} directly, which the
     // app never does, would leave it behind until then). Each copied field is compared, so a
@@ -132,6 +143,7 @@ service cloud.firestore {
       allow get: if isStudent();
       allow create, update: if isStudent()
           && request.auth.uid == uid
+          && !isDeletedAccount(uid)
           && copiesPrivateProfile();
     }
 

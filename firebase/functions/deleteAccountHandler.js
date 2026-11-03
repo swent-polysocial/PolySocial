@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the deleteAccount handler, #206; Mohamed Khellaf (reviewed and revised).
-// Contributors: Claude (the public profile deleted with the account, #229).
+// Contributors: Claude (the public profile deleted with the account, #229; the deletion marker,
+// after review, #229).
 "use strict";
 
 const { HttpsError } = require("firebase-functions/v2/https");
@@ -41,7 +42,10 @@ const TRANSIENT_CODES = new Set([
 /**
  * Deletes the signed-in user's account: first their private profile `users/{uid}` and their public
  * profile `publicProfiles/{uid}` (#229), together, then their Firebase Auth user. Returns
- * `{ deleted: true }` only once all are gone.
+ * `{ deleted: true }` only once all are gone. The same transaction writes the deletion marker
+ * `deletedAccounts/{uid}`: the deleted user's ID token stays valid until it expires (up to an
+ * hour), and the Security Rules refuse to recreate either profile under a marked UID, so another
+ * of the user's devices can't bring the public profile back after the deletion (#229 review).
  *
  * Refuses, before deleting anything:
  * - a call without a signed-in user (`unauthenticated`);
@@ -99,7 +103,9 @@ function isRecentSignIn(token, nowMillis) {
 
 /**
  * Deletes `users/{uid}` and the student's public profile `publicProfiles/{uid}` (#229) unless the
- * account is an association's, in one transaction, so no public copy outlives the account.
+ * account is an association's, in one transaction, so no public copy outlives the account. The
+ * transaction also writes the empty marker `deletedAccounts/{uid}`, which the Security Rules check,
+ * so neither profile can be written again for this UID. It holds no data besides its ID.
  */
 async function deleteStudentProfile(db, uid) {
   const profile = db.collection("users").doc(uid);
@@ -112,8 +118,10 @@ async function deleteStudentProfile(db, uid) {
         DETAILS.ASSOCIATION,
       );
     }
-    // Deleting a missing document is a no-op, so a retry after this step still succeeds, and so
-    // does a student whose profile was saved before public profiles existed.
+    // Writing the marker again and deleting a missing document are no-ops, so a retry after this
+    // step still succeeds, and so does a student whose profile was saved before public profiles
+    // existed.
+    transaction.set(db.collection("deletedAccounts").doc(uid), {});
     transaction.delete(profile);
     transaction.delete(db.collection("publicProfiles").doc(uid));
   });
