@@ -8,7 +8,7 @@
 <!-- Contributors: OpenAI Codex (CI APK download, installation and Mapbox setup instructions, #137). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the Cloud Functions section, #206; Mohamed Khellaf (reviewed and revised). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the Deploying to Firebase section, #228; Franciszek Najda (reviewed). -->
-<!-- Contributors: Claude (public profiles deleted with the account, #229). -->
+<!-- Contributors: Claude (public profiles deleted with the account, #229; the deletion marker and deploy order, after review, #229). -->
 
 # PolySocial
 
@@ -110,6 +110,8 @@ firebase deploy --only firestore:rules --project <project-id>     # firebase/fir
 firebase deploy --only firestore:indexes --project <project-id>   # firebase/firestore/firestore.indexes.json
 ```
 
+**Order, when one change touches several of them:** deploy `deleteAccount` first, then the Security Rules, then distribute the app. For #229 this matters both ways: with the old function, deleting an account leaves the public profile behind and writes no `deletedAccounts/{uid}` marker; with the old rules, the new app's profile creation (which also writes `publicProfiles/{uid}`) is refused. The function uses the Admin SDK, so it works with either version of the rules.
+
 `<project-id>` is the `project_id` in your `app/google-services.json`. Functions deploy as described in [Cloud Functions](#cloud-functions). A new index takes a few minutes to build (Firebase console → Firestore → Indexes); until it's ready, the query that needs it fails. The local emulator doesn't need indexes.
 
 ## Downloading the CI APK
@@ -167,7 +169,7 @@ firebase emulators:exec --project demo-polysocial --only firestore,auth "gradlew
 
 ## Cloud Functions
 
-Server code lives in `firebase/functions` (plain JavaScript, Node.js 22, region `europe-west6`). Today it has one callable function, **`deleteAccount`**: it deletes the signed-in user's private profile `users/{uid}` and public profile `publicProfiles/{uid}` together, then their Firebase Auth user, and returns `{ deleted: true }` only once all are gone. It refuses a sign-in older than 5 minutes (`failed-precondition`, details `recent-login-required`) and association accounts (`failed-precondition`, details `association`: they ask the PolySocial team through the privacy contact). Each step can be retried safely. Events the user created are kept. The Admin SDK bypasses the Security Rules, so the function itself checks who may delete what.
+Server code lives in `firebase/functions` (plain JavaScript, Node.js 22, region `europe-west6`). Today it has one callable function, **`deleteAccount`**: it deletes the signed-in user's private profile `users/{uid}` and public profile `publicProfiles/{uid}` together, with an empty `deletedAccounts/{uid}` marker that stops the user's still-valid ID token from recreating them, then their Firebase Auth user, and returns `{ deleted: true }` only once all are gone. It refuses a sign-in older than 5 minutes (`failed-precondition`, details `recent-login-required`) and association accounts (`failed-precondition`, details `association`: they ask the PolySocial team through the privacy contact). Each step can be retried safely. Events the user created are kept. The Admin SDK bypasses the Security Rules, so the function itself checks who may delete what.
 
 Install the packages once (Node.js **22.12 or newer**: `firebase-admin` depends on `jwks-rsa`, which needs `^20.19 || ^22.12 || >=23`), then run the unit tests, which use fakes and need no emulator:
 

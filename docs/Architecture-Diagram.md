@@ -1,6 +1,6 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the groups, chat and public profile model, its rules, the co-organizer model and the deploy owner (#228); Franciszek Najda (decided and reviewed). -->
 <!-- Contributors: Claude Opus 5.5 (attendees schema, rules and capacity question, #121; the organizers' attendee count and the association's manage event, #131). -->
-<!-- Contributors: Claude (public profiles marked as built, #229). -->
+<!-- Contributors: Claude (public profiles marked as built, #229; the deletion marker and the public copy kept in step, after review, #229). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the account deletion decision, its deletion/failure matrix and the related open questions (#201); Mohamed Khellaf (reviewed and revised). -->
 <!-- Contributors: OpenAI Codex (Google authentication architecture, Firebase-managed linking clarification and review cleanup for #106; preserved contributor acknowledgments during rebase); Claude (the shared UI parts, #251). -->
 <!-- Contributors: OpenAI Codex (removed obsolete Google collision UI, #107). -->
@@ -421,6 +421,7 @@ flowchart LR
 | Collection | Key fields | Status |
 |---|---|---|
 | `users/{uid}` | `uid`, `email`, `displayName` (at most 50, #143), `section`, `year`, `createdAt`, `accountType`, `isAssociationVerified` | 🟩 #34, #45 |
+| `deletedAccounts/{uid}` | empty: only the deleted account's UID, as document ID. Written by `deleteAccount` with the profile deletion; the rules refuse recreating either profile under it. No app access | 🟩 #229 |
 | `events/{eventId}` | `title`, `description`, `category`, `location`, `locationName?` (#112), `startTime`, `endTime?`, `capacity?`, `isPrivate`, `createdBy`, `organizerIds`, `allowedUids`, `isAssociationEvent` | 🟩 #45 |
 | `associations/{uid}` | `name` (1–60), `type` (`ASSOCIATION`, `COMMISSION`, `CLUB`, `EPFL_UNIT`), `about` (1–1000), `website?` (`https://`, at most 200), `createdAt`. Document ID = the association account's UID | 🟩 #126 |
 | `publicProfiles/{uid}` | `displayName`, `section`, `year`, `interests` (codes from #230's fixed list), always visible; never the email. Written in the same transaction as `users/{uid}`. `section` and `year` must be codes from `ProfileOptions.kt`. `interests` stays `[]` until #230. A profile saved before #229 has none until #291. `username`, `visibility` (public or private) and `bio` come later | 🟩 S4 #229 (built); `interests` 🟦 #230 |
@@ -445,13 +446,13 @@ Rules live in `firebase/firestore/firestore.rules` and are tested against the Fi
 |---|---|---|---|---|---|
 | *every rule* | requires `isEpflUser()`: signed in, `email_verified == true`, email ends with `@epfl.ch` | | | #33 | 🟩 S1 |
 | *association branch* | a verified association (`email_verified == true`, `accountType == "association"`, `isAssociationVerified` set by an admin), **only** on its own association, members and events. Added with its first use, after #35 removed the catch-all rule | | | #47 | 🟩 S1 |
-| `users/{uid}` | own document only | own document only; `displayName`, when present, a string of at most 50 characters on create and update (#143) | own document only | #35, #143 | 🟩 S1, S3 |
+| `users/{uid}` | own document only | own document only, not under a `deletedAccounts/{uid}` marker (#229); `displayName`, when present, a string of at most 50 characters on create and update (#143) | own document only; a change to `displayName`, `section` or `year` must update an existing public profile in the same write (#229) | #35, #143, #229 | 🟩 S1, S3, S4 |
 | | **Exceptions to *every rule*:** any account with a verified email reaches its own `users/{uid}`, but never sets `isAssociationVerified` (create or update), and can't change `uid` (which must match the document ID) or `accountType` after creation. An association account also reaches its own `associations/{uid}` (next row), pending or verified. That is all an unverified association can reach | | | #35, #126 | 🟩 S1, S3 |
 | `associations/{uid}` | its owner (an association account, pending or verified); EPFL students only once an admin has verified it (a denied read looks missing); never another association; no list | owner only, once, exactly the fields above with `createdAt` = server time | owner only; `createdAt` fixed, and `name` and `type` fixed once verified; delete by an admin only | #126 | 🟩 S3 |
 | `events/{id}`, public | any EPFL user | any EPFL user or verified association, `createdBy == auth.uid` and in `organizerIds`. `isAssociationEvent` only for a verified association | organizers only | #47, #52 | 🟩 S1 |
 | `events/{id}`, private | `auth.uid in allowedUids` (organizers, members, approved match requesters) | as above | organizers only | #52, #23 | 🟩 S1 |
 | `events/{eventId}/attendees/{uid}` | own attendance; attendee list only for the event's organizers | verified EPFL student, own UID, readable event that hasn't ended; no association registration | student deletes only own document, even once the event has ended or is gone; no writes to another student's attendance; nobody updates one | #121 | 🟩 in place (capacity not checked yet) |
-| `publicProfiles/{uid}` | any student, one document by UID (no list, so no student directory); no association | owner only, only the fields above, no email; `section` and `year` from the app's fixed lists | owner only, as an exact copy of their `users/{uid}` after the same write (`getAfter`); no delete except with the account (`deleteAccount`) | #229 | 🟩 S4 (built) |
+| `publicProfiles/{uid}` | any student, one document by UID (no list, so no student directory); no association | owner only, only the fields above, no email; `section` and `year` from the app's fixed lists | owner only, as an exact copy of their `users/{uid}` after the same write (`getAfter`), never under a `deletedAccounts/{uid}` marker; no delete except with the account (`deleteAccount`) | #229 | 🟩 S4 (built) |
 | `events/{eventId}/groups/{groupId}` | a student who can read the event; a student lists their own groups across events (`memberUids array-contains` their UID) | a student who can read the event, with `memberUids == [own UID]`, `capacity == 4`, `createdBy` = own UID, server `createdAt`, and their `groupMembers` marker in the same write | update: only `memberUids` changes, by adding or removing the caller's own UID, `size() <= capacity`, with the marker created or deleted alongside (`getAfter`); delete: the last member leaving. No association access | #232 | 🟦 S4 |
 | `events/{eventId}/groupMembers/{uid}` | own document only | own UID, `groupId` of a group whose `memberUids` contain them after the write | delete own, when leaving that group; no update | #232 | 🟦 S4 |
 | `events/{eventId}/groups/{groupId}/messages/{id}` | group members only | members, `senderId` = own UID, `text` 1–1000, server `createdAt`; per operation, so rate limiting fits later | nobody yet (report/block later) | #237 | 🟦 S4 |
@@ -496,7 +497,8 @@ Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after re
 | Data | On delete | Layer |
 |---|---|---|
 | Firebase Auth user | deleted (step 2) | function (Admin SDK) |
-| `users/{uid}` | deleted (step 1) | function (Admin SDK) |
+| `users/{uid}`, `publicProfiles/{uid}` | deleted together (step 1) | function (Admin SDK) |
+| `deletedAccounts/{uid}` | written empty in the same transaction (step 1) and kept: only the UID, so the deleted user's still-valid ID token can't recreate either profile | function (Admin SDK) |
 | `events/*` the user created or organizes | kept unchanged; co-organizers keep managing it, a sole organizer's event can't be edited any more; a missing public profile is a deleted account, an association or a profile saved before #229 (#291), so not shown as "Deleted user" on its own | none |
 | `allowedUids` entries on others' private events | kept (opaque UID, no personal data) | none |
 | attendees (#121), reminders (#123) | not built yet; their issues add cleanup to the function or the reminder worker | — |
@@ -514,7 +516,7 @@ How each failure behaves:
 | function `recent-login-required` | back to the password step |
 | function `association` | `NotAllowed` message with the privacy contact; account unchanged |
 | function `unavailable` / `internal` | error with Retry; retrying is safe (idempotent) |
-| profile deleted, Auth delete failed | user still signed in; Retry completes step 2 (step 1 is a no-op) |
+| profile deleted, Auth delete failed | user still signed in; Retry completes step 2 (step 1 is a no-op); the profile can't be created again meanwhile (`deletedAccounts/{uid}`) |
 | both deleted, answer lost | next attempt sees an invalid user, treated as `Deleted`, then local cleanup |
 | cache clear fails after deletion | blocking Retry, as for logout; the account is already gone |
 | user cancels before the function call (Cancel, or the Google picker dismissed) | nothing changes; the reauthentication step stays open |
