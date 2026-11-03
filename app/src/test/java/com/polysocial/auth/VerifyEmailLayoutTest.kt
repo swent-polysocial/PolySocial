@@ -1,17 +1,22 @@
 // Contributors: OpenAI Codex (adaptive verification layout and tagged UI-state tests for #31;
 // startup timing-loading feedback, disabled-action assertions and tall-tablet layout).
+// Contributors: Claude (account-neutral texts and only the confirmation after a resend, written
+// test-first, #277).
 package com.polysocial.auth
 
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
@@ -23,6 +28,7 @@ import com.polysocial.ui.auth.VerifyEmailTags
 import com.polysocial.ui.auth.VerifyEmailUiState
 import com.polysocial.ui.theme.PolySocialTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -159,5 +165,67 @@ class VerifyEmailLayoutTest {
               .config[androidx.compose.ui.semantics.SemanticsProperties.Text]
       assertTrue(text.any { it.text.isNotBlank() })
     }
+  }
+
+  // ---- Texts for students and associations alike (#277) ----
+
+  private fun bannerText() =
+      compose
+          .onNodeWithTag(VerifyEmailTags.Banner)
+          .fetchSemanticsNode()
+          .config[androidx.compose.ui.semantics.SemanticsProperties.Text]
+          .joinToString(" ") { it.text }
+
+  @Test
+  fun noVerificationText_mentionsEpfl_forAStudentOrAnAssociation() {
+    // Associations verify their own address here (#125), so no text may assume an EPFL inbox.
+    for (email in listOf("student.test@epfl.ch", "club@example.org")) {
+      state.value = state.value.copy(email = email, banner = null)
+      if (email == "student.test@epfl.ch") launch()
+      val shown =
+          (listOf(null) + VerificationMessage.entries).map { message ->
+            compose.runOnIdle { state.value = state.value.copy(banner = message) }
+            compose.onNodeWithTag(VerifyEmailTags.Banner).performScrollTo()
+            bannerText()
+          }
+      for (text in shown) assertFalse("\"$text\" mentions EPFL", text.contains("EPFL"))
+    }
+  }
+
+  @Test
+  fun theSpamHintAndTheResendConfirmation_sayInboxAndMailbox() {
+    launch()
+
+    assertEquals("Can't find it? Check your mailbox and spam folder.", bannerText())
+    compose.runOnIdle { state.value = state.value.copy(banner = VerificationMessage.Sent) }
+    assertEquals(
+        "We sent a new link to your inbox. It can take a minute to arrive.",
+        bannerText(),
+    )
+  }
+
+  @Test
+  fun aSuccessfulResend_onlyConfirms_withNoRetry() {
+    // The coaches reported a Retry after a resend: the screen must only confirm it.
+    state.value = state.value.copy(banner = VerificationMessage.Sent)
+    launch()
+
+    compose
+        .onNodeWithText("We sent a new link to your inbox. It can take a minute to arrive.")
+        .assertIsDisplayed()
+    compose.onAllNodesWithText("Retry", substring = true, ignoreCase = true).assertCountEquals(0)
+    // Its two actions stay: Continue, and Resend once the cooldown ends.
+    compose.onNodeWithTag(VerifyEmailTags.Continue).performScrollTo().assertIsEnabled()
+    compose.onNodeWithTag(VerifyEmailTags.Resend).performScrollTo().assertIsNotEnabled()
+  }
+
+  @Test
+  fun afterAFailedResend_resendStaysTheWayOut() {
+    state.value = state.value.copy(banner = VerificationMessage.NetworkError, remainingSeconds = 0)
+    launch()
+
+    assertEquals("Can't connect. Check your connection and try again.", bannerText())
+    compose.onNodeWithTag(VerifyEmailTags.Resend).performScrollTo().assertIsEnabled().performClick()
+    assertEquals(1, resends)
   }
 }
