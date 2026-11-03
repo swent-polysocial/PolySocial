@@ -1,5 +1,6 @@
 // Contributors: Claude (the interests step's tests, written test-first, #230; the save error tests
-// moved here from ProfileSetupScreenTest, where #142 added them).
+// moved here from ProfileSetupScreenTest, where #142 added them; the count announced and the
+// button's role, after review, #230).
 package com.polysocial.ui.profile
 
 import android.app.Application
@@ -12,6 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsNode
@@ -46,6 +48,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
 import com.polysocial.model.user.INTERESTS
+import com.polysocial.ui.common.INTEREST_LABELS
 import com.polysocial.ui.theme.AccentText
 import com.polysocial.ui.theme.PolySocialTheme
 import org.junit.Assert.assertEquals
@@ -183,6 +186,22 @@ class ProfileInterestsStepTest {
     node(ProfileSetupTestTags.interest("music")).performScrollTo().performClick()
 
     assertEquals(listOf("cinema", "music"), toggled)
+  }
+
+  @Test
+  fun theCount_isAnnouncedWhenItChanges() {
+    setContent(ready)
+
+    node(ProfileSetupTestTags.INTERESTS_COUNT)
+        .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
+  }
+
+  @Test
+  fun finish_isAButton() {
+    setContent(ready)
+
+    node(ProfileSetupTestTags.FINISH)
+        .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
   }
 
   @Test
