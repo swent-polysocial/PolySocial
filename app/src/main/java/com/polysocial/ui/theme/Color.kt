@@ -1,4 +1,5 @@
-// Contributors: Claude (v2 design-system colour tokens from Figma "First proposal revamped").
+// Contributors: Claude (v2 design-system colour tokens from Figma "First proposal revamped"; the
+// confirmation sheets' icon background, #296).
 package com.polysocial.ui.theme
 
 import androidx.compose.ui.graphics.Color
@@ -16,6 +17,8 @@ val Ink3 = Color(0xFF6B6B76)
 val Accent = Color(0xFFD6303A)
 val AccentSoft = Color(0xFFFDECEC)
 val AccentText = Color(0xFFB3202A)
+// Behind the icon of a confirmation sheet (Cancel event, Delete account)
+val AccentPale = Color(0xFFFCE7E8)
 // Accent text on an ink background (the Figma snackbar's action)
 val AccentOnInk = Color(0xFFFFB3B7)
 val Success = Color(0xFF1A7046)
