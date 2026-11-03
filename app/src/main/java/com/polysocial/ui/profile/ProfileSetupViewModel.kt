@@ -1,11 +1,13 @@
 // Contributors: Claude (profile step state for #34; unverified accounts refused after review;
-// reset on sign-out, #74; generic save error, #142; the full name's limit, test-first, #143).
+// reset on sign-out, #74; generic save error, #142; the full name's limit, test-first, #143; the
+// interests step, test-first, #230).
 package com.polysocial.ui.profile
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.user.CreateProfileResult
+import com.polysocial.model.user.INTERESTS
 import com.polysocial.model.user.UserProfile
 import com.polysocial.model.user.UserProfileRepository
 import com.polysocial.model.user.isDisplayNameTooLong
@@ -18,15 +20,29 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** Where the profile step is; each value matches a Profile frame in Figma. */
+/**
+ * Which screen of the profile step shows (#230). The step writes the profile once, from the second
+ * screen, so a student who leaves before Finish has no profile and starts the step again.
+ */
+enum class ProfileSetupPage {
+  /**
+   * Step 1 of 2: name, section and year (the Figma "Profile · …" frames). Continue saves nothing.
+   */
+  Details,
+
+  /** Step 2 of 2: interests, and Finish, which saves (the Figma "Interests · …" frames). */
+  Interests,
+}
+
+/** Where the save is; each value matches a Figma frame. Only the interests screen saves. */
 enum class ProfileSetupStatus {
   /** Filling in the form (the default, ready and choosing frames). */
   Editing,
 
-  /** Continue was tapped and the profile is being written. */
+  /** Finish was tapped and the profile is being written. */
   Saving,
 
-  /** The profile couldn't be written because the device is offline; Continue retries. */
+  /** The profile couldn't be written because the device is offline; Finish retries. */
   CouldNotSave,
 
   /**
@@ -45,6 +61,9 @@ data class ProfileSetupUiState(
     val email: String = "",
     val section: String? = null,
     val year: String? = null,
+    /** Codes from [INTERESTS]; none to all of them may be chosen. */
+    val interests: Set<String> = emptySet(),
+    val page: ProfileSetupPage = ProfileSetupPage.Details,
     val status: ProfileSetupStatus = ProfileSetupStatus.Editing,
 ) {
   /** The name is over the full name's limit (#143): the step shows an error and can't continue. */
@@ -52,23 +71,28 @@ data class ProfileSetupUiState(
     get() = isDisplayNameTooLong(displayName)
 
   /**
-   * Continue is enabled once a name within the limit, a section and a year are set, and while no
-   * save is running or done (a second tap must not write the profile twice).
+   * Continue (to the interests screen) is enabled once a name within the limit, a section and a
+   * year are set.
    */
   val canContinue: Boolean
-    get() =
-        displayName.isNotBlank() &&
-            !nameTooLong &&
-            section != null &&
-            year != null &&
-            status != ProfileSetupStatus.Saving &&
-            status != ProfileSetupStatus.Saved
+    get() = displayName.isNotBlank() && !nameTooLong && section != null && year != null
+
+  /**
+   * Finish is enabled with any choice of interests, none included, while no save is running or done
+   * (a second tap must not write the profile twice).
+   */
+  val canFinish: Boolean
+    get() = canContinue && status != ProfileSetupStatus.Saving && status != ProfileSetupStatus.Saved
+
+  /** While saving or saved, the form is locked and Back does nothing. */
+  val locked: Boolean
+    get() = status == ProfileSetupStatus.Saving || status == ProfileSetupStatus.Saved
 }
 
 /**
- * Holds the profile step that follows email verification, and creates the user's profile through
- * [UserProfileRepository] when Continue is tapped. The name and the verified email come from the
- * signed-in account.
+ * Holds the profile step that follows email verification: its details screen, then its interests
+ * screen (#230), which creates the user's profile through [UserProfileRepository] when Finish is
+ * tapped. The name and the verified email come from the signed-in account.
  */
 @HiltViewModel
 class ProfileSetupViewModel
@@ -100,14 +124,41 @@ constructor(
   fun onYearChange(year: String) = edit { it.copy(year = year) }
 
   /**
-   * Creates the profile once. Does nothing unless [ProfileSetupUiState.canContinue]. An existing
-   * profile counts as saved, so the user is never stuck on this step. A signed-out or unverified
-   * account never reaches the repository: it gets [ProfileSetupStatus.CouldNotSaveGeneric]. Only a
-   * network error gets [ProfileSetupStatus.CouldNotSave], whose Continue retries.
+   * Chooses the interest [code], or unchooses it if chosen. A code not in [INTERESTS] is ignored.
    */
-  fun onContinue() {
+  fun onInterestToggle(code: String) {
+    if (code !in INTERESTS) return
+    edit {
+      it.copy(interests = if (code in it.interests) it.interests - code else it.interests + code)
+    }
+  }
+
+  /** Opens the interests screen once the details are complete. Nothing is saved yet. */
+  fun onContinue() = _uiState.update {
+    if (it.page == ProfileSetupPage.Details && it.canContinue)
+        it.copy(page = ProfileSetupPage.Interests, status = ProfileSetupStatus.Editing)
+    else it
+  }
+
+  /**
+   * Back from the interests screen to the details, keeping everything chosen and clearing a save
+   * error. Ignored while saving or saved, so the save's result is never dropped.
+   */
+  fun onBackToDetails() = _uiState.update {
+    if (it.locked) it
+    else it.copy(page = ProfileSetupPage.Details, status = ProfileSetupStatus.Editing)
+  }
+
+  /**
+   * Creates the profile once, with the chosen interests. Does nothing unless the interests screen
+   * shows and [ProfileSetupUiState.canFinish]. An existing profile counts as saved, so the user is
+   * never stuck on this step. A signed-out or unverified account never reaches the repository: it
+   * gets [ProfileSetupStatus.CouldNotSaveGeneric]. Only a network error gets
+   * [ProfileSetupStatus.CouldNotSave], whose Finish retries.
+   */
+  fun onFinish() {
     val state = _uiState.value
-    if (!state.canContinue) return
+    if (state.page != ProfileSetupPage.Interests || !state.canFinish) return
     // Only a verified account may get a profile (#34); routing (#74) and the rules (#35) check it
     // too, but the step must not rely on them.
     val user = auth.currentUser()
@@ -124,6 +175,7 @@ constructor(
               displayName = state.displayName.trim(),
               section = checkNotNull(state.section),
               year = checkNotNull(state.year),
+              interests = state.interests,
           )
       val status =
           when (profiles.createProfile(profile)) {
@@ -143,7 +195,6 @@ constructor(
 
   /** Applies a form change; after a failed save, editing clears the error message. */
   private fun edit(change: (ProfileSetupUiState) -> ProfileSetupUiState) = _uiState.update {
-    if (it.status == ProfileSetupStatus.Saving || it.status == ProfileSetupStatus.Saved) it
-    else change(it).copy(status = ProfileSetupStatus.Editing)
+    if (it.locked) it else change(it).copy(status = ProfileSetupStatus.Editing)
   }
 }
