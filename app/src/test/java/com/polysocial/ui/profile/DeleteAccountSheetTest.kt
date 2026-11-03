@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the Delete account sheet tests, #207; Mohamed
 // Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) covered signing out before confirming, #296.
 package com.polysocial.ui.profile
 
 import android.content.Context
@@ -53,6 +54,9 @@ class DeleteAccountSheetTest {
   private var online = true
   private var cacheResult = CacheClearResult.Cleared
   private var clears = 0
+
+  /** When set, clearing the cache waits for it, so the cleanup's step stays on screen. */
+  private var cacheGate: CompletableDeferred<Unit>? = null
   private val ended = mutableListOf<Boolean>()
   private var drafts = 0
 
@@ -66,6 +70,7 @@ class DeleteAccountSheetTest {
           object : SessionCache {
             override suspend fun clear(): CacheClearResult {
               clears++
+              cacheGate?.await()
               return cacheResult
             }
           },
@@ -120,6 +125,23 @@ class DeleteAccountSheetTest {
     assertEquals(0, deletion.calls)
     assertEquals(0, auth.reauthCalls)
     assertEquals(student, auth.user)
+  }
+
+  @Test
+  fun signedOutBeforeConfirmingShowsOnlyTheCleanupThenLeaves() {
+    val gate = CompletableDeferred<Unit>()
+    cacheGate = gate
+    open()
+    auth.user = null
+    tap(DeleteAccountTags.Confirm)
+    title(R.string.delete_account_title)
+    rule.onNodeWithTag(DeleteAccountTags.Progress).assertIsDisplayed()
+    rule.onNodeWithTag(DeleteAccountTags.Password).assertDoesNotExist()
+    rule.runOnIdle { gate.complete(Unit) }
+    rule.waitForIdle()
+    assertEquals(listOf(false), ended)
+    assertEquals(0, auth.reauthCalls)
+    assertEquals(0, deletion.calls)
   }
 
   @Test

@@ -2,6 +2,8 @@
 package com.polysocial.ui.common
 
 import android.content.Context
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -42,16 +44,15 @@ class ConfirmationSheetTest {
   /** Whether a call runs, as the screen would say; the test changes it while the sheet shows. */
   private var locked by mutableStateOf(false)
 
-  /** A sheet like Cancel event's, with its icon, title and secondary button. */
-  private fun show(locked: Boolean) {
+  /**
+   * A sheet like Cancel event's, with its icon, title and secondary button; tagged [SHEET] unless
+   * [tagged] is false, which keeps the default modifier.
+   */
+  private fun show(locked: Boolean, tagged: Boolean = true) {
     this.locked = locked
     rule.setContent {
       PolySocialTheme {
-        ConfirmationSheet(
-            locked = this.locked,
-            onDismissRequest = { dismissals++ },
-            modifier = Modifier.testTag(SHEET),
-        ) { dismiss ->
+        val content: @Composable ColumnScope.(() -> Unit) -> Unit = { dismiss ->
           SheetIcon(R.drawable.ic_calendar_cancel, tint = AccentText)
           SheetTitle(R.string.cancel_event_title)
           SheetSecondaryButton(
@@ -60,6 +61,16 @@ class ConfirmationSheetTest {
               tag = KEEP,
               onClick = dismiss,
           )
+        }
+        if (tagged) {
+          ConfirmationSheet(
+              locked = this.locked,
+              onDismissRequest = { dismissals++ },
+              modifier = Modifier.testTag(SHEET),
+              content = content,
+          )
+        } else {
+          ConfirmationSheet(this.locked, onDismissRequest = { dismissals++ }, content = content)
         }
       }
     }
@@ -120,7 +131,7 @@ class ConfirmationSheetTest {
 
   @Test
   fun theTitle_isReadAsAHeading() {
-    show(locked = false)
+    show(locked = false, tagged = false)
 
     rule.onNode(isHeading() and hasText(title)).assertIsDisplayed()
   }
