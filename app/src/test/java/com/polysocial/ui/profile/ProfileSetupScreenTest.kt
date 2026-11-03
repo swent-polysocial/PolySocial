@@ -4,7 +4,7 @@
 // (Back locked while saving, #74); Claude Opus 5.5 (testing agent: generic save error tests,
 // #142); Claude (Log out touch area and test tidying after review, #142; the full name's limit,
 // written test-first, #143; Continue then Finish, and the save tests moved to the interests step,
-// #230).
+// #230; Continue's role, after review, #230).
 package com.polysocial.ui.profile
 
 import android.app.Application
@@ -190,6 +190,14 @@ class ProfileSetupScreenTest {
         )) {
       node(tag).assertExists()
     }
+  }
+
+  @Test
+  fun continue_isAButton() {
+    setScreen()
+
+    node(ProfileSetupTestTags.CONTINUE)
+        .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
   }
 
   @Test
