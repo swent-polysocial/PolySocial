@@ -1,4 +1,5 @@
-// Contributors: Claude (fixed section and year lists for the profile step, #34).
+// Contributors: Claude (fixed section and year lists for the profile step, #34; the interest list,
+// #230).
 package com.polysocial.model.user
 
 /**
@@ -29,3 +30,26 @@ val SECTIONS: List<String> =
 
 /** Study years a student can pick: Bachelor 1 to 6, then Master 1 to 4. */
 val YEARS: List<String> = (1..6).map { "BA$it" } + (1..4).map { "MA$it" }
+
+/**
+ * Interests a student can pick on the profile step (#230), by the codes stored in `users/{uid}` and
+ * `publicProfiles/{uid}`. The app shows each code's label from `strings.xml`, so a label can change
+ * without touching stored data. This is also the order the chips are shown and the codes stored in.
+ * The Security Rules repeat this list (`interestCodes` in `firestore.rules`), and a rules test
+ * fails if the two differ.
+ */
+val INTERESTS: List<String> =
+    listOf(
+        "sports",
+        "outdoors",
+        "music",
+        "parties",
+        "cinema",
+        "games",
+        "photography",
+        "cooking",
+        "tech",
+        "startups",
+        "arts",
+        "volunteering",
+    )

@@ -3,7 +3,8 @@
 // accountType values on create, association profiles not deletable by the client, #161;
 // associations/{uid}, #126; displayName limit, written test-first, #143; publicProfiles/{uid},
 // written test-first, #229; reads by ID only and fixed section and year lists, after review, #229;
-// deleted accounts stay deleted and private edits keep the public copy, after review, #229);
+// deleted accounts stay deleted and private edits keep the public copy, after review, #229;
+// interests from the fixed list, written test-first, #230);
 // OpenAI Codex (public/private event read rules, #52); Claude Opus 5.5 (event write rules, #47;
 // badge and locationName checks after review; isStudent for writes after #161; organizers
 // stay allowed readers after review; event registrations, #121).
@@ -43,6 +44,23 @@ service cloud.firestore {
       return exists(/databases/$(database)/documents/deletedAccounts/$(uid));
     }
 
+    // The interest codes the app offers (#230): keep them equal to INTERESTS in
+    // app/src/main/java/com/polysocial/model/user/ProfileOptions.kt. The rules tests read that file
+    // and fail if the two lists differ.
+    function interestCodes() {
+      return ['sports', 'outdoors', 'music', 'parties', 'cinema', 'games', 'photography',
+          'cooking', 'tech', 'startups', 'arts', 'volunteering'];
+    }
+
+    // No interests (a profile saved before #230, or an association's), or a list of known codes,
+    // each at most once, so at most one of each.
+    function hasKnownInterests(data) {
+      return !('interests' in data)
+          || (data.interests is list
+              && data.interests.hasOnly(interestCodes())
+              && data.interests.toSet().size() == data.interests.size());
+    }
+
     // Each account's private profile. Open to any verified email (most associations have no
     // EPFL email); besides it, an unverified association reaches only its own
     // associations/{uid} (#126).
@@ -69,14 +87,15 @@ service cloud.firestore {
       // has no public copy yet, and an association never gets one: neither needs it. Removing a
       // copied field fails the comparison too.
       function keepsPublicProfile() {
-        let copied = ['displayName', 'section', 'year'];
+        let copied = ['displayName', 'section', 'year', 'interests'];
         let publicProfile = /databases/$(database)/documents/publicProfiles/$(uid);
         let data = request.resource.data;
         return !data.diff(resource.data).affectedKeys().hasAny(copied)
             || !exists(publicProfile)
             || (getAfter(publicProfile).data.displayName == data.get('displayName', null)
                 && getAfter(publicProfile).data.section == data.get('section', null)
-                && getAfter(publicProfile).data.year == data.get('year', null));
+                && getAfter(publicProfile).data.year == data.get('year', null)
+                && getAfter(publicProfile).data.interests == data.get('interests', []));
       }
 
       allow read: if isOwner();
@@ -89,11 +108,13 @@ service cloud.firestore {
               || request.resource.data.accountType in ['student', 'association'])
           && (!('isAssociationVerified' in request.resource.data)
               || request.resource.data.isAssociationVerified == false)
-          && hasValidDisplayName();
+          && hasValidDisplayName()
+          && hasKnownInterests(request.resource.data);
       allow update: if isOwner()
           && !request.resource.data.diff(resource.data).affectedKeys()
               .hasAny(['uid', 'accountType', 'isAssociationVerified'])
           && hasValidDisplayName()
+          && hasKnownInterests(request.resource.data)
           && keepsPublicProfile();
     }
 
@@ -105,7 +126,8 @@ service cloud.firestore {
     // anything else. Because others read them, section and year must be codes the app offers.
     // users/{uid} can't change a copied field without it (keepsPublicProfile), and a deleted
     // account can't write it again (isDeletedAccount).
-    // interests stays empty until #230 adds the fixed list. Nobody deletes it from the app:
+    // interests are codes from the fixed list (#230), in the private profile's order; a private
+    // profile saved before #230 has none, so its copy has []. Nobody deletes it from the app:
     // deleteAccount removes it with the account (a client deleting users/{uid} directly, which the
     // app never does, would leave it behind until then). Each copied field is compared, so a
     // missing one, or a missing users/{uid}, makes the rule fail and deny.
@@ -137,7 +159,8 @@ service cloud.firestore {
             && data.year == owner.year
             && isKnownSection(data.section)
             && isKnownYear(data.year)
-            && data.interests == [];
+            && data.interests == owner.get('interests', [])
+            && hasKnownInterests(data);
       }
 
       allow get: if isStudent();

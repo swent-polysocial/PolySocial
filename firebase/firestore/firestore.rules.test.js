@@ -1,4 +1,4 @@
-// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143; publicProfiles/{uid} tests, written test-first, #229; reads by ID only and the fixed section and year lists, after review, #229; private edits keep the public copy, and deleted accounts stay deleted, after review, #229); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121).
+// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143; publicProfiles/{uid} tests, written test-first, #229; reads by ID only and the fixed section and year lists, after review, #229; private edits keep the public copy, and deleted accounts stay deleted, after review, #229; interests from the fixed list, test-first, #230); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121).
 const { after, before, beforeEach, test } = require("node:test");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
@@ -1922,7 +1922,7 @@ function privateProfile(uid, changes = {}) {
 
 /**
  * The public profile mirroring [privateProfile]: its displayName, section and year, and no
- * interests yet (#230 adds them). Fields are overridden, or removed when set to undefined.
+ * interests (#230). Fields are overridden, or removed when set to undefined.
  */
 function publicProfile(changes = {}) {
   const profile = { displayName: "Test Student", section: "IN", year: "BA3", interests: [], ...changes };
@@ -2018,7 +2018,23 @@ function rulesCodes(functionName) {
   const rules = readFileSync(path.join(__dirname, "firestore.rules"), "utf8");
   const body = rules.match(new RegExp(`function ${functionName}\\([^)]*\\) \\{[^}]*\\}`));
   if (!body) throw new Error(`firestore.rules has no ${functionName}: update this test`);
-  return [...body[0].matchAll(/'([A-Z0-9]+)'/g)].map((match) => match[1]);
+  return [...body[0].matchAll(/'([A-Za-z0-9]+)'/g)].map((match) => match[1]);
+}
+
+/**
+ * The interest codes the app offers (#230), in order, read from INTERESTS in ProfileOptions.kt, so
+ * these tests fail if the app and the rules' lists stop matching.
+ */
+function appInterests() {
+  const source = readFileSync(
+    path.join(__dirname, "../../app/src/main/java/com/polysocial/model/user/ProfileOptions.kt"),
+    "utf8",
+  );
+  const list = source.match(/val INTERESTS: List<String> =\s*listOf\(([^)]*)\)/);
+  if (!list) throw new Error("ProfileOptions.kt has no INTERESTS list: update this test");
+  const interests = [...list[1].matchAll(/"([a-z]+)"/g)].map((match) => match[1]);
+  if (interests.length === 0) throw new Error("Couldn't read INTERESTS in ProfileOptions.kt");
+  return interests;
 }
 
 test("the rules accept exactly the section and year codes the app offers", () => {
@@ -2129,7 +2145,7 @@ for (const [name, changes] of [
   ["no section", { section: undefined }],
   ["no year", { year: undefined }],
   ["no interests", { interests: undefined }],
-  ["interests before #230 allows them", { interests: ["MUSIC"] }],
+  ["an interest the private profile doesn't have", { interests: ["music"] }],
   ["interests that aren't a list", { interests: "MUSIC" }],
 ]) {
   test(`a public profile with ${name} is denied`, async () => {
@@ -2321,4 +2337,101 @@ test("nobody can read, write or delete a deletion marker from the app", async ()
     await assertFails(setDoc(doc(db, "deletedAccounts/u1"), {}));
   }
   await assertFails(getDocs(collection(studentDb("u1"), "deletedAccounts")));
+});
+
+// -- interests (#230) --
+// A student picks none to all of a fixed list of interests, stored as codes in users/{uid} and
+// copied, in the same order, to publicProfiles/{uid}. A profile saved before #230 has none.
+
+test("the rules accept exactly the interest codes the app offers", () => {
+  const sorted = (codes) => [...codes].sort().join(",");
+  if (sorted(rulesCodes("interestCodes")) !== sorted(appInterests())) {
+    throw new Error("interestCodes in firestore.rules differs from INTERESTS in ProfileOptions.kt");
+  }
+});
+
+test("a student can save every interest the app offers and make them public", async () => {
+  const interests = appInterests();
+  await assertSucceeds(createBoth(studentDb("u5"), "u5", { interests }, { interests }));
+});
+
+test("a student can save some interests and make them public", async () => {
+  const interests = ["music", "tech"];
+  await assertSucceeds(createBoth(studentDb("u5"), "u5", { interests }, { interests }));
+});
+
+test("a student can save no interests", async () => {
+  await assertSucceeds(createBoth(studentDb("u5"), "u5", { interests: [] }, { interests: [] }));
+});
+
+for (const [name, interests] of [
+  ["an unknown interest", ["chess"]],
+  ["an interest in capitals", ["MUSIC"]],
+  ["a known and an unknown interest", ["music", "chess"]],
+  ["the same interest twice", ["music", "music"]],
+  ["interests that aren't a list", "music"],
+  ["an interest that isn't a string", [7]],
+  ["an overlong interest", ["music".repeat(5000)]],
+]) {
+  test(`a private profile with ${name} is denied`, async () => {
+    await assertFails(setDoc(doc(studentDb("u5"), "users/u5"), privateProfile("u5", { interests })));
+  });
+
+  test(`a private and public profile with ${name} are denied together`, async () => {
+    await assertFails(createBoth(studentDb("u5"), "u5", { interests }, { interests }));
+  });
+
+  test(`updating a private profile to ${name} is denied`, async () => {
+    // Saved before #229, so no public copy is involved.
+    await seedUser("u5", privateProfile("u5"));
+    await assertFails(updateDoc(doc(studentDb("u5"), "users/u5"), { interests }));
+  });
+}
+
+for (const [name, privateInterests, publicInterests] of [
+  ["fewer interests", ["music", "tech"], ["music"]],
+  ["more interests", ["music"], ["music", "tech"]],
+  ["no interests", ["music"], []],
+  ["the interests in another order", ["music", "tech"], ["tech", "music"]],
+]) {
+  test(`a public profile with ${name} than the private one is denied`, async () => {
+    await assertFails(
+      createBoth(studentDb("u5"), "u5", { interests: privateInterests }, { interests: publicInterests }),
+    );
+  });
+}
+
+test("a private profile saved before #230 has no interests, so its copy has none", async () => {
+  await seedUser("u5", privateProfile("u5"));
+  await assertSucceeds(setDoc(doc(studentDb("u5"), "publicProfiles/u5"), publicProfile()));
+  await assertFails(
+    setDoc(doc(studentDb("u5"), "publicProfiles/u5"), publicProfile({ interests: ["music"] })),
+  );
+});
+
+test("changing only the private interests is denied once a public profile exists", async () => {
+  await seedStudentWithPublicProfile("u5");
+  await assertFails(updateDoc(doc(studentDb("u5"), "users/u5"), { interests: ["music"] }));
+});
+
+test("a student edits their interests in both profiles together", async () => {
+  await seedStudentWithPublicProfile("u5");
+  const db = studentDb("u5");
+  const batch = writeBatch(db);
+  batch.update(doc(db, "users/u5"), { interests: ["music", "tech"] });
+  batch.update(doc(db, "publicProfiles/u5"), { interests: ["music", "tech"] });
+  await assertSucceeds(batch.commit());
+});
+
+test("changing the private interests is allowed without a public profile", async () => {
+  await seedUser("u5", privateProfile("u5"));
+  await assertSucceeds(updateDoc(doc(studentDb("u5"), "users/u5"), { interests: ["music"] }));
+});
+
+test("an unknown interest can't be made public, even copied from a private profile that has it", async () => {
+  // Only an admin could store it, with the rules off; the public copy still refuses it.
+  await seedUser("u5", privateProfile("u5", { interests: ["chess"] }));
+  await assertFails(
+    setDoc(doc(studentDb("u5"), "publicProfiles/u5"), publicProfile({ interests: ["chess"] })),
+  );
 });
