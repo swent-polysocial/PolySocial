@@ -1,11 +1,10 @@
 // Contributors: Claude (the profile step's interests screen from the Figma "Interests · …" frames,
-// #230; its save errors and Log out moved here from the details screen, where #142 added them).
+// #230; its save errors and Log out moved here from the details screen, where #142 added them;
+// the shared chip surface and labels, the count announced, after review, #230).
 package com.polysocial.ui.profile
 
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,41 +23,27 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.offset
 import com.polysocial.R
 import com.polysocial.model.user.INTERESTS
+import com.polysocial.ui.common.INTEREST_LABELS
+import com.polysocial.ui.common.choiceChipSurface
 import com.polysocial.ui.theme.AccentText
 import com.polysocial.ui.theme.Bg
-import com.polysocial.ui.theme.Border
 import com.polysocial.ui.theme.Ink
 import com.polysocial.ui.theme.Ink2
 import com.polysocial.ui.theme.exact
-
-/** Each interest code's chip label: every code in [INTERESTS] has one. */
-internal val INTEREST_LABELS: Map<String, Int> =
-    mapOf(
-        "sports" to R.string.interest_sports,
-        "outdoors" to R.string.interest_outdoors,
-        "music" to R.string.interest_music,
-        "parties" to R.string.interest_parties,
-        "cinema" to R.string.interest_cinema,
-        "games" to R.string.interest_games,
-        "photography" to R.string.interest_photography,
-        "cooking" to R.string.interest_cooking,
-        "tech" to R.string.interest_tech,
-        "startups" to R.string.interest_startups,
-        "arts" to R.string.interest_arts,
-        "volunteering" to R.string.interest_volunteering,
-    )
 
 /** Figma's 45 % fade of the choices while the profile is being saved. */
 private const val SAVING_ALPHA = 0.45f
@@ -93,7 +78,11 @@ fun ProfileInterestsContent(
             ),
             style = MaterialTheme.typography.labelMedium.exact(),
             color = Ink2,
-            modifier = Modifier.heightIn(min = 17.dp).testTag(ProfileSetupTestTags.INTERESTS_COUNT),
+            modifier =
+                Modifier.heightIn(min = 17.dp)
+                    // Read out when a chip changes it.
+                    .semantics { liveRegion = LiveRegionMode.Polite }
+                    .testTag(ProfileSetupTestTags.INTERESTS_COUNT),
         )
         // Each chip's 48 dp touch target starts 4 dp above the drawn chip, which Figma places 9.5
         // dp under the count; rows of touch targets then put the chips 48 dp apart, as in Figma.
@@ -141,9 +130,10 @@ fun ProfileInterestsContent(
 }
 
 /**
- * One interest: dark with a check mark when [selected], white with a border otherwise. Figma draws
- * it 40 dp high; its touch target is 48 dp, 4 dp above and below, which is also Figma's gap between
- * two rows. Screen readers announce it as a checkbox.
+ * One interest: dark with a check mark when [selected], white with a border otherwise (the shared
+ * [choiceChipSurface]). Figma draws it 40 dp high; its touch target is 48 dp, 4 dp above and below,
+ * which is also Figma's gap between two rows. It is `toggleable`, so screen readers announce a
+ * checkbox and whether it is checked.
  */
 @Composable
 private fun InterestChip(code: String, selected: Boolean, enabled: Boolean, onToggle: () -> Unit) {
@@ -161,9 +151,7 @@ private fun InterestChip(code: String, selected: Boolean, enabled: Boolean, onTo
   ) {
     Row(
         Modifier.height(40.dp)
-            .clip(shape)
-            .background(if (selected) Ink else Bg)
-            .then(if (selected) Modifier else Modifier.border(1.dp, Border, shape))
+            .choiceChipSurface(selected, shape)
             // Figma: the check mark 14 dp from the left and the label 6 dp after it; unselected,
             // the label 15 dp from either side.
             .padding(start = if (selected) 14.dp else 15.dp, end = if (selected) 14.dp else 15.dp),
