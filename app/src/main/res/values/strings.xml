@@ -8,7 +8,7 @@
 <!-- Contributors: OpenAI Codex (current-build privacy summary and full notice, #103). -->
 <!-- Contributors: OpenAI Codex (Google authentication errors; removed collision copy for #107). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) updated the privacy notice for in-app account deletion, #207; Mohamed Khellaf (reviewed and revised). -->
-<!-- Contributors: Claude (privacy notice text for public profiles, and the deletion marker after review, #229). -->
+<!-- Contributors: Claude (privacy notice text for public profiles, and the deletion marker after review, #229; interests, #230). -->
 <resources>
     <string name="app_start_loading">Loading your profile…</string>
     <string name="app_start_error_title">Couldn\'t load your profile</string>
@@ -205,8 +205,8 @@
     <string name="privacy_title">Privacy &amp; data</string>
     <string name="privacy_summary">What we keep and who sees it</string>
     <string name="privacy_back">Back</string>
-    <string name="privacy_profile_title">Name, section and year</string>
-    <string name="privacy_profile_body">Other students see your name, section and year. Your email stays private.</string>
+    <string name="privacy_profile_title">Name, section, year and interests</string>
+    <string name="privacy_profile_body">Other students see your name, section, year and the interests you choose. Your email stays private.</string>
     <string name="privacy_location_title">Location</string>
     <string name="privacy_location_body">Read once for distances on Map or Events. Kept in memory; map requests go to Mapbox.</string>
     <string name="privacy_reminders_title">Reminders</string>
@@ -222,7 +222,7 @@
     <string name="privacy_unavailable">Not available yet.</string>
     <string name="privacy_dismiss">Dismiss</string>
     <string name="privacy_notice_account_title">Your account and profile</string>
-    <string name="privacy_notice_account_body">Firebase Authentication processes your sign-in details and email (EPFL for students; your own address for associations). Association setup stores its name, type, about and optional website, with automatic initials. Your private Firebase profile stores your account identifier, email, name, section, year, account type and creation date. Other students cannot read that profile or your email in the app. A separate public profile holds only your name, section and year, copied from your private profile when you save it. Any verified EPFL student can read it by your account identifier, so that students can be matched and see who is in their group; nobody can list all public profiles, associations cannot read it, and it is deleted with your account. The PolySocial student project team administers the Firebase project. Interests and friends are not collected by this build.</string>
+    <string name="privacy_notice_account_body">Firebase Authentication processes your sign-in details and email (EPFL for students; your own address for associations). Association setup stores its name, type, about and optional website, with automatic initials. Your private Firebase profile stores your account identifier, email, name, section, year, the interests you choose (optional), account type and creation date. Other students cannot read that profile or your email in the app. A separate public profile holds only your name, section, year and interests, copied from your private profile when you save it. Any verified EPFL student can read it by your account identifier, so that students can be matched and see who is in their group; nobody can list all public profiles, associations cannot read it, and it is deleted with your account. The PolySocial student project team administers the Firebase project. Friends are not collected by this build.</string>
     <string name="privacy_notice_events_title">Events and who can see them</string>
     <string name="privacy_notice_events_body">Event data includes the title, description, category, venue coordinates, date and time, optional capacity and organizer identifiers. Verified EPFL students can read public events and private events that list them on the access list. A manually verified association can also read its own association events. An event venue is a place chosen for the event, not a history of your movements.</string>
     <string name="privacy_notice_location_title">Approximate location for distances</string>
