@@ -1,7 +1,7 @@
 // Contributors: Claude Opus 5.5 (wrote these tests; cancelled tasks and wrong-typed fields);
 // Claude (isAssociationVerified tests, #45; unexpected failures and cancelled writes, #182; the
 // public profile written with the private one, written test-first, #229; interests, test-first,
-// #230).
+// #230); Claude (testing agent: edited interests stored in the fixed order, #230).
 package com.polysocial.model.user
 
 import com.google.android.gms.tasks.TaskCompletionSource
@@ -413,6 +413,24 @@ class FirestoreUserProfileRepositoryTest {
 
     assertEquals(listOf("cinema", "games"), private.captured["interests"])
     assertEquals(publicFieldsOf(edited), public.captured)
+  }
+
+  @Test
+  fun updateProfile_writesTheInterests_inTheFixedListsOrder_withoutUnknownOnes() = runTest {
+    transactionsSee(snapshot(storedFields))
+    val private = slot<Map<String, Any>>()
+    val public = slot<Any>()
+    every { transaction.update(ref, capture(private)) } returns transaction
+    every { transaction.set(publicRef, capture(public)) } returns transaction
+
+    repository.updateProfile(
+        profile.copy(interests = linkedSetOf("volunteering", "chess", "sports"))
+    )
+
+    // The rules compare the two lists with == and refuse unknown codes.
+    val ordered = listOf("sports", "volunteering")
+    assertEquals(ordered, private.captured["interests"])
+    assertEquals(ordered, (public.captured as Map<*, *>)["interests"])
   }
 
   @Test
