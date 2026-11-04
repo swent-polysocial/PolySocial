@@ -1,4 +1,5 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (drafted the group repository contract, #232).
+// Contributors: Claude (Opus 5.5, Anthropic) (drafted the group repository contract, #232, and
+// revised it after review).
 package com.polysocial.model.group
 
 import kotlinx.coroutines.flow.Flow
@@ -82,9 +83,9 @@ sealed interface MyGroupResult {
  * `events/{eventId}/groups/{groupId}`, and keeps each student in at most one group per event with
  * the marker `events/{eventId}/groupMembers/{uid}`, which holds the student's `groupId`.
  *
- * A student who can read the event may start, join and leave its groups, and changes only their own
- * membership; associations never reach groups. The Security Rules enforce it and check the
- * capacity.
+ * A student who can read the event may start and join its groups, and a member may leave theirs
+ * even once they can no longer read the event. Each changes only their own membership; associations
+ * never reach groups. The Security Rules enforce it and check the capacity.
  *
  * Every write checks, in this order and before anything is written: IDs that can't be document IDs
  * ([GroupWriteResult.NotFound]), the signed-in user ([GroupWriteResult.UnexpectedError] without
@@ -133,9 +134,10 @@ interface GroupRepository {
 
   /**
    * Removes the signed-in student from the group [groupId] of the event [eventId]; the last member
-   * to leave deletes the group. Leaving a group the student isn't in changes nothing and succeeds;
-   * a group that doesn't exist (anymore), or of an event the student can no longer read, is
-   * [GroupWriteResult.NotFound].
+   * to leave deletes the group. A member can leave even once they can no longer read the event, for
+   * example after being removed from a private event. Leaving a group the student isn't in changes
+   * nothing and succeeds; a group that doesn't exist (anymore), or one they aren't in of an event
+   * they can't read, is [GroupWriteResult.NotFound].
    */
   suspend fun leaveGroup(eventId: String, groupId: String): GroupWriteResult
 }

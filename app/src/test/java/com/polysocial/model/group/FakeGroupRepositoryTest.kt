@@ -147,12 +147,22 @@ class FakeGroupRepositoryTest {
   }
 
   @Test
-  fun leaveGroup_ofAnEventNoLongerReadable_isNotFound() = runTest {
+  fun leaveGroup_ofAnEventNoLongerReadable_stillLetsAMemberLeave() = runTest {
+    // Like a student removed from a private event: the rules still let them read their own group.
     val group = repository.seedGroup(EVENT, listOf("student", "other"))
     repository.readableEventIds -= EVENT
 
+    assertEquals(GroupWriteResult.Success(group.id), repository.leaveGroup(EVENT, group.id))
+    assertEquals(listOf("other"), membersOf(group.id))
+  }
+
+  @Test
+  fun leaveGroup_aGroupTheStudentIsNotIn_ofAnUnreadableEvent_isNotFound() = runTest {
+    val group = repository.seedGroup(EVENT, listOf("other"))
+    repository.readableEventIds -= EVENT
+
     assertEquals(GroupWriteResult.NotFound, repository.leaveGroup(EVENT, group.id))
-    assertEquals(listOf("student", "other"), membersOf(group.id))
+    assertEquals(listOf("other"), membersOf(group.id))
   }
 
   @Test

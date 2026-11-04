@@ -336,6 +336,30 @@ class FirestoreGroupRepositoryEmulatorTest {
   }
 
   @Test
+  fun leaveGroup_ofAPrivateEventTheMemberWasRemovedFrom_removesThemAndTheirMarker() = runBlocking {
+    val outsider = emulator.signInVerifiedUser(OTHER_STUDENT_EMAIL, auth = RivalApp.auth).uid
+    val uid = signIn(STUDENT_EMAIL)
+    // Not in allowedUids, as once the organizers removed them, but still in the group.
+    seed("private", event().copy(isPrivate = true))
+    seedGroup("private", "group", listOf(FIRST_UID, uid))
+
+    assertEquals(
+        GroupWriteResult.NotFound,
+        timed { rivalRepository.leaveGroup("private", "group") },
+    )
+    assertEquals(
+        GroupWriteResult.Success("group"),
+        timed { repository.leaveGroup("private", "group") },
+    )
+
+    assertEquals(null, myGroup("private"))
+    assertTrue(emulator.existsAsAdmin(groupsOf("private"), "group"))
+    assertFalse(hasMarker("private", uid))
+    assertTrue(hasMarker("private", FIRST_UID))
+    assertFalse(hasMarker("private", outsider))
+  }
+
+  @Test
   fun observeMyGroup_withoutAGroupOfAnEventTheStudentCannotRead_isNoGroup() = runBlocking {
     signIn(STUDENT_EMAIL)
     seed("private", event().copy(isPrivate = true))

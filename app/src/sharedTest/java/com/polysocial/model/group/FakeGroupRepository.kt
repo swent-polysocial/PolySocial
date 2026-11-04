@@ -17,10 +17,11 @@ import kotlinx.coroutines.flow.map
  *
  * Only the events in [readableEventIds] can be read: for any other event, like a missing or private
  * one, [observeGroups] ends with [GroupsResult.UnexpectedError] and the writes return
- * [GroupWriteResult.NotFound]. [observeMyGroup] doesn't need the event: it shows the group whose
- * members include the student, as the rules let a student list their own group even once they can
- * no longer read the event. That is also how the fake finds a student's group, so it needs no
- * separate marker. New groups get the IDs `group-1`, `group-2`… and deterministic creation times.
+ * [GroupWriteResult.NotFound]. A member's own group doesn't need the event: [observeMyGroup] shows
+ * the group whose members include the student, and [leaveGroup] lets them leave it, as the rules
+ * let a member list and read their own group even once they can no longer read the event. That is
+ * also how the fake finds a student's group, so it needs no separate marker. New groups get the IDs
+ * `group-1`, `group-2`… and deterministic creation times.
  *
  * The observe flows read [currentUid], [readFailure] and, for [observeGroups], [readableEventIds]
  * when their collection starts, as the real listeners read the user and are checked by the rules.
@@ -29,7 +30,7 @@ import kotlinx.coroutines.flow.map
  * @property currentUid the signed-in student, or null when nobody is signed in.
  */
 class FakeGroupRepository(var currentUid: String? = "test-student") : GroupRepository {
-  /** The events a student may read, and so observe the groups of and start, join or leave one. */
+  /** The events a student may read, and so observe the groups of and start or join one. */
   val readableEventIds = mutableSetOf<String>()
 
   /** False simulates an offline device: every write returns [GroupWriteResult.NetworkError]. */
@@ -142,7 +143,8 @@ class FakeGroupRepository(var currentUid: String? = "test-student") : GroupRepos
       write(eventId, groupId) { uid ->
         val group = groupsOf(eventId).firstOrNull { it.id == groupId }
         when {
-          eventId !in readableEventIds || group == null -> GroupWriteResult.NotFound
+          group == null || (eventId !in readableEventIds && uid !in group.memberUids) ->
+              GroupWriteResult.NotFound
           uid !in group.memberUids -> GroupWriteResult.Success(groupId)
           group.memberUids == listOf(uid) -> {
             store(eventId, groupsOf(eventId) - group)

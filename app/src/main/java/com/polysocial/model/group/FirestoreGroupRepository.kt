@@ -160,8 +160,9 @@ class FirestoreGroupRepository(
   /**
    * Reads the group and the student's marker, then removes the student from `memberUids`, or
    * deletes the group when they were its last member, and deletes their marker. The marker is
-   * deleted only if it exists: the rules deny deleting a missing one. Like any group read, reading
-   * it is denied once the event is unreadable, which is [GroupWriteResult.NotFound].
+   * deleted only if it exists: the rules deny deleting a missing one. The rules let a member read
+   * their group even once they can no longer read the event, so they can still leave it; anyone
+   * else's read is then denied, which is [GroupWriteResult.NotFound].
    */
   override suspend fun leaveGroup(eventId: String, groupId: String): GroupWriteResult =
       write(eventId, groupId) { transaction, uid, firstReadDone ->
