@@ -19,6 +19,8 @@ import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
@@ -92,15 +94,26 @@ class ConfirmationSheetTest {
   }
 
   @Test
-  fun locked_backAndTheScrimDontDismissIt_andItsButtonIsDisabled() {
+  fun unlocked_aSwipeDownDismissesIt() {
+    show(locked = false)
+
+    rule.onNodeWithTag(SHEET).performTouchInput { swipeDown() }
+    rule.waitForIdle()
+
+    assertEquals(1, dismissals)
+  }
+
+  @Test
+  fun locked_backTheScrimAndASwipeDontDismissIt_andItsButtonIsDisabled() {
     show(locked = true)
 
     Espresso.pressBackUnconditionally()
     scrim().performClick()
+    rule.onNodeWithTag(SHEET).performTouchInput { swipeDown() }
     rule.waitForIdle()
 
-    rule.onNodeWithTag(SHEET).assertIsDisplayed()
-    rule.onNodeWithTag(KEEP).assertIsNotEnabled()
+    // The content, not the sheet's tag: under Robolectric a sheet that slid away keeps its bounds.
+    rule.onNodeWithTag(KEEP).assertIsDisplayed().assertIsNotEnabled()
     assertEquals(0, dismissals)
   }
 
