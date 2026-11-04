@@ -122,10 +122,8 @@ fun StudentEventsTab(
       )
     }
     Box(Modifier.weight(1f)) {
-      when (selected) {
-        StudentEventsSegment.UPCOMING -> upcoming()
-        StudentEventsSegment.MY_EVENTS -> myEvents { selected = StudentEventsSegment.UPCOMING }
-      }
+      if (selected == StudentEventsSegment.UPCOMING) upcoming()
+      else myEvents { selected = StudentEventsSegment.UPCOMING }
     }
   }
 }
