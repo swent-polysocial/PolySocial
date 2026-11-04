@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (Find a group texts from #227's Figma section 11, #233). -->
+<resources>
+    <string name="find_group_title">Find a group</string>
+    <!-- The event under the header, for example "Fri 3 Oct · 20:00 – 01:00 · Satellite". -->
+    <string name="find_group_event_when_where">%1$s · %2$s · %3$s</string>
+    <!-- The day and the times, for an event without a place name. -->
+    <string name="find_group_event_when">%1$s · %2$s</string>
+    <string name="find_group_searching">Finding groups for you…</string>
+    <string name="find_group_list_heading">Open groups · best match first</string>
+    <!-- How full a group is, for example "2 of 4". -->
+    <string name="find_group_places_taken">%1$d of %2$d</string>
+    <plurals name="find_group_places_left">
+        <item quantity="one">%d place left</item>
+        <item quantity="other">%d places left</item>
+    </plurals>
+    <plurals name="find_group_shared_interests">
+        <item quantity="one">%d shared interest</item>
+        <item quantity="other">%d shared interests</item>
+    </plurals>
+    <string name="find_group_same_section">Same section · %s</string>
+    <string name="find_group_same_year">Same year · %s</string>
+    <string name="find_group_join">Join</string>
+    <string name="find_group_joining">Joining…</string>
+    <string name="find_group_start">Start a new group</string>
+    <string name="find_group_starting">Starting…</string>
+    <string name="find_group_privacy">Groups see your name, section, year and interests. Nothing else.</string>
+    <string name="find_group_empty_title">No open group yet</string>
+    <string name="find_group_empty_body">Start one. Students who tap Find a group for this event will see it and can join.</string>
+    <string name="find_group_error_title">Couldn\'t load the groups</string>
+    <string name="find_group_error_body">Something went wrong. Try again in a moment.</string>
+    <string name="find_group_offline">You\'re offline. Joining or starting a group needs a connection.</string>
+    <string name="find_group_full">This group just filled up. Pick another one or start a new group.</string>
+    <string name="find_group_already_in_group">You\'re already in a group for this event.</string>
+    <string name="find_group_gone">This group no longer exists. Pick another one.</string>
+    <string name="find_group_event_gone">This event isn\'t available anymore.</string>
+    <string name="find_group_unexpected">Something went wrong, so nothing changed. Try again.</string>
+    <!-- Shown on the event detail after leaving Find a group. -->
+    <string name="find_group_joined">You joined the group.</string>
+    <string name="find_group_started">Group started. Others can now join it.</string>
+</resources>
