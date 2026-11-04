@@ -1,5 +1,5 @@
 // Contributors: OpenAI Codex (preserve association entry and offline retry, #125).
-// Contributors: OpenAI Codex (adapted pending flow to startup recovery).
+// Contributors: OpenAI Codex (adapted pending flow to startup recovery and setup handoff).
 // Contributors: Claude (wrote these tests, #127; logging in again in the same activity, after a
 // review, #127); Claude (association log in, non-EPFL accounts that are not associations;
 // Log out from the start error, with the cache cleared first, #208).
@@ -353,8 +353,8 @@ class PendingAssociationFlowTest {
 
     logInFromWelcome("club@example.org")
 
-    // Association setup opens in the pending app until #259 wires its own screen.
-    compose.onNodeWithTag(AssociationTags.SHELL).assertIsDisplayed()
+    compose.onNodeWithTag("setup_back").assertIsDisplayed()
+    compose.onNodeWithTag(AssociationTags.SHELL).assertDoesNotExist()
     compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertDoesNotExist()
     compose.onNodeWithTag(STUDENT_APP).assertDoesNotExist()
   }

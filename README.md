@@ -198,6 +198,7 @@ firebase deploy --only functions --project <project-id>
 Keep `--only functions`: a plain `firebase deploy` would also deploy the Security Rules and indexes. The app calls the function in `europe-west6`; if the region changes, change it in both `firebase/functions/deleteAccountHandler.js` (`REGION`) and the app.
 
 **Not in CI yet:** CI runs neither the function's unit tests nor the Functions emulator, and doesn't deploy. Adding them needs a workflow change, which needs team approval, so run both commands above locally and paste their output in any PR that changes `firebase/functions`.
+
 ## Verifying an association
 
 Only PolySocial admins who are Firebase/Google Cloud project owners perform this
