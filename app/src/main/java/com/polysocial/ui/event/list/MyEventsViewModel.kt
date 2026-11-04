@@ -96,10 +96,10 @@ data class MyEventsUiState(
  * an event that has ended moves to Past. Like the Events tab, `isOffline` needs both the cache and
  * [network] saying offline, since Firestore's first snapshot comes from the cache even online.
  *
- * It never loads forever: Firestore can stay silent about a document it never read (see
- * CONTEXT.md, Traps), so after [LOAD_TIMEOUT] the events still unanswered count as missing, and if
- * nothing at all could be shown the list becomes [MyEventsList.OfflineNothingSaved] or
- * [MyEventsList.Error], both with Retry. A late answer still shows.
+ * It never loads forever: Firestore can stay silent about a document it never read (see CONTEXT.md,
+ * Traps), so after [LOAD_TIMEOUT] the events still unanswered count as missing, and if nothing at
+ * all could be shown the list becomes [MyEventsList.OfflineNothingSaved] or [MyEventsList.Error],
+ * both with Retry. A late answer still shows.
  *
  * An unavailable event shows no detail; [remove] deletes the student's own registration for it,
  * which works even once the event is deleted.
