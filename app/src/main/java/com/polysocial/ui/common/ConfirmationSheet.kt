@@ -82,7 +82,7 @@ fun ConfirmationSheet(
     Unit
   }
   ModalBottomSheet(
-      // Material calls it for Back and the scrim even when confirmValueChange keeps the sheet open.
+      // Material calls it for Back even when confirmValueChange keeps the sheet open.
       onDismissRequest = { if (!isLocked) onDismiss() },
       sheetState = sheetState,
       shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
