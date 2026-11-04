@@ -244,6 +244,16 @@ class FakeGroupRepositoryTest {
   }
 
   @Test
+  fun observeMyGroup_ofAnEventNoLongerReadable_stillShowsTheGroup() = runTest {
+    // Like a student removed from a private event: the rules still let them list their own group.
+    val group = repository.seedGroup(EVENT, listOf("student", "other"))
+    repository.readableEventIds -= EVENT
+
+    assertEquals(MyGroupResult.Success(group, fromCache = false), myGroup())
+    assertEquals(GroupsResult.UnexpectedError, groups())
+  }
+
+  @Test
   fun observeMyGroup_readsTheStudentWhenCollectionStarts() = runTest {
     val group = repository.seedGroup(EVENT, listOf("later"))
     val mine = repository.observeMyGroup(EVENT)
