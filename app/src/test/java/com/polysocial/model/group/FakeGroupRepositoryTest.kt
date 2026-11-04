@@ -222,6 +222,17 @@ class FakeGroupRepositoryTest {
   }
 
   @Test
+  fun observeGroups_withNobodySignedIn_isAnUnexpectedError() = runTest {
+    repository.seedGroup(EVENT, listOf("other"))
+    repository.currentUid = null
+
+    assertEquals(
+        listOf(GroupsResult.Loading, GroupsResult.UnexpectedError),
+        repository.observeGroups(EVENT).toList(),
+    )
+  }
+
+  @Test
   fun observeGroups_checksTheEventWhenCollectionStarts() = runTest {
     val group = repository.seedGroup("private", listOf("other"))
     val privateGroups = repository.observeGroups("private")
