@@ -9,7 +9,7 @@
 
 <!-- Contributors: OpenAI Codex (CI APK download, installation and Mapbox setup instructions, #137). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the Cloud Functions section, #206; Mohamed Khellaf (reviewed and revised). -->
-<!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the Deploying to Firebase section, #228; Franciszek Najda (reviewed). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the Deploying to Firebase section, #228, and later named the new deploy owner; Franciszek Najda (reviewed #228). -->
 <!-- Contributors: Claude (public profiles deleted with the account, #229; the deletion marker and deploy order, after review, #229). -->
 
 # PolySocial
@@ -103,7 +103,7 @@ Before every commit, check that `git status` never lists these files. If it does
 
 ### Deploying to Firebase
 
-Nothing deploys the Security Rules, the Firestore indexes or the Cloud Functions automatically: CI only tests them. When a PR that changes `firebase/firestore/firestore.rules`, `firebase/firestore/firestore.indexes.json` or `firebase/functions` is merged into `main`, **its author asks the deploy owner, Franciszek (@FranciszekNajda), who has access to the Firebase project**, and notes in the PR that it was deployed. The deploy owner deploys from an up-to-date `main` (`git switch main && git pull` first), never from a feature branch, which could publish rules that aren't merged yet; the Firebase console (Firestore → Rules) then shows the new version with its publish time. Until then the app on `main` and production disagree: #220's rules and #214's index were missing from production until 2026-10-29.
+Nothing deploys the Security Rules, the Firestore indexes or the Cloud Functions automatically: CI only tests them. When a PR that changes `firebase/firestore/firestore.rules`, `firebase/firestore/firestore.indexes.json` or `firebase/functions` is merged into `main`, **its author asks the deploy owner, Mohamed (@mohamedkhellaf)**, and notes in the PR that it was deployed. The deploy owner deploys from an up-to-date `main` (`git switch main && git pull` first), never from a feature branch, which could publish rules that aren't merged yet; the Firebase console (Firestore → Rules) then shows the new version with its publish time. Until then the app on `main` and production disagree: #220's rules and #214's index were missing from production until 2026-10-29.
 
 Deploy with the [Firebase CLI](https://firebase.google.com/docs/cli) (`firebase login` first), and always with `--only`, since a plain `firebase deploy` deploys everything at once:
 
