@@ -1,5 +1,5 @@
 // Contributors: OpenAI Codex (default association onboarding and session cleanup integration,
-// #125, and the device fixture Firestore binding).
+// #125, and the device fixture Firestore binding); Claude Opus 5.5 (longer waits for CI, #309).
 // Contributors: Claude (Opus 5.5, Anthropic) bound the deletion and network fakes and expected the
 // prefilled address after Change address, #225; Mohamed Khellaf (reviewed and revised).
 package com.polysocial.auth
@@ -159,21 +159,21 @@ class AssociationOnboardingDeviceTest {
         .performTextInput("password1")
     capture("association-signup", closeKeyboard = true)
     compose.onNodeWithTag(SignUpTags.Submit).performScrollTo().performClick()
-    compose.waitUntil(5000) {
+    compose.waitUntil(UI_TIMEOUT_MS) {
       compose.onAllNodesWithTag(VerifyEmailTags.Screen).fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithTag(VerifyEmailTags.Screen).assertIsDisplayed()
     capture("association-verify-email")
     assertTrue(privateProfiles.createdProfiles.isEmpty())
     compose.runOnIdle { fakeAuth.verificationResult = VerificationResult.Verified }
-    compose.waitUntil(5000) {
+    compose.waitUntil(UI_TIMEOUT_MS) {
       compose
           .onAllNodes(hasTestTag(VerifyEmailTags.Continue) and isEnabled())
           .fetchSemanticsNodes()
           .isNotEmpty()
     }
     // On a short display the delivery Snackbar can cover a scrolled Continue button.
-    compose.waitUntil(10000) {
+    compose.waitUntil(UI_TIMEOUT_MS) {
       compose
           .onAllNodes(hasAnyAncestor(hasTestTag(VerifyEmailTags.Snackbar)))
           .fetchSemanticsNodes()
@@ -185,12 +185,12 @@ class AssociationOnboardingDeviceTest {
         .performScrollTo()
         .assertIsEnabled()
         .performClick()
-    compose.waitUntil(5000) { fakeAuth.checkCalls > checksBefore }
+    compose.waitUntil(UI_TIMEOUT_MS) { fakeAuth.checkCalls > checksBefore }
     assertTrue(
         "Continue must verify the fixture account",
         requireNotNull(fakeAuth.currentUser()).isEmailVerified,
     )
-    compose.waitUntil(5000) {
+    compose.waitUntil(UI_TIMEOUT_MS) {
       compose.onAllNodesWithTag(AssociationSetupTags.Screen).fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithTag(AssociationSetupTags.Screen).assertIsDisplayed()
@@ -212,7 +212,7 @@ class AssociationOnboardingDeviceTest {
         .performScrollTo()
         .performTextInput("https://example.org")
     compose.onNodeWithTag(AssociationSetupTags.Submit).performScrollTo().performClick()
-    compose.waitUntil(5000) {
+    compose.waitUntil(UI_TIMEOUT_MS) {
       compose.onAllNodesWithTag(AssociationTags.UNDER_REVIEW).fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithTag(AssociationTags.UNDER_REVIEW).assertIsDisplayed()
@@ -226,7 +226,7 @@ class AssociationOnboardingDeviceTest {
     assertEquals("https://example.org", identities.createdAssociations.single().website)
     compose.onNodeWithTag(AssociationTags.LOG_OUT).performClick()
     compose.onNodeWithTag(ProfileTags.Confirm).performClick()
-    compose.waitUntil(5000) {
+    compose.waitUntil(UI_TIMEOUT_MS) {
       compose.onAllNodesWithTag(WelcomeTags.Screen).fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
@@ -247,13 +247,13 @@ class AssociationOnboardingDeviceTest {
         .performScrollTo()
         .performTextInput("password1")
     compose.onNodeWithTag(SignUpTags.Submit).performScrollTo().performClick()
-    compose.waitUntil(5000) {
+    compose.waitUntil(UI_TIMEOUT_MS) {
       compose
           .onAllNodes(hasTestTag(VerifyEmailTags.ChangeAddress) and isEnabled())
           .fetchSemanticsNodes()
           .isNotEmpty()
     }
-    compose.waitUntil(10000) {
+    compose.waitUntil(UI_TIMEOUT_MS) {
       compose
           .onAllNodes(hasAnyAncestor(hasTestTag(VerifyEmailTags.Snackbar)))
           .fetchSemanticsNodes()
@@ -264,7 +264,7 @@ class AssociationOnboardingDeviceTest {
         .performScrollTo()
         .assertIsEnabled()
         .performClick()
-    compose.waitUntil(5000) {
+    compose.waitUntil(UI_TIMEOUT_MS) {
       compose.onAllNodesWithTag(SignUpTags.Screen).fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithText("Your association account").assertIsDisplayed()
@@ -309,5 +309,13 @@ class AssociationOnboardingDeviceTest {
               .compress(Bitmap.CompressFormat.PNG, 100, stream)
       )
     }
+  }
+
+  private companion object {
+    /**
+     * How long a step may take to show its result. CI's emulator renders in software and took more
+     * than 5 s after sign-up (#309); a passing step doesn't wait this long.
+     */
+    const val UI_TIMEOUT_MS = 20_000L
   }
 }
