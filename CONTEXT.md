@@ -159,7 +159,7 @@ Closed issues keep their original text, so where one disagrees with this section
 
 ## Traps
 
-- **A locked `ModalBottomSheet` still calls `onDismissRequest`.** `confirmValueChange` only keeps the sheet on screen: Material still calls `onDismissRequest` for Back and the scrim. Use `ConfirmationSheet` (`ui/common`), which ignores them while `locked`, instead of relying on each screen's callback to ignore them ([#296](https://github.com/swent-polysocial/PolySocial/issues/296)).
+- **A locked `ModalBottomSheet` still calls `onDismissRequest`.** `confirmValueChange` keeps the sheet on screen, and the scrim and a swipe check it first, but Material still calls `onDismissRequest` for Back. Use `ConfirmationSheet` (`ui/common`), which ignores that call while `locked`, instead of relying on each screen's callback to ignore them ([#296](https://github.com/swent-polysocial/PolySocial/issues/296)).
 - **Google picker context (#107):** the ViewModel coroutine can hold the initiating Activity until the repository operation returns or is cancelled, including across recreation. No Activity is stored in UI state or repository fields. Offline pending-attempt restoration tests do not prove real Credential Manager rotation behavior; that still needs device validation. ([#168](https://github.com/swent-polysocial/PolySocial/pull/168))
 
 - **Logout navigation tests must retain the controller.** A fresh shell hides missed teardown. Assert the active stack is empty, then try restoring a previously saved tab on the same controller; `clearBackStack()` returning `false` after the active stack is empty does not prove there was no saved state. ([#177](https://github.com/swent-polysocial/PolySocial/pull/177))
