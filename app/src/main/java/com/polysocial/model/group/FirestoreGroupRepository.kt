@@ -223,11 +223,11 @@ class FirestoreGroupRepository(
         val deniedAfterReading =
             e.code == FirebaseFirestoreException.Code.PERMISSION_DENIED && firstRead.get()
         if (!deniedAfterReading || attempt == MAX_ATTEMPTS) return e.toWriteResult(firstRead.get())
-      } catch (e: CancellationException) {
+      } catch (_: CancellationException) {
         // A task cancelled while the caller still runs is a failure; a cancelled caller rethrows.
         currentCoroutineContext().ensureActive()
         return GroupWriteResult.UnexpectedError
-      } catch (e: Exception) {
+      } catch (_: Exception) {
         return GroupWriteResult.UnexpectedError
       }
       attempt++
