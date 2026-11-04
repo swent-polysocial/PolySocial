@@ -10,7 +10,9 @@ import com.polysocial.model.event.validEvent
 import java.time.Duration
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.consumeAsFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onStart
@@ -209,6 +211,17 @@ class ChosenEventsRepositoryTest {
   }
 
   @Test
+  fun aCachedEvent_alone_makesTheListFromCache() = runTest {
+    choose(tomorrow)
+    events.delegate.readFromCache = true
+
+    val (results, _) = startCollecting()
+
+    assertEquals(listOf(tomorrow), results.latest.events)
+    assertTrue(results.latest.fromCache)
+  }
+
+  @Test
   fun anEventThatHasNotAnsweredYet_isPending() = runTest {
     choose(tomorrow)
     events.silentIds += tomorrow.id
@@ -228,6 +241,39 @@ class ChosenEventsRepositoryTest {
     assertEquals(listOf(ChosenEventsResult.Error), results)
     assertTrue(job.isCompleted)
     assertEquals(0, events.active)
+  }
+
+  @Test
+  fun registrationsFailingLater_stopTheEventListeners_andTheErrorStaysLast() = runTest {
+    events.delegate.seed(tomorrow)
+    val answers = Channel<MyRegistrationsResult>(Channel.UNLIMITED)
+    val failingLater =
+        object : RegistrationRepository by registrations {
+          override fun observeMyRegistrations() = answers.consumeAsFlow()
+        }
+    val results = mutableListOf<ChosenEventsResult>()
+    val job =
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+          ChosenEventsRepository(failingLater, events).observeChosenEvents().collect {
+            results += it
+          }
+        }
+    answers.send(MyRegistrationsResult.Registrations(setOf(tomorrow.id), fromCache = false))
+    runCurrent()
+    assertEquals(listOf(tomorrow), results.latest.events)
+    assertEquals(1, events.active)
+
+    // Like the real repository, the registrations flow ends after its error.
+    answers.send(MyRegistrationsResult.Error)
+    answers.close()
+    runCurrent()
+    events.delegate.events[0] = tomorrow.copy(title = "Renamed")
+    events.delegate.seed()
+    runCurrent()
+
+    assertEquals(ChosenEventsResult.Error, results.last())
+    assertEquals(0, events.active)
+    assertTrue(job.isCompleted)
   }
 
   @Test
