@@ -1,4 +1,5 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (drafted the Firestore group repository, #232).
+// Contributors: Claude (Opus 5.5, Anthropic) (drafted the Firestore group repository, #232, and
+// revised it after review).
 package com.polysocial.model.group
 
 import com.google.firebase.firestore.CollectionReference
@@ -196,6 +197,11 @@ class FirestoreGroupRepository(
    * again, reading the group afresh, up to [MAX_ATTEMPTS] times; the student who lost the last
    * place then gets [GroupWriteResult.Full]. A write still denied after that is
    * [GroupWriteResult.UnexpectedError].
+   *
+   * Any denial after the reads is rerun, not only a lost race. A rule that denies the same write
+   * every time (for example "I'm going", #244, or a past-event check) would cost each tap
+   * [MAX_ATTEMPTS] transactions and end in [GroupWriteResult.UnexpectedError], so such a rule needs
+   * its own result, checked before writing.
    */
   private suspend fun write(
       vararg ids: String,
