@@ -11,14 +11,18 @@ import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.registration.CancelRegistrationResult
 import com.polysocial.model.registration.ChosenEventsRepository
 import com.polysocial.model.registration.FakeRegistrationRepository
+import com.polysocial.model.registration.MyRegistrationsResult
+import com.polysocial.model.registration.RegistrationRepository
 import com.polysocial.utils.MainDispatcherRule
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -304,6 +308,57 @@ class MyEventsViewModelTest {
     viewModel.retry()
 
     assertEquals(listOf(tomorrow), viewModel.events.upcoming)
+  }
+
+  @Test
+  fun keepSplitCurrent_movesAnEndedEventToPast_aMinuteLater() {
+    val endsSoon =
+        event("endsSoon", Duration.ofMinutes(-30)).copy(endTime = TEST_NOW.plusSeconds(30))
+    choose(endsSoon)
+    val viewModel = createViewModel()
+    val splitting =
+        CoroutineScope(mainDispatcherRule.dispatcher).launch { viewModel.keepSplitCurrent() }
+    scheduler.runCurrent()
+    assertEquals(listOf(endsSoon), viewModel.events.upcoming)
+
+    clock.instant = TEST_NOW.plusSeconds(60)
+    scheduler.advanceTimeBy(MyEventsViewModel.REFRESH_INTERVAL.inWholeMilliseconds)
+    scheduler.runCurrent()
+
+    assertEquals(listOf(endsSoon), viewModel.events.past)
+    splitting.cancel()
+  }
+
+  @Test
+  fun registrationsThatNeverAnswer_areAnError_afterTheTimeout() {
+    val viewModel = viewModelWithSilentRegistrations()
+
+    scheduler.advanceTimeBy(MyEventsViewModel.LOAD_TIMEOUT.inWholeMilliseconds - 1)
+    assertEquals(MyEventsList.Loading, viewModel.list)
+
+    scheduler.advanceTimeBy(2)
+    assertEquals(MyEventsList.Error, viewModel.list)
+  }
+
+  @Test
+  fun registrationsThatNeverAnswer_whileOffline_areOfflineNothingSaved_afterTheTimeout() {
+    online = false
+    val viewModel = viewModelWithSilentRegistrations()
+
+    scheduler.advanceTimeBy(MyEventsViewModel.LOAD_TIMEOUT.inWholeMilliseconds + 1)
+
+    assertEquals(MyEventsList.OfflineNothingSaved, viewModel.list)
+  }
+
+  /** A view model whose registrations never answer, like a server that stays silent. */
+  private fun viewModelWithSilentRegistrations(): MyEventsViewModel {
+    val silent =
+        object : RegistrationRepository by registrations {
+          override fun observeMyRegistrations(): Flow<MyRegistrationsResult> = flow {
+            awaitCancellation()
+          }
+        }
+    return MyEventsViewModel(ChosenEventsRepository(silent, events), registrations, network, clock)
   }
 
   private companion object {
