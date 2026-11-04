@@ -5,16 +5,19 @@
 // OpenAI Codex (enabled recovery action regression for #164); Claude (accounts helper line and
 // email label for associations, #208); Claude (both fields flagged on wrong credentials and a
 // neutral placeholder, written test-first, #277).
+// Contributors: Claude (testing agent: redirect states and LoginField error announcements, #277).
 package com.polysocial.ui.login
 
 import android.app.Application
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
@@ -37,6 +40,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -579,5 +583,65 @@ class LoginScreenTest {
               abs(edge.blue - 0x3A / 255f) < 0.06f,
       )
     }
+  }
+
+  @Test
+  fun redirectStates_flagNeitherField() {
+    // Unverified and LoggedIn lock the fields on their way out; neither is a credentials error.
+    var state by mutableStateOf(filled.copy(status = LoginStatus.WrongCredentials))
+    composeTestRule.setContent {
+      PolySocialTheme {
+        LoginContent(
+            state = state,
+            onBack = {},
+            onEmailChange = {},
+            onPasswordChange = {},
+            onTogglePasswordVisibility = {},
+            onLogIn = {},
+            onCreateAccount = {},
+        )
+      }
+    }
+    node(LoginScreenTestTags.EMAIL).assert(wrongCredentialsError)
+
+    for (status in listOf(LoginStatus.Unverified, LoginStatus.LoggedIn)) {
+      composeTestRule.runOnIdle { state = filled.copy(status = status) }
+      node(LoginScreenTestTags.EMAIL).assert(noError)
+      node(LoginScreenTestTags.PASSWORD).assert(noError)
+    }
+  }
+
+  @Test
+  fun aLoginField_announcesAnErrorOnlyWhenInErrorWithAMessage() {
+    // Recovery and account deletion flag the field with no message: screen readers must not
+    // announce an empty error, and a message alone (not in error) is not announced either.
+    composeTestRule.setContent {
+      PolySocialTheme {
+        Column {
+          for ((tag, isError, message) in
+              listOf(
+                  Triple("noMessage", true, null),
+                  Triple("notInError", false, "Wrong"),
+                  Triple("both", true, "Wrong"),
+              )) {
+            LoginField(
+                value = "",
+                onValueChange = {},
+                height = 48.dp,
+                enabled = true,
+                faded = false,
+                keyboardType = KeyboardType.Email,
+                modifier = Modifier.testTag(tag),
+                isError = isError,
+                errorMessage = message,
+            )
+          }
+        }
+      }
+    }
+
+    node("noMessage").assert(noError)
+    node("notInError").assert(noError)
+    node("both").assert(SemanticsMatcher.expectValue(SemanticsProperties.Error, "Wrong"))
   }
 }
