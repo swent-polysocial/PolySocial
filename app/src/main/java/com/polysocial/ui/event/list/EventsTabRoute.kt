@@ -1,4 +1,5 @@
 // Contributors: Claude (the Events tab for students and for associations, #132).
+// Contributors: Claude Opus 5.5 (medium) (the students' My events segment, #204).
 package com.polysocial.ui.event.list
 
 import androidx.compose.runtime.Composable
@@ -12,8 +13,9 @@ import com.polysocial.ui.common.ErrorState
 import com.polysocial.ui.common.LoadingState
 
 /**
- * The Events tab's root: the students' upcoming public events, or a verified association's own
- * events (see [EventsTabViewModel]). Opening an event calls [onEventClick] in both.
+ * The Events tab's root: the students' upcoming public events and their chosen events (#204), or a
+ * verified association's own events (see [EventsTabViewModel]). Opening an event calls
+ * [onEventClick] in both.
  *
  * @param studentContent and [associationContent] are the two tabs; tests replace them, because the
  *   real ones need Hilt.
@@ -23,7 +25,7 @@ fun EventsTabRoute(
     onEventClick: (eventId: String) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: EventsTabViewModel = hiltViewModel(),
-    studentContent: @Composable () -> Unit = { EventsRoute(onEventClick, modifier) },
+    studentContent: @Composable () -> Unit = { StudentEventsRoute(onEventClick, modifier) },
     associationContent: @Composable () -> Unit = { AssociationEventsRoute(onEventClick, modifier) },
 ) {
   val state by viewModel.state.collectAsStateWithLifecycle()
