@@ -5,16 +5,20 @@ import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.test.core.app.ApplicationProvider
@@ -28,10 +32,14 @@ import com.polysocial.ui.theme.PolySocialTheme
 import java.time.Duration
 import java.time.LocalDate
 import java.time.ZoneId
+import kotlin.math.roundToInt
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 @RunWith(AndroidJUnit4::class)
 class MyEventsScreenTest {
@@ -152,6 +160,41 @@ class MyEventsScreenTest {
   }
 
   @Test
+  fun withoutUpcomingEvents_thereIsNoUpcomingHeader() {
+    show(loaded(upcoming = emptyList()))
+
+    composeTestRule.onAllNodesWithTag(MyEventsTags.UPCOMING_HEADER).assertCountEquals(0)
+    composeTestRule.onNodeWithTag(MyEventsTags.PAST_HEADER).assertIsDisplayed()
+  }
+
+  @Test
+  fun anEventWithoutAnEnd_showsOnlyItsStartTime() {
+    val openEnded = chosen("openEnded", "Open mic", Duration.ofDays(1)).copy(endTime = null)
+    show(loaded(upcoming = listOf(openEnded), past = emptyList()))
+
+    composeTestRule
+        .onNodeWithTag(MyEventsTags.details(openEnded.id), useUnmergedTree = true)
+        .assertTextEquals(
+            string(
+                R.string.association_events_card_details,
+                string(R.string.events_tomorrow),
+                "13:00",
+                "Satellite",
+            )
+        )
+  }
+
+  @Test
+  fun tappingAPastCard_opensItsEvent() {
+    show(loaded())
+    scrollTo(MyEventsTags.card(lastYear.id))
+
+    composeTestRule.onNodeWithTag(MyEventsTags.card(lastYear.id)).performClick()
+
+    assertEquals(listOf(lastYear.id), opened)
+  }
+
+  @Test
   fun tappingACard_opensItsEvent() {
     show(loaded())
 
@@ -169,6 +212,37 @@ class MyEventsScreenTest {
     composeTestRule.onNodeWithTag(MyEventsTags.remove("gone")).performClick()
 
     assertEquals(listOf("gone"), removed)
+  }
+
+  @Test
+  // Real drawing: the legacy graphics mode doesn't rasterize the Canvas.
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  @Config(qualifiers = "xxhdpi")
+  fun anUnavailableEvent_isOutlinedWithDashes_likeFigma() {
+    show(loaded(upcoming = emptyList(), past = emptyList(), unavailableIds = listOf("gone")))
+
+    // The tag sits inside the row's padding (16 dp, 12 dp), so its outline is 12 dp above it.
+    val inner =
+        composeTestRule
+            .onNodeWithTag(MyEventsTags.unavailable("gone"))
+            .fetchSemanticsNode()
+            .boundsInRoot
+    val screen = composeTestRule.onRoot().captureToImage().toPixelMap()
+    val px = composeTestRule.density.density
+    val top = (inner.top - 12 * px).roundToInt()
+    // How dark a pixel looks on the light background: Border is about 0.2, the background 0.05.
+    fun darkness(x: Int, y: Int): Float {
+      val color = screen[x, y]
+      return color.alpha * (1f - color.luminance())
+    }
+    // Along the top edge, away from the rounded corners, the 4 dp dashes and 4 dp gaps alternate.
+    val inked =
+        (inner.left + inner.width / 4).roundToInt()..(inner.right - inner.width / 4).roundToInt()
+    val dashes = inked.map { x ->
+      ((top - 1).coerceAtLeast(0)..top + 1).any { y -> darkness(x, y) > 0.1f }
+    }
+    val switches = dashes.zipWithNext().count { (a, b) -> a != b }
+    assertTrue("only $switches switches between dashes and gaps", switches >= 4)
   }
 
   @Test
@@ -266,6 +340,18 @@ class MyEventsScreenTest {
     composeTestRule.waitForIdle()
 
     assertEquals(1, messagesShown)
+    composeTestRule
+        .onAllNodesWithText(string(R.string.my_events_remove_offline))
+        .assertCountEquals(0)
+  }
+
+  @Test
+  fun aRemoveThatFailedOnline_saysItFailed() {
+    show(loaded(message = MyEventsMessage.REMOVE_FAILED))
+
+    composeTestRule
+        .onAllNodesWithText(string(R.string.my_events_remove_failed))
+        .assertCountEquals(1)
     composeTestRule
         .onAllNodesWithText(string(R.string.my_events_remove_offline))
         .assertCountEquals(0)
