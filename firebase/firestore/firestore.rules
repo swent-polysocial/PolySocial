@@ -171,9 +171,9 @@ service cloud.firestore {
           && copiesPrivateProfile();
     }
 
-    // Of the event subcollections, only attendees (below) is reachable. Private queries also need
-    // isPrivate == true and allowedUids array-contains auth.uid; public queries need
-    // isPrivate == false.
+    // Of the event subcollections, only attendees (below), groups and groupMembers (after this
+    // block) are reachable. Private queries also need isPrivate == true and allowedUids
+    // array-contains auth.uid; public queries need isPrivate == false.
     match /events/{eventId} {
       function isVerifiedAssociationOwner() {
         let profile = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
