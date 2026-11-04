@@ -1,4 +1,4 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #232).
+// Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #232, and more after review).
 package com.polysocial.model.group
 
 import kotlinx.coroutines.flow.drop
@@ -219,6 +219,27 @@ class FakeGroupRepositoryTest {
         listOf(GroupsResult.Loading, GroupsResult.UnexpectedError),
         repository.observeGroups("private").toList(),
     )
+  }
+
+  @Test
+  fun observeGroups_checksTheEventWhenCollectionStarts() = runTest {
+    val group = repository.seedGroup("private", listOf("other"))
+    val privateGroups = repository.observeGroups("private")
+
+    repository.readableEventIds += "private"
+
+    assertEquals(GroupsResult.Success(listOf(group), false), privateGroups.drop(1).first())
+  }
+
+  @Test
+  fun observeMyGroup_readsTheStudentWhenCollectionStarts() = runTest {
+    val group = repository.seedGroup(EVENT, listOf("later"))
+    val mine = repository.observeMyGroup(EVENT)
+
+    repository.currentUid = "later"
+    assertEquals(MyGroupResult.Success(group, fromCache = false), mine.drop(1).first())
+    repository.currentUid = null
+    assertEquals(listOf(MyGroupResult.Loading, MyGroupResult.UnexpectedError), mine.toList())
   }
 
   @Test
