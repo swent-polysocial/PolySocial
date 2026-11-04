@@ -98,7 +98,7 @@ class MyEventsScreenTest {
 
     composeTestRule.onNodeWithTag(MyEventsTags.UPCOMING_HEADER).assertIsDisplayed()
     composeTestRule
-        .onNodeWithTag(MyEventsTags.details(running.id))
+        .onNodeWithTag(MyEventsTags.details(running.id), useUnmergedTree = true)
         .assertTextEquals(
             string(
                 R.string.association_events_card_details,
@@ -109,7 +109,7 @@ class MyEventsScreenTest {
         )
     // Two months ahead, beyond the public 14 days, and without a place.
     composeTestRule
-        .onNodeWithTag(MyEventsTags.details(cineClub.id))
+        .onNodeWithTag(MyEventsTags.details(cineClub.id), useUnmergedTree = true)
         .assertTextEquals(
             string(
                 R.string.events_card_details,
@@ -121,7 +121,7 @@ class MyEventsScreenTest {
     composeTestRule.onNodeWithTag(MyEventsTags.PAST_HEADER).assertIsDisplayed()
     // Another year shows its year.
     composeTestRule
-        .onNodeWithTag(MyEventsTags.details(lastYear.id))
+        .onNodeWithTag(MyEventsTags.details(lastYear.id), useUnmergedTree = true)
         .assertTextEquals(
             string(
                 R.string.association_events_card_details,
@@ -136,8 +136,12 @@ class MyEventsScreenTest {
   fun onlyARunningEvent_isLive() {
     show(loaded())
 
-    composeTestRule.onNodeWithTag(MyEventsTags.live(running.id)).assertIsDisplayed()
-    composeTestRule.onAllNodesWithTag(MyEventsTags.live(cineClub.id)).assertCountEquals(0)
+    composeTestRule
+        .onNodeWithTag(MyEventsTags.live(running.id), useUnmergedTree = true)
+        .assertIsDisplayed()
+    composeTestRule
+        .onAllNodesWithTag(MyEventsTags.live(cineClub.id), useUnmergedTree = true)
+        .assertCountEquals(0)
   }
 
   @Test
