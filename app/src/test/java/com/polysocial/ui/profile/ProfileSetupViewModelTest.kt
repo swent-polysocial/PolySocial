@@ -2,7 +2,8 @@
 // Contributors: Claude Opus 5.5 (wrote these tests; unverified account refused); Claude Opus 5.5
 // (testing agent: the lock after saving, no signed-in user); Claude (reset, #74; offline vs generic
 // save errors, #142); Claude Opus 5.5 (testing agent: generic save error tests, #142); Claude (the
-// full name's limit, written test-first, #143; the interests step, written test-first, #230).
+// full name's limit, written test-first, #143; the interests step, written test-first, #230);
+// Claude (testing agent: Continue on the interests step, Finish with incomplete details, #230).
 package com.polysocial.ui.profile
 
 import com.polysocial.model.auth.AuthUser
@@ -657,6 +658,35 @@ class ProfileSetupViewModelTest {
 
     assertEquals(listOf(emptySet(), setOf("games")), profiles.createdProfiles.map { it.interests })
     assertEquals(ProfileSetupStatus.Saved, vm.status())
+  }
+
+  @Test
+  fun continue_onTheInterestsStep_keepsAFailedSavesError() {
+    profiles.createProfileResult = CreateProfileResult.NetworkError
+    val vm = viewModel()
+    vm.fill()
+    vm.finishAndSettle()
+
+    vm.onContinue()
+
+    assertEquals(ProfileSetupPage.Interests, vm.page())
+    assertEquals(ProfileSetupStatus.CouldNotSave, vm.status())
+  }
+
+  @Test
+  fun finish_withTheNameBlankedOnTheInterestsStep_savesNothing() {
+    // Finish needs complete details too, not only the interests step and no save running.
+    val vm = viewModel()
+    vm.fill()
+    vm.onContinue()
+    vm.onDisplayNameChange("  ")
+
+    assertFalse(vm.uiState.value.canFinish)
+    vm.onFinish()
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+
+    assertTrue(profiles.createdProfiles.isEmpty())
+    assertEquals(ProfileSetupStatus.Editing, vm.status())
   }
 
   @Test
