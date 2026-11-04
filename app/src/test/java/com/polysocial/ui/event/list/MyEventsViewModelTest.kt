@@ -18,6 +18,7 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
@@ -205,6 +206,48 @@ class MyEventsViewModelTest {
     runPending()
 
     assertEquals(MyEventsMessage.REMOVE_FAILED, viewModel.state.value.message)
+  }
+
+  @Test
+  fun removingAfterTheSessionEnded_saysItFailed() {
+    choose(tomorrow)
+    fakeEvents.deniedIds += tomorrow.id
+    val viewModel = createViewModel()
+    registrations.currentUid = null
+
+    viewModel.remove(tomorrow.id)
+    runPending()
+
+    assertEquals(MyEventsMessage.REMOVE_FAILED, viewModel.state.value.message)
+  }
+
+  @Test
+  fun aSecondRemove_whileTheFirstRuns_doesNothing() {
+    choose(tomorrow)
+    fakeEvents.deniedIds += tomorrow.id
+    val answer = CompletableDeferred<CancelRegistrationResult>()
+    var cancels = 0
+    val slowCancel =
+        object : RegistrationRepository by registrations {
+          override suspend fun cancel(eventId: String): CancelRegistrationResult {
+            cancels++
+            return answer.await()
+          }
+        }
+    val viewModel =
+        MyEventsViewModel(ChosenEventsRepository(registrations, events), slowCancel, network, clock)
+            .also { runPending() }
+
+    viewModel.remove(tomorrow.id)
+    viewModel.remove(tomorrow.id)
+    scheduler.runCurrent()
+    assertEquals(1, cancels)
+    assertEquals(setOf(tomorrow.id), viewModel.state.value.removing)
+
+    answer.complete(CancelRegistrationResult.Cancelled)
+    runPending()
+    assertEquals(emptySet<String>(), viewModel.state.value.removing)
+    assertNull(viewModel.state.value.message)
   }
 
   @Test
