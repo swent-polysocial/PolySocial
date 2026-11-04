@@ -2557,6 +2557,26 @@ test("a student lists their own groups across events", async () => {
   );
 });
 
+/** Takes u3 out of the private event's allowedUids, as its organizers would, rules off. */
+async function removeU3FromPrivateEvent() {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await updateDoc(doc(context.firestore(), "events/private"), { allowedUids: ["u2", "u4"] });
+  });
+}
+
+test("a member removed from a private event lists their group there, but can't get it", async () => {
+  await seedGroup("private", "g1", ["u2", "u3"]);
+  await removeU3FromPrivateEvent();
+  const db = studentDb("u3");
+  // The query FirestoreGroupRepository.observeMyGroup runs, allowed by /{path=**}/groups.
+  const mine = await assertSucceeds(getDocs(query(
+    collection(db, "events/private/groups"), where("memberUids", "array-contains", "u3"),
+  )));
+  expectIds(mine.docs.map((group) => group.id), ["g1"]);
+  await assertFails(getDocs(collection(db, "events/private/groups")));
+  await assertFails(getDoc(doc(db, "events/private/groups/g1")));
+});
+
 test("a student can't list other students' groups across events", async () => {
   await seedGroup("private", "g1", ["u2"]);
   const db = studentDb("u1");

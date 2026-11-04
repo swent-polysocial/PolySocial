@@ -1,4 +1,5 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (group repository tests against the rules, #232).
+// Contributors: Claude (Opus 5.5, Anthropic) (group repository tests against the rules, #232, and
+// more after review).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -312,6 +313,35 @@ class FirestoreGroupRepositoryEmulatorTest {
     assertEquals(first.groupId, myGroup("first")?.id)
     assertEquals("open", myGroup("second")?.id)
     assertEquals(listOf(first.groupId), groups("first").map { it.id })
+  }
+
+  @Test
+  fun observeMyGroup_ofAPrivateEventTheMemberWasRemovedFrom_stillShowsTheGroup() = runBlocking {
+    val uid = signIn(STUDENT_EMAIL)
+    // Not in allowedUids, as once the organizers removed them, but still in the group.
+    seed("private", event().copy(isPrivate = true))
+    seedGroup("private", "group", listOf(FIRST_UID, uid))
+
+    val group = myGroup("private")
+
+    assertEquals("group", group?.id)
+    assertEquals(listOf(FIRST_UID, uid), group?.memberUids)
+    // The server's answer, not a cached copy of the group myGroup just read.
+    val eventGroups = timed {
+      repository.observeGroups("private").first {
+        it !is GroupsResult.Loading && (it !is GroupsResult.Success || !it.fromCache)
+      }
+    }
+    assertEquals(GroupsResult.UnexpectedError, eventGroups)
+  }
+
+  @Test
+  fun observeMyGroup_withoutAGroupOfAnEventTheStudentCannotRead_isNoGroup() = runBlocking {
+    signIn(STUDENT_EMAIL)
+    seed("private", event().copy(isPrivate = true))
+    seedGroup("private", "group", listOf(FIRST_UID))
+
+    assertEquals(null, myGroup("private"))
   }
 
   @Test
