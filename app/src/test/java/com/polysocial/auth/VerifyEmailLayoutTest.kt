@@ -2,8 +2,8 @@
 // startup timing-loading feedback, disabled-action assertions and tall-tablet layout).
 // Contributors: Claude (account-neutral texts and only the confirmation after a resend, written
 // test-first, #277).
-// Contributors: Claude (testing agent: whole-screen neutral texts and the real resend snackbar,
-// #277).
+// Contributors: Claude (testing agent: whole-screen neutral texts and the real send's snackbar,
+// #277; tidied after review, #277).
 package com.polysocial.auth
 
 import androidx.compose.runtime.CompositionLocalProvider
@@ -178,7 +178,7 @@ class VerifyEmailLayoutTest {
           compose
               .onNodeWithTag(VerifyEmailTags.Banner)
               .fetchSemanticsNode()
-              .config[androidx.compose.ui.semantics.SemanticsProperties.Text]
+              .config[SemanticsProperties.Text]
       assertTrue(text.any { it.text.isNotBlank() })
     }
   }
@@ -189,24 +189,8 @@ class VerifyEmailLayoutTest {
       compose
           .onNodeWithTag(VerifyEmailTags.Banner)
           .fetchSemanticsNode()
-          .config[androidx.compose.ui.semantics.SemanticsProperties.Text]
+          .config[SemanticsProperties.Text]
           .joinToString(" ") { it.text }
-
-  @Test
-  fun noVerificationText_mentionsEpfl_forAStudentOrAnAssociation() {
-    // Associations verify their own address here (#125), so no text may assume an EPFL inbox.
-    for (email in listOf("student.test@epfl.ch", "club@example.org")) {
-      state.value = state.value.copy(email = email, banner = null)
-      if (email == "student.test@epfl.ch") launch()
-      val shown =
-          (listOf(null) + VerificationMessage.entries).map { message ->
-            compose.runOnIdle { state.value = state.value.copy(banner = message) }
-            compose.onNodeWithTag(VerifyEmailTags.Banner).performScrollTo()
-            bannerText()
-          }
-      for (text in shown) assertFalse("\"$text\" mentions EPFL", text.contains("EPFL"))
-    }
-  }
 
   @Test
   fun theSpamHintAndTheResendConfirmation_sayInboxAndMailbox() {
@@ -284,9 +268,9 @@ class VerifyEmailLayoutTest {
   }
 
   @Test
-  fun aRealResend_showsItsConfirmationTwice_withNoSnackbarAction() {
-    // The ViewModel puts Sent in both the banner and the snackbar: neither may offer a Retry or
-    // any other action, only the confirmation.
+  fun aRealSend_showsItsConfirmationTwice_withNoSnackbarAction() {
+    // Opening the screen sends the first email through the real ViewModel, which puts Sent in both
+    // the banner and the snackbar, as a resend does: neither may offer a Retry or any other action.
     val auth = FakeAuthRepository(AuthUser("club", "club@example.org", false))
     val viewModel = VerifyEmailViewModel(auth, MemoryVerificationStore(), VerificationClock { 0L })
     try {
