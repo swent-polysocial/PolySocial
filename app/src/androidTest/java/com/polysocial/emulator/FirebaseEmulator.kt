@@ -1,7 +1,7 @@
 // Contributors: Claude (Firestore emulator test setup, #117; timeouts and the port in the error
 // after an adversarial test review; geopoints and nulls in admin writes after review; admin
 // existence check, #126); Claude Opus 5.5 (subcollection paths, #121; the emulator's error in a
-// failed request, #309).
+// failed request and the wipe's retry, #309).
 // Contributors: Claude (Opus 5.5, Anthropic) let a test sign in on its own Firebase app, #198;
 // Mohamed Khellaf (reviewed and revised).
 package com.polysocial.emulator
@@ -23,6 +23,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import java.time.Instant
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
@@ -55,8 +56,8 @@ class FirebaseEmulator : ExternalResource() {
   override fun before() = runBlocking {
     allowLocalNetwork()
     auth.signOut()
-    delete("$FIRESTORE_URL/emulator/v1/projects/$PROJECT_ID/databases/(default)/documents")
-    delete("$AUTH_URL/emulator/v1/projects/$PROJECT_ID/accounts")
+    wipe("$FIRESTORE_URL/emulator/v1/projects/$PROJECT_ID/databases/(default)/documents")
+    wipe("$AUTH_URL/emulator/v1/projects/$PROJECT_ID/accounts")
   }
 
   override fun after() {
@@ -164,7 +165,22 @@ class FirebaseEmulator : ExternalResource() {
     )
   }
 
-  private suspend fun delete(url: String) {
+  /**
+   * Deletes everything at [url]. The Firestore emulator sometimes fails a wipe with HTTP 500 when
+   * it can't notify a listener whose stream has already closed, and the next try succeeds (see
+   * CONTEXT.md, Traps, #309). So a server error is retried a few times; any other failure fails at
+   * once.
+   */
+  private suspend fun wipe(url: String) {
+    repeat(WIPE_ATTEMPTS - 1) {
+      try {
+        request("DELETE", url)
+        return
+      } catch (e: RequestFailed) {
+        if (e.code < HTTP_SERVER_ERROR) throw e
+        delay(WIPE_RETRY_DELAY_MS)
+      }
+    }
     request("DELETE", url)
   }
 
@@ -202,14 +218,20 @@ class FirebaseEmulator : ExternalResource() {
                     e,
                 )
               }
-          check(code in 200..299 || (missingAllowed && code == HTTP_NOT_FOUND)) {
-            "$method $url failed with HTTP $code: ${connection.errorBody()}"
+          if (code !in 200..299 && !(missingAllowed && code == HTTP_NOT_FOUND)) {
+            throw RequestFailed(
+                code,
+                "$method $url failed with HTTP $code: ${connection.errorBody()}",
+            )
           }
           code
         } finally {
           connection.disconnect()
         }
       }
+
+  /** An emulator request answered with the HTTP error [code]. */
+  private class RequestFailed(val code: Int, message: String) : IllegalStateException(message)
 
   /** The start of a failed request's body, where the emulator says why it failed. */
   private fun HttpURLConnection.errorBody(): String =
@@ -258,5 +280,8 @@ class FirebaseEmulator : ExternalResource() {
     private const val TIMEOUT_MS = 10_000
     private const val HTTP_NOT_FOUND = 404
     private const val MAX_ERROR_BODY_CHARS = 1_000
+    private const val HTTP_SERVER_ERROR = 500
+    private const val WIPE_ATTEMPTS = 3
+    private const val WIPE_RETRY_DELAY_MS = 1_000L
   }
 }
