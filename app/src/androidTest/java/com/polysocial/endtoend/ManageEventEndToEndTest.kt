@@ -1,5 +1,5 @@
 // Contributors: Claude (end-to-end test of the organizer flow: create, edit and cancel an event,
-// #239).
+// #239; every data source bound to a fake, as in M1EndToEndTest, #239 review).
 package com.polysocial.endtoend
 
 import androidx.compose.ui.test.SemanticsMatcher
@@ -19,6 +19,9 @@ import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.MainActivity
 import com.polysocial.R
+import com.polysocial.model.account.AccountDeletionModule
+import com.polysocial.model.account.AccountDeletionRepository
+import com.polysocial.model.account.FakeAccountDeletionRepository
 import com.polysocial.model.association.AssociationModule
 import com.polysocial.model.association.AssociationRepository
 import com.polysocial.model.association.FakeAssociationRepository
@@ -39,8 +42,11 @@ import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.EventModule
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.FakeEventRepository
+import com.polysocial.model.firebase.CacheClearResult
 import com.polysocial.model.firebase.FakeSessionGuard
 import com.polysocial.model.firebase.FakeSessionOwnerStore
+import com.polysocial.model.firebase.FirebaseModule
+import com.polysocial.model.firebase.SessionCache
 import com.polysocial.model.firebase.SessionGuard
 import com.polysocial.model.firebase.SessionOwnerStore
 import com.polysocial.model.geocoding.FakeGeocodingService
@@ -53,6 +59,9 @@ import com.polysocial.model.location.LocationModule
 import com.polysocial.model.location.LocationService
 import com.polysocial.model.network.NetworkModule
 import com.polysocial.model.network.NetworkMonitor
+import com.polysocial.model.registration.FakeRegistrationRepository
+import com.polysocial.model.registration.RegistrationModule
+import com.polysocial.model.registration.RegistrationRepository
 import com.polysocial.model.time.ClockModule
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.ProfileResult
@@ -101,14 +110,17 @@ import org.junit.runner.RunWith
  */
 @HiltAndroidTest
 @UninstallModules(
+    AccountDeletionModule::class,
     AssociationModule::class,
     AuthModule::class,
     ClockModule::class,
     EventModule::class,
+    FirebaseModule::class,
     GeocodingModule::class,
     LocationModule::class,
     NetworkModule::class,
     UserProfileModule::class,
+    RegistrationModule::class,
 )
 @RunWith(AndroidJUnit4::class)
 class ManageEventEndToEndTest {
@@ -139,6 +151,15 @@ class ManageEventEndToEndTest {
   @BindValue @JvmField val sessionOwner: SessionOwnerStore = FakeSessionOwnerStore()
   @BindValue @JvmField val verificationStore: VerificationStore = InMemoryVerificationStore()
   @BindValue @JvmField val network: NetworkMonitor = AlwaysOnline
+  @BindValue @JvmField val registrations: RegistrationRepository = FakeRegistrationRepository()
+  // The flow never logs out or deletes the account, but the app's graph still needs these.
+  @BindValue @JvmField val deletion: AccountDeletionRepository = FakeAccountDeletionRepository()
+  @BindValue
+  @JvmField
+  val cache: SessionCache =
+      object : SessionCache {
+        override suspend fun clear() = CacheClearResult.Cleared
+      }
   @BindValue
   @JvmField
   val location: LocationService = FakeLocationService().apply { markPermissionRequested() }
