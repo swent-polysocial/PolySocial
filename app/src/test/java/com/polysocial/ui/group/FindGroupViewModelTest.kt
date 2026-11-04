@@ -9,6 +9,7 @@ import com.polysocial.model.event.validEvent
 import com.polysocial.model.group.FakeGroupRepository
 import com.polysocial.model.group.GroupRepository
 import com.polysocial.model.group.GroupWriteResult
+import com.polysocial.model.group.GroupsResult
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.PublicProfile
@@ -19,6 +20,7 @@ import java.time.Instant
 import java.time.ZoneId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -145,6 +147,30 @@ class FindGroupViewModelTest {
         assertEquals(listOf("group-1", "group-2", "group-3"), loaded.suggestions.map { it.groupId })
         assertTrue(loaded.suggestions.flatMap { it.members }.all { it.profile == null })
         assertEquals(0, loaded.suggestions.sumOf { it.sharedInterests })
+      }
+
+  @Test
+  fun theProfiles_areReadAgainOnlyWhenTheGroupsChange() =
+      runTest(main.dispatcher) {
+        val stored = groups.seedGroup(EVENT, listOf("lea"))
+        val results = MutableStateFlow<GroupsResult>(GroupsResult.Success(listOf(stored), true))
+        open(
+            object : GroupRepository by groups {
+              override fun observeGroups(eventId: String) = results
+            }
+        )
+        assertEquals(1, profiles.requestedUids.size)
+
+        // The same groups, now confirmed by the server.
+        results.value = GroupsResult.Success(listOf(stored), false)
+        advanceUntilIdle()
+        assertEquals(1, profiles.requestedUids.size)
+
+        results.value =
+            GroupsResult.Success(listOf(stored.copy(memberUids = listOf("lea", "tom"))), false)
+        advanceUntilIdle()
+        assertEquals(2, profiles.requestedUids.size)
+        assertEquals(listOf("lea", "tom"), loaded.suggestions.single().members.map { it.uid })
       }
 
   @Test

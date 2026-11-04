@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
@@ -210,14 +211,20 @@ constructor(
             }
             .onStart { emit(null) }
     val ranked =
-        groups.observeGroups(eventId).mapLatest { result ->
-          when (result) {
-            GroupsResult.Loading -> Ranking.Loading
-            is GroupsResult.Success -> Ranking.Done(rank(result.groups))
-            GroupsResult.NetworkError,
-            GroupsResult.UnexpectedError -> Ranking.Failed
-          }
-        }
+        groups
+            .observeGroups(eventId)
+            // Only the groups matter here: when only fromCache changes, the profiles aren't read
+            // again.
+            .map { if (it is GroupsResult.Success) it.copy(fromCache = false) else it }
+            .distinctUntilChanged()
+            .mapLatest { result ->
+              when (result) {
+                GroupsResult.Loading -> Ranking.Loading
+                is GroupsResult.Success -> Ranking.Done(rank(result.groups))
+                GroupsResult.NetworkError,
+                GroupsResult.UnexpectedError -> Ranking.Failed
+              }
+            }
     return combine(event, ranked) { details, ranking ->
       when (ranking) {
         Ranking.Loading -> FindGroupUiState.Loading
