@@ -7,6 +7,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) added the account deletion step, #207; Mohamed Khellaf
 // (reviewed and revised).
 // Contributors: Claude (the interests step, #230).
+// Contributors: Claude Opus 5.5 (medium) (the My events step, #204).
 package com.polysocial.endtoend
 
 import androidx.activity.compose.setContent
@@ -98,6 +99,8 @@ import com.polysocial.ui.auth.WelcomeTags
 import com.polysocial.ui.event.create.LocationPickerTags
 import com.polysocial.ui.event.detail.EventDetailTags
 import com.polysocial.ui.event.list.EventsTags
+import com.polysocial.ui.event.list.MyEventsTags
+import com.polysocial.ui.event.list.StudentEventsTags
 import com.polysocial.ui.map.MapRenderStatus
 import com.polysocial.ui.map.MapRoute
 import com.polysocial.ui.map.MapTags
@@ -135,6 +138,7 @@ import org.junit.runner.RunWith
  *    (#34, #74).
  * 4. Events tab: the upcoming public events, grouped by day (#105).
  * 5. Event detail opened from the list, and Back to the list (#112).
+ * 5b. My events: the event the student is going to, its detail, and Back to My events (#204).
  * 6. Create Event from the "+" (#46, #110): "Organized by you" for a student (#134), title,
  *    category, date and time pickers, public, and a place found with the location picker's search
  *    (#111).
@@ -180,7 +184,11 @@ class M1EndToEndTest {
 
   @BindValue @JvmField val auth: AuthRepository = fakeAuth
   @BindValue @JvmField val events: EventRepository = fakeEvents
-  @BindValue @JvmField val registrations: RegistrationRepository = FakeRegistrationRepository()
+  // The student already said "I'm going" to the party, so it is in My events (#204).
+  @BindValue
+  @JvmField
+  val registrations: RegistrationRepository =
+      FakeRegistrationRepository(currentUid = UID).apply { seedRegistration(PARTY.id, UID) }
   @BindValue @JvmField val profiles: UserProfileRepository = fakeProfiles
   @BindValue @JvmField val associations: AssociationRepository = FakeAssociationRepository()
   @BindValue @JvmField val clock: Clock = Clock.fixed(NOW, ZURICH)
@@ -220,6 +228,7 @@ class M1EndToEndTest {
     verifyEmail()
     setUpProfile()
     browseUpcomingEvents()
+    seeMyEvents()
     createPublicEvent()
     findTheNewEvent()
     seeEventsOnTheMap()
@@ -283,6 +292,21 @@ class M1EndToEndTest {
     await(EventDetailTags.SCREEN)
     node(EventDetailTags.TITLE).assertTextContains(PARTY.title)
     node(EventDetailTags.BACK).performClick()
+    await(EventsTags.LIST)
+  }
+
+  private fun seeMyEvents() {
+    node(StudentEventsTags.MY_EVENTS).performClick()
+    await(MyEventsTags.card(PARTY.id))
+
+    node(MyEventsTags.card(PARTY.id)).performClick()
+    await(EventDetailTags.SCREEN)
+    node(EventDetailTags.TITLE).assertTextContains(PARTY.title)
+    node(EventDetailTags.BACK).performClick()
+    // Back returns to My events, not to Upcoming.
+    await(MyEventsTags.card(PARTY.id))
+
+    node(StudentEventsTags.UPCOMING).performClick()
     await(EventsTags.LIST)
   }
 
