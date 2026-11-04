@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (offline Firestore fixture binding after the rebase, #140).
 // Contributors: OpenAI Codex (session-guard fake for rebased association integration tests).
 // Contributors: OpenAI Codex (association activity recreation, navigation and logout regression,
 // #140).
@@ -12,6 +13,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.firebase.firestore.FirebaseFirestore
 import com.polysocial.MainActivity
 import com.polysocial.model.association.Association
 import com.polysocial.model.association.AssociationModule
@@ -54,6 +56,7 @@ import dagger.hilt.android.testing.BindValue
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import dagger.hilt.android.testing.UninstallModules
+import io.mockk.mockk
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -83,6 +86,7 @@ class AssociationTabsDeviceTest {
   private val fakeAuth = FakeAuthRepository(user)
   private val identities = FakeAssociationRepository(AssociationResult.Found(identity))
   private var clears = 0
+  @BindValue @JvmField val firestore: FirebaseFirestore = mockk()
   @BindValue @JvmField val authSessionSource: AuthSessionSource = FakeAuthSessionSource()
   @BindValue @JvmField val sessionOwner: SessionOwnerStore = FakeSessionOwnerStore()
   @BindValue @JvmField val sessions: SessionGuard = FakeSessionGuard()
