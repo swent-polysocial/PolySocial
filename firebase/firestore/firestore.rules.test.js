@@ -1,4 +1,4 @@
-// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143; publicProfiles/{uid} tests, written test-first, #229; reads by ID only and the fixed section and year lists, after review, #229; private edits keep the public copy, and deleted accounts stay deleted, after review, #229; interests from the fixed list, test-first, #230; any code read in the list check, after review, #230); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121); Claude (Opus 5.5, Anthropic) (event group and groupMembers marker tests, #232).
+// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143; publicProfiles/{uid} tests, written test-first, #229; reads by ID only and the fixed section and year lists, after review, #229; private edits keep the public copy, and deleted accounts stay deleted, after review, #229; interests from the fixed list, test-first, #230; any code read in the list check, after review, #230); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121); Claude (Opus 5.5, Anthropic) (event group and groupMembers marker tests, #232, with more after review).
 const { after, before, beforeEach, test } = require("node:test");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
@@ -2642,6 +2642,15 @@ test("a student can't start a group for an event they can't read", async () => {
 test("a student already in a group of the event can't start another", async () => {
   await seedGroup("e1", "g1", ["u2", "u1"]);
   await assertFails(createGroupAs(studentDb("u1"), "u1", "e1", "new"));
+  await expectMembers("e1", "new", null);
+});
+
+test("a student with a marker can't start a group, even the one it names", async () => {
+  // A marker left behind for a group that no longer exists: the student deletes it first.
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "events/e1/groupMembers/u1"), { groupId: "new" });
+  });
+  await assertFails(setDoc(doc(studentDb("u1"), "events/e1/groups/new"), newGroup("u1")));
   await expectMembers("e1", "new", null);
 });
 
