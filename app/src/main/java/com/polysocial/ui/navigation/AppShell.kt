@@ -13,6 +13,7 @@
 // Contributors: OpenAI Codex (Profile privacy navigation and full-screen notices, #103).
 // Contributors: Claude (Opus 5.5, Anthropic) left the app through logout's reset after account
 // deletion, #207; Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) opened Find a group from the detail, #233.
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.layout.Arrangement
@@ -76,6 +77,8 @@ import com.polysocial.ui.event.create.EditEventScreen
 import com.polysocial.ui.event.detail.EventDetailRoute
 import com.polysocial.ui.event.detail.EventDetailViewModel
 import com.polysocial.ui.event.list.EventsTabRoute
+import com.polysocial.ui.group.FindGroupDone
+import com.polysocial.ui.group.FindGroupRoute
 import com.polysocial.ui.map.MapRoute
 import com.polysocial.ui.profile.FullPrivacyNoticeRoute
 import com.polysocial.ui.profile.PrivacyRoute
@@ -102,12 +105,14 @@ data class CreateEventNavigation(
 
 /**
  * Where the event detail leaves to: [onBack] to the screen it was opened from, [onEdit] to Edit
- * event, and [onCancelled] back to that screen once the event is cancelled, which then says so.
+ * event, [onCancelled] back to that screen once the event is cancelled, which then says so, and
+ * [onFindGroup] to Find a group (#233).
  */
 data class EventDetailNavigation(
     val onBack: () -> Unit,
     val onEdit: () -> Unit,
     val onCancelled: () -> Unit,
+    val onFindGroup: () -> Unit = {},
 )
 
 /**
@@ -163,11 +168,16 @@ fun AppShell(
           onBack = navigation.onBack,
           onEdit = navigation.onEdit,
           onCancelled = navigation.onCancelled,
+          onFindGroup = navigation.onFindGroup,
       )
     },
     editEventContent: @Composable (onClose: () -> Unit) -> Unit = { onClose ->
       EditEventScreen(onClose = onClose)
     },
+    findGroupContent: @Composable (onBack: () -> Unit, onDone: (FindGroupDone) -> Unit) -> Unit =
+        { onBack, onDone ->
+          FindGroupRoute(onBack = onBack, onDone = onDone)
+        },
     onLoggedOut: () -> Unit = {},
     onAccountDeleted: () -> Unit = onLoggedOut,
     organizationContent: @Composable (() -> Unit, () -> Unit) -> Unit = { done, privacy ->
@@ -194,6 +204,7 @@ fun AppShell(
   val showBars =
       destination?.route != currentTab.createEventRoute &&
           destination?.route != currentTab.editEventRoute &&
+          destination?.route != currentTab.findGroupRoute &&
           !privacyScreen
   // The app bar action (TabAction, set per tab in Tab.action) shows only on the current tab's root
   // screen: it is hidden on the screens opened from there, including the one the action opens.
@@ -208,6 +219,8 @@ fun AppShell(
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
   val eventCancelled = stringResource(R.string.event_cancelled)
+  val groupJoined = stringResource(R.string.find_group_joined)
+  val groupStarted = stringResource(R.string.find_group_started)
 
   val leaveApp = { then: () -> Unit ->
     tabs.forEach { navController.clearBackStack(it.route) }
@@ -314,6 +327,12 @@ fun AppShell(
                       navController.navigate(tab.editEventRoute(id))
                     }
                   },
+                  onFindGroup = {
+                    val id = entry.arguments?.getString(EventDetailViewModel.EVENT_ID_ARG)
+                    if (entry.isResumed && id != null) {
+                      navController.navigate(tab.findGroupRoute(id))
+                    }
+                  },
                   // Not isResumed: the event may be deleted while a transition runs.
                   onCancelled = {
                     if (navController.currentBackStackEntry == entry) {
@@ -337,6 +356,26 @@ fun AppShell(
           editEventContent {
             if (navController.currentBackStackEntry == entry) navController.popBackStack()
           }
+        }
+        composable(
+            tab.findGroupRoute,
+            arguments =
+                listOf(
+                    navArgument(EventDetailViewModel.EVENT_ID_ARG) { type = NavType.StringType }
+                ),
+        ) { entry ->
+          findGroupContent(
+              { if (entry.isResumed) navController.popBackStack() },
+              { done ->
+                // Back on the detail, which then shows the group (#233), say what happened.
+                if (navController.currentBackStackEntry == entry) {
+                  navController.popBackStack()
+                  snackbarHostState.currentSnackbarData?.dismiss()
+                  val text = if (done == FindGroupDone.STARTED) groupStarted else groupJoined
+                  scope.launch { snackbarHostState.showSnackbar(text) }
+                }
+              },
+          )
         }
       }
     }

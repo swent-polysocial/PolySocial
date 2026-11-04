@@ -1,6 +1,7 @@
 // Contributors: Claude (wrote these tests of opening an event's detail from a tab, #112; double
 // taps during the transition, after review; Edit event above the detail, #131; Edit event closing
 // during its enter transition, #131 review; the detail's Edit and Cancel event, #131).
+// Contributors: Claude (Opus 5.5, Anthropic) tested opening and leaving Find a group, #233.
 package com.polysocial.ui.navigation
 
 import androidx.activity.ComponentActivity
@@ -32,6 +33,7 @@ import com.polysocial.ui.event.list.EventsListState
 import com.polysocial.ui.event.list.EventsScreen
 import com.polysocial.ui.event.list.EventsTags
 import com.polysocial.ui.event.list.EventsUiState
+import com.polysocial.ui.group.FindGroupDone
 import com.polysocial.ui.theme.PolySocialTheme
 import java.time.LocalDate
 import java.time.ZoneId
@@ -116,6 +118,10 @@ class EventDetailNavigationTest {
                 }
                 Button(onClick = navigation.onEdit, modifier = Modifier.testTag(DETAIL_EDIT)) {}
                 Button(
+                    onClick = navigation.onFindGroup,
+                    modifier = Modifier.testTag(DETAIL_FIND_GROUP),
+                ) {}
+                Button(
                     onClick = navigation.onCancelled,
                     modifier = Modifier.testTag(DETAIL_CANCELLED),
                 ) {}
@@ -129,6 +135,25 @@ class EventDetailNavigationTest {
               LaunchedEffect(Unit) { if (editClosesAtOnce) onClose() }
               Button(onClick = onClose, modifier = Modifier.testTag(EDIT)) {
                 Text(id.orEmpty(), Modifier.testTag(EDIT_ID))
+              }
+            },
+            findGroupContent = { onBack, onDone ->
+              val id =
+                  navController.currentBackStackEntry
+                      ?.arguments
+                      ?.getString(EventDetailViewModel.EVENT_ID_ARG)
+              Column {
+                Button(onClick = onBack, modifier = Modifier.testTag(FIND_GROUP)) {
+                  Text(id.orEmpty(), Modifier.testTag(FIND_GROUP_ID))
+                }
+                Button(
+                    onClick = { onDone(FindGroupDone.JOINED) },
+                    modifier = Modifier.testTag(FIND_GROUP_JOINED),
+                ) {}
+                Button(
+                    onClick = { onDone(FindGroupDone.STARTED) },
+                    modifier = Modifier.testTag(FIND_GROUP_STARTED),
+                ) {}
               }
             },
         )
@@ -339,6 +364,38 @@ class EventDetailNavigationTest {
         .assertIsDisplayed()
   }
 
+  @Test
+  fun findAGroup_opensAboveTheDetail_fullScreen_forThatEvent_andBackReturnsToTheDetail() {
+    composeTestRule.onNodeWithTag(EventsTags.card(trickyId)).performClick()
+
+    composeTestRule.onNodeWithTag(DETAIL_FIND_GROUP).performClick()
+
+    composeTestRule.onNodeWithTag(FIND_GROUP_ID, useUnmergedTree = true).assertTextEquals(trickyId)
+    assertBarsHidden()
+    composeTestRule.runOnIdle {
+      assertEquals(Tab.EVENTS.findGroupRoute, navController.currentDestination?.route)
+    }
+    composeTestRule.onNodeWithTag(FIND_GROUP).performClick()
+    composeTestRule.onNodeWithTag(DETAIL_ID, useUnmergedTree = true).assertTextEquals(trickyId)
+  }
+
+  @Test
+  fun joiningOrStartingAGroup_returnsToTheDetailAndSaysSo() {
+    composeTestRule.onNodeWithTag(EventsTags.card(trickyId)).performClick()
+    for ((button, text) in
+        listOf(
+            FIND_GROUP_JOINED to R.string.find_group_joined,
+            FIND_GROUP_STARTED to R.string.find_group_started,
+        )) {
+      composeTestRule.onNodeWithTag(DETAIL_FIND_GROUP).performClick()
+
+      composeTestRule.onNodeWithTag(button).performClick()
+
+      composeTestRule.onNodeWithTag(DETAIL_ID, useUnmergedTree = true).assertTextEquals(trickyId)
+      composeTestRule.onNodeWithText(composeTestRule.activity.getString(text)).assertIsDisplayed()
+    }
+  }
+
   private companion object {
     const val DETAIL = "fake_event_detail"
     const val DETAIL_ID = "fake_event_detail_id"
@@ -346,6 +403,11 @@ class EventDetailNavigationTest {
     const val EDIT_ID = "fake_edit_event_id"
     const val DETAIL_EDIT = "fake_event_detail_edit"
     const val DETAIL_CANCELLED = "fake_event_detail_cancelled"
+    const val DETAIL_FIND_GROUP = "fake_event_detail_find_group"
+    const val FIND_GROUP = "fake_find_group"
+    const val FIND_GROUP_ID = "fake_find_group_id"
+    const val FIND_GROUP_JOINED = "fake_find_group_joined"
+    const val FIND_GROUP_STARTED = "fake_find_group_started"
   }
 }
 

@@ -2,7 +2,7 @@
 // Contributors: Claude (tab definitions for the bottom navigation, #41; loading messages, #43;
 // per-tab routes, #42; Create Event route, #110; app bar actions, #84; event detail route, #112;
 // placeholder detail doc after "View event" moved to the event detail, #211; Edit event route,
-// #131; the map's Details open the event detail, #112).
+// #131; the map's Details open the event detail, #112; Find a group route, #233).
 // Contributors: OpenAI Codex (Profile privacy and full-notice routes, #103).
 package com.polysocial.ui.navigation
 
@@ -119,6 +119,16 @@ enum class Tab(
 
   /** The route that opens Edit event for the event [eventId] inside this tab. */
   fun editEventRoute(eventId: String): String = "${eventDetailRoute(eventId)}/edit"
+
+  /**
+   * Route pattern of Find a group (#233), one level below the event's detail in this tab's graph,
+   * so leaving it returns to the detail.
+   */
+  val findGroupRoute: String
+    get() = "$eventDetailRoute/groups"
+
+  /** The route that opens Find a group for the event [eventId] inside this tab. */
+  fun findGroupRoute(eventId: String): String = "${eventDetailRoute(eventId)}/groups"
 }
 
 /** Labels, icons and tags for a tab in the current account's shell. */
