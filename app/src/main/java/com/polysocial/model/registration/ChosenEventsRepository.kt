@@ -71,45 +71,44 @@ constructor(
    * (`fromCache`), and an event that was never read on this device is in `notCachedIds`, so a
    * caller can end its loading state instead of waiting forever.
    *
-   * A slow collector gets only the latest result. The flow ends after a
-   * [ChosenEventsResult.Error], which is always delivered last. The student is the one signed in
-   * when collection starts (see [RegistrationRepository.observeMyRegistrations]), so a new account
-   * needs a new collection; cancelling the collection stops every listener.
+   * A slow collector gets only the latest result. The flow ends after a [ChosenEventsResult.Error],
+   * which is always delivered last. The student is the one signed in when collection starts (see
+   * [RegistrationRepository.observeMyRegistrations]), so a new account needs a new collection;
+   * cancelling the collection stops every listener.
    */
-  fun observeChosenEvents(): Flow<ChosenEventsResult> =
-      channelFlow {
-            val state = ChosenEvents()
-            val listeners = mutableMapOf<String, Job>()
-            val lock = Mutex()
-            registrations.observeMyRegistrations().collect { result ->
-              lock.withLock {
-                when (result) {
-                  MyRegistrationsResult.Error -> {
-                    state.ended = true
-                    listeners.values.forEach { it.cancel() }
-                    listeners.clear()
-                    send(ChosenEventsResult.Error)
-                  }
-                  is MyRegistrationsResult.Registrations -> {
-                    val ids = result.eventIds
-                    (listeners.keys - ids).forEach { listeners.remove(it)?.cancel() }
-                    state.registrations(ids, result.fromCache)
-                    (ids - listeners.keys).forEach { id ->
-                      listeners[id] = launch {
-                        events.getEvent(id).collect { answer ->
-                          lock.withLock { if (state.answer(id, answer)) send(state.snapshot()) }
-                        }
-                      }
-                    }
-                    send(state.snapshot())
-                  }
+  fun observeChosenEvents(): Flow<ChosenEventsResult> = channelFlow {
+    val state = ChosenEvents()
+    val listeners = mutableMapOf<String, Job>()
+    val lock = Mutex()
+    registrations.observeMyRegistrations().collect { result ->
+      lock.withLock {
+        when (result) {
+          MyRegistrationsResult.Error -> {
+            state.ended = true
+            listeners.values.forEach { it.cancel() }
+            listeners.clear()
+            send(ChosenEventsResult.Error)
+          }
+          is MyRegistrationsResult.Registrations -> {
+            val ids = result.eventIds
+            (listeners.keys - ids).forEach { listeners.remove(it)?.cancel() }
+            state.registrations(ids, result.fromCache)
+            (ids - listeners.keys).forEach { id ->
+              listeners[id] = launch {
+                events.getEvent(id).collect { answer ->
+                  lock.withLock { if (state.answer(id, answer)) send(state.snapshot()) }
                 }
               }
             }
-            lock.withLock { listeners.values.forEach { it.cancel() } }
+            send(state.snapshot())
           }
-          .conflate()
-          .distinctUntilChanged()
+        }
+      }
+    }
+    lock.withLock { listeners.values.forEach { it.cancel() } }
+  }
+      .conflate()
+      .distinctUntilChanged()
 }
 
 /** What [ChosenEventsRepository] knows so far: the registered IDs and each event's last answer. */
@@ -138,8 +137,9 @@ private class ChosenEvents {
   }
 
   fun snapshot(): ChosenEventsResult.Events {
-    val found =
-        answers.mapNotNull { (id, result) -> (result as? EventResult.Found)?.let { id to it } }
+    val found = answers.mapNotNull { (id, result) ->
+      (result as? EventResult.Found)?.let { id to it }
+    }
     return ChosenEventsResult.Events(
         events =
             found
