@@ -9,6 +9,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
@@ -16,7 +17,6 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
-import androidx.compose.ui.test.hasTestTag
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
@@ -161,9 +161,7 @@ class MyEventsScreenTest {
     show(loaded(past = emptyList(), unavailableIds = listOf("gone")))
 
     scrollTo(MyEventsTags.unavailable("gone"))
-    composeTestRule
-        .onNodeWithText(string(R.string.my_events_unavailable_title))
-        .assertIsDisplayed()
+    composeTestRule.onNodeWithText(string(R.string.my_events_unavailable_title)).assertIsDisplayed()
     composeTestRule.onNodeWithTag(MyEventsTags.remove("gone")).performClick()
 
     assertEquals(listOf("gone"), removed)
@@ -184,9 +182,7 @@ class MyEventsScreenTest {
     composeTestRule.onNodeWithTag(MyEventsTags.OFFLINE_BANNER).assertIsDisplayed()
     scrollTo(MyEventsTags.MISSING)
     composeTestRule
-        .onNodeWithText(
-            context.resources.getQuantityString(R.plurals.my_events_not_saved, 2, 2)
-        )
+        .onNodeWithText(context.resources.getQuantityString(R.plurals.my_events_not_saved, 2, 2))
         .assertIsDisplayed()
   }
 
@@ -197,9 +193,7 @@ class MyEventsScreenTest {
     composeTestRule.onAllNodesWithTag(MyEventsTags.OFFLINE_BANNER).assertCountEquals(0)
     scrollTo(MyEventsTags.MISSING)
     composeTestRule
-        .onNodeWithText(
-            context.resources.getQuantityString(R.plurals.my_events_not_loaded, 1, 1)
-        )
+        .onNodeWithText(context.resources.getQuantityString(R.plurals.my_events_not_loaded, 1, 1))
         .assertIsDisplayed()
   }
 
