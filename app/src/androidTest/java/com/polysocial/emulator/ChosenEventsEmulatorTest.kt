@@ -114,8 +114,7 @@ class ChosenEventsEmulatorTest {
     assertEquals(setOf("private", "deleted"), result.unavailableIds)
   }
 
-  private fun Event.allowing(uid: String) =
-      copy(isPrivate = true, allowedUids = allowedUids + uid)
+  private fun Event.allowing(uid: String) = copy(isPrivate = true, allowedUids = allowedUids + uid)
 
   private companion object {
     /** Fictional accounts and events: no real user data in tests. */

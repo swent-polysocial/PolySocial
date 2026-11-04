@@ -255,8 +255,8 @@ class ChosenEventsRepositoryTest {
 
   /**
    * Counts the listeners [ChosenEventsRepository] starts on [delegate]: [started] lists the IDs in
-   * start order and [active] how many are still running. An ID in [silentIds] never answers, like
-   * a read still waiting for the server.
+   * start order and [active] how many are still running. An ID in [silentIds] never answers, like a
+   * read still waiting for the server.
    */
   private class CountingEventRepository(val delegate: FakeEventRepository) :
       EventRepository by delegate {
@@ -268,9 +268,13 @@ class ChosenEventsRepositoryTest {
 
     override fun getEvent(id: String): Flow<EventResult> {
       val source =
-          if (id in silentIds) flow<EventResult> { awaitCancellation() }
-          else delegate.getEvent(id)
-      return source.onStart { started += id; active++ }.onCompletion { active-- }
+          if (id in silentIds) flow<EventResult> { awaitCancellation() } else delegate.getEvent(id)
+      return source
+          .onStart {
+            started += id
+            active++
+          }
+          .onCompletion { active-- }
     }
   }
 
