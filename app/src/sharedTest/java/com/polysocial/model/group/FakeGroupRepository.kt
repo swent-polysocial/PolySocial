@@ -21,7 +21,8 @@ import kotlinx.coroutines.flow.map
  * `group-1`, `group-2`… and deterministic creation times.
  *
  * The observe flows read [currentUid], [readableEventIds] and [readFailure] when their collection
- * starts, as the real listeners read the user and are checked by the rules.
+ * starts, as the real listeners read the user and are checked by the rules. With nobody signed in,
+ * both end with their `UnexpectedError`, like the real ones.
  *
  * @property currentUid the signed-in student, or null when nobody is signed in.
  */
@@ -75,7 +76,7 @@ class FakeGroupRepository(var currentUid: String? = "test-student") : GroupRepos
               if (failure == ReadFailure.NETWORK) GroupsResult.NetworkError
               else GroupsResult.UnexpectedError
           )
-      eventId !in readableEventIds -> emit(GroupsResult.UnexpectedError)
+      currentUid == null || eventId !in readableEventIds -> emit(GroupsResult.UnexpectedError)
       else -> emitAll(groups.map { GroupsResult.Success(it[eventId].orEmpty(), readFromCache) })
     }
   }
