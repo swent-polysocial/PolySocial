@@ -2564,8 +2564,9 @@ async function removeU3FromPrivateEvent() {
   });
 }
 
-test("a member removed from a private event lists their group there, but can't get it", async () => {
+test("a member removed from a private event still lists and gets only their group", async () => {
   await seedGroup("private", "g1", ["u2", "u3"]);
+  await seedGroup("private", "g2", ["u4"]);
   await removeU3FromPrivateEvent();
   const db = studentDb("u3");
   // The query FirestoreGroupRepository.observeMyGroup runs, allowed by /{path=**}/groups.
@@ -2573,8 +2574,10 @@ test("a member removed from a private event lists their group there, but can't g
     collection(db, "events/private/groups"), where("memberUids", "array-contains", "u3"),
   )));
   expectIds(mine.docs.map((group) => group.id), ["g1"]);
+  await assertSucceeds(getDoc(doc(db, "events/private/groups/g1")));
+  await assertFails(getDoc(doc(db, "events/private/groups/g2")));
+  await assertFails(getDoc(doc(db, "events/private/groups/missing")));
   await assertFails(getDocs(collection(db, "events/private/groups")));
-  await assertFails(getDoc(doc(db, "events/private/groups/g1")));
 });
 
 test("a student can't list other students' groups across events", async () => {
@@ -2784,6 +2787,19 @@ test("a member leaves, deleting their marker, as the app does", async () => {
 test("a member can't leave without deleting their marker", async () => {
   await seedGroup("e1", "g1", ["u2", "u1"]);
   await assertFails(writeMembers(studentDb("u1"), "e1", "g1", ["u2"]));
+});
+
+test("a member removed from a private event still leaves their group, as the app does", async () => {
+  await seedGroup("private", "g1", ["u2", "u3"]);
+  await removeU3FromPrivateEvent();
+  await assertSucceeds(leaveAs(studentDb("u3"), "u3", "private", "g1"));
+  await expectMembers("private", "g1", ["u2"]);
+});
+
+test("a student who can't read the event can't leave a group they aren't in", async () => {
+  await seedGroup("private", "g1", ["u2"]);
+  await assertFails(leaveAs(studentDb("u1"), "u1", "private", "g1"));
+  await expectMembers("private", "g1", ["u2"]);
 });
 
 test("the last member leaving deletes the group and their marker, as the app does", async () => {

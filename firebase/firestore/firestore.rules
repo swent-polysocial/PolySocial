@@ -317,14 +317,15 @@ service cloud.firestore {
     }
 
     // An event's groups (#228, built by #232), the second reachable event subcollection after
-    // attendees: capacity (4, stored so it can change), memberUids (1 to capacity UIDs, the
-    // creator first), createdBy and the server's createdAt. A student who can read the event
-    // (the same check as the event's read rule) reads its groups, starts one, or joins one.
+    // attendees: capacity (4, stored so it can change), memberUids (1 to capacity UIDs, the creator
+    // first), createdBy and the server's createdAt. A student who can read the event (the same
+    // check as the event's read rule) reads its groups, starts one, or joins one. A member also
+    // reads their own group once they can no longer read the event, so they can still leave it.
     // Each write changes only the caller's own UID in memberUids, always together with their
     // groupMembers marker (below, checked with getAfter), which keeps a student in at most one
     // group per event. The capacity is checked here, so it needs no counter; the client's
-    // transaction stops two students taking the last place. The last member to leave deletes
-    // the group. Associations get no access (isStudent).
+    // transaction stops two students taking the last place. The last member to leave deletes the
+    // group. Associations get no access (isStudent).
     match /events/{eventId}/groups/{groupId} {
       function event() {
         return /databases/$(database)/documents/events/$(eventId);
@@ -369,7 +370,11 @@ service cloud.firestore {
             && !existsAfter(ownMarker());
       }
 
-      allow get, list: if isStudent() && canReadEvent();
+      allow list: if isStudent() && canReadEvent();
+      // A member removed from a private event's allowedUids still gets their group, so they can
+      // leave it. That shows them nothing new: they already list it through /{path=**}/groups.
+      allow get: if isStudent()
+          && (canReadEvent() || resource.data.memberUids.hasAny([request.auth.uid]));
       // exists() reads the marker as it was before this write: a student who already has one
       // can't start a group, whatever the marker rules allow.
       allow create: if isStudent()
