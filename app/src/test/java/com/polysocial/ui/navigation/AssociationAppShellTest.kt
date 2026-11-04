@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (adapted retained-map-detail assertions to the real detail route).
 // Contributors: OpenAI Codex (association tab graphs and retained stack isolation, #140).
 package com.polysocial.ui.navigation
 
@@ -13,6 +14,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -101,6 +103,17 @@ class AssociationAppShellTest {
     compose.onNodeWithTag(TabAction.SEARCH_CHATS.tag).assertIsDisplayed()
   }
 
+  private fun selectTab(tab: Tab) {
+    compose.runOnIdle {
+      nav.navigate(tab.route) {
+        popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
+      }
+    }
+    compose.waitForIdle()
+  }
+
   @Test
   fun eachAssociationTabRestoresItsOwnDetailAndLogoutDropsAllSavedStacks() {
     show()
@@ -108,11 +121,14 @@ class AssociationAppShellTest {
     compose.onNodeWithTag("detail_back").performClick()
     compose.onNodeWithTag(C.Tag.nav_item_map).performClick()
     compose.onNodeWithTag("map_details").performClick()
-    compose.onNodeWithTag(C.Tag.nav_item_organization).performClick()
+    compose.onNodeWithTag("detail_back").assertIsDisplayed()
+    // Event details hide the bottom bar; drive tab selection to verify saved graph restoration.
+    selectTab(Tab.PROFILE)
     compose.onNodeWithText("Organization fixture").assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.nav_item_map).performClick()
-    compose.onNodeWithTag(C.Tag.event_detail_placeholder).assertIsDisplayed()
-    compose.onNodeWithTag(C.Tag.nav_item_organization).performClick()
+    compose.onNodeWithTag("detail_back").assertIsDisplayed()
+    compose.runOnIdle { assertEquals(Tab.MAP.eventDetailRoute, nav.currentDestination?.route) }
+    selectTab(Tab.PROFILE)
     compose.runOnIdle { logout() }
     compose.runOnIdle {
       assertEquals(1, completions)
