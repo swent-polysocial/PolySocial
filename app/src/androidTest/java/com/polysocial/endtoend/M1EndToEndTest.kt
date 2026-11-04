@@ -137,8 +137,8 @@ import org.junit.runner.RunWith
  * 3. Profile step: section and year, then an interest (#230), then the app opens on the Events tab
  *    (#34, #74).
  * 4. Events tab: the upcoming public events, grouped by day (#105).
- * 5. Event detail opened from the list, and Back to the list (#112).
- * 5b. My events: the event the student is going to, its detail, and Back to My events (#204).
+ * 5. Event detail opened from the list, and Back to the list (#112). 5b. My events: the event the
+ *    student is going to, its detail, and Back to My events (#204).
  * 6. Create Event from the "+" (#46, #110): "Organized by you" for a student (#134), title,
  *    category, date and time pickers, public, and a place found with the location picker's search
  *    (#111).
