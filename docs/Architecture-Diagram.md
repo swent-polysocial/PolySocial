@@ -1,6 +1,6 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the groups, chat and public profile model, its rules, the co-organizer model and the deploy owner (#228); Franciszek Najda (decided and reviewed). -->
 <!-- Contributors: Claude Opus 5.5 (attendees schema, rules and capacity question, #121; the organizers' attendee count and the association's manage event, #131). -->
-<!-- Contributors: Claude (public profiles marked as built, #229; the deletion marker and the public copy kept in step, after review, #229; stored interests, #230). -->
+<!-- Contributors: Claude (public profiles marked as built, #229; the deletion marker and the public copy kept in step, after review, #229; the interests step, #230). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the account deletion decision, its deletion/failure matrix and the related open questions (#201); Mohamed Khellaf (reviewed and revised). -->
 <!-- Contributors: OpenAI Codex (verified association shell and remaining map handoff, #140). -->
 <!-- Contributors: OpenAI Codex (association signup/setup routing and built/planned integration, #125). -->
@@ -70,8 +70,10 @@ flowchart TB
   login -- "unverified" --> verify
   login -- "verified" --> gate
   verify -- "Continue" --> gate
-  gate -- "no profile yet" --> profile["Profile step"]:::s1
-  profile -- "saved" --> main
+  gate -- "no profile yet" --> profile["Profile step 1:<br/>name, section, year"]:::s1
+  profile -- "Continue" --> interests["Profile step 2:<br/>interests, #230"]:::s1
+  interests -- "Back" --> profile
+  interests -- "Finish: saved" --> main
   profile -- "Back: sign out" --> welcome
   gate -- "student ready" --> main(["Student app: 4 tabs"]):::s1
   gate -- "association setup missing" --> associationSetup["Association setup"]:::s1
@@ -328,7 +330,7 @@ flowchart TD
   q2 -- no --> verify["Verify Email screen"]:::s1
   q2 -- yes --> load["Loading your profile…<br/>(App start · loading)"]:::s1 --> q3{"Profile exists?"}
   q3 -- no --> q5{"EPFL email?"}
-  q5 -- yes --> create["Profile step:<br/>createProfile(), once"]:::s1
+  q5 -- yes --> create["Profile step (details, then interests, #230):<br/>createProfile() on Finish, once"]:::s1
   main["Main app, Events tab"]:::s1
   create -- "saved" --> main
   create -- "Back: sign out" --> welcome
