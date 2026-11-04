@@ -1,6 +1,7 @@
 // Contributors: Claude (Firestore emulator test setup, #117; timeouts and the port in the error
 // after an adversarial test review; geopoints and nulls in admin writes after review; admin
-// existence check, #126); Claude Opus 5.5 (subcollection paths, #121).
+// existence check, #126); Claude Opus 5.5 (subcollection paths, #121; the emulator's error in a
+// failed request, #309).
 // Contributors: Claude (Opus 5.5, Anthropic) let a test sign in on its own Firebase app, #198;
 // Mohamed Khellaf (reviewed and revised).
 package com.polysocial.emulator
@@ -202,12 +203,21 @@ class FirebaseEmulator : ExternalResource() {
                 )
               }
           check(code in 200..299 || (missingAllowed && code == HTTP_NOT_FOUND)) {
-            "$method $url failed with HTTP $code"
+            "$method $url failed with HTTP $code: ${connection.errorBody()}"
           }
           code
         } finally {
           connection.disconnect()
         }
+      }
+
+  /** The start of a failed request's body, where the emulator says why it failed. */
+  private fun HttpURLConnection.errorBody(): String =
+      try {
+        errorStream?.bufferedReader()?.use { it.readText() }?.take(MAX_ERROR_BODY_CHARS)
+            ?: "no body"
+      } catch (e: IOException) {
+        "body unreadable ($e)"
       }
 
   /** One connection per test process: Firebase lets an app connect to the emulators only once. */
@@ -247,5 +257,6 @@ class FirebaseEmulator : ExternalResource() {
     private const val API_WITH_LOCAL_NETWORK_PERMISSION = 37
     private const val TIMEOUT_MS = 10_000
     private const val HTTP_NOT_FOUND = 404
+    private const val MAX_ERROR_BODY_CHARS = 1_000
   }
 }
