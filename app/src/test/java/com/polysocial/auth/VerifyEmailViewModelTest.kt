@@ -7,6 +7,8 @@
 // sign-out tests to the account deletion, #225; Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (Opus 5.5, Anthropic) kept the pending-check test on an unverified account
 // now that leaving reloads it first, #225 review.
+// Contributors: Claude (Opus 5.5, Anthropic) dropped the disposes runVerifyTest already covers,
+// #225.
 package com.polysocial.auth
 
 import androidx.lifecycle.ViewModelStore
@@ -137,7 +139,6 @@ class VerifyEmailViewModelTest {
     assertEquals(VerifyEmailUiState(), vm.uiState.value)
     assertEquals(user, repository.user)
     assertEquals(0, repository.logOutCalls)
-    dispose(vm)
   }
 
   @Test
@@ -157,7 +158,6 @@ class VerifyEmailViewModelTest {
     runCurrent()
     assertEquals(user.email, vm.uiState.value.email)
     assertEquals(1, repository.sendCalls)
-    dispose(vm)
   }
 
   @Test
@@ -192,7 +192,6 @@ class VerifyEmailViewModelTest {
     assertEquals(VerificationTiming(now, now + 45_000), store.timings[user.uid])
     vm.snackbarShown()
     assertNull(vm.uiState.value.snackbar)
-    dispose(vm)
   }
 
   @Test
@@ -215,7 +214,6 @@ class VerifyEmailViewModelTest {
     vm.resend()
     runCurrent()
     assertEquals(1, repository.sendCalls)
-    dispose(vm)
   }
 
   @Test
@@ -246,8 +244,6 @@ class VerifyEmailViewModelTest {
     runCurrent()
     assertEquals(VerificationMessage.AlreadySent, restarted.uiState.value.snackbar)
     assertEquals(0, repository.sendCalls)
-    dispose(vm)
-    dispose(restarted)
   }
 
   @Test
@@ -258,7 +254,6 @@ class VerifyEmailViewModelTest {
     runCurrent()
     assertTrue(vm.uiState.value.canResend)
     assertEquals(0, repository.sendCalls)
-    dispose(vm)
   }
 
   @Test
@@ -269,7 +264,6 @@ class VerifyEmailViewModelTest {
     runCurrent()
     assertEquals(1, repository.sendCalls)
     assertEquals(45L, vm.uiState.value.remainingSeconds)
-    dispose(vm)
   }
 
   @Test
@@ -289,7 +283,6 @@ class VerifyEmailViewModelTest {
     assertEquals(160L, restarted.uiState.value.remainingSeconds)
     assertEquals(1, repository.sendCalls)
     assertNull(restarted.uiState.value.snackbar)
-    dispose(restarted)
   }
 
   @Test
@@ -317,55 +310,47 @@ class VerifyEmailViewModelTest {
   fun failedInitialDeliveryDoesNotRetryOnEntryOrResumeUntilExplicitResend() = runVerifyTest {
     repository.sendResult = SendVerificationResult.NetworkError
     val vm = viewModel()
-    try {
-      vm.enter()
-      runCurrent()
-      assertEquals(VerificationMessage.NetworkError, vm.uiState.value.banner)
-      assertEquals(1, repository.sendCalls)
+    vm.enter()
+    runCurrent()
+    assertEquals(VerificationMessage.NetworkError, vm.uiState.value.banner)
+    assertEquals(1, repository.sendCalls)
 
-      repository.sendResult = SendVerificationResult.Sent
-      vm.enter()
-      vm.checkVerified(manual = false)
-      runCurrent()
-      assertEquals(1, repository.sendCalls)
-      assertEquals(1, repository.checkCalls)
-      assertFalse(vm.uiState.value.busy)
-      assertTrue(vm.uiState.value.canResend)
-      assertEquals(VerificationMessage.NetworkError, vm.uiState.value.banner)
-      assertNull(store.timings[user.uid])
+    repository.sendResult = SendVerificationResult.Sent
+    vm.enter()
+    vm.checkVerified(manual = false)
+    runCurrent()
+    assertEquals(1, repository.sendCalls)
+    assertEquals(1, repository.checkCalls)
+    assertFalse(vm.uiState.value.busy)
+    assertTrue(vm.uiState.value.canResend)
+    assertEquals(VerificationMessage.NetworkError, vm.uiState.value.banner)
+    assertNull(store.timings[user.uid])
 
-      vm.resend()
-      runCurrent()
-      assertEquals(2, repository.sendCalls)
-      assertEquals(VerificationMessage.Sent, vm.uiState.value.banner)
-      assertEquals(VerificationTiming(now, now + 45_000), store.timings[user.uid])
-    } finally {
-      dispose(vm)
-    }
+    vm.resend()
+    runCurrent()
+    assertEquals(2, repository.sendCalls)
+    assertEquals(VerificationMessage.Sent, vm.uiState.value.banner)
+    assertEquals(VerificationTiming(now, now + 45_000), store.timings[user.uid])
   }
 
   @Test
   fun manualDeliveryBeforeEntryIsRestoredWithoutAnotherSend() = runVerifyTest {
     val vm = viewModel()
-    try {
-      vm.resend()
-      runCurrent()
-      assertEquals(1, repository.sendCalls)
-      assertEquals(45L, vm.uiState.value.remainingSeconds)
-      vm.snackbarShown()
+    vm.resend()
+    runCurrent()
+    assertEquals(1, repository.sendCalls)
+    assertEquals(45L, vm.uiState.value.remainingSeconds)
+    vm.snackbarShown()
 
-      vm.enter()
-      runCurrent()
-      assertEquals(user.email, vm.uiState.value.email)
-      assertEquals(1, repository.sendCalls)
-      assertEquals(45L, vm.uiState.value.remainingSeconds)
-      assertEquals(VerificationMessage.AlreadySent, vm.uiState.value.snackbar)
-      assertFalse(vm.uiState.value.busy)
-      assertFalse(vm.uiState.value.canResend)
-      assertEquals(VerificationTiming(now, now + 45_000), store.timings[user.uid])
-    } finally {
-      dispose(vm)
-    }
+    vm.enter()
+    runCurrent()
+    assertEquals(user.email, vm.uiState.value.email)
+    assertEquals(1, repository.sendCalls)
+    assertEquals(45L, vm.uiState.value.remainingSeconds)
+    assertEquals(VerificationMessage.AlreadySent, vm.uiState.value.snackbar)
+    assertFalse(vm.uiState.value.busy)
+    assertFalse(vm.uiState.value.canResend)
+    assertEquals(VerificationTiming(now, now + 45_000), store.timings[user.uid])
   }
 
   @Test
@@ -384,7 +369,6 @@ class VerifyEmailViewModelTest {
     runCurrent()
     assertEquals(VerificationMessage.StillUnverified, vm.uiState.value.banner)
     assertFalse(vm.uiState.value.verified)
-    dispose(vm)
   }
 
   @Test
@@ -402,7 +386,6 @@ class VerifyEmailViewModelTest {
     assertEquals(0, repository.logInCalls)
     vm.checkVerified()
     assertEquals(1, repository.checkCalls)
-    dispose(vm)
   }
 
   @Test
@@ -435,7 +418,6 @@ class VerifyEmailViewModelTest {
     repository.checkGate!!.complete(Unit)
     runCurrent()
     assertFalse(vm.uiState.value.verified)
-    dispose(vm)
   }
 
   @Test
@@ -450,7 +432,6 @@ class VerifyEmailViewModelTest {
     assertEquals(0, repository.checkCalls)
     vm.resend()
     assertEquals(VerificationMessage.NotSignedIn, vm.uiState.value.banner)
-    dispose(vm)
   }
 
   @Test
@@ -466,7 +447,6 @@ class VerifyEmailViewModelTest {
     vm.enter()
     runCurrent()
     assertEquals(1, repository.sendCalls)
-    dispose(vm)
   }
 
   @Test
@@ -477,7 +457,6 @@ class VerifyEmailViewModelTest {
     runCurrent()
     assertFalse(vm.uiState.value.sending)
     assertNull(store.timings[user.uid])
-    dispose(vm)
   }
 
   @Test
@@ -495,7 +474,6 @@ class VerifyEmailViewModelTest {
     runCurrent()
     assertTrue(vm.uiState.value.verified)
     assertNull(store.timings[user.uid])
-    dispose(vm)
   }
 
   @Test
@@ -512,7 +490,6 @@ class VerifyEmailViewModelTest {
     runCurrent()
     assertEquals(1, repository.sendCalls)
     assertTrue(vm.uiState.value.hasSentEmail)
-    dispose(vm)
   }
 
   @Test
@@ -545,38 +522,33 @@ class VerifyEmailViewModelTest {
     assertNull(repository.currentUser())
     assertEquals(VerifyEmailUiState(exit = VerificationExit.SignUp(user.email)), vm.uiState.value)
     assertEquals(VerificationTiming(now, now + 45_000), store.timings[user.uid])
-    dispose(vm)
   }
 
   @Test
   fun browserVerificationBeforeScreenEntryDoesNotSendAnotherEmailOrResetSuccess() = runVerifyTest {
     store.timings[user.uid] = VerificationTiming(now, now + 45_000)
     val vm = viewModel()
-    try {
-      // Firebase can expose the verified account before the screen's entry effect runs.
-      repository.user = user.copy(isEmailVerified = true)
-      repository.verificationResult = VerificationResult.Verified
-      vm.checkVerified(manual = false)
-      runCurrent()
-      assertTrue(vm.uiState.value.verified)
-      assertFalse(vm.uiState.value.busy)
-      assertNull(store.timings[user.uid])
+    // Firebase can expose the verified account before the screen's entry effect runs.
+    repository.user = user.copy(isEmailVerified = true)
+    repository.verificationResult = VerificationResult.Verified
+    vm.checkVerified(manual = false)
+    runCurrent()
+    assertTrue(vm.uiState.value.verified)
+    assertFalse(vm.uiState.value.busy)
+    assertNull(store.timings[user.uid])
 
-      vm.enter()
-      runCurrent()
-      assertTrue(vm.uiState.value.verified)
-      assertFalse(vm.uiState.value.busy)
-      assertFalse(vm.uiState.value.canResend)
-      assertNull(vm.uiState.value.banner)
-      assertNull(vm.uiState.value.snackbar)
-      assertEquals(1, repository.checkCalls)
-      assertEquals(0, repository.sendCalls)
-      assertEquals(0, repository.logInCalls)
-      assertEquals(0, repository.logOutCalls)
-      assertTrue(store.timings.isEmpty())
-    } finally {
-      dispose(vm)
-    }
+    vm.enter()
+    runCurrent()
+    assertTrue(vm.uiState.value.verified)
+    assertFalse(vm.uiState.value.busy)
+    assertFalse(vm.uiState.value.canResend)
+    assertNull(vm.uiState.value.banner)
+    assertNull(vm.uiState.value.snackbar)
+    assertEquals(1, repository.checkCalls)
+    assertEquals(0, repository.sendCalls)
+    assertEquals(0, repository.logInCalls)
+    assertEquals(0, repository.logOutCalls)
+    assertTrue(store.timings.isEmpty())
   }
 
   @Test
@@ -587,7 +559,6 @@ class VerifyEmailViewModelTest {
     runCurrent()
     assertEquals(0, repository.checkCalls)
     assertFalse(vm.uiState.value.verified)
-    dispose(vm)
   }
 
   @Test
@@ -604,7 +575,6 @@ class VerifyEmailViewModelTest {
     assertFalse(vm.uiState.value.checking)
     assertFalse(vm.uiState.value.verified)
     assertNull(vm.uiState.value.banner)
-    dispose(vm)
   }
 
   @Test
@@ -615,7 +585,6 @@ class VerifyEmailViewModelTest {
     runCurrent()
     assertEquals(180L, vm.uiState.value.remainingSeconds)
     assertFalse(vm.uiState.value.canResend)
-    dispose(vm)
   }
 
   @Test
@@ -656,7 +625,6 @@ class VerifyEmailViewModelTest {
     assertEquals(2, repository.sendCalls)
     assertEquals(VerificationTiming(now - 45_000, now), store.timings[user.uid])
     assertEquals(VerificationTiming(now - 15_000, now + 30_000), store.timings[replacement.uid])
-    dispose(vm)
   }
 
   @Test
@@ -664,43 +632,39 @@ class VerifyEmailViewModelTest {
     val oldRead = CompletableDeferred<Unit>()
     store.readGate = oldRead
     val vm = viewModel()
-    try {
-      vm.enter()
-      runCurrent()
-      assertTrue(vm.uiState.value.preparing)
+    vm.enter()
+    runCurrent()
+    assertTrue(vm.uiState.value.preparing)
 
-      val replacement = user.copy(uid = "other-uid", email = "other.test@epfl.ch")
-      val replacementTiming = VerificationTiming(now - 15_000, now + 30_000)
-      store.timings[replacement.uid] = replacementTiming
-      repository.user = replacement
-      store.readGate = null
-      vm.enter()
-      runCurrent()
-      assertEquals(replacement.email, vm.uiState.value.email)
-      assertEquals(30L, vm.uiState.value.remainingSeconds)
-      assertEquals(VerificationMessage.AlreadySent, vm.uiState.value.snackbar)
-      assertFalse(vm.uiState.value.busy)
-      assertEquals(0, repository.sendCalls)
+    val replacement = user.copy(uid = "other-uid", email = "other.test@epfl.ch")
+    val replacementTiming = VerificationTiming(now - 15_000, now + 30_000)
+    store.timings[replacement.uid] = replacementTiming
+    repository.user = replacement
+    store.readGate = null
+    vm.enter()
+    runCurrent()
+    assertEquals(replacement.email, vm.uiState.value.email)
+    assertEquals(30L, vm.uiState.value.remainingSeconds)
+    assertEquals(VerificationMessage.AlreadySent, vm.uiState.value.snackbar)
+    assertFalse(vm.uiState.value.busy)
+    assertEquals(0, repository.sendCalls)
 
-      vm.snackbarShown()
-      oldRead.complete(Unit)
-      runCurrent()
-      now += 1000
-      advanceTimeBy(1000)
-      runCurrent()
-      vm.enter()
-      runCurrent()
-      assertEquals(replacement.email, vm.uiState.value.email)
-      assertEquals(29L, vm.uiState.value.remainingSeconds)
-      assertFalse(vm.uiState.value.canResend)
-      assertNull(vm.uiState.value.snackbar)
-      assertNull(vm.uiState.value.banner)
-      assertEquals(0, repository.sendCalls)
-      assertNull(store.timings[user.uid])
-      assertEquals(replacementTiming, store.timings[replacement.uid])
-    } finally {
-      dispose(vm)
-    }
+    vm.snackbarShown()
+    oldRead.complete(Unit)
+    runCurrent()
+    now += 1000
+    advanceTimeBy(1000)
+    runCurrent()
+    vm.enter()
+    runCurrent()
+    assertEquals(replacement.email, vm.uiState.value.email)
+    assertEquals(29L, vm.uiState.value.remainingSeconds)
+    assertFalse(vm.uiState.value.canResend)
+    assertNull(vm.uiState.value.snackbar)
+    assertNull(vm.uiState.value.banner)
+    assertEquals(0, repository.sendCalls)
+    assertNull(store.timings[user.uid])
+    assertEquals(replacementTiming, store.timings[replacement.uid])
   }
 
   @Test
@@ -724,7 +688,6 @@ class VerifyEmailViewModelTest {
     vm.checkVerified()
     assertEquals(VerificationMessage.NotSignedIn, vm.uiState.value.banner)
     assertEquals(0, repository.checkCalls)
-    dispose(vm)
   }
 
   @Test
@@ -800,7 +763,6 @@ class VerifyEmailViewModelTest {
     assertEquals(1, repository.checkCalls)
     assertEquals(0, repository.logInCalls)
     assertEquals(0, repository.logOutCalls)
-    dispose(vm)
   }
 
   @Test
@@ -825,7 +787,6 @@ class VerifyEmailViewModelTest {
     assertTrue(store.timings.isEmpty())
     assertEquals(1, repository.sendCalls)
     assertEquals(0, repository.checkCalls)
-    dispose(vm)
   }
 
   @Test
@@ -847,6 +808,5 @@ class VerifyEmailViewModelTest {
     assertEquals(1, repository.sendCalls)
     assertNull(store.timings[user.uid])
     assertEquals(VerificationTiming(now, now + 45_000), store.timings[replacement.uid])
-    dispose(vm)
   }
 }
