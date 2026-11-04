@@ -8,7 +8,7 @@
 // OpenAI Codex (public/private event read rules, #52); Claude Opus 5.5 (event write rules, #47;
 // badge and locationName checks after review; isStudent for writes after #161; organizers
 // stay allowed readers after review; event registrations, #121); Claude (Opus 5.5, Anthropic)
-// (event groups and their groupMembers markers, #232).
+// (event groups and their groupMembers markers, #232, with fixes after review).
 rules_version = '2';
 
 service cloud.firestore {
@@ -370,6 +370,8 @@ service cloud.firestore {
       }
 
       allow get, list: if isStudent() && canReadEvent();
+      // exists() reads the marker as it was before this write: a student who already has one
+      // can't start a group, whatever the marker rules allow.
       allow create: if isStudent()
           && canReadEvent()
           && request.resource.data.keys().hasOnly(['capacity', 'memberUids', 'createdBy', 'createdAt'])
@@ -377,6 +379,7 @@ service cloud.firestore {
           && request.resource.data.memberUids == [request.auth.uid]
           && request.resource.data.createdBy == request.auth.uid
           && request.resource.data.createdAt == request.time
+          && !exists(ownMarker())
           && ownMarkerNamesThisGroupAfter();
       allow update: if isStudent()
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberUids'])
