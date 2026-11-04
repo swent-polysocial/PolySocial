@@ -91,7 +91,8 @@ constructor(
           }
           is MyRegistrationsResult.Registrations -> {
             val ids = result.eventIds
-            (listeners.keys - ids).forEach { listeners.remove(it)?.cancel() }
+            (listeners - ids).values.forEach { it.cancel() }
+            listeners.keys.retainAll(ids)
             state.registrations(ids, result.fromCache)
             (ids - listeners.keys).forEach { id ->
               listeners[id] = launch {
