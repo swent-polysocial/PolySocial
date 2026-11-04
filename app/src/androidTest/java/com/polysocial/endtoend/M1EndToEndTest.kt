@@ -8,6 +8,8 @@
 // (reviewed and revised).
 // Contributors: Claude (the interests step, #230).
 // Contributors: Claude Opus 5.5 (medium) (the My events step, #204).
+// Contributors: Claude (Opus 5.5, Anthropic) bound fake group and public profile repositories,
+// which Find a group's ViewModel needs, #233.
 package com.polysocial.endtoend
 
 import androidx.activity.compose.setContent
@@ -78,6 +80,9 @@ import com.polysocial.model.geocoding.GeocodingModule
 import com.polysocial.model.geocoding.GeocodingService
 import com.polysocial.model.geocoding.Place
 import com.polysocial.model.geocoding.PlaceSearchResult
+import com.polysocial.model.group.FakeGroupRepository
+import com.polysocial.model.group.GroupModule
+import com.polysocial.model.group.GroupRepository
 import com.polysocial.model.location.FakeLocationService
 import com.polysocial.model.location.LocationModule
 import com.polysocial.model.location.LocationService
@@ -87,7 +92,10 @@ import com.polysocial.model.registration.FakeRegistrationRepository
 import com.polysocial.model.registration.RegistrationModule
 import com.polysocial.model.registration.RegistrationRepository
 import com.polysocial.model.time.ClockModule
+import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
+import com.polysocial.model.user.PublicProfileModule
+import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.UserProfileModule
 import com.polysocial.model.user.UserProfileRepository
 import com.polysocial.resources.C
@@ -166,6 +174,8 @@ import org.junit.runner.RunWith
     NetworkModule::class,
     UserProfileModule::class,
     RegistrationModule::class,
+    GroupModule::class,
+    PublicProfileModule::class,
 )
 @RunWith(AndroidJUnit4::class)
 class M1EndToEndTest {
@@ -189,6 +199,8 @@ class M1EndToEndTest {
   @JvmField
   val registrations: RegistrationRepository =
       FakeRegistrationRepository(currentUid = UID).apply { seedRegistration(PARTY.id, UID) }
+  @BindValue @JvmField val groups: GroupRepository = FakeGroupRepository()
+  @BindValue @JvmField val publicProfiles: PublicProfileRepository = FakePublicProfileRepository()
   @BindValue @JvmField val profiles: UserProfileRepository = fakeProfiles
   @BindValue @JvmField val associations: AssociationRepository = FakeAssociationRepository()
   @BindValue @JvmField val clock: Clock = Clock.fixed(NOW, ZURICH)

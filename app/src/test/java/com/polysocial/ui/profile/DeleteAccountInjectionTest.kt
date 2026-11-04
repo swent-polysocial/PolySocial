@@ -3,6 +3,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) bound a fake session guard and its parts after
 // the #198 rebase, and the fake registration repository after the #131 rebase; Mohamed Khellaf
 // (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) bound fake group and public profile repositories,
+// which Find a group's ViewModel needs, #233.
 package com.polysocial.ui.profile
 
 import androidx.compose.ui.test.assertIsDisplayed
@@ -44,13 +46,19 @@ import com.polysocial.model.firebase.FirebaseModule
 import com.polysocial.model.firebase.SessionCache
 import com.polysocial.model.firebase.SessionGuard
 import com.polysocial.model.firebase.SessionOwnerStore
+import com.polysocial.model.group.FakeGroupRepository
+import com.polysocial.model.group.GroupModule
+import com.polysocial.model.group.GroupRepository
 import com.polysocial.model.network.NetworkModule
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.registration.FakeRegistrationRepository
 import com.polysocial.model.registration.RegistrationModule
 import com.polysocial.model.registration.RegistrationRepository
+import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.ProfileResult
+import com.polysocial.model.user.PublicProfileModule
+import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.UserProfile
 import com.polysocial.model.user.UserProfileModule
 import com.polysocial.model.user.UserProfileRepository
@@ -83,6 +91,8 @@ import org.robolectric.annotation.Config
     FirebaseModule::class,
     NetworkModule::class,
     RegistrationModule::class,
+    GroupModule::class,
+    PublicProfileModule::class,
     UserProfileModule::class,
 )
 @Config(application = HiltTestApplication::class)
@@ -105,6 +115,8 @@ class DeleteAccountInjectionTest {
   @BindValue @JvmField val deletion: AccountDeletionRepository = fakeDeletion
   @BindValue @JvmField val events: EventRepository = FakeEventRepository()
   @BindValue @JvmField val registrations: RegistrationRepository = FakeRegistrationRepository()
+  @BindValue @JvmField val groups: GroupRepository = FakeGroupRepository()
+  @BindValue @JvmField val publicProfiles: PublicProfileRepository = FakePublicProfileRepository()
   @BindValue @JvmField val associations: AssociationRepository = FakeAssociationRepository()
   @BindValue
   @JvmField

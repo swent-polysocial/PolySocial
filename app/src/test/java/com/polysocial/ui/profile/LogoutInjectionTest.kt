@@ -6,6 +6,8 @@
 // #198; Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (Opus 5.5, Anthropic) bound a fake account deletion, #207; Mohamed
 // Khellaf (reviewed and revised); Claude explained why in a comment after #286's review.
+// Contributors: Claude (Opus 5.5, Anthropic) bound fake group and public profile repositories,
+// which Find a group's ViewModel needs, #233.
 package com.polysocial.ui.profile
 
 import androidx.compose.ui.test.*
@@ -24,10 +26,16 @@ import com.polysocial.model.auth.AssociationSignupStore
 import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.event.*
 import com.polysocial.model.firebase.*
+import com.polysocial.model.group.FakeGroupRepository
+import com.polysocial.model.group.GroupModule
+import com.polysocial.model.group.GroupRepository
 import com.polysocial.model.registration.FakeRegistrationRepository
 import com.polysocial.model.registration.RegistrationModule
 import com.polysocial.model.registration.RegistrationRepository
 import com.polysocial.model.user.*
+import com.polysocial.model.user.FakePublicProfileRepository
+import com.polysocial.model.user.PublicProfileModule
+import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.resources.C
 import com.polysocial.ui.auth.WelcomeTags
 import dagger.hilt.android.testing.*
@@ -47,6 +55,8 @@ import org.robolectric.annotation.Config
     UserProfileModule::class,
     FirebaseModule::class,
     RegistrationModule::class,
+    GroupModule::class,
+    PublicProfileModule::class,
 )
 @Config(application = HiltTestApplication::class)
 @RunWith(AndroidJUnit4::class)
@@ -68,6 +78,8 @@ class LogoutInjectionTest {
   @BindValue @JvmField val auth: AuthRepository = fakeAuth
   @BindValue @JvmField val events: EventRepository = FakeEventRepository()
   @BindValue @JvmField val registrations: RegistrationRepository = FakeRegistrationRepository()
+  @BindValue @JvmField val groups: GroupRepository = FakeGroupRepository()
+  @BindValue @JvmField val publicProfiles: PublicProfileRepository = FakePublicProfileRepository()
   @BindValue @JvmField val associations: AssociationRepository = FakeAssociationRepository()
   // Hilt checks at build time that every @HiltViewModel's dependencies are bound, including
   // DeleteAccountViewModel's, and the real deletion repository needs the uninstalled Firestore.
