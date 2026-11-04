@@ -20,7 +20,6 @@
         <item quantity="other">Up to %1$d people</item>
     </plurals>
     <string name="event_detail_find_group">Find a group</string>
-    <string name="event_detail_find_group_unavailable">Finding a group isn\'t available yet.</string>
     <string name="event_detail_offline">You\'re offline. Showing the details saved on this phone.</string>
     <string name="event_detail_not_found_title">Event not available</string>
     <string name="event_detail_not_found_body">It may have been cancelled, or it\'s private.</string>

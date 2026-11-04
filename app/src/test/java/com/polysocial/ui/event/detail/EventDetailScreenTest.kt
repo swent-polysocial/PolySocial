@@ -1,5 +1,6 @@
 // Contributors: Claude (wrote these tests of the event detail screen, #112; Retry, #194; Edit and
 // Cancel event for organizers, #131; the association names dependency, #128).
+// Contributors: Claude (Opus 5.5, Anthropic) Find a group now opens its screen, #233.
 package com.polysocial.ui.event.detail
 
 import android.content.Context
@@ -60,6 +61,8 @@ class EventDetailScreenTest {
 
   private var retries = 0
 
+  private var findGroups = 0
+
   /** A student's party, with every optional field filled in. */
   private val party =
       validEvent(title = "Balélec warm-up", capacity = 200)
@@ -86,7 +89,14 @@ class EventDetailScreenTest {
 
   private fun show(state: EventDetailUiState) {
     composeTestRule.setContent {
-      PolySocialTheme { EventDetailScreen(state, onBack = { backs++ }, onRetry = { retries++ }) }
+      PolySocialTheme {
+        EventDetailScreen(
+            state,
+            onBack = { backs++ },
+            onRetry = { retries++ },
+            onFindGroup = { findGroups++ },
+        )
+      }
     }
   }
 
@@ -217,14 +227,12 @@ class EventDetailScreenTest {
   }
 
   @Test
-  fun findAGroup_showsANotAvailableYetSnackbar() {
+  fun findAGroup_opensFindAGroup() {
     showLoaded()
-    val message = string(R.string.event_detail_find_group_unavailable)
-    composeTestRule.onAllNodesWithText(message).assertCountEquals(0)
 
     composeTestRule.onNodeWithTag(EventDetailTags.FIND_GROUP).performClick()
 
-    composeTestRule.onNodeWithText(message).assertIsDisplayed()
+    assertEquals(1, findGroups)
   }
 
   @Test

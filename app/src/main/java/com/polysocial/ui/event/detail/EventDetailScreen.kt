@@ -2,6 +2,7 @@
 // Retry in the offline "not saved" state, #194; Edit and Cancel event for organizers, #131;
 // the association's name, #128).
 // Contributors: Claude (the shared offline banner, #251; the association's manage event, #131).
+// Contributors: Claude (Opus 5.5, Anthropic) opened Find a group from the action bar, #233.
 package com.polysocial.ui.event.detail
 
 import androidx.annotation.DrawableRes
@@ -125,8 +126,8 @@ data class EventOrganizerActions(
 
 /**
  * The event detail screen for the event in the navigation arguments (see [EventDetailViewModel]).
- * An organizer's Edit calls [onEdit], and [onCancelled] is called once the event is cancelled, to
- * leave the screen.
+ * An organizer's Edit calls [onEdit], [onCancelled] is called once the event is cancelled, to leave
+ * the screen, and Find a group calls [onFindGroup] (#233).
  */
 @Composable
 fun EventDetailRoute(
@@ -134,6 +135,7 @@ fun EventDetailRoute(
     modifier: Modifier = Modifier,
     onEdit: () -> Unit = {},
     onCancelled: () -> Unit = {},
+    onFindGroup: () -> Unit = {},
     viewModel: EventDetailViewModel = hiltViewModel(),
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -152,14 +154,14 @@ fun EventDetailRoute(
           onKeepEvent = viewModel::onKeepEvent,
       ),
       onRetryGoing = viewModel::retryGoingCount,
+      onFindGroup = onFindGroup,
   )
 }
 
 /**
  * Draws [state] as in the Figma "Event detail" Sprint 2 frames (section 03): the event, or its
  * loading, not-found and offline states. Every state keeps the Back button, and the offline "not
- * saved" state has Retry, which calls [onRetry]. "Find a group" isn't built yet (matching comes
- * later), so it shows a "not available yet" Snackbar.
+ * saved" state has Retry, which calls [onRetry]. "Find a group" calls [onFindGroup] (#233).
  *
  * An organizer also sees Edit, "Organized by you" and Cancel event (Figma section 10, "Event detail
  * · organizer"), and the confirmation while [cancelState] isn't hidden. An association sees its own
@@ -175,10 +177,10 @@ fun EventDetailScreen(
     cancelState: CancelEventState = CancelEventState.Hidden,
     organizer: EventOrganizerActions = EventOrganizerActions(),
     onRetryGoing: () -> Unit = {},
+    onFindGroup: () -> Unit = {},
 ) {
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
-  val unavailable = stringResource(R.string.event_detail_find_group_unavailable)
   val manageUnavailable = stringResource(R.string.manage_event_not_available)
   /** Shows [message], replacing a message already shown instead of queueing one per tap. */
   fun showSnackbar(message: String) {
@@ -208,7 +210,7 @@ fun EventDetailScreen(
                 onBack,
                 snackbarHostState,
                 organizer,
-                onFindGroup = { showSnackbar(unavailable) },
+                onFindGroup = onFindGroup,
             )
           }
       EventDetailUiState.NotFound ->
