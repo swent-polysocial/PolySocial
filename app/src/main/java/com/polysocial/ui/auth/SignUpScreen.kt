@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (reconciled the shared logout callback on rebase, #125).
 // Contributors: OpenAI Codex (preserve association entry and offline retry, #125).
 // Contributors: OpenAI Codex (association-specific invalid email feedback, #125).
 // Contributors: OpenAI Codex (association email validation feedback, #125).
@@ -397,7 +398,7 @@ fun AuthFlow(
               ErrorAction(stringResource(R.string.app_start_log_out), logout::requestLogout),
       )
       // Like the signed-in apps: the cache is cleared, then the account signed out (#109).
-      ActivityLogout(logout, ::loggedOut)
+      ActivityLogout(logout, afterLogout)
     }
     AuthDestination.ProfileSetup ->
         profileContent(
