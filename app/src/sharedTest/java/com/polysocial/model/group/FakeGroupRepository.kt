@@ -1,4 +1,5 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (wrote this fake for tests, #232).
+// Contributors: Claude (Opus 5.5, Anthropic) (wrote this fake for tests, #232; aligned it with
+// FirestoreGroupRepository after review).
 package com.polysocial.model.group
 
 import com.polysocial.model.event.isReadableEventId
@@ -7,7 +8,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 
 /**
@@ -19,6 +19,9 @@ import kotlinx.coroutines.flow.map
  * [GroupWriteResult.NotFound], like a missing or private one. A student's group for an event is the
  * one whose members include them, so the fake needs no separate marker. New groups get the IDs
  * `group-1`, `group-2`… and deterministic creation times.
+ *
+ * The observe flows read [currentUid], [readableEventIds] and [readFailure] when their collection
+ * starts, as the real listeners read the user and are checked by the rules.
  *
  * @property currentUid the signed-in student, or null when nobody is signed in.
  */
@@ -63,45 +66,40 @@ class FakeGroupRepository(var currentUid: String? = "test-student") : GroupRepos
   /** The stored groups of [eventId], oldest first. */
   fun groupsOf(eventId: String): List<Group> = groups.value[eventId].orEmpty()
 
-  override fun observeGroups(eventId: String): Flow<GroupsResult> {
-    readFailure?.let {
-      return flowOf(
-          GroupsResult.Loading,
-          if (it == ReadFailure.NETWORK) GroupsResult.NetworkError
-          else GroupsResult.UnexpectedError,
-      )
-    }
-    if (eventId !in readableEventIds) {
-      return flowOf(GroupsResult.Loading, GroupsResult.UnexpectedError)
-    }
-    return flow {
-      emit(GroupsResult.Loading)
-      emitAll(groups.map { GroupsResult.Success(it[eventId].orEmpty(), readFromCache) })
+  override fun observeGroups(eventId: String): Flow<GroupsResult> = flow {
+    emit(GroupsResult.Loading)
+    val failure = readFailure
+    when {
+      failure != null ->
+          emit(
+              if (failure == ReadFailure.NETWORK) GroupsResult.NetworkError
+              else GroupsResult.UnexpectedError
+          )
+      eventId !in readableEventIds -> emit(GroupsResult.UnexpectedError)
+      else -> emitAll(groups.map { GroupsResult.Success(it[eventId].orEmpty(), readFromCache) })
     }
   }
 
-  override fun observeMyGroup(eventId: String): Flow<MyGroupResult> {
-    readFailure?.let {
-      return flowOf(
-          MyGroupResult.Loading,
-          if (it == ReadFailure.NETWORK) MyGroupResult.NetworkError
-          else MyGroupResult.UnexpectedError,
-      )
-    }
+  override fun observeMyGroup(eventId: String): Flow<MyGroupResult> = flow {
+    emit(MyGroupResult.Loading)
+    val failure = readFailure
     val uid = currentUid
-    if (uid == null || !isReadableEventId(eventId)) {
-      return flowOf(MyGroupResult.Loading, MyGroupResult.UnexpectedError)
-    }
-    return flow {
-      emit(MyGroupResult.Loading)
-      emitAll(
-          groups.map { stored ->
-            MyGroupResult.Success(
-                stored[eventId].orEmpty().firstOrNull { uid in it.memberUids },
-                readFromCache,
-            )
-          }
-      )
+    when {
+      failure != null ->
+          emit(
+              if (failure == ReadFailure.NETWORK) MyGroupResult.NetworkError
+              else MyGroupResult.UnexpectedError
+          )
+      uid == null || !isReadableEventId(eventId) -> emit(MyGroupResult.UnexpectedError)
+      else ->
+          emitAll(
+              groups.map { stored ->
+                MyGroupResult.Success(
+                    stored[eventId].orEmpty().firstOrNull { uid in it.memberUids },
+                    readFromCache,
+                )
+              }
+          )
     }
   }
 
