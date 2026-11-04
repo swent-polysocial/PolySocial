@@ -1,6 +1,7 @@
 // Contributors: Claude (the association's Events tab from the Figma "Association · events tab"
 // frame, #132; keeping the split current and the year on other years' dates, #132 review).
 // Contributors: Claude (the shared offline banner, #251).
+// Contributors: Claude Opus 5.5 (medium) (the segment shared with My events, #204).
 package com.polysocial.ui.event.list
 
 import androidx.compose.foundation.background
@@ -221,8 +222,9 @@ private fun TabSwitcher(
   }
 }
 
+/** One segment of a Figma segmented control; the students' Events tab reuses it (#204). */
 @Composable
-private fun androidx.compose.foundation.layout.RowScope.Segment(
+internal fun androidx.compose.foundation.layout.RowScope.Segment(
     label: String,
     isSelected: Boolean,
     onClick: () -> Unit,
