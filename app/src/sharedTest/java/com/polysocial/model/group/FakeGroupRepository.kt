@@ -53,12 +53,16 @@ class FakeGroupRepository(var currentUid: String? = "test-student") : GroupRepos
 
   private var created = 0
 
-  /** Stores a group directly, like one other students formed, and returns it. */
+  /**
+   * Stores a group directly, like one other students formed, and returns it. Its first member is its
+   * creator, so [memberUids] can't be empty: a stored group always has a member.
+   */
   fun seedGroup(
       eventId: String,
       memberUids: List<String>,
       capacity: Int = GROUP_CAPACITY,
   ): Group {
+    require(memberUids.isNotEmpty()) { "A group has at least one member" }
     val group = newGroup(eventId, memberUids, capacity)
     store(eventId, groupsOf(eventId) + group)
     return group
@@ -173,7 +177,7 @@ class FakeGroupRepository(var currentUid: String? = "test-student") : GroupRepos
         eventId = eventId,
         capacity = capacity,
         memberUids = memberUids,
-        createdBy = memberUids.firstOrNull().orEmpty(),
+        createdBy = memberUids.first(),
         createdAt = FIRST_CREATED_AT.plusSeconds(created.toLong()),
     )
   }
