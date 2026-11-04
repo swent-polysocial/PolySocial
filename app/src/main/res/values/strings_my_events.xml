@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude Opus 5.5 (medium) (My events texts from the Figma section 12 frames, #204). -->
+<resources>
+    <string name="events_segment_upcoming">Upcoming</string>
+    <string name="events_segment_my_events">My events</string>
+    <string name="events_segment_my_events_count">My events · %d</string>
+
+    <string name="my_events_loading">Loading your events…</string>
+    <string name="my_events_upcoming">Upcoming</string>
+    <string name="my_events_past">Past</string>
+    <string name="my_events_empty_title">Nothing planned yet</string>
+    <string name="my_events_empty_body">Tap \"I\'m going\" on an event and it shows up here, even weeks ahead.</string>
+    <string name="my_events_browse">Browse upcoming events</string>
+    <string name="my_events_offline_banner">You\'re offline. These are the events saved on this device.</string>
+    <string name="my_events_offline_title">You\'re offline</string>
+    <string name="my_events_offline_message">Your events show up here once you have opened My events with a connection.</string>
+    <string name="my_events_error_title">Couldn\'t load your events</string>
+    <string name="my_events_error_message">Something went wrong. Check your connection and try again.</string>
+    <string name="my_events_unavailable_title">Event no longer available</string>
+    <string name="my_events_unavailable_body">Cancelled, or you can no longer see it</string>
+    <string name="my_events_remove">Remove</string>
+    <string name="my_events_remove_offline">You\'re offline. Try again once you\'re back online.</string>
+    <string name="my_events_remove_failed">Couldn\'t remove it. Try again.</string>
+    <plurals name="my_events_not_saved">
+        <item quantity="one">%d event isn\'t saved on this device</item>
+        <item quantity="other">%d events aren\'t saved on this device</item>
+    </plurals>
+    <string name="my_events_not_saved_body">It shows up when you\'re back online</string>
+    <plurals name="my_events_not_loaded">
+        <item quantity="one">%d event couldn\'t be loaded yet</item>
+        <item quantity="other">%d events couldn\'t be loaded yet</item>
+    </plurals>
+    <string name="my_events_not_loaded_body">It shows up as soon as it loads</string>
+</resources>
