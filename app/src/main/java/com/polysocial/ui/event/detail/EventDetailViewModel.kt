@@ -1,7 +1,8 @@
 // Contributors: Claude (drafted the event detail ViewModel, #112; the server timeout and Retry,
 // #194; Edit and Cancel event for organizers, #131; the association's name, #128; the "Going"
 // count on an association's manage event, #131).
-// Contributors: Claude (Opus 5.5, Anthropic) whether the event has ended, for Find a group, #233.
+// Contributors: Claude (Opus 5.5, Anthropic) whether the event has ended, for Find a group, and the
+// student's group card, #233.
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -15,9 +16,15 @@ import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.EventResult
 import com.polysocial.model.event.isLive
 import com.polysocial.model.event.isPast
+import com.polysocial.model.group.Group
+import com.polysocial.model.group.GroupRepository
+import com.polysocial.model.group.MyGroupResult
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.registration.AttendeeCountResult
 import com.polysocial.model.registration.RegistrationRepository
+import com.polysocial.model.user.PublicProfileRepository
+import com.polysocial.model.user.PublicProfilesResult
+import com.polysocial.ui.group.GroupMember
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
 import java.time.LocalDate
@@ -33,9 +40,12 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
@@ -83,6 +93,18 @@ sealed interface GoingCount {
   data object Unavailable : GoingCount
 }
 
+/**
+ * The signed-in student's group for the event, for the card on the detail (Figma "Event detail · in
+ * a group", #233): [members] in the group's order, with their public profiles when they could be
+ * read, and [myUid], the student's own UID among them.
+ */
+data class YourGroup(
+    val groupId: String,
+    val capacity: Int,
+    val members: List<GroupMember>,
+    val myUid: String,
+)
+
 /** What the event detail screen shows (Figma section 03, "Event detail" and its states). */
 sealed interface EventDetailUiState {
   data object Loading : EventDetailUiState
@@ -101,6 +123,9 @@ sealed interface EventDetailUiState {
    *   screen); it is updated with the event's next change.
    * @property hasEnded true once the event has ended, when it was read ([isPast]), so the detail no
    *   longer offers Find a group; it is updated with the event's next change, like [isLive].
+   * @property yourGroup the student's group for the event, which then shows instead of Find a group
+   *   (#233); null when they aren't in one, while it is read, when it can't be read, and on
+   *   [isManaged] events.
    */
   data class Loaded(
       val details: EventDetails,
@@ -110,6 +135,7 @@ sealed interface EventDetailUiState {
       val going: GoingCount? = null,
       val isLive: Boolean = false,
       val hasEnded: Boolean = false,
+      val yourGroup: YourGroup? = null,
   ) : EventDetailUiState {
     /**
      * True when the signed-in association organizes this association event: the screen is then
@@ -184,6 +210,12 @@ sealed interface CancelEventState {
  * first shows. The event doesn't wait for it; offline or on a failure the count is
  * [GoingCount.Unavailable] until [retryGoingCount].
  *
+ * On the detail students see, the student's group for the event is observed through [groups] once
+ * the event shows (#233), with its members' public profiles read through [profiles] each time the
+ * group changes. It joins the event when it arrives; when the student isn't in a group, or it can't
+ * be read, the screen keeps Find a group. An association's managed event never reads it, since
+ * associations never reach groups.
+ *
  * @param auth tells whether the signed-in user is one of the event's organizers.
  * @param clock gives the device's time zone, in which the times are shown, and the time that tells
  *   whether the event is live or has ended.
@@ -199,6 +231,8 @@ constructor(
     private val clock: Clock,
     private val associationNames: AssociationNames,
     private val registrations: RegistrationRepository,
+    private val groups: GroupRepository,
+    private val profiles: PublicProfileRepository,
 ) : ViewModel() {
 
   private val eventId = savedStateHandle.get<String>(EVENT_ID_ARG).orEmpty()
@@ -221,6 +255,9 @@ constructor(
   /** Whether this screen counted the managed event's attendees, so they are counted once. */
   private var goingCounted = false
 
+  /** True once a student's view of the event shows, so the student's group is observed. */
+  private val watchesGroup = MutableStateFlow(false)
+
   @OptIn(ExperimentalCoroutinesApi::class)
   val uiState: StateFlow<EventDetailUiState> =
       reads
@@ -231,6 +268,16 @@ constructor(
           .combine(going) { state, count ->
             if (state is EventDetailUiState.Loaded && state.isManaged)
                 state.copy(going = count ?: GoingCount.Loading)
+            else state
+          }
+          .onEach {
+            if (it is EventDetailUiState.Loaded && !it.isManaged) watchesGroup.value = true
+          }
+          .combine(watchesGroup.flatMapLatest { if (it) yourGroup() else flowOf(null) }) {
+              state,
+              group ->
+            if (state is EventDetailUiState.Loaded && !state.isManaged)
+                state.copy(yourGroup = group)
             else state
           }
           .combine(_cancelState) { state, cancel ->
@@ -280,6 +327,34 @@ constructor(
             AttendeeCountResult.UnexpectedError -> GoingCount.Unavailable
           }
     }
+  }
+
+  /**
+   * The signed-in student's group for the event, with its members' public profiles, or null. Only
+   * the group matters: when only `fromCache` changes, the profiles aren't read again.
+   */
+  @OptIn(ExperimentalCoroutinesApi::class)
+  private fun yourGroup(): Flow<YourGroup?> =
+      groups
+          .observeMyGroup(eventId)
+          .map { (it as? MyGroupResult.Success)?.group }
+          .distinctUntilChanged()
+          .mapLatest { group -> group?.let { withProfiles(it) } }
+
+  private suspend fun withProfiles(group: Group): YourGroup? {
+    val me = auth.currentUser()?.uid ?: return null
+    val read =
+        when (val result = profiles.getPublicProfiles(group.memberUids.filter { it != me })) {
+          is PublicProfilesResult.Found -> result.profiles
+          PublicProfilesResult.NetworkError,
+          PublicProfilesResult.UnexpectedError -> emptyMap()
+        }
+    return YourGroup(
+        groupId = group.id,
+        capacity = group.capacity,
+        members = group.memberUids.map { GroupMember(it, read[it]) },
+        myUid = me,
+    )
   }
 
   /** Counts the attendees again after the count failed (tapping the unavailable count). */

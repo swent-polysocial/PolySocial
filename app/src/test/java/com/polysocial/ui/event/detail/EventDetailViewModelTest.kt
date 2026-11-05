@@ -1,7 +1,8 @@
 // Contributors: Claude (wrote these tests of the event detail ViewModel, #112; the server timeout
 // and Retry, #194; Edit and Cancel event for organizers, #131; the association names dependency,
 // #128; the manage event's "Going" count, #131).
-// Contributors: Claude (Opus 5.5, Anthropic) whether the event has ended, #233.
+// Contributors: Claude (Opus 5.5, Anthropic) whether the event has ended; passed the detail fake
+// groups and profiles, #233.
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -14,10 +15,12 @@ import com.polysocial.model.event.EventResult
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.validEvent
 import com.polysocial.model.event.withCreator
+import com.polysocial.model.group.FakeGroupRepository
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.registration.AttendeeCountResult
 import com.polysocial.model.registration.FakeRegistrationRepository
 import com.polysocial.model.registration.RegistrationRepository
+import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.utils.MainDispatcherRule
 import java.time.Clock
 import java.time.Instant
@@ -92,6 +95,8 @@ class EventDetailViewModelTest {
           clock,
           FakeAssociationNames(),
           registrations,
+          FakeGroupRepository(),
+          FakePublicProfileRepository(),
       )
 
   /** [repository], except that [getEvent][EventRepository.getEvent] returns [results]. */
@@ -589,6 +594,8 @@ class EventDetailViewModelTest {
             clock,
             FakeAssociationNames(),
             slow,
+            FakeGroupRepository(),
+            FakePublicProfileRepository(),
         )
     observe(vm)
     assertEquals(GoingCount.Loading, vm.uiState.value.loaded().going)

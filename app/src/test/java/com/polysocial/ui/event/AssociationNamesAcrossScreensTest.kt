@@ -1,15 +1,18 @@
 // Contributors: Claude (wrote this test, #128).
+// Contributors: Claude (Opus 5.5, Anthropic) passed the detail fake groups and profiles, #233.
 package com.polysocial.ui.event
 
 import androidx.lifecycle.SavedStateHandle
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.TEST_NOW
 import com.polysocial.model.event.validEvent
+import com.polysocial.model.group.FakeGroupRepository
 import com.polysocial.model.location.FakeLocationService
 import com.polysocial.model.map.MapEventResult
 import com.polysocial.model.map.MapEventSource
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.registration.FakeRegistrationRepository
+import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.ui.event.detail.EventDetailUiState
 import com.polysocial.ui.event.detail.EventDetailViewModel
 import com.polysocial.ui.event.list.EventsViewModel
@@ -71,6 +74,8 @@ class AssociationNamesAcrossScreensTest {
             clock,
             fixture.names,
             FakeRegistrationRepository(),
+            FakeGroupRepository(),
+            FakePublicProfileRepository(),
         )
     var detailState: EventDetailUiState = EventDetailUiState.Loading
     backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {

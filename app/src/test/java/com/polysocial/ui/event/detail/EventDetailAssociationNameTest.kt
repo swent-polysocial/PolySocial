@@ -1,13 +1,16 @@
 // Contributors: Claude (wrote these tests, #128; additional tests from a test audit and a
 // review, #128).
+// Contributors: Claude (Opus 5.5, Anthropic) passed the detail fake groups and profiles, #233.
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
 import com.polysocial.model.association.AssociationResult
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.validEvent
+import com.polysocial.model.group.FakeGroupRepository
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.registration.FakeRegistrationRepository
+import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.ui.event.CLUB_NAME
 import com.polysocial.ui.event.CLUB_UID
 import com.polysocial.ui.event.NamesFixture
@@ -55,6 +58,8 @@ class EventDetailAssociationNameTest {
           clock,
           fixture.names,
           FakeRegistrationRepository(),
+          FakeGroupRepository(),
+          FakePublicProfileRepository(),
       )
 
   /** Collects [vm]'s state like the screen does, and returns every state it showed. */

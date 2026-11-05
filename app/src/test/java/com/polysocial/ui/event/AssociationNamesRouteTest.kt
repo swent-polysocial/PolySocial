@@ -1,4 +1,5 @@
 // Contributors: Claude (wrote these tests, #128).
+// Contributors: Claude (Opus 5.5, Anthropic) passed the detail fake groups and profiles, #233.
 package com.polysocial.ui.event
 
 import androidx.compose.ui.test.assertIsDisplayed
@@ -14,9 +15,11 @@ import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.TEST_NOW
 import com.polysocial.model.event.validEvent
+import com.polysocial.model.group.FakeGroupRepository
 import com.polysocial.model.location.FakeLocationService
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.registration.FakeRegistrationRepository
+import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.ui.event.detail.EventDetailRoute
 import com.polysocial.ui.event.detail.EventDetailTags
 import com.polysocial.ui.event.detail.EventDetailViewModel
@@ -95,6 +98,8 @@ class AssociationNamesRouteTest {
             clock,
             fixture.names,
             FakeRegistrationRepository(),
+            FakeGroupRepository(),
+            FakePublicProfileRepository(),
         )
     composeTestRule.setContent {
       PolySocialTheme { EventDetailRoute(onBack = {}, viewModel = viewModel) }
