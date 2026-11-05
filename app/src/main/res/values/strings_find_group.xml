@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Contributors: Claude (Opus 5.5, Anthropic) (Find a group texts from #227's Figma section 11, #233). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (Find a group texts from #227's Figma section 11,
+     and the group card on the detail, #233). -->
 <resources>
     <string name="find_group_title">Find a group</string>
     <!-- The event under the header, for example "Fri 3 Oct · 20:00 – 01:00 · Satellite". -->
@@ -38,4 +39,18 @@
     <!-- Shown on the event detail after leaving Find a group. -->
     <string name="find_group_joined">You joined the group.</string>
     <string name="find_group_started">Group started. Others can now join it.</string>
+    <!-- The group card on the event detail (Figma "Event detail · in a group"), for example
+         "Your group · 3 of 4" and "Léa, Tom and you. One place left, so someone may still join." -->
+    <string name="your_group_title">Your group · %1$d of %2$d</string>
+    <string name="your_group_you">You</string>
+    <!-- The other members' first names, then "and you", for example "Léa, Tom and you." -->
+    <string name="your_group_members">%1$s and you.</string>
+    <string name="your_group_only_you">Just you so far.</string>
+    <plurals name="your_group_places_left">
+        <item quantity="one">One place left, so someone may still join.</item>
+        <item quantity="other">%d places left, so others may still join.</item>
+    </plurals>
+    <string name="your_group_full">The group is full.</string>
+    <!-- Tapping the card, until the Group screen exists (#234). -->
+    <string name="your_group_not_available">The group screen isn\'t available yet.</string>
 </resources>

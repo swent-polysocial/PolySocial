@@ -2,8 +2,8 @@
 // Retry in the offline "not saved" state, #194; Edit and Cancel event for organizers, #131;
 // the association's name, #128).
 // Contributors: Claude (the shared offline banner, #251; the association's manage event, #131).
-// Contributors: Claude (Opus 5.5, Anthropic) opened Find a group from the action bar, and
-// hid it once the event has ended, #233.
+// Contributors: Claude (Opus 5.5, Anthropic) opened Find a group from the action bar, hid it once
+// the event has ended, and showed the student's group card instead, #233.
 package com.polysocial.ui.event.detail
 
 import androidx.annotation.DrawableRes
@@ -73,6 +73,7 @@ import com.polysocial.ui.common.OfflineBanner
 import com.polysocial.ui.common.StateButton
 import com.polysocial.ui.event.VerifiedPill
 import com.polysocial.ui.event.style
+import com.polysocial.ui.group.YourGroupCard
 import com.polysocial.ui.theme.Accent
 import com.polysocial.ui.theme.AccentText
 import com.polysocial.ui.theme.Bg
@@ -102,6 +103,7 @@ object EventDetailTags {
   const val DESCRIPTION = "event_detail_description"
   const val OFFLINE_BANNER = "event_detail_offline_banner"
   const val FIND_GROUP = "event_detail_find_group"
+  const val YOUR_GROUP = "event_detail_your_group"
   const val NOT_FOUND = "event_detail_not_found"
   const val NOT_FOUND_BACK = "event_detail_not_found_back"
   const val OFFLINE_NOT_SAVED = "event_detail_offline_not_saved"
@@ -184,6 +186,7 @@ fun EventDetailScreen(
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
   val manageUnavailable = stringResource(R.string.manage_event_not_available)
+  val groupUnavailable = stringResource(R.string.your_group_not_available)
   /** Shows [message], replacing a message already shown instead of queueing one per tap. */
   fun showSnackbar(message: String) {
     snackbarHostState.currentSnackbarData?.dismiss()
@@ -213,6 +216,8 @@ fun EventDetailScreen(
                 snackbarHostState,
                 organizer,
                 onFindGroup = onFindGroup,
+                // The Group screen comes with #234.
+                onOpenGroup = { showSnackbar(groupUnavailable) },
             )
           }
       EventDetailUiState.NotFound ->
@@ -266,6 +271,7 @@ private fun EventContent(
     snackbarHostState: SnackbarHostState,
     organizer: EventOrganizerActions,
     onFindGroup: () -> Unit,
+    onOpenGroup: () -> Unit,
 ) {
   val details = state.details
   val event = details.event
@@ -349,6 +355,10 @@ private fun EventContent(
                 modifier = Modifier.testTag(EventDetailTags.DESCRIPTION),
             )
           }
+          state.yourGroup?.let {
+            Spacer(Modifier.height(20.dp))
+            YourGroupCard(it, onOpenGroup, Modifier.testTag(EventDetailTags.YOUR_GROUP))
+          }
           Spacer(Modifier.height(20.dp))
         }
       }
@@ -362,9 +372,10 @@ private fun EventContent(
           Modifier.padding(start = 20.dp, end = 20.dp, bottom = 16.dp),
       )
     }
-    // An ended event no longer offers Find a group: nobody plans to go anymore.
-    if (state.hasEnded) Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
-    else ActionBar(onFindGroup)
+    // Find a group only until the event has ended, and until the student is in a group, whose card
+    // then replaces it (#233).
+    if (state.yourGroup == null && !state.hasEnded) ActionBar(onFindGroup)
+    else Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
   }
 }
 
