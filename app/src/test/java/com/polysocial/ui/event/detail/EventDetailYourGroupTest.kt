@@ -153,6 +153,30 @@ class EventDetailYourGroupTest {
   }
 
   @Test
+  fun profilesThatCouldntBeRead_areReadAgain_whenTheSameGroupComesBack() = runTest {
+    events.seed(validEvent().copy(id = EVENT))
+    val stored = groups.seedGroup(EVENT, listOf("lea", ME))
+    val results = MutableStateFlow<MyGroupResult>(MyGroupResult.Success(stored, true))
+    profiles.failure = FakePublicProfileRepository.Failure.Offline
+    val vm =
+        viewModel(
+            object : GroupRepository by groups {
+              override fun observeMyGroup(eventId: String): Flow<MyGroupResult> = results
+            }
+        )
+    observe(vm)
+    assertEquals(listOf(null, null), vm.yourGroup?.members?.map { it.profile })
+
+    // Back online: the same group, now confirmed by the server.
+    profiles.failure = null
+    results.value = MyGroupResult.Success(stored, false)
+    runCurrent()
+
+    assertEquals(2, profiles.requestedUids.size)
+    assertEquals(listOf(lea, null), vm.yourGroup?.members?.map { it.profile })
+  }
+
+  @Test
   fun anAssociationsManagedEvent_neverReadsGroups() = runTest {
     me = AuthUser("association", "fictional.association@example.com", true)
     events.seed(
