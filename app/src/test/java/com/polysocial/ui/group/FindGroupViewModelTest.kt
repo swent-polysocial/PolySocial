@@ -150,6 +150,24 @@ class FindGroupViewModelTest {
       }
 
   @Test
+  fun anEarlierMessageShown_doesntClearANewerOne() =
+      runTest(main.dispatcher) {
+        val group = groups.seedGroup(EVENT, listOf("lea"))
+        open()
+        groups.writeFailure = GroupWriteResult.NetworkError
+        vm.join(group.id)
+        advanceUntilIdle()
+        groups.writeFailure = GroupWriteResult.UnexpectedError
+        vm.join(group.id)
+        advanceUntilIdle()
+
+        // The first Snackbar, cancelled by the second message, reports it was shown.
+        vm.onMessageShown(FindGroupMessage.OFFLINE)
+
+        assertEquals(FindGroupMessage.UNEXPECTED, vm.message.value)
+      }
+
+  @Test
   fun profilesThatCouldntBeRead_areReadAgain_whenTheSameGroupsComeBack() =
       runTest(main.dispatcher) {
         seedFigmaGroups()
@@ -277,7 +295,7 @@ class FindGroupViewModelTest {
           vm.join(group.id)
           advanceUntilIdle()
           assertEquals(message, vm.message.value)
-          vm.onMessageShown()
+          vm.onMessageShown(message)
           assertNull(vm.message.value)
         }
         groups.writeFailure = GroupWriteResult.NotFound

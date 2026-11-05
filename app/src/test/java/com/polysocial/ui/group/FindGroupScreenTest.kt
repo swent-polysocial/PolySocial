@@ -24,6 +24,7 @@ import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.validEvent
 import com.polysocial.model.group.FakeGroupRepository
+import com.polysocial.model.group.GroupWriteResult
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.PublicProfile
@@ -158,6 +159,22 @@ class FindGroupScreenTest {
     rule.onNodeWithText(string(R.string.find_group_full)).assertIsDisplayed()
     assertEquals(emptyList<FindGroupDone>(), finished)
     rule.onNodeWithTag(FindGroupTags.EMPTY).assertIsDisplayed()
+  }
+
+  @Test
+  fun aSecondRefusal_whileTheFirstShows_stillShowsItsSnackbar() {
+    val group = groups.seedGroup(EVENT, listOf("lea"))
+    showRoute()
+    groups.writeFailure = GroupWriteResult.NetworkError
+    rule.onNodeWithTag(FindGroupTags.join(group.id)).performClick()
+    settle()
+    rule.onNodeWithText(string(R.string.find_group_offline)).assertIsDisplayed()
+
+    groups.writeFailure = GroupWriteResult.UnexpectedError
+    rule.onNodeWithTag(FindGroupTags.join(group.id)).performClick()
+    settle()
+
+    rule.onNodeWithText(string(R.string.find_group_unexpected)).assertIsDisplayed()
   }
 
   @Test
