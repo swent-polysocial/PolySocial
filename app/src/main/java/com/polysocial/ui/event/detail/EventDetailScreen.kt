@@ -2,7 +2,8 @@
 // Retry in the offline "not saved" state, #194; Edit and Cancel event for organizers, #131;
 // the association's name, #128).
 // Contributors: Claude (the shared offline banner, #251; the association's manage event, #131).
-// Contributors: Claude (Opus 5.5, Anthropic) opened Find a group from the action bar, #233.
+// Contributors: Claude (Opus 5.5, Anthropic) opened Find a group from the action bar, and
+// hid it once the event has ended, #233.
 package com.polysocial.ui.event.detail
 
 import androidx.annotation.DrawableRes
@@ -24,6 +25,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -127,7 +129,7 @@ data class EventOrganizerActions(
 /**
  * The event detail screen for the event in the navigation arguments (see [EventDetailViewModel]).
  * An organizer's Edit calls [onEdit], [onCancelled] is called once the event is cancelled, to leave
- * the screen, and Find a group calls [onFindGroup] (#233).
+ * the screen, and Find a group calls [onFindGroup] (#233), until the event has ended.
  */
 @Composable
 fun EventDetailRoute(
@@ -360,7 +362,9 @@ private fun EventContent(
           Modifier.padding(start = 20.dp, end = 20.dp, bottom = 16.dp),
       )
     }
-    ActionBar(onFindGroup)
+    // An ended event no longer offers Find a group: nobody plans to go anymore.
+    if (state.hasEnded) Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+    else ActionBar(onFindGroup)
   }
 }
 

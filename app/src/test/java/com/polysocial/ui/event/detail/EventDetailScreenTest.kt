@@ -1,6 +1,7 @@
 // Contributors: Claude (wrote these tests of the event detail screen, #112; Retry, #194; Edit and
 // Cancel event for organizers, #131; the association names dependency, #128).
-// Contributors: Claude (Opus 5.5, Anthropic) Find a group now opens its screen, #233.
+// Contributors: Claude (Opus 5.5, Anthropic) Find a group now opens its screen, and not once the
+// event has ended, #233.
 package com.polysocial.ui.event.detail
 
 import android.content.Context
@@ -233,6 +234,14 @@ class EventDetailScreenTest {
     composeTestRule.onNodeWithTag(EventDetailTags.FIND_GROUP).performClick()
 
     assertEquals(1, findGroups)
+  }
+
+  @Test
+  fun anEndedEvent_noLongerOffersFindAGroup() {
+    show(EventDetailUiState.Loaded(details(), isOffline = false, hasEnded = true))
+
+    composeTestRule.onNodeWithTag(EventDetailTags.TITLE).assertIsDisplayed()
+    assertAbsent(EventDetailTags.FIND_GROUP)
   }
 
   @Test
