@@ -11,6 +11,7 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the Cloud Functions section, #206; Mohamed Khellaf (reviewed and revised). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the Deploying to Firebase section, #228, and later said any team member deploys; Franciszek Najda (reviewed #228). -->
 <!-- Contributors: Claude (public profiles deleted with the account, #229; the deletion marker and deploy order, after review, #229). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (deleteAccount deploy status and image cleanup policy, 2026-11-05). -->
 
 # PolySocial
 
@@ -49,7 +50,7 @@ The barrier to campus life is social rather than informational: PolySocial answe
 | Friends (by username or QR code), public or private profiles | Planned |
 | Association accounts: sign up with any email, set up the association, and wait in a pending app until a PolySocial admin verifies it by hand; verified associations' names show on their events | Planned; the sign-up foundation, setup form, pending app and names on events landed in Sprint 3, but Welcome's association entry is not wired yet (#259, #208) |
 | Association members and roles | Planned |
-| Account deletion: agreed policy and the `deleteAccount` Cloud Function | Sprint 3; not available in the app yet (#270), and the function is not deployed to the Firebase project yet |
+| Account deletion: agreed policy and the `deleteAccount` Cloud Function | Sprint 3; in the app (Profile → Privacy) since Sprint 4 (#270), with the function deployed on 2026-11-05 |
 | Event reminders (also offline) and in-app notifications | Planned |
 
 **Privacy:** location is never tracked continuously. It is read once for a feature, or shared only with your group, only during the event, and only when you choose to. Profiles, photos, chats and locations are personal data under the Swiss nLPD, and account/data deletion can be requested privately from the project team; in-app deletion and export are not available yet.
@@ -188,7 +189,7 @@ firebase emulators:exec --project demo-polysocial --only firestore,auth,function
 
 Use the npm Firebase CLI (`npm install -g firebase-tools`, as CI does) with Node.js 22.12 or newer. The standalone CLI (`curl -sL firebase.tools | bash`) ignores the installed Node.js and runs the function with its own bundled Node 20, which fails to load the function (`ERR_REQUIRE_ESM`) before any test runs; the same applies to the deploy below, which loads the code locally first. The emulator warns if your Node.js isn't version 22; the tests still run on a newer one.
 
-**Deploying is manual.** After a change to `firebase/functions` reaches `main`, its author deploys it, or asks a teammate to (see [Deploying to Firebase](#deploying-to-firebase); `firebase login` first). Cloud Functions need the Blaze plan with its budget alert; whether the project is on it yet is an open question in `CONTEXT.md`:
+**Deploying is manual.** After a change to `firebase/functions` reaches `main`, its author deploys it, or asks a teammate to (see [Deploying to Firebase](#deploying-to-firebase); `firebase login` first). Cloud Functions need the Blaze plan with its budget alert; the project has been on it since 2026-11-05:
 
 ```bash
 npm ci --prefix firebase/functions
@@ -196,6 +197,8 @@ firebase deploy --only functions --project <project-id>
 ```
 
 Keep `--only functions`: a plain `firebase deploy` would also deploy the Security Rules and indexes. The app calls the function in `europe-west6`; if the region changes, change it in both `firebase/functions/deleteAccountHandler.js` (`REGION`) and the app.
+
+Each deploy also stores the function's image in Artifact Registry. `europe-west6` deletes images older than 1 day, which keeps it within the free tier; a new region needs the same policy (`firebase functions:artifacts:setpolicy --location <region> --days 1 --project <project-id>`), or the deploy asks for it and, without a terminal, fails after deploying the function.
 
 **Not in CI yet:** CI runs neither the function's unit tests nor the Functions emulator, and doesn't deploy. Adding them needs a workflow change, which needs team approval, so run both commands above locally and paste their output in any PR that changes `firebase/functions`.
 
