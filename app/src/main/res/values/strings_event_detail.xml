@@ -2,6 +2,8 @@
 <!-- Contributors: Claude (event detail texts from the Figma "Event detail" frames, #112; Edit
      and Cancel event from the Figma section 10 frames, #131; the association's name, #128;
      the association's manage event from the Figma "Association · manage event" frame, #131). -->
+<!-- Contributors: Claude Opus 5.5 ("I'm going" from the Figma "Event detail" and "· registered"
+     frames, and its save failures, #122). -->
 <resources>
     <string name="event_detail_navigate_back">Back</string>
     <string name="event_detail_loading">Loading event…</string>
@@ -20,6 +22,14 @@
         <item quantity="other">Up to %1$d people</item>
     </plurals>
     <string name="event_detail_find_group">Find a group</string>
+    <string name="event_detail_im_going">I\'m going</string>
+    <string name="event_detail_going">✓ Going</string>
+    <string name="event_detail_youre_going">You\'re going.</string>
+    <string name="event_detail_cancel_registration">Cancel registration</string>
+    <!-- Snackbars when "I'm going" or "Cancel registration" isn't saved; Figma has no frame. -->
+    <string name="event_detail_register_offline">You\'re offline. Saying you\'re going needs a connection.</string>
+    <string name="event_detail_cancel_registration_offline">You\'re offline. Cancelling your registration needs a connection.</string>
+    <string name="event_detail_attendance_failed">Something went wrong, so nothing changed. Try again.</string>
     <string name="event_detail_offline">You\'re offline. Showing the details saved on this phone.</string>
     <string name="event_detail_not_found_title">Event not available</string>
     <string name="event_detail_not_found_body">It may have been cancelled, or it\'s private.</string>

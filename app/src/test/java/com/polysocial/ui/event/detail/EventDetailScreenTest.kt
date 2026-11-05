@@ -2,6 +2,7 @@
 // Cancel event for organizers, #131; the association names dependency, #128).
 // Contributors: Claude (Opus 5.5, Anthropic) Find a group now opens its screen, and not once the
 // event has ended; the detail gets fake groups and profiles, #233.
+// Contributors: Claude Opus 5.5 ("I'm going" is no longer left out, #122).
 package com.polysocial.ui.event.detail
 
 import android.content.Context
@@ -259,7 +260,8 @@ class EventDetailScreenTest {
   fun actionsNotBuiltYet_areLeftOut() {
     showLoaded(details(party.copy(isAssociationEvent = true)))
 
-    listOf("I'm going", "Remind", "Share", "⋯", "More").forEach { text ->
+    // "I'm going" came with #122 (EventDetailAttendanceScreenTest).
+    listOf("Remind", "Share", "⋯", "More").forEach { text ->
       composeTestRule
           .onAllNodes(
               SemanticsMatcher("text or description contains \"$text\"") { node ->
