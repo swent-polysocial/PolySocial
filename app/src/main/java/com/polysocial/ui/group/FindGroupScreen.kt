@@ -125,7 +125,7 @@ class FindGroupActions(
     val onRetry: () -> Unit = {},
     val onJoin: (groupId: String) -> Unit = {},
     val onStart: () -> Unit = {},
-    val onMessageShown: () -> Unit = {},
+    val onMessageShown: (FindGroupMessage) -> Unit = {},
 )
 
 /**
@@ -142,15 +142,15 @@ fun FindGroupScreen(
     modifier: Modifier = Modifier,
 ) {
   val snackbarHostState = remember { SnackbarHostState() }
-  val text = message?.let { stringResource(it.text) }
+  val toShow = message?.let { it to stringResource(it.text) }
   val shown by rememberUpdatedState(actions.onMessageShown)
-  LaunchedEffect(text) {
-    if (text != null) {
-      try {
-        snackbarHostState.showSnackbar(text)
-      } finally {
-        shown()
-      }
+  LaunchedEffect(toShow) {
+    val (shownMessage, text) = toShow ?: return@LaunchedEffect
+    try {
+      snackbarHostState.showSnackbar(text)
+    } finally {
+      // Only this message: a newer one that cancelled this Snackbar must still show.
+      shown(shownMessage)
     }
   }
   Column(modifier.fillMaxSize().background(Bg).testTag(FindGroupTags.SCREEN)) {

@@ -168,8 +168,9 @@ constructor(
   /** Starts a new group for the event; ignored while a write runs or offline. */
   fun start() = write(PendingGroupWrite.Start) { groups.createGroup(eventId) }
 
-  fun onMessageShown() {
-    _message.value = null
+  /** Clears [shown], unless a newer message replaced it meanwhile. */
+  fun onMessageShown(shown: FindGroupMessage) {
+    _message.compareAndSet(shown, null)
   }
 
   private fun write(what: PendingGroupWrite, call: suspend () -> GroupWriteResult) {
