@@ -363,14 +363,19 @@ private fun GroupCard(
 
 /** A member's initials, or "?" when their profile couldn't be read, in one of Figma's colors. */
 @Composable
-private fun Avatar(member: GroupMember, index: Int) {
+private fun Avatar(member: GroupMember, index: Int) =
+    MemberAvatar(member.profile?.displayName?.let(::initials) ?: "?", index)
+
+/** A 34 dp round avatar showing [text], in the [index]-th of Figma's avatar colors. */
+@Composable
+internal fun MemberAvatar(text: String, index: Int) {
   val (fg, bg) = AVATAR_COLORS[index % AVATAR_COLORS.size]
   Box(
       Modifier.size(34.dp).border(2.dp, Bg, CircleShape).background(bg, CircleShape),
       contentAlignment = Alignment.Center,
   ) {
     Text(
-        member.profile?.displayName?.let(::initials) ?: "?",
+        text,
         style = MaterialTheme.typography.labelSmall,
         fontWeight = FontWeight.Bold,
         color = fg,
@@ -536,7 +541,7 @@ private fun StartBar(state: FindGroupUiState.Loaded, onStart: () -> Unit) {
 }
 
 /** "Julia Schmid" → "JS", "Léa" → "L". */
-private fun initials(name: String): String =
+internal fun initials(name: String): String =
     name
         .split(' ')
         .filter { it.isNotBlank() }
