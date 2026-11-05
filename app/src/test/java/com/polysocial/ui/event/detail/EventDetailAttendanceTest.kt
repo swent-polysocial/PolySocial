@@ -138,7 +138,7 @@ class EventDetailAttendanceTest {
 
     assertEquals(setOf(STUDENT), registrations.attendeesOf(EVENT_ID))
     assertEquals(Attendance.GOING, vm.loaded.attendance)
-    assertNull(vm.attendanceMessage.value)
+    assertNull(vm.attendanceFeedback.value)
   }
 
   @Test
@@ -151,7 +151,7 @@ class EventDetailAttendanceTest {
 
     assertTrue(registrations.attendeesOf(EVENT_ID).isEmpty())
     assertEquals(Attendance.NOT_GOING, vm.loaded.attendance)
-    assertNull(vm.attendanceMessage.value)
+    assertNull(vm.attendanceFeedback.value)
   }
 
   @Test
@@ -184,7 +184,7 @@ class EventDetailAttendanceTest {
     vm.onImGoing()
     runCurrent()
 
-    assertEquals(AttendanceMessage.REGISTER_OFFLINE, vm.attendanceMessage.value)
+    assertEquals(AttendanceMessage.REGISTER_OFFLINE, vm.attendanceFeedback.value?.message)
     assertEquals(Attendance.NOT_GOING, vm.loaded.attendance)
     assertFalse(vm.loaded.isSavingAttendance)
     assertTrue(registrations.attendeesOf(EVENT_ID).isEmpty())
@@ -194,8 +194,30 @@ class EventDetailAttendanceTest {
     vm.onImGoing()
     runCurrent()
 
-    assertNull(vm.attendanceMessage.value)
+    assertNull(vm.attendanceFeedback.value)
     assertEquals(Attendance.GOING, vm.loaded.attendance)
+  }
+
+  @Test
+  fun retryingWhileStillOffline_reportsTheFailureAgain() = runTest {
+    // Each failure is identified, not just by its message, so a Retry that fails the same way
+    // isn't an unchanged value: the screen's Snackbar must show it again (it previously didn't,
+    // since `AttendanceMessage.REGISTER_OFFLINE` set twice in a row looked unchanged).
+    registrations.registerFailure = RegisterResult.NetworkError
+    val vm = open()
+
+    vm.onImGoing()
+    runCurrent()
+    val first = vm.attendanceFeedback.value
+    assertEquals(AttendanceMessage.REGISTER_OFFLINE, first?.message)
+
+    // Still offline.
+    vm.onImGoing()
+    runCurrent()
+    val second = vm.attendanceFeedback.value
+
+    assertEquals(AttendanceMessage.REGISTER_OFFLINE, second?.message)
+    assertTrue(second != first)
   }
 
   @Test
@@ -212,7 +234,7 @@ class EventDetailAttendanceTest {
       vm.onImGoing()
       runCurrent()
 
-      assertEquals("$failure", AttendanceMessage.REGISTER_FAILED, vm.attendanceMessage.value)
+      assertEquals("$failure", AttendanceMessage.REGISTER_FAILED, vm.attendanceFeedback.value?.message)
       assertEquals("$failure", Attendance.NOT_GOING, vm.loaded.attendance)
     }
   }
@@ -226,7 +248,7 @@ class EventDetailAttendanceTest {
     vm.onCancelRegistration()
     runCurrent()
 
-    assertEquals(AttendanceMessage.CANCEL_OFFLINE, vm.attendanceMessage.value)
+    assertEquals(AttendanceMessage.CANCEL_OFFLINE, vm.attendanceFeedback.value?.message)
     assertEquals(Attendance.GOING, vm.loaded.attendance)
     assertEquals(setOf(STUDENT), registrations.attendeesOf(EVENT_ID))
   }
@@ -240,7 +262,7 @@ class EventDetailAttendanceTest {
     vm.onCancelRegistration()
     runCurrent()
 
-    assertEquals(AttendanceMessage.CANCEL_FAILED, vm.attendanceMessage.value)
+    assertEquals(AttendanceMessage.CANCEL_FAILED, vm.attendanceFeedback.value?.message)
     assertEquals(Attendance.GOING, vm.loaded.attendance)
   }
 
@@ -250,13 +272,15 @@ class EventDetailAttendanceTest {
     val vm = open()
     vm.onImGoing()
     runCurrent()
+    val offline = vm.attendanceFeedback.value!!
 
-    // A message the screen already replaced isn't cleared by the older one's end.
-    vm.onAttendanceMessageShown(AttendanceMessage.REGISTER_FAILED)
-    assertEquals(AttendanceMessage.REGISTER_OFFLINE, vm.attendanceMessage.value)
+    // A message the screen already replaced isn't cleared by the older one's end, even with the
+    // same id: the message itself must also match.
+    vm.onAttendanceFeedbackShown(AttendanceFeedback(AttendanceMessage.REGISTER_FAILED, offline.id))
+    assertEquals(offline, vm.attendanceFeedback.value)
 
-    vm.onAttendanceMessageShown(AttendanceMessage.REGISTER_OFFLINE)
-    assertNull(vm.attendanceMessage.value)
+    vm.onAttendanceFeedbackShown(offline)
+    assertNull(vm.attendanceFeedback.value)
   }
 
   @Test

@@ -27,7 +27,7 @@
     <string name="event_detail_youre_going">You\'re going.</string>
     <string name="event_detail_cancel_registration">Cancel registration</string>
     <!-- Snackbars when "I'm going" or "Cancel registration" isn't saved; Figma has no frame. -->
-    <string name="event_detail_register_offline">You\'re offline. Saying you\'re going needs a connection.</string>
+    <string name="event_detail_register_offline">You\'re offline. Connect to say you\'re going.</string>
     <string name="event_detail_cancel_registration_offline">You\'re offline. Cancelling your registration needs a connection.</string>
     <string name="event_detail_attendance_failed">Something went wrong, so nothing changed. Try again.</string>
     <string name="event_detail_offline">You\'re offline. Showing the details saved on this phone.</string>
