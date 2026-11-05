@@ -138,7 +138,7 @@ class FindGroupViewModelTest {
       }
 
   @Test
-  fun profilesThatCantBeRead_leaveTheGroupsShownOldestFirst_withoutNames() =
+  fun profilesThatCantBeRead_leaveTheGroupsShown_withoutNames() =
       runTest(main.dispatcher) {
         seedFigmaGroups()
         profiles.failure = FakePublicProfileRepository.Failure.Offline
@@ -147,6 +147,33 @@ class FindGroupViewModelTest {
         assertEquals(listOf("group-1", "group-2", "group-3"), loaded.suggestions.map { it.groupId })
         assertTrue(loaded.suggestions.flatMap { it.members }.all { it.profile == null })
         assertEquals(0, loaded.suggestions.sumOf { it.sharedInterests })
+      }
+
+  @Test
+  fun profilesThatCouldntBeRead_areReadAgain_whenTheSameGroupsComeBack() =
+      runTest(main.dispatcher) {
+        seedFigmaGroups()
+        val stored = groups.groupsOf(EVENT)
+        val results = MutableStateFlow<GroupsResult>(GroupsResult.Success(stored, true))
+        profiles.failure = FakePublicProfileRepository.Failure.Offline
+        open(
+            object : GroupRepository by groups {
+              override fun observeGroups(eventId: String) = results
+            }
+        )
+        assertTrue(loaded.suggestions.flatMap { it.members }.all { it.profile == null })
+
+        // Back online: the same groups, now confirmed by the server.
+        profiles.failure = null
+        results.value = GroupsResult.Success(stored, false)
+        advanceUntilIdle()
+
+        assertEquals(2, profiles.requestedUids.size)
+        assertEquals(listOf("group-3", "group-2", "group-1"), loaded.suggestions.map { it.groupId })
+        assertEquals(
+            listOf("Léa", "Tom"),
+            loaded.suggestions[1].members.map { it.profile?.displayName },
+        )
       }
 
   @Test
