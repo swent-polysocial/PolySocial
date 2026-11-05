@@ -16,6 +16,7 @@ import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.EventResult
 import com.polysocial.model.event.isLive
 import com.polysocial.model.event.isPast
+import com.polysocial.model.group.Group
 import com.polysocial.model.group.GroupRepository
 import com.polysocial.model.group.MyGroupResult
 import com.polysocial.model.network.NetworkMonitor
@@ -45,10 +46,10 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -330,32 +331,46 @@ constructor(
   }
 
   /**
-   * The signed-in student's group for the event, with its members' public profiles, or null. Only
-   * the group matters: when only `fromCache` changes, the profiles aren't read again, unless the
-   * last read failed.
+   * The signed-in student's group for the event, with its members' public profiles, or null. The
+   * group shows as soon as it is known, with the profiles already read; the others fill in when
+   * their read answers, so a student in a group never sees Find a group while it runs. Only the
+   * group matters: when only `fromCache` changes, the profiles aren't read again, unless the last
+   * read failed.
    */
   @OptIn(ExperimentalCoroutinesApi::class)
   private fun yourGroup(): Flow<YourGroup?> {
     // If the last read of the members' profiles failed, the same group goes through again, so
     // coming back online names them.
     var profilesRead = true
+    // The profiles of the last read that worked, shown while the next one runs or if it fails.
+    var known = emptyMap<String, PublicProfile>()
     return groups
         .observeMyGroup(eventId)
         .map { (it as? MyGroupResult.Success)?.group }
         .distinctUntilChanged { old, new -> profilesRead && old == new }
-        .mapLatest { group ->
+        .transformLatest { group ->
           val me = auth.currentUser()?.uid
-          if (group == null || me == null) return@mapLatest null
+          if (group == null || me == null) {
+            emit(null)
+            return@transformLatest
+          }
+          emit(yourGroup(group, me, known))
           val read = readProfiles(group.memberUids.filter { it != me })
           profilesRead = read != null
-          YourGroup(
-              groupId = group.id,
-              capacity = group.capacity,
-              members = group.memberUids.map { GroupMember(it, read?.get(it)) },
-              myUid = me,
-          )
+          if (read != null) {
+            known = read
+            emit(yourGroup(group, me, read))
+          }
         }
   }
+
+  private fun yourGroup(group: Group, me: String, profiles: Map<String, PublicProfile>) =
+      YourGroup(
+          groupId = group.id,
+          capacity = group.capacity,
+          members = group.memberUids.map { GroupMember(it, profiles[it]) },
+          myUid = me,
+      )
 
   /** The public profiles of [uids], or null if they couldn't be read. */
   private suspend fun readProfiles(uids: List<String>): Map<String, PublicProfile>? =

@@ -1,5 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) wrote these tests of the student's group on the event
-// detail, #233.
+// detail, #233, and the card shown before its profiles answer, after review.
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -15,11 +15,14 @@ import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.registration.FakeRegistrationRepository
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.PublicProfile
+import com.polysocial.model.user.PublicProfileRepository
+import com.polysocial.model.user.PublicProfilesResult
 import com.polysocial.ui.group.GroupMember
 import com.polysocial.utils.MainDispatcherRule
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,7 +48,10 @@ class EventDetailYourGroupTest {
   private val profiles = FakePublicProfileRepository(mutableMapOf("lea" to lea, "tom" to tom))
   private var me = AuthUser(ME, "fictional.student@epfl.ch", true)
 
-  private fun viewModel(groupRepository: GroupRepository = groups) =
+  private fun viewModel(
+      groupRepository: GroupRepository = groups,
+      profileRepository: PublicProfileRepository = profiles,
+  ) =
       EventDetailViewModel(
           SavedStateHandle(mapOf(EventDetailViewModel.EVENT_ID_ARG to EVENT)),
           events,
@@ -57,7 +63,7 @@ class EventDetailYourGroupTest {
           FakeAssociationNames(),
           FakeRegistrationRepository(),
           groupRepository,
-          profiles,
+          profileRepository,
       )
 
   /** Collects [vm]'s state like the screen does. */
@@ -174,6 +180,59 @@ class EventDetailYourGroupTest {
 
     assertEquals(2, profiles.requestedUids.size)
     assertEquals(listOf(lea, null), vm.yourGroup?.members?.map { it.profile })
+  }
+
+  /** Profiles whose reads wait for [answer], like a slow connection. */
+  private inner class SlowProfiles : PublicProfileRepository by profiles {
+    var answer = CompletableDeferred<Unit>()
+
+    override suspend fun getPublicProfiles(uids: Collection<String>): PublicProfilesResult {
+      answer.await()
+      return profiles.getPublicProfiles(uids)
+    }
+  }
+
+  @Test
+  fun theGroup_showsBeforeItsProfilesAnswer_thenTheyFillIn() = runTest {
+    events.seed(validEvent().copy(id = EVENT))
+    groups.seedGroup(EVENT, listOf("lea", ME))
+    val slow = SlowProfiles()
+    val vm = viewModel(profileRepository = slow)
+    observe(vm)
+
+    // The card replaces Find a group at once, without names yet.
+    assertEquals(listOf(GroupMember("lea", null), GroupMember(ME, null)), vm.yourGroup?.members)
+
+    slow.answer.complete(Unit)
+    runCurrent()
+
+    assertEquals(listOf(lea, null), vm.yourGroup?.members?.map { it.profile })
+  }
+
+  @Test
+  fun whenSomeoneJoins_theNamesAlreadyReadStayWhileTheNewOneIsRead() = runTest {
+    events.seed(validEvent().copy(id = EVENT))
+    val stored = groups.seedGroup(EVENT, listOf("lea", ME))
+    val results = MutableStateFlow<MyGroupResult>(MyGroupResult.Success(stored, false))
+    val slow = SlowProfiles().apply { answer.complete(Unit) }
+    val vm =
+        viewModel(
+            object : GroupRepository by groups {
+              override fun observeMyGroup(eventId: String): Flow<MyGroupResult> = results
+            },
+            slow,
+        )
+    observe(vm)
+    slow.answer = CompletableDeferred()
+
+    // Tom joins; his profile is still being read.
+    results.value = MyGroupResult.Success(stored.copy(memberUids = listOf("lea", ME, "tom")), false)
+    runCurrent()
+    assertEquals(listOf(lea, null, null), vm.yourGroup?.members?.map { it.profile })
+
+    slow.answer.complete(Unit)
+    runCurrent()
+    assertEquals(listOf(lea, null, tom), vm.yourGroup?.members?.map { it.profile })
   }
 
   @Test
