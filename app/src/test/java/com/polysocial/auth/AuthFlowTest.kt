@@ -13,6 +13,7 @@
 // the cache cleared first, #208).
 // Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
 // Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Finish on the interests step, #230).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -896,6 +897,8 @@ class AuthFlowTest {
     pick(ProfileSetupTestTags.SECTION, ProfileSetupTestTags.sectionOption("IN"))
     pick(ProfileSetupTestTags.YEAR, ProfileSetupTestTags.yearOption("BA3"))
     profileNode(ProfileSetupTestTags.CONTINUE).performScrollTo().performClick()
+    // The interests (#230) are optional: Finish saves the profile.
+    profileNode(ProfileSetupTestTags.FINISH).performScrollTo().performClick()
   }
 
   // ---- The full name's limit (#143), through the whole entry flow ----
@@ -940,6 +943,7 @@ class AuthFlowTest {
     profileNode(ProfileSetupTestTags.FULL_NAME).performTextReplacement(shortened)
     profileNode(ProfileSetupTestTags.NAME_ERROR).assertDoesNotExist()
     profileNode(ProfileSetupTestTags.CONTINUE).performScrollTo().performClick()
+    profileNode(ProfileSetupTestTags.FINISH).performScrollTo().performClick()
 
     compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
     assertEquals(shortened, profiles.createdProfiles.single().displayName)
@@ -1275,12 +1279,16 @@ class AuthFlowTest {
   }
 
   @Test
-  fun backAfterAFailedProfileSaveSignsOut() {
+  fun backAfterAFailedProfileSave_returnsToTheDetails_thenSignsOut() {
     auth.user = user
     profiles.createProfileResult = CreateProfileResult.NetworkError
     launch()
     completeProfileStep()
     profileNode(ProfileSetupTestTags.BACK).assertIsEnabled()
+    // The save failed on the interests (#230): Back returns to the details first.
+    pressSystemBack()
+    profileNode(ProfileSetupTestTags.DETAILS).assertExists()
+    assertEquals(0, auth.logOutCalls)
     pressSystemBack()
     compose.onNodeWithTag(WelcomeTags.Screen).assertIsDisplayed()
     assertEquals(1, auth.logOutCalls)

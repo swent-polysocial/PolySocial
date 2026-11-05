@@ -3,7 +3,8 @@
 // accessibility after review; plain Column layout after review; exact text from the theme, and
 // Back locked while saving, #74; generic save error with Log out, #142; full name limit, #143, as a
 // plural after review).
-// Contributors: Claude (the shared field label, #251).
+// Contributors: Claude (the shared field label, #251; split into the details and interests screens,
+// with a shared frame, heading, top bar and button, #230; the button's role, after review, #230).
 package com.polysocial.ui.profile
 
 import androidx.activity.compose.BackHandler
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -60,7 +62,6 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.shadow.Shadow
 import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalWindowInfo
@@ -114,29 +115,38 @@ import kotlin.math.roundToInt
 /** Test tags of the profile step. */
 object ProfileSetupTestTags {
   const val SCREEN = "profile_setup_screen"
+  /** The details screen (step 1 of 2). */
+  const val DETAILS = "profile_setup_details"
+  /** The interests screen (step 2 of 2, #230). */
+  const val INTERESTS = "profile_setup_interests"
   const val BACK = "profile_setup_back"
   const val FULL_NAME = "profile_setup_full_name"
   const val EMAIL = "profile_setup_email"
   const val SECTION = "profile_setup_section"
   const val YEAR = "profile_setup_year"
+  const val INTERESTS_COUNT = "profile_setup_interests_count"
   const val ERROR = "profile_setup_error"
   const val NAME_ERROR = "profile_setup_name_error"
   const val LOG_OUT = "profile_setup_log_out"
   const val CONTINUE = "profile_setup_continue"
+  const val FINISH = "profile_setup_finish"
 
   fun sectionOption(code: String) = "profile_setup_section_$code"
 
   fun yearOption(code: String) = "profile_setup_year_$code"
+
+  fun interest(code: String) = "profile_setup_interest_$code"
 }
 
 /**
- * The profile step after email verification. Reports where to go next through the callbacks, so the
- * app's navigation (#74) decides how to get there. [onProfileSaved] is called once per visit, when
- * the profile exists: the caller must then leave this step and remove it from the back stack, or
- * the user could come back to a finished, locked form. Back (the arrow and the system button) does
- * nothing while the profile is being saved or is saved, so the step stays on screen until
- * [onProfileSaved] has run. "Log out" on the generic save error (#142) also calls [onBack], since
- * it is the same sign-out.
+ * The profile step after email verification: the details, then the interests (#230), whose Finish
+ * saves the profile. Reports where to go next through the callbacks, so the app's navigation (#74)
+ * decides how to get there. [onProfileSaved] is called once per visit, when the profile exists: the
+ * caller must then leave this step and remove it from the back stack, or the user could come back
+ * to a finished, locked form. On the details, Back calls [onBack]; on the interests, Back (the
+ * arrow and the system button) returns to the details. Neither does anything while the profile is
+ * being saved or is saved, so the step stays on screen until [onProfileSaved] has run. "Log out" on
+ * the generic save error (#142) also calls [onBack], since it is the same sign-out.
  */
 @Composable
 fun ProfileSetupScreen(
@@ -153,24 +163,39 @@ fun ProfileSetupScreen(
       onProfileSaved()
     }
   }
-  BackHandler(enabled = state.status.locksBack) {}
-  ProfileSetupContent(
-      state = state,
-      onBack = onBack,
-      onDisplayNameChange = viewModel::onDisplayNameChange,
-      onSectionChange = viewModel::onSectionChange,
-      onYearChange = viewModel::onYearChange,
-      onContinue = viewModel::onContinue,
-      // Logging out is what Back does: it signs out, and logging in again gets a fresh token.
-      onLogOut = onBack,
-  )
+  // While saving or saved, leaving would drop the save's result before the app has used it.
+  BackHandler(enabled = state.locked) {}
+  BackHandler(enabled = state.page == ProfileSetupPage.Interests && !state.locked) {
+    viewModel.onBackToDetails()
+  }
+  when (state.page) {
+    ProfileSetupPage.Details ->
+        ProfileSetupContent(
+            state = state,
+            onBack = onBack,
+            onDisplayNameChange = viewModel::onDisplayNameChange,
+            onSectionChange = viewModel::onSectionChange,
+            onYearChange = viewModel::onYearChange,
+            onContinue = viewModel::onContinue,
+        )
+    ProfileSetupPage.Interests ->
+        ProfileInterestsContent(
+            state = state,
+            onBack = viewModel::onBackToDetails,
+            onInterestToggle = viewModel::onInterestToggle,
+            onFinish = viewModel::onFinish,
+            // Logging out is what Back does on the details: it signs out, and logging in again gets
+            // a fresh token.
+            onLogOut = onBack,
+        )
+  }
 }
 
-/** While saving or saved, leaving would drop the save's result before the app has used it. */
-private val ProfileSetupStatus.locksBack: Boolean
-  get() = this == ProfileSetupStatus.Saving || this == ProfileSetupStatus.Saved
-
-/** Draws the profile step for [state]; all measurements come from the Figma Profile frames. */
+/**
+ * Draws step 1 of the profile step, the details, for [state]; all measurements come from the Figma
+ * "Profile · …" frames. Continue opens the interests and saves nothing, so this screen has no save
+ * states.
+ */
 @Composable
 fun ProfileSetupContent(
     state: ProfileSetupUiState,
@@ -179,111 +204,93 @@ fun ProfileSetupContent(
     onSectionChange: (String) -> Unit,
     onYearChange: (String) -> Unit,
     onContinue: () -> Unit,
-    onLogOut: () -> Unit,
 ) {
-  val typography = MaterialTheme.typography
-  val saving = state.status == ProfileSetupStatus.Saving
-  val editable = !saving && state.status != ProfileSetupStatus.Saved
+  ProfileStepScaffold(
+      pageTag = ProfileSetupTestTags.DETAILS,
+      top = {
+        ProfileTopBar(onBack, backEnabled = true, step = 1)
+        Spacer(Modifier.height(11.5.dp))
+        StepHeading(R.string.profile_title, R.string.profile_subtitle)
+        Spacer(Modifier.height(17.dp))
+        Initials(state.displayName)
+        Spacer(Modifier.height(15.5.dp))
+        MeasuredFieldLabel(R.string.profile_full_name)
+        Spacer(Modifier.height(5.5.dp))
+        NameField(state.displayName, onDisplayNameChange, tooLong = state.nameTooLong)
+        if (state.nameTooLong) NameTooLong()
+        Spacer(Modifier.height(13.5.dp))
+        EmailLabel()
+        Spacer(Modifier.height(5.5.dp))
+        EmailField(state.email)
+        Spacer(Modifier.height(13.5.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+          Picker(
+              label = R.string.profile_section,
+              value = state.section,
+              options = SECTIONS,
+              onPick = onSectionChange,
+              fieldTag = ProfileSetupTestTags.SECTION,
+              optionTag = ProfileSetupTestTags::sectionOption,
+              // Figma places the section value 14 dp and the year value 13 dp inside the field.
+              textStart = 14.dp,
+              modifier = Modifier.weight(1f),
+          )
+          Picker(
+              label = R.string.profile_year,
+              value = state.year,
+              options = YEARS,
+              onPick = onYearChange,
+              fieldTag = ProfileSetupTestTags.YEAR,
+              optionTag = ProfileSetupTestTags::yearOption,
+              textStart = 13.dp,
+              modifier = Modifier.weight(1f),
+          )
+        }
+      },
+      bottom = {
+        PrivacyNote()
+        Spacer(Modifier.height(11.dp))
+        StepButton(
+            label = R.string.profile_continue,
+            saving = false,
+            enabled = state.canContinue,
+            tag = ProfileSetupTestTags.CONTINUE,
+            onClick = onContinue,
+        )
+      },
+  )
+}
 
+/**
+ * The frame both screens of the profile step share: [top] from the top of the screen, and [bottom]
+ * at the bottom, 28 dp above the edge as in Figma. On a short screen, with large text or the
+ * keyboard open, the whole screen scrolls so the button stays reachable; otherwise the free space
+ * sits between the two. [pageTag] tags the screen shown.
+ */
+@Composable
+internal fun ProfileStepScaffold(
+    pageTag: String,
+    top: @Composable ColumnScope.() -> Unit,
+    bottom: @Composable ColumnScope.() -> Unit,
+) {
   Box(Modifier.fillMaxSize().background(Bg).testTag(ProfileSetupTestTags.SCREEN)) {
-    // On a short screen, with large text or the keyboard open, the form scrolls so Continue stays
-    // reachable. Otherwise the bottom group sits at the bottom, as in Figma.
     BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
       Column(
           Modifier.fillMaxSize()
               .verticalScroll(rememberScrollState())
               .heightIn(min = maxHeight)
-              .padding(horizontal = 20.dp),
+              .padding(horizontal = 20.dp)
+              .testTag(pageTag),
           verticalArrangement = Arrangement.SpaceBetween,
       ) {
         // The gaps are the Figma frame's; a taller element (larger font size) pushes the ones below
         // it down.
+        Column(Modifier.fillMaxWidth(), content = top)
         Column(Modifier.fillMaxWidth()) {
-          TopBar(onBack, backEnabled = !state.status.locksBack)
-          Spacer(Modifier.height(11.5.dp))
-          Text(
-              stringResource(R.string.profile_title),
-              style = typography.headlineMedium.figmaLines(),
-              color = Ink,
-              modifier = Modifier.heightIn(min = 32.dp),
-          )
-          Spacer(Modifier.height(7.5.dp))
-          Text(
-              stringResource(R.string.profile_subtitle),
-              style = typography.bodyLarge.figmaLines(),
-              color = Ink2,
-              // Figma's text box is narrower than the column, which sets where the line breaks.
-              modifier = Modifier.widthIn(max = 293.5.dp).fillMaxWidth().heightIn(min = 44.dp),
-          )
-          Spacer(Modifier.height(17.dp))
-          Initials(state.displayName)
-          Spacer(Modifier.height(15.5.dp))
-          MeasuredFieldLabel(R.string.profile_full_name)
-          Spacer(Modifier.height(5.5.dp))
-          NameField(
-              state.displayName,
-              onDisplayNameChange,
-              enabled = editable,
-              faded = saving,
-              tooLong = state.nameTooLong,
-          )
-          if (state.nameTooLong) NameTooLong()
-          Spacer(Modifier.height(13.5.dp))
-          EmailLabel()
-          Spacer(Modifier.height(5.5.dp))
-          EmailField(state.email)
-          Spacer(Modifier.height(13.5.dp))
-          Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Picker(
-                label = R.string.profile_section,
-                value = state.section,
-                options = SECTIONS,
-                onPick = onSectionChange,
-                enabled = editable,
-                faded = saving,
-                fieldTag = ProfileSetupTestTags.SECTION,
-                optionTag = ProfileSetupTestTags::sectionOption,
-                // Figma places the section value 14 dp and the year value 13 dp inside the field.
-                textStart = 14.dp,
-                modifier = Modifier.weight(1f),
-            )
-            Picker(
-                label = R.string.profile_year,
-                value = state.year,
-                options = YEARS,
-                onPick = onYearChange,
-                enabled = editable,
-                faded = saving,
-                fieldTag = ProfileSetupTestTags.YEAR,
-                optionTag = ProfileSetupTestTags::yearOption,
-                textStart = 13.dp,
-                modifier = Modifier.weight(1f),
-            )
-          }
-        }
-
-        Column(Modifier.fillMaxWidth()) {
-          // Keeps a gap above the privacy note when the form scrolls; hidden in the free space
+          // Keeps a gap above the bottom group when the screen scrolls; hidden in the free space
           // otherwise.
           Spacer(Modifier.height(24.dp))
-          PrivacyNote()
-          if (state.status == ProfileSetupStatus.CouldNotSave) {
-            Spacer(Modifier.height(6.dp))
-            ErrorMessage(R.string.profile_could_not_save)
-            Spacer(Modifier.height(50.dp))
-          } else if (state.status == ProfileSetupStatus.CouldNotSaveGeneric) {
-            // Figma "Profile · couldn't save · generic": Log out 4 dp under the message, Continue
-            // where it is on the offline frame.
-            Spacer(Modifier.height(6.dp))
-            ErrorMessage(R.string.profile_could_not_save_generic)
-            Spacer(Modifier.height(4.dp))
-            LogOutAction(onLogOut)
-            // The offline frame's 50 dp, minus the 4 dp gap and Log out's 15 dp line.
-            Spacer(Modifier.height(31.dp))
-          } else {
-            Spacer(Modifier.height(11.dp))
-          }
-          ContinueButton(state = state, onClick = onContinue)
+          bottom()
           Spacer(Modifier.height(28.dp))
         }
       }
@@ -291,10 +298,32 @@ fun ProfileSetupContent(
   }
 }
 
+/** The screen's title and the line under it, as in both steps' Figma frames. */
 @Composable
-private fun TopBar(onBack: () -> Unit, backEnabled: Boolean) {
-  // Back arrow: 22 dp icon at (19, 23), inside a 44 dp touch target. "Step 1 of 2" (y 26) and the
-  // two progress bars (y 32) end at the right margin.
+internal fun StepHeading(@StringRes title: Int, @StringRes subtitle: Int) {
+  Text(
+      stringResource(title),
+      style = MaterialTheme.typography.headlineMedium.figmaLines(),
+      color = Ink,
+      modifier = Modifier.heightIn(min = 32.dp),
+  )
+  Spacer(Modifier.height(7.5.dp))
+  Text(
+      stringResource(subtitle),
+      style = MaterialTheme.typography.bodyLarge.figmaLines(),
+      color = Ink2,
+      // Figma's text box is narrower than the column, which sets where the line breaks.
+      modifier = Modifier.widthIn(max = 293.5.dp).fillMaxWidth().heightIn(min = 44.dp),
+  )
+}
+
+/**
+ * Back, then "Step [step] of 2" and the two progress bars, filled up to [step]. The back arrow is a
+ * 22 dp icon at (19, 23), inside a 44 dp touch target; the step text (y 26) and the bars (y 32) end
+ * at the right margin.
+ */
+@Composable
+internal fun ProfileTopBar(onBack: () -> Unit, backEnabled: Boolean, step: Int) {
   Row(Modifier.fillMaxWidth().padding(top = 12.dp)) {
     Box(
         Modifier.offset(x = (-12).dp)
@@ -307,7 +336,7 @@ private fun TopBar(onBack: () -> Unit, backEnabled: Boolean) {
     }
     Spacer(Modifier.weight(1f))
     Text(
-        stringResource(R.string.profile_step),
+        stringResource(R.string.profile_step, step),
         style = MaterialTheme.typography.bodySmall.exact(),
         color = Ink2,
         modifier = Modifier.padding(top = 14.dp),
@@ -315,7 +344,7 @@ private fun TopBar(onBack: () -> Unit, backEnabled: Boolean) {
     Spacer(Modifier.width(9.5.dp))
     ProgressBar(Ink)
     Spacer(Modifier.width(4.dp))
-    ProgressBar(Border)
+    ProgressBar(if (step == 2) Ink else Border)
   }
 }
 
@@ -378,14 +407,7 @@ private fun fieldTextStyle(): TextStyle =
     MaterialTheme.typography.bodyLarge.copy(lineHeight = 20.sp).exact()
 
 @Composable
-private fun NameField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    enabled: Boolean,
-    faded: Boolean,
-    tooLong: Boolean,
-) {
-  // While saving, Figma fades the editable fields to 45%.
+private fun NameField(value: String, onValueChange: (String) -> Unit, tooLong: Boolean) {
   val shape = MaterialTheme.shapes.small
   val tooLongMessage =
       pluralStringResource(
@@ -396,14 +418,12 @@ private fun NameField(
   BasicTextField(
       value = value,
       onValueChange = onValueChange,
-      enabled = enabled,
       singleLine = true,
       textStyle = fieldTextStyle().copy(color = Ink),
       cursorBrush = SolidColor(Ink),
       keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words),
       modifier =
           Modifier.fillMaxWidth()
-              .alpha(if (faded) 0.45f else 1f)
               .semantics { if (tooLong) error(tooLongMessage) }
               .testTag(ProfileSetupTestTags.FULL_NAME),
       decorationBox = { innerTextField ->
@@ -467,8 +487,6 @@ private fun Picker(
     value: String?,
     options: List<String>,
     onPick: (String) -> Unit,
-    enabled: Boolean,
-    faded: Boolean,
     fieldTag: String,
     optionTag: (String) -> String,
     textStart: Dp,
@@ -487,10 +505,9 @@ private fun Picker(
       Row(
           Modifier.fillMaxWidth()
               .heightIn(min = 48.dp)
-              .alpha(if (faded) 0.45f else 1f)
               .background(Bg, shape)
               .border(if (expanded) 2.dp else 1.dp, if (expanded) Ink else Border, shape)
-              .clickable(enabled = enabled, role = Role.DropdownList) { expanded = true }
+              .clickable(role = Role.DropdownList) { expanded = true }
               // Screen readers announce "Section, IN, drop-down list".
               .semantics {
                 contentDescription = labelText
@@ -666,26 +683,6 @@ private fun PrivacyNote() {
   }
 }
 
-@Composable
-private fun ErrorMessage(@StringRes message: Int) {
-  Row(
-      Modifier.testTag(ProfileSetupTestTags.ERROR),
-      horizontalArrangement = Arrangement.spacedBy(6.dp),
-  ) {
-    Image(
-        painterResource(R.drawable.ic_error),
-        contentDescription = null,
-        modifier = Modifier.padding(top = 1.dp),
-    )
-    Text(
-        stringResource(message),
-        style = MaterialTheme.typography.bodySmall.exact(),
-        color = AccentText,
-        modifier = Modifier.heightIn(min = 30.dp),
-    )
-  }
-}
-
 /**
  * Figma "Profile · name too long" (#143): the error icon and "Use at most 50 characters" in red, 7
  * dp under the name field, which pushes the fields below down.
@@ -714,40 +711,17 @@ private fun NameTooLong() {
 }
 
 /**
- * The generic error's action, in the error's red. It starts at the message's text: 20 dp is the
- * error icon's 14 dp plus the 6 dp gap after it. Figma draws a 15 dp line of text; the touch area
- * extends [LOG_OUT_TOUCH_EXTRA] above and below it (49 dp in all, near Android's 48 dp minimum)
- * without changing the layout, so nothing moves.
+ * The step's dark button ([label]): greyed out unless [enabled], and while [saving] white with a
+ * border, a spinner and "Saving…", as in the Figma saving frame.
  */
 @Composable
-private fun LogOutAction(onClick: () -> Unit) {
-  Text(
-      stringResource(R.string.profile_log_out),
-      style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold).exact(),
-      color = AccentText,
-      modifier =
-          Modifier.padding(start = 20.dp)
-              .layout { measurable, constraints ->
-                // Measured with the extra touch area, but laid out at the text's own height.
-                val extra = LOG_OUT_TOUCH_EXTRA.roundToPx()
-                val placeable = measurable.measure(constraints.offset(vertical = 2 * extra))
-                layout(placeable.width, placeable.height - 2 * extra) { placeable.place(0, -extra) }
-              }
-              .clickable(role = Role.Button, onClick = onClick)
-              .padding(vertical = LOG_OUT_TOUCH_EXTRA)
-              .testTag(ProfileSetupTestTags.LOG_OUT),
-  )
-}
-
-/**
- * Touch area added above and below Log out: 17 + 15 + 17 = 49 dp. Tests measure the text with it.
- */
-internal val LOG_OUT_TOUCH_EXTRA = 17.dp
-
-@Composable
-private fun ContinueButton(state: ProfileSetupUiState, onClick: () -> Unit) {
-  val saving = state.status == ProfileSetupStatus.Saving
-  val enabled = state.canContinue
+internal fun StepButton(
+    @StringRes label: Int,
+    saving: Boolean,
+    enabled: Boolean,
+    tag: String,
+    onClick: () -> Unit,
+) {
   val shape = MaterialTheme.shapes.large
   Row(
       Modifier.fillMaxWidth()
@@ -761,8 +735,8 @@ private fun ContinueButton(state: ProfileSetupUiState, onClick: () -> Unit) {
               shape,
           )
           .then(if (saving) Modifier.border(1.dp, Border, shape) else Modifier)
-          .clickable(enabled = enabled, onClick = onClick)
-          .testTag(ProfileSetupTestTags.CONTINUE),
+          .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+          .testTag(tag),
       horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
       verticalAlignment = Alignment.CenterVertically,
   ) {
@@ -775,7 +749,7 @@ private fun ContinueButton(state: ProfileSetupUiState, onClick: () -> Unit) {
       )
     }
     Text(
-        stringResource(if (saving) R.string.profile_saving else R.string.profile_continue),
+        stringResource(if (saving) R.string.profile_saving else label),
         style = MaterialTheme.typography.titleSmall.exact(),
         color =
             when {

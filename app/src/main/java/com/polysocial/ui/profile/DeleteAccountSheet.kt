@@ -1,8 +1,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the Delete account sheet from the Figma
 // "Delete account" frames (section 08, #205), #207; Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) moved its sheet parts to ui/common, #296.
 package com.polysocial.ui.profile
 
-import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -16,52 +16,41 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.SheetValue
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.polysocial.R
 import com.polysocial.model.auth.SignInMethod
 import com.polysocial.ui.auth.GoogleSignInButton
+import com.polysocial.ui.common.ConfirmationSheet
 import com.polysocial.ui.common.FieldLabel
 import com.polysocial.ui.common.PrimaryButton
+import com.polysocial.ui.common.SheetIcon
+import com.polysocial.ui.common.SheetSecondaryButton
+import com.polysocial.ui.common.SheetTitle
 import com.polysocial.ui.login.LoginField
 import com.polysocial.ui.theme.Accent
 import com.polysocial.ui.theme.AccentText
-import com.polysocial.ui.theme.Bg
-import com.polysocial.ui.theme.Border
 import com.polysocial.ui.theme.Ink
 import com.polysocial.ui.theme.Ink2
 import com.polysocial.ui.theme.Surface
@@ -104,7 +93,6 @@ internal class DeleteAccountActions(
  * cleared. While a call runs the sheet can't be dismissed. [contactMessage] explains why the
  * privacy contact's email draft didn't open.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun DeleteAccountSheet(
     state: DeleteAccountUiState,
@@ -115,39 +103,11 @@ internal fun DeleteAccountSheet(
     CleanupDialog(state.deleted, actions.onRetry)
     return
   }
-  val locked by rememberUpdatedState(!state.dismissible)
-  val sheetState =
-      rememberModalBottomSheetState(
-          skipPartiallyExpanded = true,
-          confirmValueChange = { it != SheetValue.Hidden || !locked },
-      )
-  ModalBottomSheet(
+  ConfirmationSheet(
+      locked = !state.dismissible,
       onDismissRequest = actions.onCancel,
-      sheetState = sheetState,
-      shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-      containerColor = Bg,
-      scrimColor = Ink.copy(alpha = 0.45f),
-      // Figma puts the handle at the start, in the sheet's content.
-      dragHandle = null,
       modifier = Modifier.testTag(DeleteAccountTags.Sheet),
   ) {
-    DeleteAccountSheetContent(state, contactMessage, actions)
-  }
-}
-
-/** The sheet's handle and the current step, without the modal container. */
-@Composable
-internal fun DeleteAccountSheetContent(
-    state: DeleteAccountUiState,
-    contactMessage: PrivacyContactMessage?,
-    actions: DeleteAccountActions,
-) {
-  Column(
-      Modifier.verticalScroll(rememberScrollState())
-          .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp),
-      verticalArrangement = Arrangement.spacedBy(12.dp),
-  ) {
-    Box(Modifier.size(width = 36.dp, height = 4.dp).background(Border, RoundedCornerShape(2.dp)))
     when (state.step) {
       DeleteAccountStep.Confirm -> ConfirmContent(state, actions)
       DeleteAccountStep.DeleteFailed -> FailedContent(state, actions)
@@ -161,10 +121,10 @@ internal fun DeleteAccountSheetContent(
 @Composable
 private fun ConfirmContent(state: DeleteAccountUiState, actions: DeleteAccountActions) {
   val offline = state.error == DeleteAccountError.Offline
-  IconBadge(
+  SheetIcon(
       if (offline) R.drawable.ic_delete_account_offline else R.drawable.ic_delete_account_trash
   )
-  Title(R.string.delete_account_title)
+  SheetTitle(R.string.delete_account_title, Modifier.testTag(DeleteAccountTags.Title))
   Body(stringResource(R.string.delete_account_body))
   if (offline) {
     Message(R.string.delete_account_offline)
@@ -177,7 +137,12 @@ private fun ConfirmContent(state: DeleteAccountUiState, actions: DeleteAccountAc
   } else {
     if (state.error != null) Message(R.string.delete_account_unexpected)
     RedButton(R.string.delete_account_confirm, DeleteAccountTags.Confirm, actions.onConfirm)
-    SecondaryButton(R.string.delete_account_cancel, enabled = true, actions.onCancel)
+    SheetSecondaryButton(
+        R.string.delete_account_cancel,
+        enabled = true,
+        tag = DeleteAccountTags.Cancel,
+        onClick = actions.onCancel,
+    )
   }
 }
 
@@ -191,14 +156,14 @@ private fun ConfirmContent(state: DeleteAccountUiState, actions: DeleteAccountAc
 private fun ReauthContent(state: DeleteAccountUiState, actions: DeleteAccountActions) {
   if (state.methods.isEmpty()) {
     // Signed out before the flow could confirm anyone: only the cleanup's progress.
-    IconBadge(R.drawable.ic_delete_account_trash)
-    Title(R.string.delete_account_title)
+    SheetIcon(R.drawable.ic_delete_account_trash)
+    SheetTitle(R.string.delete_account_title, Modifier.testTag(DeleteAccountTags.Title))
     Progress()
     return
   }
   val password = SignInMethod.PASSWORD in state.methods
   val google = SignInMethod.GOOGLE in state.methods
-  IconBadge(
+  SheetIcon(
       if (google && !password) R.drawable.ic_delete_account_user_check
       else R.drawable.ic_delete_account_lock
   )
@@ -208,9 +173,10 @@ private fun ReauthContent(state: DeleteAccountUiState, actions: DeleteAccountAct
         else R.string.delete_account_confirm_again_google
     )
   }
-  Title(
+  SheetTitle(
       if (google && !password) R.string.delete_account_google_title
-      else R.string.delete_account_password_title
+      else R.string.delete_account_password_title,
+      Modifier.testTag(DeleteAccountTags.Title),
   )
   Body(
       stringResource(
@@ -246,7 +212,12 @@ private fun ReauthContent(state: DeleteAccountUiState, actions: DeleteAccountAct
     }
     if (google) GoogleSignInButton(DeleteAccountTags.Google, actions.onGoogle)
   }
-  SecondaryButton(R.string.delete_account_cancel, enabled = !state.busy, actions.onCancel)
+  SheetSecondaryButton(
+      R.string.delete_account_cancel,
+      enabled = !state.busy,
+      tag = DeleteAccountTags.Cancel,
+      onClick = actions.onCancel,
+  )
 }
 
 @Composable
@@ -315,12 +286,17 @@ private fun PasswordField(state: DeleteAccountUiState, actions: DeleteAccountAct
 /** Figma "couldn't delete": the call failed; Retry calls it again. */
 @Composable
 private fun FailedContent(state: DeleteAccountUiState, actions: DeleteAccountActions) {
-  IconBadge(R.drawable.ic_delete_account_alert)
-  Title(R.string.delete_account_failed_title)
+  SheetIcon(R.drawable.ic_delete_account_alert)
+  SheetTitle(R.string.delete_account_failed_title, Modifier.testTag(DeleteAccountTags.Title))
   Body(stringResource(R.string.delete_account_failed_body))
   if (state.error == DeleteAccountError.Offline) Message(R.string.delete_account_offline)
   RedButton(R.string.retry, DeleteAccountTags.Retry, actions.onRetry)
-  SecondaryButton(R.string.delete_account_cancel, enabled = true, actions.onCancel)
+  SheetSecondaryButton(
+      R.string.delete_account_cancel,
+      enabled = true,
+      tag = DeleteAccountTags.Cancel,
+      onClick = actions.onCancel,
+  )
 }
 
 /** Figma "association": the PolySocial team deletes association accounts. */
@@ -329,8 +305,8 @@ private fun AssociationContent(
     contactMessage: PrivacyContactMessage?,
     actions: DeleteAccountActions,
 ) {
-  IconBadge(R.drawable.ic_delete_account_building, background = Surface)
-  Title(R.string.delete_account_association_title)
+  SheetIcon(R.drawable.ic_delete_account_building, background = Surface)
+  SheetTitle(R.string.delete_account_association_title, Modifier.testTag(DeleteAccountTags.Title))
   Body(stringResource(R.string.delete_account_association_body))
   Box(
       // Figma's text link, with Android's 48 dp minimum touch target.
@@ -357,7 +333,12 @@ private fun AssociationContent(
         tag = DeleteAccountTags.ContactMessage,
     )
   }
-  SecondaryButton(R.string.delete_account_close, enabled = true, actions.onCancel)
+  SheetSecondaryButton(
+      R.string.delete_account_close,
+      enabled = true,
+      tag = DeleteAccountTags.Cancel,
+      onClick = actions.onCancel,
+  )
 }
 
 /**
@@ -396,30 +377,6 @@ private fun CleanupDialog(deleted: Boolean, onRetry: () -> Unit) {
           Text(stringResource(R.string.retry))
         }
       },
-  )
-}
-
-@Composable
-private fun IconBadge(@DrawableRes icon: Int, background: Color = ICON_BACKGROUND) {
-  Box(
-      Modifier.size(44.dp).background(background, CircleShape),
-      contentAlignment = Alignment.Center,
-  ) {
-    Image(painterResource(icon), contentDescription = null, modifier = Modifier.size(22.dp))
-  }
-}
-
-@Composable
-private fun Title(@StringRes text: Int) {
-  Text(
-      text = stringResource(text),
-      style =
-          MaterialTheme.typography.titleLarge
-              .copy(fontSize = 20.sp, lineHeight = TextUnit.Unspecified)
-              .exact(),
-      fontWeight = FontWeight.ExtraBold,
-      color = Ink,
-      modifier = Modifier.testTag(DeleteAccountTags.Title).semantics { heading() },
   )
 }
 
@@ -483,23 +440,3 @@ private fun Progress() {
       onClick = {},
   )
 }
-
-/** The Cancel event sheet's "Keep event" style: a plain pill, faded while it can't be used. */
-@Composable
-private fun SecondaryButton(@StringRes text: Int, enabled: Boolean, onClick: () -> Unit) {
-  Box(
-      Modifier.fillMaxWidth()
-          // Figma draws it 47 dp high; 48 dp is Android's minimum touch target.
-          .heightIn(min = 48.dp)
-          .alpha(if (enabled) 1f else 0.4f)
-          .clip(RoundedCornerShape(26.dp))
-          .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-          .testTag(DeleteAccountTags.Cancel),
-      contentAlignment = Alignment.Center,
-  ) {
-    Text(stringResource(text), style = MaterialTheme.typography.titleSmall, color = Ink)
-  }
-}
-
-/** Figma's pale red behind the sheet's icon, as on the Cancel event sheet. */
-private val ICON_BACKGROUND = Color(0xFFFCE7E8)

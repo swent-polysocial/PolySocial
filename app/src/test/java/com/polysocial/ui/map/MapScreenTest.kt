@@ -1,6 +1,7 @@
 // Contributors: OpenAI Codex (fake-renderer map UI and day-label regression tests for #50;
 // denied and granted location preview tests for #51).
-// Contributors: Claude (the association names dependency, #128).
+// Contributors: Claude (the association names dependency, #128; markers moved below the search
+// and chips, #116).
 package com.polysocial.ui.map
 
 import android.content.Context
@@ -116,7 +117,8 @@ class MapScreenTest {
                 renderedEvents = events
                 rendererDensity = LocalDensity.current.density
                 Box(Modifier.fillMaxSize().testTag(MapTags.CANVAS)) {
-                  Column {
+                  // Below the search and chips that now cover the top of the map (#116).
+                  Column(Modifier.align(Alignment.Center)) {
                     events.forEach { event ->
                       TextButton({ select(event.id) }, Modifier.testTag(MapTags.marker(event.id))) {
                         Text(event.title)

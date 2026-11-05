@@ -2,7 +2,8 @@
 // Contributors: Claude Opus 5.5 (wrote these tests; unverified account refused); Claude Opus 5.5
 // (testing agent: the lock after saving, no signed-in user); Claude (reset, #74; offline vs generic
 // save errors, #142); Claude Opus 5.5 (testing agent: generic save error tests, #142); Claude (the
-// full name's limit, written test-first, #143).
+// full name's limit, written test-first, #143; the interests step, written test-first, #230);
+// Claude (testing agent: Continue on the interests step, Finish with incomplete details, #230).
 package com.polysocial.ui.profile
 
 import com.polysocial.model.auth.AuthUser
@@ -10,6 +11,7 @@ import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.user.AccountType
 import com.polysocial.model.user.CreateProfileResult
 import com.polysocial.model.user.FakeUserProfileRepository
+import com.polysocial.model.user.INTERESTS
 import com.polysocial.model.user.MAX_DISPLAY_NAME_LENGTH
 import com.polysocial.model.user.UserProfile
 import com.polysocial.utils.MainDispatcherRule
@@ -40,10 +42,14 @@ class ProfileSetupViewModelTest {
     onYearChange(year)
   }
 
-  private fun ProfileSetupViewModel.continueAndSettle() {
+  /** Continue to the interests step (#230), then Finish, which saves, and lets the save run. */
+  private fun ProfileSetupViewModel.finishAndSettle() {
     onContinue()
+    onFinish()
     mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
   }
+
+  private fun ProfileSetupViewModel.page() = uiState.value.page
 
   private fun ProfileSetupViewModel.status() = uiState.value.status
 
@@ -57,7 +63,7 @@ class ProfileSetupViewModelTest {
 
     assertTrue(vm.uiState.value.nameTooLong)
     assertFalse(vm.uiState.value.canContinue)
-    vm.continueAndSettle()
+    vm.finishAndSettle()
 
     assertTrue(profiles.createdProfiles.isEmpty())
     assertEquals(ProfileSetupStatus.Editing, vm.status())
@@ -72,7 +78,7 @@ class ProfileSetupViewModelTest {
 
     assertFalse(vm.uiState.value.nameTooLong)
     assertTrue(vm.uiState.value.canContinue)
-    vm.continueAndSettle()
+    vm.finishAndSettle()
 
     assertEquals(atTheLimit, profiles.createdProfiles.single().displayName)
     assertEquals(ProfileSetupStatus.Saved, vm.status())
@@ -135,7 +141,7 @@ class ProfileSetupViewModelTest {
     val vm = viewModel()
     vm.fill(section = "SC", year = "MA1")
 
-    vm.continueAndSettle()
+    vm.finishAndSettle()
 
     assertEquals(
         listOf(
@@ -159,7 +165,7 @@ class ProfileSetupViewModelTest {
     vm.onDisplayNameChange("  New Name ")
     vm.fill()
 
-    vm.continueAndSettle()
+    vm.finishAndSettle()
 
     assertEquals("New Name", profiles.createdProfiles.single().displayName)
   }
@@ -170,7 +176,7 @@ class ProfileSetupViewModelTest {
     vm.onYearChange("BA3")
 
     assertFalse(vm.uiState.value.canContinue)
-    vm.continueAndSettle()
+    vm.finishAndSettle()
 
     assertTrue(profiles.createdProfiles.isEmpty())
     assertEquals(ProfileSetupStatus.Editing, vm.status())
@@ -182,7 +188,7 @@ class ProfileSetupViewModelTest {
     vm.onSectionChange("IN")
 
     assertFalse(vm.uiState.value.canContinue)
-    vm.continueAndSettle()
+    vm.finishAndSettle()
 
     assertTrue(profiles.createdProfiles.isEmpty())
   }
@@ -194,7 +200,7 @@ class ProfileSetupViewModelTest {
     vm.onDisplayNameChange("   ")
 
     assertFalse(vm.uiState.value.canContinue)
-    vm.continueAndSettle()
+    vm.finishAndSettle()
 
     assertTrue(profiles.createdProfiles.isEmpty())
   }
@@ -213,11 +219,11 @@ class ProfileSetupViewModelTest {
     vm.fill()
     profiles.createGate = CompletableDeferred()
 
-    vm.continueAndSettle()
+    vm.finishAndSettle()
 
     assertEquals(ProfileSetupStatus.Saving, vm.status())
-    assertFalse(vm.uiState.value.canContinue)
-    vm.continueAndSettle()
+    assertFalse(vm.uiState.value.canFinish)
+    vm.finishAndSettle()
     assertEquals(1, profiles.createdProfiles.size)
 
     profiles.createGate?.complete(Unit)
@@ -230,7 +236,7 @@ class ProfileSetupViewModelTest {
     val vm = viewModel()
     vm.fill()
     profiles.createGate = CompletableDeferred()
-    vm.continueAndSettle()
+    vm.finishAndSettle()
 
     vm.onSectionChange("SC")
     vm.onDisplayNameChange("Other")
@@ -246,7 +252,7 @@ class ProfileSetupViewModelTest {
     val vm = viewModel()
     vm.fill()
 
-    vm.continueAndSettle()
+    vm.finishAndSettle()
 
     assertEquals(ProfileSetupStatus.Saved, vm.status())
   }
@@ -257,12 +263,12 @@ class ProfileSetupViewModelTest {
     val vm = viewModel()
     vm.fill()
 
-    vm.continueAndSettle()
+    vm.finishAndSettle()
     assertEquals(ProfileSetupStatus.CouldNotSave, vm.status())
-    assertTrue(vm.uiState.value.canContinue)
+    assertTrue(vm.uiState.value.canFinish)
 
     profiles.createProfileResult = CreateProfileResult.Created
-    vm.continueAndSettle()
+    vm.finishAndSettle()
 
     assertEquals(2, profiles.createdProfiles.size)
     assertEquals(ProfileSetupStatus.Saved, vm.status())
@@ -274,7 +280,7 @@ class ProfileSetupViewModelTest {
     val vm = viewModel()
     vm.fill()
 
-    vm.continueAndSettle()
+    vm.finishAndSettle()
 
     assertEquals(ProfileSetupStatus.CouldNotSaveGeneric, vm.status())
   }
@@ -284,12 +290,12 @@ class ProfileSetupViewModelTest {
     profiles.createProfileResult = CreateProfileResult.UnexpectedError
     val vm = viewModel()
     vm.fill()
-    vm.continueAndSettle()
+    vm.finishAndSettle()
     assertEquals(ProfileSetupStatus.CouldNotSaveGeneric, vm.status())
-    assertTrue(vm.uiState.value.canContinue)
+    assertTrue(vm.uiState.value.canFinish)
 
     profiles.createProfileResult = CreateProfileResult.Created
-    vm.continueAndSettle()
+    vm.finishAndSettle()
 
     assertEquals(2, profiles.createdProfiles.size)
     assertEquals(ProfileSetupStatus.Saved, vm.status())
@@ -300,12 +306,12 @@ class ProfileSetupViewModelTest {
     auth.user = user.copy(isEmailVerified = false)
     val vm = viewModel()
     vm.fill()
-    vm.continueAndSettle()
+    vm.finishAndSettle()
     assertEquals(ProfileSetupStatus.CouldNotSaveGeneric, vm.status())
-    assertTrue(vm.uiState.value.canContinue)
+    assertTrue(vm.uiState.value.canFinish)
 
     auth.user = user
-    vm.continueAndSettle()
+    vm.finishAndSettle()
 
     assertEquals(1, profiles.createdProfiles.size)
     assertEquals(ProfileSetupStatus.Saved, vm.status())
@@ -323,7 +329,7 @@ class ProfileSetupViewModelTest {
             { onSectionChange("SC") },
             { onYearChange("MA1") },
         )) {
-      vm.continueAndSettle()
+      vm.finishAndSettle()
       assertEquals(ProfileSetupStatus.CouldNotSaveGeneric, vm.status())
       vm.edit()
       assertEquals(ProfileSetupStatus.Editing, vm.status())
@@ -338,7 +344,7 @@ class ProfileSetupViewModelTest {
     profiles.createProfileResult = CreateProfileResult.NetworkError
     val vm = viewModel()
     vm.fill()
-    vm.continueAndSettle()
+    vm.finishAndSettle()
 
     vm.onYearChange("BA4")
 
@@ -352,7 +358,7 @@ class ProfileSetupViewModelTest {
     vm.fill()
     auth.user = null
 
-    vm.continueAndSettle()
+    vm.finishAndSettle()
 
     assertTrue(profiles.createdProfiles.isEmpty())
     assertEquals(ProfileSetupStatus.CouldNotSaveGeneric, vm.status())
@@ -364,7 +370,7 @@ class ProfileSetupViewModelTest {
     val vm = viewModel()
     vm.fill()
 
-    vm.continueAndSettle()
+    vm.finishAndSettle()
 
     assertTrue(profiles.createdProfiles.isEmpty())
     assertEquals(ProfileSetupStatus.CouldNotSaveGeneric, vm.status())
@@ -374,12 +380,12 @@ class ProfileSetupViewModelTest {
   fun afterSaving_continueAndEditsAreIgnored() {
     val vm = viewModel()
     vm.fill()
-    vm.continueAndSettle()
+    vm.finishAndSettle()
 
     vm.onDisplayNameChange("Other")
     vm.onSectionChange("SC")
     vm.onYearChange("MA1")
-    vm.continueAndSettle()
+    vm.finishAndSettle()
 
     assertEquals(1, profiles.createdProfiles.size)
     assertEquals(ProfileSetupStatus.Saved, vm.status())
@@ -404,7 +410,7 @@ class ProfileSetupViewModelTest {
     vm.fill()
     vm.onDisplayNameChange("Edited name")
     profiles.createProfileResult = CreateProfileResult.NetworkError
-    vm.continueAndSettle()
+    vm.finishAndSettle()
     auth.user = user.copy(uid = "u2", email = "other@epfl.ch", displayName = null)
 
     vm.reset()
@@ -444,7 +450,7 @@ class ProfileSetupViewModelTest {
   fun reset_afterASignOut_keepsNothingOfThePreviousAccount() {
     val viewModel = viewModel()
     viewModel.fill()
-    viewModel.continueAndSettle()
+    viewModel.finishAndSettle()
     assertEquals(ProfileSetupStatus.Saved, viewModel.status())
 
     auth.logOut()
@@ -458,7 +464,7 @@ class ProfileSetupViewModelTest {
     profiles.createGate = CompletableDeferred()
     val viewModel = viewModel()
     viewModel.fill()
-    viewModel.continueAndSettle()
+    viewModel.finishAndSettle()
     assertEquals(ProfileSetupStatus.Saving, viewModel.status())
 
     viewModel.reset()
@@ -467,5 +473,232 @@ class ProfileSetupViewModelTest {
 
     // The late result must not mark the fresh step as saved.
     assertEquals(ProfileSetupStatus.Editing, viewModel.status())
+  }
+
+  // ---- The interests step (#230) ----
+
+  @Test
+  fun continue_opensTheInterestsStep_andSavesNothing() {
+    val vm = viewModel()
+    vm.fill()
+
+    vm.onContinue()
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+
+    assertEquals(ProfileSetupPage.Interests, vm.page())
+    assertTrue(profiles.createdProfiles.isEmpty())
+    assertEquals(ProfileSetupStatus.Editing, vm.status())
+    assertTrue(vm.uiState.value.canFinish)
+  }
+
+  @Test
+  fun continue_withIncompleteDetails_staysOnTheDetailsStep() {
+    val vm = viewModel()
+    vm.onSectionChange("IN")
+
+    vm.onContinue()
+
+    assertEquals(ProfileSetupPage.Details, vm.page())
+  }
+
+  @Test
+  fun finish_onTheDetailsStep_savesNothing() {
+    val vm = viewModel()
+    vm.fill()
+
+    vm.onFinish()
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+
+    assertTrue(profiles.createdProfiles.isEmpty())
+    assertEquals(ProfileSetupStatus.Editing, vm.status())
+  }
+
+  @Test
+  fun startsWithNoInterests() {
+    assertEquals(emptySet<String>(), viewModel().uiState.value.interests)
+  }
+
+  @Test
+  fun toggling_addsAnInterestThenRemovesIt() {
+    val vm = viewModel()
+
+    vm.onInterestToggle("music")
+    vm.onInterestToggle("tech")
+    assertEquals(setOf("music", "tech"), vm.uiState.value.interests)
+
+    vm.onInterestToggle("music")
+    assertEquals(setOf("tech"), vm.uiState.value.interests)
+  }
+
+  @Test
+  fun toggling_anUnknownInterest_isIgnored() {
+    val vm = viewModel()
+
+    vm.onInterestToggle("chess")
+
+    assertEquals(emptySet<String>(), vm.uiState.value.interests)
+  }
+
+  @Test
+  fun finish_savesTheChosenInterests() {
+    val vm = viewModel()
+    vm.fill()
+    vm.onContinue()
+    vm.onInterestToggle("tech")
+    vm.onInterestToggle("music")
+
+    vm.onFinish()
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+
+    assertEquals(setOf("music", "tech"), profiles.createdProfiles.single().interests)
+    assertEquals(ProfileSetupStatus.Saved, vm.status())
+  }
+
+  @Test
+  fun finish_withEveryInterest_savesThemAll() {
+    val vm = viewModel()
+    vm.fill()
+    vm.onContinue()
+    INTERESTS.forEach(vm::onInterestToggle)
+
+    vm.onFinish()
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+
+    assertEquals(INTERESTS.toSet(), profiles.createdProfiles.single().interests)
+  }
+
+  @Test
+  fun finish_withNoInterests_savesNone() {
+    val vm = viewModel()
+    vm.fill()
+
+    vm.finishAndSettle()
+
+    assertEquals(emptySet<String>(), profiles.createdProfiles.single().interests)
+    assertEquals(ProfileSetupStatus.Saved, vm.status())
+  }
+
+  @Test
+  fun backToDetails_keepsTheDetailsAndTheChosenInterests() {
+    val vm = viewModel()
+    vm.fill(section = "SC", year = "MA1")
+    vm.onContinue()
+    vm.onInterestToggle("cinema")
+
+    vm.onBackToDetails()
+
+    assertEquals(ProfileSetupPage.Details, vm.page())
+    assertEquals("SC", vm.uiState.value.section)
+    assertEquals("MA1", vm.uiState.value.year)
+    assertEquals(setOf("cinema"), vm.uiState.value.interests)
+    vm.onContinue()
+    assertEquals(setOf("cinema"), vm.uiState.value.interests)
+  }
+
+  @Test
+  fun backToDetails_afterAFailedSave_clearsTheError() {
+    profiles.createProfileResult = CreateProfileResult.NetworkError
+    val vm = viewModel()
+    vm.fill()
+    vm.finishAndSettle()
+    assertEquals(ProfileSetupStatus.CouldNotSave, vm.status())
+
+    vm.onBackToDetails()
+
+    assertEquals(ProfileSetupPage.Details, vm.page())
+    assertEquals(ProfileSetupStatus.Editing, vm.status())
+  }
+
+  @Test
+  fun backToDetails_isIgnoredWhileSavingAndOnceSaved() {
+    profiles.createGate = CompletableDeferred()
+    val vm = viewModel()
+    vm.fill()
+    vm.finishAndSettle()
+
+    vm.onBackToDetails()
+    assertEquals(ProfileSetupPage.Interests, vm.page())
+    assertEquals(ProfileSetupStatus.Saving, vm.status())
+
+    profiles.createGate?.complete(Unit)
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+    vm.onBackToDetails()
+    assertEquals(ProfileSetupPage.Interests, vm.page())
+    assertEquals(ProfileSetupStatus.Saved, vm.status())
+  }
+
+  @Test
+  fun toggling_isIgnoredWhileSaving() {
+    profiles.createGate = CompletableDeferred()
+    val vm = viewModel()
+    vm.fill()
+    vm.onContinue()
+    vm.onInterestToggle("music")
+    vm.onFinish()
+
+    vm.onInterestToggle("tech")
+    vm.onInterestToggle("music")
+
+    assertEquals(setOf("music"), vm.uiState.value.interests)
+  }
+
+  @Test
+  fun toggling_afterAFailedSave_clearsTheError_andFinishRetriesWithTheNewChoice() {
+    profiles.createProfileResult = CreateProfileResult.UnexpectedError
+    val vm = viewModel()
+    vm.fill()
+    vm.finishAndSettle()
+    assertEquals(ProfileSetupStatus.CouldNotSaveGeneric, vm.status())
+
+    vm.onInterestToggle("games")
+    assertEquals(ProfileSetupStatus.Editing, vm.status())
+    profiles.createProfileResult = CreateProfileResult.Created
+    vm.onFinish()
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+
+    assertEquals(listOf(emptySet(), setOf("games")), profiles.createdProfiles.map { it.interests })
+    assertEquals(ProfileSetupStatus.Saved, vm.status())
+  }
+
+  @Test
+  fun continue_onTheInterestsStep_keepsAFailedSavesError() {
+    profiles.createProfileResult = CreateProfileResult.NetworkError
+    val vm = viewModel()
+    vm.fill()
+    vm.finishAndSettle()
+
+    vm.onContinue()
+
+    assertEquals(ProfileSetupPage.Interests, vm.page())
+    assertEquals(ProfileSetupStatus.CouldNotSave, vm.status())
+  }
+
+  @Test
+  fun finish_withTheNameBlankedOnTheInterestsStep_savesNothing() {
+    // Finish needs complete details too, not only the interests step and no save running.
+    val vm = viewModel()
+    vm.fill()
+    vm.onContinue()
+    vm.onDisplayNameChange("  ")
+
+    assertFalse(vm.uiState.value.canFinish)
+    vm.onFinish()
+    mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+
+    assertTrue(profiles.createdProfiles.isEmpty())
+    assertEquals(ProfileSetupStatus.Editing, vm.status())
+  }
+
+  @Test
+  fun reset_returnsToTheDetailsStepWithNoInterests() {
+    val vm = viewModel()
+    vm.fill()
+    vm.onContinue()
+    vm.onInterestToggle("music")
+
+    vm.reset()
+
+    assertEquals(ProfileSetupPage.Details, vm.page())
+    assertEquals(emptySet<String>(), vm.uiState.value.interests)
   }
 }

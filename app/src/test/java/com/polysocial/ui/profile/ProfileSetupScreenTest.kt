@@ -3,7 +3,8 @@
 // double tap, blocked Continue, existing profile, error retry and picker menu behaviour); Claude
 // (Back locked while saving, #74); Claude Opus 5.5 (testing agent: generic save error tests,
 // #142); Claude (Log out touch area and test tidying after review, #142; the full name's limit,
-// written test-first, #143).
+// written test-first, #143; Continue then Finish, and the save tests moved to the interests step,
+// #230; Continue's role, after review, #230).
 package com.polysocial.ui.profile
 
 import android.app.Application
@@ -11,10 +12,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -30,6 +29,7 @@ import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
@@ -53,7 +53,6 @@ import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -65,7 +64,6 @@ import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.MAX_DISPLAY_NAME_LENGTH
 import com.polysocial.model.user.SECTIONS
 import com.polysocial.model.user.YEARS
-import com.polysocial.ui.theme.AccentText
 import com.polysocial.ui.theme.PolySocialTheme
 import kotlin.math.abs
 import kotlinx.coroutines.CompletableDeferred
@@ -98,10 +96,9 @@ class ProfileSetupScreenTest {
   // What ProfileSetupContent reports when shown with setContent.
   private var contentBackCalls = 0
   private var contentContinueCalls = 0
-  private var contentLogOutCalls = 0
 
-  private fun string(id: Int) =
-      ApplicationProvider.getApplicationContext<Application>().getString(id)
+  private fun string(id: Int, vararg args: Any) =
+      ApplicationProvider.getApplicationContext<Application>().getString(id, *args)
 
   private fun node(tag: String) = composeTestRule.onNodeWithTag(tag, useUnmergedTree = true)
 
@@ -131,7 +128,6 @@ class ProfileSetupScreenTest {
             onSectionChange = {},
             onYearChange = {},
             onContinue = { contentContinueCalls++ },
-            onLogOut = { contentLogOutCalls++ },
         )
       }
     }
@@ -146,6 +142,14 @@ class ProfileSetupScreenTest {
   private fun pickSectionAndYear(section: String = "IN", year: String = "BA3") {
     pick(ProfileSetupTestTags.SECTION, ProfileSetupTestTags.sectionOption(section))
     pick(ProfileSetupTestTags.YEAR, ProfileSetupTestTags.yearOption(year))
+  }
+
+  /** Continue to the interests (#230), then Finish, which saves. */
+  private fun continueAndFinish() {
+    node(ProfileSetupTestTags.CONTINUE).performClick()
+    composeTestRule.waitForIdle()
+    node(ProfileSetupTestTags.FINISH).performScrollTo().performClick()
+    composeTestRule.waitForIdle()
   }
 
   private val filled =
@@ -163,7 +167,7 @@ class ProfileSetupScreenTest {
     setScreen()
 
     composeTestRule.onNodeWithText(string(R.string.profile_title)).assertIsDisplayed()
-    composeTestRule.onNodeWithText(string(R.string.profile_step)).assertIsDisplayed()
+    composeTestRule.onNodeWithText(string(R.string.profile_step, 1)).assertIsDisplayed()
     node(ProfileSetupTestTags.FULL_NAME).assertTextEquals("Test Student")
     node(ProfileSetupTestTags.EMAIL).assert(shows("a@epfl.ch"))
     composeTestRule.onNodeWithText(string(R.string.profile_verified)).assertIsDisplayed()
@@ -186,6 +190,14 @@ class ProfileSetupScreenTest {
         )) {
       node(tag).assertExists()
     }
+  }
+
+  @Test
+  fun continue_isAButton() {
+    setScreen()
+
+    node(ProfileSetupTestTags.CONTINUE)
+        .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
   }
 
   @Test
@@ -241,13 +253,35 @@ class ProfileSetupScreenTest {
   }
 
   @Test
-  fun continue_createsTheProfileOnceAndMovesOn() {
+  fun continue_opensTheInterestsStepAndSavesNothing() {
+    setScreen()
+    pickSectionAndYear()
+
+    node(ProfileSetupTestTags.CONTINUE).performClick()
+    composeTestRule.waitForIdle()
+
+    node(ProfileSetupTestTags.INTERESTS).assertExists()
+    node(ProfileSetupTestTags.DETAILS).assertDoesNotExist()
+    composeTestRule.onNodeWithText(string(R.string.profile_step, 2)).assertIsDisplayed()
+    assertEquals(emptyList<Any>(), profiles.createdProfiles)
+    assertEquals(0, savedCalls)
+  }
+
+  // The acceptance criterion's UI test (#230): the chosen interests are saved with the profile.
+  @Test
+  fun choosingInterestsAndFinishing_createsTheProfileWithThemOnceAndMovesOn() {
     setScreen()
     node(ProfileSetupTestTags.FULL_NAME).performTextClearance()
     node(ProfileSetupTestTags.FULL_NAME).performTextInput("New Name")
     pickSectionAndYear(section = "MA", year = "BA1")
-
     node(ProfileSetupTestTags.CONTINUE).performClick()
+    composeTestRule.waitForIdle()
+
+    node(ProfileSetupTestTags.interest("tech")).performScrollTo().performClick()
+    node(ProfileSetupTestTags.interest("music")).performScrollTo().performClick()
+    node(ProfileSetupTestTags.interest("sports")).performScrollTo().performClick()
+    node(ProfileSetupTestTags.interest("sports")).performScrollTo().performClick()
+    node(ProfileSetupTestTags.FINISH).performScrollTo().performClick()
     composeTestRule.waitForIdle()
 
     val created = profiles.createdProfiles.single()
@@ -255,23 +289,68 @@ class ProfileSetupScreenTest {
     assertEquals("New Name", created.displayName)
     assertEquals("MA", created.section)
     assertEquals("BA1", created.year)
+    assertEquals(setOf("music", "tech"), created.interests)
     assertEquals(1, savedCalls)
   }
 
   @Test
-  fun saving_showsSavingAndLocksTheForm() {
+  fun finishingWithNoInterests_createsTheProfileWithNone() {
+    setScreen()
+    pickSectionAndYear()
+
+    continueAndFinish()
+
+    assertEquals(emptySet<String>(), profiles.createdProfiles.single().interests)
+    assertEquals(1, savedCalls)
+  }
+
+  @Test
+  fun backFromTheInterests_returnsToTheDetailsKeepingEverything() {
+    setScreen()
+    pickSectionAndYear(section = "SC", year = "MA2")
+    node(ProfileSetupTestTags.CONTINUE).performClick()
+    node(ProfileSetupTestTags.interest("cinema")).performScrollTo().performClick()
+
+    node(ProfileSetupTestTags.BACK).performClick()
+    composeTestRule.waitForIdle()
+
+    node(ProfileSetupTestTags.DETAILS).assertExists()
+    node(ProfileSetupTestTags.SECTION).assert(shows("SC"))
+    node(ProfileSetupTestTags.YEAR).assert(shows("MA2"))
+    // Back from the interests isn't the step's Back: nobody is signed out.
+    assertEquals(0, backCalls)
+    node(ProfileSetupTestTags.CONTINUE).performClick()
+    composeTestRule.waitForIdle()
+    node(ProfileSetupTestTags.interest("cinema")).assertIsOn()
+  }
+
+  @Test
+  fun systemBackFromTheInterests_returnsToTheDetails() {
+    setScreen()
+    pickSectionAndYear()
+    node(ProfileSetupTestTags.CONTINUE).performClick()
+    composeTestRule.waitForIdle()
+
+    Espresso.pressBack()
+    composeTestRule.waitForIdle()
+
+    node(ProfileSetupTestTags.DETAILS).assertExists()
+    assertEquals(0, backCalls)
+  }
+
+  @Test
+  fun saving_showsSavingAndLocksTheInterests() {
     profiles.createGate = CompletableDeferred()
     setScreen()
     pickSectionAndYear()
 
-    node(ProfileSetupTestTags.CONTINUE).performClick()
-    composeTestRule.waitForIdle()
+    continueAndFinish()
 
-    node(ProfileSetupTestTags.CONTINUE)
+    node(ProfileSetupTestTags.FINISH)
         .assert(shows(string(R.string.profile_saving)))
         .assertIsNotEnabled()
-    node(ProfileSetupTestTags.FULL_NAME).assertIsNotEnabled()
-    node(ProfileSetupTestTags.SECTION).assertIsNotEnabled()
+    node(ProfileSetupTestTags.interest("music")).assertIsNotEnabled()
+    node(ProfileSetupTestTags.BACK).assertIsNotEnabled()
     assertEquals(0, savedCalls)
 
     profiles.createGate?.complete(Unit)
@@ -280,20 +359,19 @@ class ProfileSetupScreenTest {
   }
 
   @Test
-  fun offline_showsTheErrorAndContinueRetries() {
+  fun offline_showsTheErrorAndFinishRetries() {
     profiles.createProfileResult = CreateProfileResult.NetworkError
     setScreen()
     pickSectionAndYear()
 
-    node(ProfileSetupTestTags.CONTINUE).performClick()
-    composeTestRule.waitForIdle()
+    continueAndFinish()
 
     node(ProfileSetupTestTags.ERROR).assert(shows(string(R.string.profile_could_not_save)))
-    node(ProfileSetupTestTags.CONTINUE).assertIsEnabled()
+    node(ProfileSetupTestTags.FINISH).assertIsEnabled()
     assertEquals(0, savedCalls)
 
     profiles.createProfileResult = CreateProfileResult.Created
-    node(ProfileSetupTestTags.CONTINUE).performClick()
+    node(ProfileSetupTestTags.FINISH).performClick()
     composeTestRule.waitForIdle()
 
     assertEquals(2, profiles.createdProfiles.size)
@@ -317,25 +395,32 @@ class ProfileSetupScreenTest {
     setScreen()
     pickSectionAndYear()
 
-    node(ProfileSetupTestTags.CONTINUE).performClick()
-    composeTestRule.waitForIdle()
+    continueAndFinish()
     // Leaving now would drop the save's result before the app has used it.
     node(ProfileSetupTestTags.BACK).assertIsNotEnabled()
+    Espresso.pressBack()
+    composeTestRule.waitForIdle()
+    node(ProfileSetupTestTags.INTERESTS).assertExists()
 
     profiles.createGate?.complete(Unit)
     composeTestRule.waitForIdle()
     node(ProfileSetupTestTags.BACK).assertIsEnabled().performClick()
-    assertEquals(1, backCalls)
+    composeTestRule.waitForIdle()
+    node(ProfileSetupTestTags.DETAILS).assertExists()
+    node(ProfileSetupTestTags.ERROR).assertDoesNotExist()
+    assertEquals(0, backCalls)
   }
 
   @Test
-  fun doubleTapOnContinue_createsTheProfileOnce() {
+  fun doubleTapOnFinish_createsTheProfileOnce() {
     profiles.createGate = CompletableDeferred()
     setScreen()
     pickSectionAndYear()
+    node(ProfileSetupTestTags.CONTINUE).performClick()
+    composeTestRule.waitForIdle()
 
     // A quick double tap while the first save is still running: the second must write nothing.
-    node(ProfileSetupTestTags.CONTINUE).performTouchInput {
+    node(ProfileSetupTestTags.FINISH).performTouchInput {
       click()
       click()
     }
@@ -358,6 +443,7 @@ class ProfileSetupScreenTest {
     node(ProfileSetupTestTags.CONTINUE).assertIsNotEnabled().performClick()
     composeTestRule.waitForIdle()
 
+    node(ProfileSetupTestTags.INTERESTS).assertDoesNotExist()
     assertEquals(emptyList<Any>(), profiles.createdProfiles)
     assertEquals(0, savedCalls)
   }
@@ -368,8 +454,7 @@ class ProfileSetupScreenTest {
     setScreen()
     pickSectionAndYear()
 
-    node(ProfileSetupTestTags.CONTINUE).performClick()
-    composeTestRule.waitForIdle()
+    continueAndFinish()
 
     node(ProfileSetupTestTags.ERROR).assertDoesNotExist()
     assertEquals(1, profiles.createdProfiles.size)
@@ -377,20 +462,36 @@ class ProfileSetupScreenTest {
   }
 
   @Test
-  fun failedSave_editingHidesTheErrorAndContinueRetriesWithTheNewValue() {
+  fun failedSave_choosingHidesTheErrorAndFinishRetriesWithTheNewChoice() {
     profiles.createProfileResult = CreateProfileResult.UnexpectedError
     setScreen()
-    pickSectionAndYear(year = "BA3")
-    node(ProfileSetupTestTags.CONTINUE).performClick()
-    composeTestRule.waitForIdle()
+    pickSectionAndYear()
+    continueAndFinish()
     node(ProfileSetupTestTags.ERROR).assertExists()
     assertEquals(0, savedCalls)
 
-    pick(ProfileSetupTestTags.YEAR, ProfileSetupTestTags.yearOption("BA4"))
+    node(ProfileSetupTestTags.interest("games")).performScrollTo().performClick()
     node(ProfileSetupTestTags.ERROR).assertDoesNotExist()
     profiles.createProfileResult = CreateProfileResult.Created
-    node(ProfileSetupTestTags.CONTINUE).performClick()
+    node(ProfileSetupTestTags.FINISH).performScrollTo().performClick()
     composeTestRule.waitForIdle()
+
+    assertEquals(listOf(emptySet(), setOf("games")), profiles.createdProfiles.map { it.interests })
+    assertEquals(1, savedCalls)
+  }
+
+  @Test
+  fun failedSave_goingBackToFixTheYear_savesTheNewYear() {
+    profiles.createProfileResult = CreateProfileResult.NetworkError
+    setScreen()
+    pickSectionAndYear(year = "BA3")
+    continueAndFinish()
+
+    node(ProfileSetupTestTags.BACK).performClick()
+    composeTestRule.waitForIdle()
+    pick(ProfileSetupTestTags.YEAR, ProfileSetupTestTags.yearOption("BA4"))
+    profiles.createProfileResult = CreateProfileResult.Created
+    continueAndFinish()
 
     assertEquals(listOf("BA3", "BA4"), profiles.createdProfiles.map { it.year })
     assertEquals(1, savedCalls)
@@ -402,11 +503,10 @@ class ProfileSetupScreenTest {
     setScreen()
     pickSectionAndYear()
 
-    node(ProfileSetupTestTags.CONTINUE).performClick()
-    composeTestRule.waitForIdle()
+    continueAndFinish()
 
     node(ProfileSetupTestTags.ERROR).assert(shows(string(R.string.profile_could_not_save_generic)))
-    node(ProfileSetupTestTags.CONTINUE).assertIsEnabled()
+    node(ProfileSetupTestTags.FINISH).assertIsEnabled()
     // Logging out is the step's Back: AuthFlow signs out and returns to Welcome.
     node(ProfileSetupTestTags.LOG_OUT).performScrollTo().performClick()
     composeTestRule.waitForIdle()
@@ -417,15 +517,14 @@ class ProfileSetupScreenTest {
   }
 
   @Test
-  fun genericError_editingHidesTheErrorAndLogOut() {
+  fun genericError_choosingHidesTheErrorAndLogOut() {
     profiles.createProfileResult = CreateProfileResult.UnexpectedError
     setScreen()
     pickSectionAndYear()
-    node(ProfileSetupTestTags.CONTINUE).performClick()
-    composeTestRule.waitForIdle()
+    continueAndFinish()
     node(ProfileSetupTestTags.LOG_OUT).assertExists()
 
-    node(ProfileSetupTestTags.FULL_NAME).performTextInput("x")
+    node(ProfileSetupTestTags.interest("music")).performScrollTo().performClick()
 
     node(ProfileSetupTestTags.ERROR).assertDoesNotExist()
     node(ProfileSetupTestTags.LOG_OUT).assertDoesNotExist()
@@ -501,96 +600,11 @@ class ProfileSetupScreenTest {
   }
 
   @Test
-  fun couldNotSave_showsTheErrorMessage() {
-    setContent(filled.copy(status = ProfileSetupStatus.CouldNotSave))
-
-    node(ProfileSetupTestTags.ERROR).assert(shows(string(R.string.profile_could_not_save)))
-  }
-
-  @Test
-  fun couldNotSave_hasNoLogOut() {
-    setContent(filled.copy(status = ProfileSetupStatus.CouldNotSave))
-
-    node(ProfileSetupTestTags.ERROR)
-        .assert(shows(string(R.string.profile_could_not_save)))
-        .assert(hasAnyDescendant(hasText(string(R.string.profile_could_not_save_generic))).not())
-    node(ProfileSetupTestTags.LOG_OUT).assertDoesNotExist()
-    node(ProfileSetupTestTags.CONTINUE).assertIsEnabled()
-  }
-
-  @Test
   fun editing_showsNoLogOut() {
     setContent(filled)
 
     node(ProfileSetupTestTags.LOG_OUT).assertDoesNotExist()
     composeTestRule.onNodeWithText(string(R.string.profile_log_out)).assertDoesNotExist()
-  }
-
-  @Test
-  fun couldNotSaveGeneric_showsTheGenericMessageAndLogOut() {
-    setContent(filled.copy(status = ProfileSetupStatus.CouldNotSaveGeneric))
-
-    node(ProfileSetupTestTags.ERROR)
-        .assert(shows(string(R.string.profile_could_not_save_generic)))
-        .assert(hasAnyDescendant(hasText(string(R.string.profile_could_not_save))).not())
-    assertEquals(
-        "Couldn't save your profile. Log out and log in again, then try once more.",
-        string(R.string.profile_could_not_save_generic),
-    )
-    node(ProfileSetupTestTags.LOG_OUT)
-        .assertTextEquals(string(R.string.profile_log_out))
-        .assert(SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Button))
-    assertEquals("Log out", string(R.string.profile_log_out))
-    // Continue retries.
-    node(ProfileSetupTestTags.CONTINUE)
-        .assert(shows(string(R.string.profile_continue)))
-        .assertIsEnabled()
-  }
-
-  @Test
-  fun couldNotSaveGeneric_logOutCallsOnlyOnLogOut() {
-    setContent(filled.copy(status = ProfileSetupStatus.CouldNotSaveGeneric))
-
-    node(ProfileSetupTestTags.LOG_OUT).performScrollTo().performClick()
-
-    assertEquals(1, contentLogOutCalls)
-    assertEquals(0, contentBackCalls)
-    assertEquals(0, contentContinueCalls)
-  }
-
-  @Test
-  fun couldNotSaveGeneric_continueRetriesWithoutLoggingOut() {
-    setContent(filled.copy(status = ProfileSetupStatus.CouldNotSaveGeneric))
-
-    node(ProfileSetupTestTags.CONTINUE).performScrollTo().performClick()
-
-    assertEquals(1, contentContinueCalls)
-    assertEquals(0, contentLogOutCalls)
-  }
-
-  @Test
-  fun couldNotSaveGeneric_logOutIsBoldTwelveSpInTheErrorRed() {
-    setContent(filled.copy(status = ProfileSetupStatus.CouldNotSaveGeneric))
-
-    val layouts = mutableListOf<TextLayoutResult>()
-    node(ProfileSetupTestTags.LOG_OUT)
-        .fetchSemanticsNode()
-        .config[SemanticsActions.GetTextLayoutResult]
-        .action
-        ?.invoke(layouts)
-    val style = layouts.single().layoutInput.style
-    assertEquals(FontWeight.Bold, style.fontWeight)
-    assertEquals(12.sp, style.fontSize)
-    assertEquals(AccentText, style.color)
-  }
-
-  @Test
-  fun saved_locksTheForm() {
-    setContent(filled.copy(status = ProfileSetupStatus.Saved))
-
-    node(ProfileSetupTestTags.CONTINUE).assertIsNotEnabled()
-    node(ProfileSetupTestTags.FULL_NAME).assertIsNotEnabled()
-    node(ProfileSetupTestTags.YEAR).assertIsNotEnabled()
   }
 
   @Test
@@ -607,7 +621,6 @@ class ProfileSetupScreenTest {
               onSectionChange = {},
               onYearChange = {},
               onContinue = { continueCalls++ },
-              onLogOut = {},
           )
         }
       }
@@ -634,13 +647,6 @@ class ProfileSetupScreenTest {
 
   private fun SemanticsNode.bottom() = positionInRoot.y + size.height
 
-  /** Log out's node is its touch area: the text is drawn [LOG_OUT_TOUCH_EXTRA] inside it. */
-  private fun SemanticsNode.textTop() =
-      top() + LOG_OUT_TOUCH_EXTRA.value * composeTestRule.density.density
-
-  private fun SemanticsNode.textBottom() =
-      bottom() - LOG_OUT_TOUCH_EXTRA.value * composeTestRule.density.density
-
   /** The text node showing [text], inside the node tagged [parentTag] when given. */
   private fun textNode(text: String, parentTag: String? = null): SemanticsNode {
     val matcher =
@@ -648,20 +654,19 @@ class ProfileSetupScreenTest {
     return composeTestRule.onNode(matcher, useUnmergedTree = true).fetchSemanticsNode()
   }
 
-  /** Sets the form at [fontScale], filled in and showing the save error (the tallest state). */
+  /** Sets the form at [fontScale], filled in. */
   private fun setFilledForm(fontScale: Float) {
     composeTestRule.setContent {
       val density = LocalDensity.current
       CompositionLocalProvider(LocalDensity provides Density(density.density, fontScale)) {
         PolySocialTheme {
           ProfileSetupContent(
-              state = filled.copy(status = ProfileSetupStatus.CouldNotSave),
+              state = filled,
               onBack = {},
               onDisplayNameChange = {},
               onSectionChange = {},
               onYearChange = {},
               onContinue = {},
-              onLogOut = {},
           )
         }
       }
@@ -686,8 +691,6 @@ class ProfileSetupScreenTest {
             "year label" to text(R.string.profile_year),
             "year value" to textNode("BA3", ProfileSetupTestTags.YEAR),
             "privacy note" to text(R.string.profile_privacy),
-            "error" to
-                textNode(string(R.string.profile_could_not_save), ProfileSetupTestTags.ERROR),
             "continue" to
                 textNode(string(R.string.profile_continue), ProfileSetupTestTags.CONTINUE),
         )
@@ -706,7 +709,6 @@ class ProfileSetupScreenTest {
             "section label" to texts.getValue("section label"),
             "section field" to tagged(ProfileSetupTestTags.SECTION),
             "privacy note" to texts.getValue("privacy note"),
-            "error" to tagged(ProfileSetupTestTags.ERROR),
             "continue" to tagged(ProfileSetupTestTags.CONTINUE),
         )
     val yearColumn =
@@ -749,98 +751,6 @@ class ProfileSetupScreenTest {
     assertTextsFitAndNothingOverlaps()
   }
 
-  @Test
-  // The Figma frame size, with real text metrics.
-  @Config(qualifiers = "w360dp-h800dp")
-  @GraphicsMode(GraphicsMode.Mode.NATIVE)
-  fun genericError_matchesTheFigmaFrameAndKeepsContinueWhereTheOfflineErrorHasIt() {
-    var status by mutableStateOf(ProfileSetupStatus.CouldNotSave)
-    var touchAreaTaps = 0
-    composeTestRule.setContent {
-      PolySocialTheme {
-        ProfileSetupContent(
-            state = filled.copy(status = status),
-            onBack = {},
-            onDisplayNameChange = {},
-            onSectionChange = {},
-            onYearChange = {},
-            onContinue = {},
-            onLogOut = { touchAreaTaps++ },
-        )
-      }
-    }
-    val density = composeTestRule.density.density
-    fun SemanticsNode.dp() = positionInRoot.let { it.x / density to it.y / density }
-    val screenTop = node(ProfileSetupTestTags.SCREEN).node().top() / density
-    val offlineContinue = node(ProfileSetupTestTags.CONTINUE).node()
-
-    status = ProfileSetupStatus.CouldNotSaveGeneric
-    composeTestRule.waitForIdle()
-
-    val error = node(ProfileSetupTestTags.ERROR).node()
-    val message =
-        textNode(string(R.string.profile_could_not_save_generic), ProfileSetupTestTags.ERROR)
-    val logOut = node(ProfileSetupTestTags.LOG_OUT).node()
-    val continueButton = node(ProfileSetupTestTags.CONTINUE).node()
-    // Figma "Profile · couldn't save · generic": message at y 640 (two lines, 30 dp), Log out at
-    // y 674 (4 dp under it), aligned with the message's text, and Continue at y 720.
-    assertEquals(640f, error.top() / density - screenTop, 1f)
-    assertEquals(30f, (error.bottom() - error.top()) / density, 1f)
-    assertEquals(4f, (logOut.textTop() - error.bottom()) / density, 0.5f)
-    assertEquals(674f, logOut.textTop() / density - screenTop, 1f)
-    assertEquals(15f, (logOut.textBottom() - logOut.textTop()) / density, 1f)
-    assertEquals(message.dp().first, logOut.dp().first, 0.5f)
-    assertEquals(40f, logOut.dp().first, 0.5f)
-    assertEquals(720f, continueButton.top() / density - screenTop, 1f)
-    assertFalse("the message is clipped", message.textOverflows())
-    assertFalse("Log out is clipped", logOut.textOverflows())
-    // Continue doesn't move between the two error frames.
-    assertEquals(offlineContinue.positionInRoot, continueButton.positionInRoot)
-    assertEquals(offlineContinue.size, continueButton.size)
-    // The touch area reaches Android's 48 dp minimum without covering Continue, and a tap above
-    // the drawn text still logs out.
-    assertTrue((logOut.bottom() - logOut.top()) / density >= 48f)
-    assertTrue("Log out's touch area covers Continue", logOut.bottom() <= continueButton.top())
-    node(ProfileSetupTestTags.LOG_OUT).performTouchInput { click(Offset(centerX, 4f)) }
-    assertEquals(1, touchAreaTaps)
-  }
-
-  @Test
-  // Real text metrics: the legacy graphics mode measures text with fixed fake sizes.
-  @GraphicsMode(GraphicsMode.Mode.NATIVE)
-  fun doubleFontSize_genericErrorFitsAndLogOutCanBeScrolledToAndTapped() {
-    var logOuts = 0
-    composeTestRule.setContent {
-      val density = LocalDensity.current
-      CompositionLocalProvider(LocalDensity provides Density(density.density, 2f)) {
-        PolySocialTheme {
-          ProfileSetupContent(
-              state = filled.copy(status = ProfileSetupStatus.CouldNotSaveGeneric),
-              onBack = {},
-              onDisplayNameChange = {},
-              onSectionChange = {},
-              onYearChange = {},
-              onContinue = {},
-              onLogOut = { logOuts++ },
-          )
-        }
-      }
-    }
-
-    val message =
-        textNode(string(R.string.profile_could_not_save_generic), ProfileSetupTestTags.ERROR)
-    val error = node(ProfileSetupTestTags.ERROR).node()
-    val logOut = node(ProfileSetupTestTags.LOG_OUT).node()
-    val continueButton = node(ProfileSetupTestTags.CONTINUE).node()
-    assertFalse("the message is clipped", message.textOverflows())
-    assertFalse("Log out is clipped", logOut.textOverflows())
-    assertTrue("Log out overlaps the message", logOut.textTop() >= error.bottom() - 1)
-    assertTrue("Continue overlaps Log out", continueButton.top() >= logOut.textBottom() - 1)
-
-    node(ProfileSetupTestTags.LOG_OUT).performScrollTo().assertIsDisplayed().performClick()
-    assertEquals(1, logOuts)
-  }
-
   // ---- Rotation and accessibility ----
 
   @Test
@@ -853,8 +763,7 @@ class ProfileSetupScreenTest {
       }
     }
     pickSectionAndYear()
-    node(ProfileSetupTestTags.CONTINUE).performClick()
-    composeTestRule.waitForIdle()
+    continueAndFinish()
     assertEquals(1, savedCalls)
 
     // The ViewModel survives the rotation and is still Saved.

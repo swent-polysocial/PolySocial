@@ -1,10 +1,11 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the groups, chat and public profile model, its rules, the co-organizer model and the deploy owner (#228); Franciszek Najda (decided and reviewed). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (members get their own group in the rules table, and groups of an ended event as an open question, #295). -->
 <!-- Contributors: Claude Opus 5.5 (attendees schema, rules and capacity question, #121; the organizers' attendee count and the association's manage event, #131). -->
-<!-- Contributors: Claude (public profiles marked as built, #229; the deletion marker and the public copy kept in step, after review, #229; stored interests, #230). -->
+<!-- Contributors: Claude (public profiles marked as built, #229; the deletion marker and the public copy kept in step, after review, #229; the interests step, #230). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the account deletion decision, its deletion/failure matrix and the related open questions (#201); Mohamed Khellaf (reviewed and revised). -->
 <!-- Contributors: OpenAI Codex (verified association shell and remaining map handoff, #140). -->
 <!-- Contributors: OpenAI Codex (association signup/setup routing and built/planned integration, #125). -->
-<!-- Contributors: OpenAI Codex (Google authentication architecture, Firebase-managed linking clarification and review cleanup for #106; preserved contributor acknowledgments during rebase); Claude (the shared UI parts, #251). -->
+<!-- Contributors: OpenAI Codex (Google authentication architecture, Firebase-managed linking clarification and review cleanup for #106; preserved contributor acknowledgments during rebase); Claude (the shared UI parts, #251; the confirmation sheet parts, #296). -->
 <!-- Contributors: OpenAI Codex (removed obsolete Google collision UI, #107). -->
 <!-- Contributors: OpenAI Codex (Google entry routing for #107). -->
 <!-- Contributors: OpenAI Codex (Sprint 2 architecture, navigation, registration/reminder design and open questions, #139; documented Mapbox renderer/setup decisions and production/privacy open questions, #50); Claude (drafted this page and its diagrams from the README, the Scrum Board and the issue descriptions; association accounts without an EPFL email; Create Event design update, #44; ViewModel rule wording; Security Rules state after #35; the profile step's year question, #34; association badge from the profile, #45; synced the place-name and sign-in decisions with `CONTEXT.md`; association profiles and their rules, #126; association names, #128; open questions on shared association code, #125/#127, and their answers; the Create Event organizer row, #134; routing of association accounts and Edit details, #127; the full name's limit, #143; the map's Details open the event detail, #112; association log in, #208). -->
@@ -70,8 +71,10 @@ flowchart TB
   login -- "unverified" --> verify
   login -- "verified" --> gate
   verify -- "Continue" --> gate
-  gate -- "no profile yet" --> profile["Profile step"]:::s1
-  profile -- "saved" --> main
+  gate -- "no profile yet" --> profile["Profile step 1:<br/>name, section, year"]:::s1
+  profile -- "Continue" --> interests["Profile step 2:<br/>interests, #230"]:::s1
+  interests -- "Back" --> profile
+  interests -- "Finish: saved" --> main
   profile -- "Back: sign out" --> welcome
   gate -- "student ready" --> main(["Student app: 4 tabs"]):::s1
   gate -- "association setup missing" --> associationSetup["Association setup"]:::s1
@@ -128,7 +131,7 @@ Notes:
 
 Each feature in the Sprint 2 scope, from screen to data source. The Sprint 1 foundation slices remain below; section 3.6 describes the planned Sprint 2 additions. The Product Backlog features are already drawn in the [overview](#1-architecture-overview), so they are described in text only.
 
-- **Shared UI parts (#251).** Form and banner pieces used by several screens live once in `ui/common` (`FormParts.kt`): `FieldLabel`, `OfflineBanner`, `ErrorBanner` and `PrimaryButton` (also the location picker's "Use this location"), next to `LoadingState`, `ErrorState` and `StateButton`. Reuse them instead of copying them into a screen.
+- **Shared UI parts (#251).** Form and banner pieces used by several screens live once in `ui/common` (`FormParts.kt`): `FieldLabel`, `OfflineBanner`, `ErrorBanner` and `PrimaryButton` (also the location picker's "Use this location"), next to `LoadingState`, `ErrorState` and `StateButton`. Confirmation bottom sheets use `ConfirmationSheet.kt` (#296): `ConfirmationSheet` (the frame, which can't be dismissed while `locked`), `SheetIcon`, `SheetTitle` and `SheetSecondaryButton`. Reuse them instead of copying them into a screen. `Chips.kt` (#230) adds `choiceChipSurface`, the dark-or-outlined pill every choice chip draws, and the interest labels (`INTEREST_LABELS`, `interestLabel`).
 
 ### 3.1 Authentication and profile (Sprint 1)
 
@@ -328,7 +331,7 @@ flowchart TD
   q2 -- no --> verify["Verify Email screen"]:::s1
   q2 -- yes --> load["Loading your profile…<br/>(App start · loading)"]:::s1 --> q3{"Profile exists?"}
   q3 -- no --> q5{"EPFL email?"}
-  q5 -- yes --> create["Profile step:<br/>createProfile(), once"]:::s1
+  q5 -- yes --> create["Profile step (details, then interests, #230):<br/>createProfile() on Finish, once"]:::s1
   main["Main app, Events tab"]:::s1
   create -- "saved" --> main
   create -- "Back: sign out" --> welcome
@@ -478,7 +481,7 @@ Rules live in `firebase/firestore/firestore.rules` and are tested against the Fi
 | `events/{id}`, private | `auth.uid in allowedUids` (organizers, members, approved match requesters) | as above | organizers only | #52, #23 | 🟩 S1 |
 | `events/{eventId}/attendees/{uid}` | own attendance; attendee list only for the event's organizers | verified EPFL student, own UID, readable event that hasn't ended; no association registration | student deletes only own document, even once the event has ended or is gone; no writes to another student's attendance; nobody updates one | #121 | 🟩 in place (capacity not checked yet) |
 | `publicProfiles/{uid}` | any student, one document by UID (no list, so no student directory); no association | owner only, only the fields above, no email; `section`, `year` and `interests` from the app's fixed lists | owner only, as an exact copy of their `users/{uid}` after the same write (`getAfter`), never under a `deletedAccounts/{uid}` marker; no delete except with the account (`deleteAccount`) | #229 | 🟩 S4 (built) |
-| `events/{eventId}/groups/{groupId}` | a student who can read the event; a student lists their own groups across events (`memberUids array-contains` their UID) | a student who can read the event, with `memberUids == [own UID]`, `capacity == 4`, `createdBy` = own UID, server `createdAt`, and their `groupMembers` marker in the same write | update: only `memberUids` changes, by adding or removing the caller's own UID, `size() <= capacity`, with the marker created or deleted alongside (`getAfter`); delete: the last member leaving. No association access | #232 | 🟦 S4 |
+| `events/{eventId}/groups/{groupId}` | a student who can read the event; a member also gets their own group without it, so they can still leave it (#295); a student lists their own groups across events (`memberUids array-contains` their UID) | a student who can read the event, with `memberUids == [own UID]`, `capacity == 4`, `createdBy` = own UID, server `createdAt`, and their `groupMembers` marker in the same write | update: only `memberUids` changes, by adding or removing the caller's own UID, `size() <= capacity`, with the marker created or deleted alongside (`getAfter`); delete: the last member leaving. No association access | #232 | 🟦 S4 |
 | `events/{eventId}/groupMembers/{uid}` | own document only | own UID, `groupId` of a group whose `memberUids` contain them after the write | delete own, when leaving that group; no update | #232 | 🟦 S4 |
 | `events/{eventId}/groups/{groupId}/messages/{id}` | group members only | members, `senderId` = own UID, `text` 1–1000, server `createdAt`; per operation, so rate limiting fits later | nobody yet (report/block later) | #237 | 🟦 S4 |
 | `matchRequests` | sender and recipient | sender | recipient responds | #26, #27 | 🟦 PB |
@@ -550,6 +553,7 @@ How each failure behaves:
 - **Blaze plan (owner: Franciszek, before #269 merges):** the README and decision 15 say the project runs on Blaze, but #285's description says it doesn't. Cloud Functions, so `deleteAccount` (#269, #270, #285), need Blaze with its budget alert. Check the Firebase console and settle it with the team.
 - **Groups of a deleted event or account (owner: Ayoub with #275 for events, Mohamed for `deleteAccount`):** deleting an event must also delete its `groups`, `groupMembers` and messages, and deleting an account must take its UID out of `memberUids` and delete its marker. Client-side deletion of nested messages doesn't scale; a function triggered by the deletion may be needed, which depends on Blaze.
 - **"I'm going" in the rules (owner: Ayoub, #244):** whether joining a group also requires an `attendees` document in the rules, or only in the app.
+- **Groups of an ended event (#295):** starting or joining a group doesn't check that the event hasn't ended, unlike registering; accepted for now, as #233's screen doesn't offer Find a group on past events. A rule for it would deny after the reads, so it needs its own result first (see `write`'s KDoc in `FirestoreGroupRepository`).
 - **Association co-organizers (owner: Sprint 5 PO, at Sprint 5 Planning):** see decision 17.
 - **Mapbox production account:** who adds billing, which usage alert applies, and when does a dedicated token replace the signup token? Mapbox bills separately from Google Cloud. Needed before release.
 - **Shared privacy notice (#103):** Mapbox receives map requests for the viewed area; Mehdi owns Profile → Privacy & data; the private deletion contact and final wording still need confirmation before release.

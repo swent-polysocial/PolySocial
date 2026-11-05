@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Contributors: Claude (profile step texts from the Figma "First proposal revamped" frames, #34; generic save error, #142). -->
 <!-- Contributors: OpenAI Codex (logout dialog copy and consistent failure wording, #109). -->
+<!-- Contributors: Claude (the interests step texts and interest labels, from the Figma "Interests · …" frames, #230). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the Delete account texts, #207; Mohamed Khellaf (reviewed and revised). -->
 <resources>
     <string name="profile_back">Back</string>
-    <string name="profile_step">Step 1 of 2</string>
+    <string name="profile_step">Step %1$d of 2</string>
     <string name="profile_title">Complete your profile</string>
     <string name="profile_subtitle">Your email is verified. Add your section and year so we can match you.</string>
     <string name="profile_full_name">Full name</string>
@@ -23,6 +24,25 @@
     <string name="profile_log_out_question">Are you sure you want to log out?</string>
     <string name="profile_log_out_cancel">Cancel</string>
     <string name="profile_log_out_error">Couldn\'t finish logging out. Try again before continuing.</string>
+    <string name="profile_interests_title">What are you into?</string>
+    <string name="profile_interests_subtitle">Optional. We only use them to match you with people you\'ll get along with.</string>
+    <plurals name="profile_interests_selected">
+        <item quantity="one">Interests · %d selected</item>
+        <item quantity="other">Interests · %d selected</item>
+    </plurals>
+    <string name="profile_finish">Finish · see events</string>
+    <string name="interest_sports">Sports</string>
+    <string name="interest_outdoors">Outdoors</string>
+    <string name="interest_music">Music</string>
+    <string name="interest_parties">Parties</string>
+    <string name="interest_cinema">Cinema</string>
+    <string name="interest_games">Games</string>
+    <string name="interest_photography">Photography</string>
+    <string name="interest_cooking">Cooking</string>
+    <string name="interest_tech">Tech</string>
+    <string name="interest_startups">Startups</string>
+    <string name="interest_arts">Arts &amp; theatre</string>
+    <string name="interest_volunteering">Volunteering</string>
     <string name="delete_account_title">Delete your account?</string>
     <string name="delete_account_body">Your profile and sign-in are deleted. Events you created stay, without your name. This can\'t be undone.</string>
     <string name="delete_account_confirm">Delete account</string>

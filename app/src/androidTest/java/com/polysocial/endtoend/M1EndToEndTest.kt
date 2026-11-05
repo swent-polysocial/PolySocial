@@ -6,6 +6,7 @@
 // #198; Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (Opus 5.5, Anthropic) added the account deletion step, #207; Mohamed Khellaf
 // (reviewed and revised).
+// Contributors: Claude (the interests step, #230).
 package com.polysocial.endtoend
 
 import androidx.activity.compose.setContent
@@ -130,7 +131,8 @@ import org.junit.runner.RunWith
  * Features covered, in order:
  * 1. Welcome → Sign up with an `@epfl.ch` email (#30, #87).
  * 2. Verify Email: the email is sent, the student confirms it and taps Continue (#31, #99).
- * 3. Profile step: section and year, then the app opens on the Events tab (#34, #74).
+ * 3. Profile step: section and year, then an interest (#230), then the app opens on the Events tab
+ *    (#34, #74).
  * 4. Events tab: the upcoming public events, grouped by day (#105).
  * 5. Event detail opened from the list, and Back to the list (#112).
  * 6. Create Event from the "+" (#46, #110): "Organized by you" for a student (#134), title,
@@ -259,12 +261,17 @@ class M1EndToEndTest {
     node(ProfileSetupTestTags.YEAR).performScrollTo().performClick()
     node(ProfileSetupTestTags.yearOption(YEAR)).performScrollTo().performClick()
     node(ProfileSetupTestTags.CONTINUE).performScrollTo().performClick()
+    // Step 2 of 2 (#230): pick an interest, then Finish saves the profile.
+    await(ProfileSetupTestTags.INTERESTS)
+    node(ProfileSetupTestTags.interest(INTEREST)).performScrollTo().performClick()
+    node(ProfileSetupTestTags.FINISH).performScrollTo().performClick()
 
     await(C.Tag.app_shell)
     val saved = fakeProfiles.createdProfiles.single()
     assertEquals(UID, saved.uid)
     assertEquals(SECTION, saved.section)
     assertEquals(YEAR, saved.year)
+    assertEquals(setOf(INTEREST), saved.interests)
   }
 
   private fun browseUpcomingEvents() {
@@ -463,6 +470,7 @@ class M1EndToEndTest {
     const val PASSWORD = "password1"
     const val SECTION = "IN"
     const val YEAR = "BA3"
+    const val INTEREST = "music"
     const val NEW_TITLE = "Study together"
 
     val ZURICH: ZoneId = ZoneId.of("Europe/Zurich")

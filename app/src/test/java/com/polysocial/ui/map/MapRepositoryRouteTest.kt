@@ -1,5 +1,6 @@
 // Contributors: OpenAI Codex (repository-to-map UI tests for #50; denied-location fake for #51).
-// Contributors: Claude (the association names dependency, #128).
+// Contributors: Claude (the association names dependency, #128; click targets moved below the
+// search and chips, #116).
 package com.polysocial.ui.map
 
 import android.content.Context
@@ -88,11 +89,11 @@ class MapRepositoryRouteTest {
       select: (String) -> Unit,
       status: (MapRenderStatus) -> Unit,
   ) {
-    // Keep physical click targets clear of the permission notice at the top of the map.
+    // Keep physical click targets clear of the search, chips and notices at the top of the map.
     Box(Modifier.fillMaxSize().testTag(MapTags.CANVAS)) {
       TextButton(
           { status(MapRenderStatus.READY) },
-          Modifier.align(Alignment.TopStart).testTag("fake_renderer_ready"),
+          Modifier.align(Alignment.BottomStart).testTag("fake_renderer_ready"),
       ) {
         Text("Map loaded")
       }
