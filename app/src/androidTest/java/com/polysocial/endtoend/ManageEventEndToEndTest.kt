@@ -1,5 +1,7 @@
 // Contributors: Claude (end-to-end test of the organizer flow: create, edit and cancel an event,
 // #239; every data source bound to a fake, as in M1EndToEndTest, #239 review).
+// Contributors: Claude (Opus 5.5, Anthropic) bound fake group and public profile repositories,
+// which Find a group's ViewModel needs, #233.
 package com.polysocial.endtoend
 
 import androidx.compose.ui.test.SemanticsMatcher
@@ -54,6 +56,9 @@ import com.polysocial.model.geocoding.GeocodingModule
 import com.polysocial.model.geocoding.GeocodingService
 import com.polysocial.model.geocoding.Place
 import com.polysocial.model.geocoding.PlaceSearchResult
+import com.polysocial.model.group.FakeGroupRepository
+import com.polysocial.model.group.GroupModule
+import com.polysocial.model.group.GroupRepository
 import com.polysocial.model.location.FakeLocationService
 import com.polysocial.model.location.LocationModule
 import com.polysocial.model.location.LocationService
@@ -63,8 +68,11 @@ import com.polysocial.model.registration.FakeRegistrationRepository
 import com.polysocial.model.registration.RegistrationModule
 import com.polysocial.model.registration.RegistrationRepository
 import com.polysocial.model.time.ClockModule
+import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.ProfileResult
+import com.polysocial.model.user.PublicProfileModule
+import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.UserProfile
 import com.polysocial.model.user.UserProfileModule
 import com.polysocial.model.user.UserProfileRepository
@@ -117,9 +125,11 @@ import org.junit.runner.RunWith
     EventModule::class,
     FirebaseModule::class,
     GeocodingModule::class,
+    GroupModule::class,
     LocationModule::class,
     NetworkModule::class,
     UserProfileModule::class,
+    PublicProfileModule::class,
     RegistrationModule::class,
 )
 @RunWith(AndroidJUnit4::class)
@@ -152,6 +162,8 @@ class ManageEventEndToEndTest {
   @BindValue @JvmField val verificationStore: VerificationStore = InMemoryVerificationStore()
   @BindValue @JvmField val network: NetworkMonitor = AlwaysOnline
   @BindValue @JvmField val registrations: RegistrationRepository = FakeRegistrationRepository()
+  @BindValue @JvmField val groups: GroupRepository = FakeGroupRepository()
+  @BindValue @JvmField val publicProfiles: PublicProfileRepository = FakePublicProfileRepository()
   // The flow never logs out or deletes the account, but the app's graph still needs these.
   @BindValue @JvmField val deletion: AccountDeletionRepository = FakeAccountDeletionRepository()
   @BindValue
