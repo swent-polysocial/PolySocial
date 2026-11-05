@@ -3,10 +3,12 @@
 package com.polysocial.ui.event.detail
 
 import android.content.Context
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -93,17 +95,17 @@ class EventDetailAttendanceScreenTest {
       EventAttendanceActions(
           onImGoing = { calls += "going" },
           onCancelRegistration = { calls += "cancel" },
-          onMessageShown = { calls += "shown $it" },
+          onMessageShown = { calls += "shown ${it.message}" },
       )
 
-  private fun show(state: EventDetailUiState.Loaded, message: AttendanceMessage? = null) {
+  private fun show(state: EventDetailUiState.Loaded, feedback: AttendanceFeedback? = null) {
     composeTestRule.setContent {
       PolySocialTheme {
         EventDetailScreen(
             state,
             onBack = {},
             onRetry = {},
-            attendanceMessage = message,
+            attendanceFeedback = feedback,
             attendance = actions,
         )
       }
@@ -147,7 +149,9 @@ class EventDetailAttendanceScreenTest {
     node(EventDetailTags.IM_GOING).assertDoesNotExist()
     composeTestRule.onNodeWithText(string(R.string.event_detail_youre_going)).assertIsDisplayed()
 
-    node(EventDetailTags.GOING).performClick()
+    // "✓ Going" is a status once going, not a control: TalkBack shouldn't read it as a disabled
+    // button, so it has no click action at all.
+    node(EventDetailTags.GOING).assert(!hasClickAction())
     node(EventDetailTags.CANCEL_REGISTRATION).performClick()
     assertEquals(listOf("cancel"), calls)
   }
@@ -196,6 +200,16 @@ class EventDetailAttendanceScreenTest {
   }
 
   @Test
+  fun inAGroup_hasNoCancelLink() {
+    // Cancelling would leave the student in the group without being registered; the link waits
+    // for #244's "you'll also leave your group" sheet (#318).
+    show(loaded(Attendance.GOING, yourGroup = YourGroup("g", 4, emptyList(), STUDENT)))
+
+    composeTestRule.onNodeWithText(string(R.string.event_detail_youre_going)).assertIsDisplayed()
+    node(EventDetailTags.CANCEL_REGISTRATION).assertDoesNotExist()
+  }
+
+  @Test
   fun anOrganizerInAGroup_hasNoActionBar() {
     show(loaded(isOrganizer = true, yourGroup = YourGroup("g", 4, emptyList(), "organizer")))
 
@@ -204,8 +218,8 @@ class EventDetailAttendanceScreenTest {
   }
 
   @Test
-  fun anEndedEvent_offersNeitherImGoingNorCancel() {
-    show(loaded(Attendance.GOING, hasEnded = true))
+  fun anEndedEvent_notGoing_offersNeitherImGoingNorCancel() {
+    show(loaded(hasEnded = true))
 
     node(EventDetailTags.GOING).assertDoesNotExist()
     node(EventDetailTags.IM_GOING).assertDoesNotExist()
@@ -213,8 +227,22 @@ class EventDetailAttendanceScreenTest {
   }
 
   @Test
+  fun anEndedEvent_going_stillOffersCancel_withoutAnActionBar() {
+    // The privacy notice promises a registration can be cancelled "even after the event", so the
+    // note (and its link) stay even though "I'm going" and Find a group no longer do.
+    show(loaded(Attendance.GOING, hasEnded = true))
+
+    node(EventDetailTags.GOING).assertDoesNotExist()
+    node(EventDetailTags.FIND_GROUP).assertDoesNotExist()
+    node(EventDetailTags.REGISTERED_NOTE).assertIsDisplayed()
+
+    node(EventDetailTags.CANCEL_REGISTRATION).performClick()
+    assertEquals(listOf("cancel"), calls)
+  }
+
+  @Test
   fun aFailedRegistration_showsItsMessage_whoseRetryRegistersAgain() {
-    show(loaded(), AttendanceMessage.REGISTER_OFFLINE)
+    show(loaded(), AttendanceFeedback(AttendanceMessage.REGISTER_OFFLINE, id = 0))
 
     composeTestRule
         .onNodeWithText(string(R.string.event_detail_register_offline))
@@ -227,7 +255,7 @@ class EventDetailAttendanceScreenTest {
 
   @Test
   fun aFailedCancellation_showsItsMessage_whoseRetryCancelsAgain() {
-    show(loaded(Attendance.GOING), AttendanceMessage.CANCEL_FAILED)
+    show(loaded(Attendance.GOING), AttendanceFeedback(AttendanceMessage.CANCEL_FAILED, id = 0))
 
     composeTestRule
         .onNodeWithText(string(R.string.event_detail_attendance_failed))
@@ -312,6 +340,29 @@ class EventDetailAttendanceScreenTest {
     settle()
 
     node(EventDetailTags.GOING).assertIsDisplayed()
+  }
+
+  @Test
+  fun route_offlineRetryStillOffline_showsTheErrorAgain() {
+    // Each failure carries its own id, so a Retry that fails the same way is reported again
+    // instead of being silently dropped as an unchanged value.
+    val registrations = registrations().apply { registerFailure = RegisterResult.NetworkError }
+    showRoute(registrations)
+
+    node(EventDetailTags.IM_GOING).performClick()
+    settle()
+    composeTestRule
+        .onNodeWithText(string(R.string.event_detail_register_offline))
+        .assertIsDisplayed()
+
+    // Still offline.
+    composeTestRule.onNodeWithText(string(R.string.retry)).performClick()
+    settle()
+
+    composeTestRule
+        .onNodeWithText(string(R.string.event_detail_register_offline))
+        .assertIsDisplayed()
+    node(EventDetailTags.IM_GOING).assertIsDisplayed().assertIsEnabled()
   }
 
   @Test

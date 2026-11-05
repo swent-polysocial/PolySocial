@@ -138,7 +138,7 @@ object EventDetailTags {
 data class EventAttendanceActions(
     val onImGoing: () -> Unit = {},
     val onCancelRegistration: () -> Unit = {},
-    val onMessageShown: (AttendanceMessage) -> Unit = {},
+    val onMessageShown: (AttendanceFeedback) -> Unit = {},
 )
 
 /**
@@ -168,7 +168,7 @@ fun EventDetailRoute(
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   val cancelState by viewModel.cancelState.collectAsStateWithLifecycle()
-  val attendanceMessage by viewModel.attendanceMessage.collectAsStateWithLifecycle()
+  val attendanceFeedback by viewModel.attendanceFeedback.collectAsStateWithLifecycle()
   LaunchedEffect(cancelState) { if (cancelState == CancelEventState.Cancelled) onCancelled() }
   EventDetailScreen(
       state,
@@ -184,12 +184,12 @@ fun EventDetailRoute(
       ),
       onRetryGoing = viewModel::retryGoingCount,
       onFindGroup = onFindGroup,
-      attendanceMessage = attendanceMessage,
+      attendanceFeedback = attendanceFeedback,
       attendance =
           EventAttendanceActions(
               onImGoing = viewModel::onImGoing,
               onCancelRegistration = viewModel::onCancelRegistration,
-              onMessageShown = viewModel::onAttendanceMessageShown,
+              onMessageShown = viewModel::onAttendanceFeedbackShown,
           ),
   )
 }
@@ -206,7 +206,7 @@ fun EventDetailRoute(
  *
  * A student who doesn't organize the event sees "I'm going" next to Find a group, and once going,
  * "✓ Going" with "You're going. Cancel registration" above it (Figma "Event detail" and "·
- * registered", #122). [attendanceMessage] is shown once in a Snackbar whose Retry saves again.
+ * registered", #122). [attendanceFeedback] is shown once in a Snackbar whose Retry saves again.
  */
 @Composable
 fun EventDetailScreen(
@@ -218,7 +218,7 @@ fun EventDetailScreen(
     organizer: EventOrganizerActions = EventOrganizerActions(),
     onRetryGoing: () -> Unit = {},
     onFindGroup: () -> Unit = {},
-    attendanceMessage: AttendanceMessage? = null,
+    attendanceFeedback: AttendanceFeedback? = null,
     attendance: EventAttendanceActions = EventAttendanceActions(),
 ) {
   val snackbarHostState = remember { SnackbarHostState() }
@@ -230,7 +230,7 @@ fun EventDetailScreen(
     snackbarHostState.currentSnackbarData?.dismiss()
     scope.launch { snackbarHostState.showSnackbar(message) }
   }
-  AttendanceSnackbar(attendanceMessage, attendance, snackbarHostState)
+  AttendanceSnackbar(attendanceFeedback, attendance, snackbarHostState)
   Box(modifier.fillMaxSize().background(Bg).testTag(EventDetailTags.SCREEN)) {
     when (state) {
       EventDetailUiState.Loading -> {
@@ -417,13 +417,27 @@ private fun EventContent(
     // group, its card replaces Find a group (#233), and "✓ Going" takes the whole bar (Figma "Event
     // detail · in a group").
     val findGroup = onFindGroup.takeIf { state.yourGroup == null }
+    val isGoing = !state.isOrganizer && state.attendance == Attendance.GOING
+    // In a group, cancelling here would leave the student in it without being registered, so the
+    // link waits for #244's "you'll also leave your group" sheet (#318).
+    val onCancelRegistration =
+        attendance.onCancelRegistration.takeIf { isGoing && state.yourGroup == null }
     if (state.hasEnded || (state.isOrganizer && findGroup == null)) {
-      Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
-    } else {
-      if (!state.isOrganizer && state.attendance == Attendance.GOING) {
+      // The privacy notice says a registration can be cancelled at any time, even after the event
+      // (the rules already allow it), so the note stays even once the event has ended.
+      if (isGoing) {
         RegisteredNote(
             enabled = !state.isSavingAttendance,
-            onCancelRegistration = attendance.onCancelRegistration,
+            onCancelRegistration = onCancelRegistration,
+            modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 7.dp),
+        )
+      }
+      Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+    } else {
+      if (isGoing) {
+        RegisteredNote(
+            enabled = !state.isSavingAttendance,
+            onCancelRegistration = onCancelRegistration,
             // Figma leaves 23 dp above the bar; the link's 48 dp touch area takes 16 dp of it.
             modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 7.dp),
         )
@@ -433,22 +447,26 @@ private fun EventContent(
   }
 }
 
-/** Shows [message] once in a Snackbar whose Retry saves the same change again. */
+/**
+ * Shows [feedback] once in a Snackbar whose Retry saves the same change again. Keyed on
+ * [feedback]'s id, not just its message, so a Retry that fails the same way (for example still
+ * offline) shows the Snackbar again instead of being silently dropped as an unchanged state.
+ */
 @Composable
 private fun AttendanceSnackbar(
-    message: AttendanceMessage?,
+    feedback: AttendanceFeedback?,
     actions: EventAttendanceActions,
     snackbarHostState: SnackbarHostState,
 ) {
-  val toShow = message?.let { it to stringResource(it.text) }
+  val text = feedback?.let { stringResource(it.message.text) }
   val retryLabel = stringResource(R.string.retry)
   val currentActions by rememberUpdatedState(actions)
-  LaunchedEffect(toShow) {
-    val (shown, text) = toShow ?: return@LaunchedEffect
+  LaunchedEffect(feedback) {
+    val shown = feedback ?: return@LaunchedEffect
     val result =
         try {
           snackbarHostState.showSnackbar(
-              text,
+              requireNotNull(text),
               actionLabel = retryLabel,
               duration = SnackbarDuration.Long,
           )
@@ -457,7 +475,7 @@ private fun AttendanceSnackbar(
           currentActions.onMessageShown(shown)
         }
     if (result == SnackbarResult.ActionPerformed) {
-      when (shown) {
+      when (shown.message) {
         AttendanceMessage.REGISTER_OFFLINE,
         AttendanceMessage.REGISTER_FAILED -> currentActions.onImGoing()
         AttendanceMessage.CANCEL_OFFLINE,
@@ -477,11 +495,16 @@ private val AttendanceMessage.text: Int
         AttendanceMessage.CANCEL_FAILED -> R.string.event_detail_attendance_failed
       }
 
-/** Figma "Event detail · registered": "You're going." and its "Cancel registration" link. */
+/**
+ * Figma "Event detail · registered": "You're going." and its "Cancel registration" link.
+ * [onCancelRegistration] is null for a student in a group, since cancelling would leave them in
+ * the group without being registered, a state Figma's "in a group" sheet (#244) doesn't allow yet;
+ * the link comes back once #244 ships it (#318).
+ */
 @Composable
 private fun RegisteredNote(
     enabled: Boolean,
-    onCancelRegistration: () -> Unit,
+    onCancelRegistration: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
   Row(
@@ -490,19 +513,21 @@ private fun RegisteredNote(
       verticalAlignment = Alignment.CenterVertically,
   ) {
     Text(stringResource(R.string.event_detail_youre_going), style = NOTE_STYLE, color = Ink2)
-    Text(
-        stringResource(R.string.event_detail_cancel_registration),
-        style =
-            NOTE_STYLE.copy(
-                fontWeight = FontWeight.Bold,
-                textDecoration = TextDecoration.Underline,
-            ),
-        color = AccentText,
-        modifier =
-            Modifier.minimumInteractiveComponentSize()
-                .clickable(enabled = enabled, role = Role.Button, onClick = onCancelRegistration)
-                .testTag(EventDetailTags.CANCEL_REGISTRATION),
-    )
+    if (onCancelRegistration != null) {
+      Text(
+          stringResource(R.string.event_detail_cancel_registration),
+          style =
+              NOTE_STYLE.copy(
+                  fontWeight = FontWeight.Bold,
+                  textDecoration = TextDecoration.Underline,
+              ),
+          color = AccentText,
+          modifier =
+              Modifier.minimumInteractiveComponentSize()
+                  .clickable(enabled = enabled, role = Role.Button, onClick = onCancelRegistration)
+                  .testTag(EventDetailTags.CANCEL_REGISTRATION),
+      )
+    }
   }
 }
 
@@ -811,7 +836,8 @@ private fun ActionBar(
 /**
  * "I'm going", white with a border, or "✓ Going" in ink once the student is going. While a save
  * runs it shows a progress indicator instead. It can't be tapped while the attendance is unknown or
- * saving, nor once going: the note above it cancels.
+ * saving. Once going, it is a status, not a control (the note above it cancels), so it isn't
+ * clickable at all: a disabled button there would read as "button, disabled" to TalkBack.
  */
 @Composable
 private fun AttendanceButton(
@@ -829,10 +855,14 @@ private fun AttendanceButton(
               .clip(ACTION_SHAPE)
               .background(if (going) Ink else Bg)
               .then(if (going) Modifier else Modifier.border(1.dp, Border, ACTION_SHAPE))
-              .clickable(
-                  enabled = attendance == Attendance.NOT_GOING && !saving,
-                  role = Role.Button,
-                  onClick = onImGoing,
+              .then(
+                  if (going) Modifier.semantics(mergeDescendants = true) {}
+                  else
+                      Modifier.clickable(
+                          enabled = attendance == Attendance.NOT_GOING && !saving,
+                          role = Role.Button,
+                          onClick = onImGoing,
+                      )
               )
               .testTag(if (going) EventDetailTags.GOING else EventDetailTags.IM_GOING),
       contentAlignment = Alignment.Center,

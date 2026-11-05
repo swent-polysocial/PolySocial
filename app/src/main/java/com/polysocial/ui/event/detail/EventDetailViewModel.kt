@@ -126,6 +126,12 @@ enum class AttendanceMessage {
   CANCEL_FAILED,
 }
 
+/**
+ * One failed save, with an [id] that tells two failures with the same [message] apart (for
+ * example two offline Retries in a row), so the screen's Snackbar shows the second one too.
+ */
+data class AttendanceFeedback(val message: AttendanceMessage, val id: Long)
+
 /** What the event detail screen shows (Figma section 03, "Event detail" and its states). */
 sealed interface EventDetailUiState {
   data object Loading : EventDetailUiState
@@ -244,8 +250,9 @@ sealed interface CancelEventState {
  * ([onImGoing]) and cancel it ([onCancelRegistration]) through [registrations] (#122). Their
  * registrations are observed live while the screen shows, so a registration changed elsewhere (My
  * events) shows here too. If they can't be read, the screen offers "I'm going": registering twice
- * changes nothing. A save that fails changes nothing and reports [attendanceMessage], whose Retry
- * saves again.
+ * changes nothing. A save that fails changes nothing and reports [attendanceFeedback], whose Retry
+ * saves again; each failure gets its own id, so a Retry that fails the same way is reported again
+ * too.
  *
  * @param auth tells whether the signed-in user is one of the event's organizers.
  * @param clock gives the device's time zone, in which the times are shown, and the time that tells
@@ -293,8 +300,11 @@ constructor(
 
   private val savingAttendance = MutableStateFlow(false)
 
-  private val _attendanceMessage = MutableStateFlow<AttendanceMessage?>(null)
-  val attendanceMessage: StateFlow<AttendanceMessage?> = _attendanceMessage.asStateFlow()
+  /** Bumped on every failed save, so each [AttendanceFeedback] is its own Snackbar. */
+  private var nextAttendanceFeedbackId = 0L
+
+  private val _attendanceFeedback = MutableStateFlow<AttendanceFeedback?>(null)
+  val attendanceFeedback: StateFlow<AttendanceFeedback?> = _attendanceFeedback.asStateFlow()
 
   /**
    * Read alongside the event, so it is usually known when the event shows. An association's read is
@@ -311,11 +321,17 @@ constructor(
               MyRegistrationsResult.Error -> Attendance.NOT_GOING
             }
           }
-          .onEach { savedAttendance.value = null }
           .onStart { emit(Attendance.UNKNOWN) }
 
+  /**
+   * [saved] while the observed registrations haven't caught up to it yet, [observed] once they
+   * have confirmed it (and for any later, live change). Clearing [savedAttendance] only once it is
+   * confirmed, instead of on every new observed value, keeps an unrelated snapshot from briefly
+   * showing the old [observed] value while a save is still catching up.
+   */
   private val attendance: Flow<Pair<Attendance, Boolean>> =
       combine(observedAttendance, savedAttendance, savingAttendance) { observed, saved, saving ->
+        if (saved != null && saved == observed) savedAttendance.value = null
         (saved ?: observed) to saving
       }
 
@@ -498,14 +514,14 @@ constructor(
   /** "Cancel registration": removes the student's registration. Ignored while a save is running. */
   fun onCancelRegistration() = saveAttendance(going = false)
 
-  /** Clears [shown], unless a newer message replaced it meanwhile. */
-  fun onAttendanceMessageShown(shown: AttendanceMessage) {
-    _attendanceMessage.compareAndSet(shown, null)
+  /** Clears [shown], unless a newer failure replaced it meanwhile. */
+  fun onAttendanceFeedbackShown(shown: AttendanceFeedback) {
+    _attendanceFeedback.compareAndSet(shown, null)
   }
 
   private fun saveAttendance(going: Boolean) {
     if (!savingAttendance.compareAndSet(expect = false, update = true)) return
-    _attendanceMessage.value = null
+    _attendanceFeedback.value = null
     viewModelScope.launch {
       try {
         val failure =
@@ -527,7 +543,8 @@ constructor(
             }
         if (failure == null)
             savedAttendance.value = if (going) Attendance.GOING else Attendance.NOT_GOING
-        _attendanceMessage.value = failure
+        _attendanceFeedback.value =
+            failure?.let { AttendanceFeedback(it, nextAttendanceFeedbackId++) }
       } finally {
         savingAttendance.value = false
       }
