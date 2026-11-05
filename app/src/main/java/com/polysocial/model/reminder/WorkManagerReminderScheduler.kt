@@ -8,7 +8,6 @@ import androidx.work.WorkManager
 import androidx.work.await
 import java.time.Clock
 import java.time.Duration
-import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 
 /** Tag of every reminder's work, so [WorkManagerReminderScheduler.cancelAll] finds them all. */
@@ -22,9 +21,7 @@ internal fun reminderWorkName(eventId: String) = "event_reminder_$eventId"
  * [reminderTime]. WorkManager keeps the work on the device, so it survives a reboot, and it runs
  * without a network because the work has no constraints.
  */
-class WorkManagerReminderScheduler
-@Inject
-constructor(
+class WorkManagerReminderScheduler(
     private val workManager: WorkManager,
     private val clock: Clock,
 ) : ReminderScheduler {
