@@ -11,7 +11,7 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the Cloud Functions section, #206; Mohamed Khellaf (reviewed and revised). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the Deploying to Firebase section, #228, and later said any team member deploys; Franciszek Najda (reviewed #228). -->
 <!-- Contributors: Claude (public profiles deleted with the account, #229; the deletion marker and deploy order, after review, #229). -->
-<!-- Contributors: Claude (Opus 5.5, Anthropic) (deleteAccount deploy status and image cleanup policy, 2026-11-05). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (deleteAccount deploy status, budget alert and image cleanup policy, 2026-11-05). -->
 
 # PolySocial
 
@@ -189,7 +189,7 @@ firebase emulators:exec --project demo-polysocial --only firestore,auth,function
 
 Use the npm Firebase CLI (`npm install -g firebase-tools`, as CI does) with Node.js 22.12 or newer. The standalone CLI (`curl -sL firebase.tools | bash`) ignores the installed Node.js and runs the function with its own bundled Node 20, which fails to load the function (`ERR_REQUIRE_ESM`) before any test runs; the same applies to the deploy below, which loads the code locally first. The emulator warns if your Node.js isn't version 22; the tests still run on a newer one.
 
-**Deploying is manual.** After a change to `firebase/functions` reaches `main`, its author deploys it, or asks a teammate to (see [Deploying to Firebase](#deploying-to-firebase); `firebase login` first). Cloud Functions need the Blaze plan with its budget alert; the project has been on it since 2026-11-05:
+**Deploying is manual.** After a change to `firebase/functions` reaches `main`, its author deploys it, or asks a teammate to (see [Deploying to Firebase](#deploying-to-firebase); `firebase login` first). Cloud Functions need the Blaze plan with its budget alert; the project has been on it since 2026-11-05, and the alert is set up:
 
 ```bash
 npm ci --prefix firebase/functions
