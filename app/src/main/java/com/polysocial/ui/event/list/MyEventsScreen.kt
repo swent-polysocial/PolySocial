@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex, GPT-6.1 Sol (medium) (shared day labels, #306 review).
 // Contributors: Claude Opus 5.5 (medium) (My events from the Figma section 12 frames, #204).
 package com.polysocial.ui.event.list
 
@@ -239,8 +240,6 @@ private fun SectionHeader(text: Int, tag: String) {
 }
 
 private val timeFormat = DateTimeFormatter.ofPattern("HH:mm")
-private val dateFormat = DateTimeFormatter.ofPattern("EEE d MMM")
-private val dateWithYearFormat = DateTimeFormatter.ofPattern("EEE d MMM yyyy")
 
 /**
  * A chosen event as a Figma card: the category tile, the title, then the day, the time (with its
@@ -256,12 +255,7 @@ private fun ChosenEventCard(
 ) {
   val category = event.category.style
   val start = event.startTime.atZone(zone)
-  val day =
-      when (start.toLocalDate()) {
-        today -> stringResource(R.string.events_today)
-        today.plusDays(1) -> stringResource(R.string.events_tomorrow)
-        else -> start.format(if (start.year == today.year) dateFormat else dateWithYearFormat)
-      }
+  val day = eventDayLabel(start.toLocalDate(), today)
   val time =
       event.endTime?.let {
         stringResource(

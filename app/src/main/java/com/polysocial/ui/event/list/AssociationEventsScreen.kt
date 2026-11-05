@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex, GPT-6.1 Sol (medium) (shared day labels, #306 review).
 // Contributors: Claude (the association's Events tab from the Figma "Association · events tab"
 // frame, #132; keeping the split current and the year on other years' dates, #132 review).
 // Contributors: Claude (the shared offline banner, #251).
@@ -272,8 +273,6 @@ private fun OwnEventList(
 }
 
 private val timeFormat = DateTimeFormatter.ofPattern("HH:mm")
-private val dateFormat = DateTimeFormatter.ofPattern("EEE d MMM")
-private val dateWithYearFormat = DateTimeFormatter.ofPattern("EEE d MMM yyyy")
 
 /**
  * An event as a Figma card: the category tile, the title, then the day, start time and place, and a
@@ -289,12 +288,7 @@ private fun OwnEventCard(
 ) {
   val category = event.category.style
   val start = event.startTime.atZone(zone)
-  val day =
-      when (start.toLocalDate()) {
-        today -> stringResource(R.string.events_today)
-        today.plusDays(1) -> stringResource(R.string.events_tomorrow)
-        else -> start.format(if (start.year == today.year) dateFormat else dateWithYearFormat)
-      }
+  val day = eventDayLabel(start.toLocalDate(), today)
   val time = start.format(timeFormat)
   val details =
       if (event.locationName.isBlank()) stringResource(R.string.events_card_details, day, time)
