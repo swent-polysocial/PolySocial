@@ -1,7 +1,9 @@
-// Contributors: Claude (Opus 5.5, Anthropic) wrote these tests of the Find a group screen, #233.
+// Contributors: Claude (Opus 5.5, Anthropic) wrote these tests of the Find a group screen, #233,
+// and the refusal, place, starting and initials cases after review.
 package com.polysocial.ui.group
 
 import android.content.Context
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -69,8 +71,8 @@ class FindGroupScreenTest {
 
   // Through the route and the ViewModel, with fakes
 
-  private fun showRoute() {
-    events.seed(validEvent(title = "Balélec warm-up").copy(id = EVENT, locationName = "Satellite"))
+  private fun showRoute(locationName: String = "Satellite") {
+    events.seed(validEvent(title = "Balélec warm-up").copy(id = EVENT, locationName = locationName))
     val viewModel =
         FindGroupViewModel(
             SavedStateHandle(mapOf(EventDetailViewModel.EVENT_ID_ARG to EVENT)),
@@ -162,6 +164,44 @@ class FindGroupScreenTest {
   }
 
   @Test
+  fun eachRefusal_showsItsOwnMessage() {
+    val group = groups.seedGroup(EVENT, listOf("lea"))
+    showRoute()
+
+    groups.writeFailure = GroupWriteResult.AlreadyInGroup
+    rule.onNodeWithTag(FindGroupTags.join(group.id)).performClick()
+    settle()
+    rule.onNodeWithText(string(R.string.find_group_already_in_group)).assertIsDisplayed()
+
+    groups.writeFailure = GroupWriteResult.NotFound
+    rule.onNodeWithTag(FindGroupTags.join(group.id)).performClick()
+    settle()
+    rule.onNodeWithText(string(R.string.find_group_gone)).assertIsDisplayed()
+
+    // Starting a group of an event that is gone.
+    rule.onNodeWithTag(FindGroupTags.START).performClick()
+    settle()
+    rule.onNodeWithText(string(R.string.find_group_event_gone)).assertIsDisplayed()
+    assertEquals(emptyList<FindGroupDone>(), finished)
+  }
+
+  @Test
+  fun anEventWithoutAPlace_showsOnlyItsDayAndTime() {
+    showRoute(locationName = "")
+
+    val line =
+        rule
+            .onNode(
+                hasAnyAncestor(hasTestTag(FindGroupTags.EVENT)) and hasText(" · ", substring = true)
+            )
+            .fetchSemanticsNode()
+            .config[SemanticsProperties.Text]
+            .joinToString()
+    // Day and time only, with no empty place after them.
+    assertEquals(1, line.split(" · ").size - 1)
+  }
+
+  @Test
   fun aSecondRefusal_whileTheFirstShows_stillShowsItsSnackbar() {
     val group = groups.seedGroup(EVENT, listOf("lea"))
     showRoute()
@@ -248,6 +288,51 @@ class FindGroupScreenTest {
     rule.onNodeWithTag(FindGroupTags.START).assertIsNotEnabled()
     // A member whose profile couldn't be read shows "?".
     inCard("b", "?").assertIsDisplayed()
+  }
+
+  @Test
+  fun starting_showsStartingOnTheButton_andLocksJoin() {
+    showScreen(
+        FindGroupUiState.Loaded(
+            event = null,
+            suggestions = listOf(GroupSuggestion("a", 4, emptyList(), 0, null, null)),
+            isOffline = false,
+            pending = PendingGroupWrite.Start,
+        )
+    )
+
+    rule.onNodeWithText(string(R.string.find_group_starting)).assertIsDisplayed()
+    rule.onNodeWithTag(FindGroupTags.START).assertIsNotEnabled()
+    rule.onNodeWithTag(FindGroupTags.join("a")).assertIsNotEnabled()
+  }
+
+  @Test
+  fun membersInitials_comeFromTheirNames_andANamelessOneShowsAQuestionMark() {
+    showScreen(
+        FindGroupUiState.Loaded(
+            event = null,
+            suggestions =
+                listOf(
+                    GroupSuggestion(
+                        "a",
+                        4,
+                        listOf(
+                            GroupMember("noe", PublicProfile("noe", "Noé", "IN", "BA5", setOf())),
+                            GroupMember("x", PublicProfile("x", " ", "SC", "BA1", setOf())),
+                        ),
+                        0,
+                        null,
+                        null,
+                    )
+                ),
+            isOffline = false,
+        )
+    )
+
+    inCard("a", "N").assertIsDisplayed()
+    inCard("a", "?").assertIsDisplayed()
+    // A blank name is left out of the members line, not shown as an empty part.
+    inCard("a", "Noé · IN · BA5   SC · BA1").assertIsDisplayed()
   }
 
   @Test
