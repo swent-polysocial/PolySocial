@@ -112,8 +112,9 @@ enum class FindGroupDone {
  * The groups are observed live. Each time they change, the members' and the student's public
  * profiles are read once ([PublicProfileRepository.getPublicProfiles]); a profile that can't be
  * read leaves that member without a name and adds nothing to the score, and if none can be read,
- * the groups are still shown, oldest first. A failed read of the groups shows
- * [FindGroupUiState.CouldNotLoad], and [retry] reads them again.
+ * the groups are still shown, unranked. When the profiles couldn't be read, the next emission reads
+ * them again even if the groups didn't change, so coming back online names the members. A failed
+ * read of the groups shows [FindGroupUiState.CouldNotLoad], and [retry] reads them again.
  *
  * [join] and [start] run one write at a time; taps while one runs are ignored. A success reports
  * [done] (the screen then leaves), and a refusal reports [message]. Nothing reports a success that
@@ -210,17 +211,23 @@ constructor(
               (it as? EventResult.Found)?.let { found -> eventDetails(found.event, clock.zone) }
             }
             .onStart { emit(null) }
+    // Whether the last ranking could read the profiles: if not, the same groups are ranked again.
+    var profilesRead = true
     val ranked =
         groups
             .observeGroups(eventId)
             // Only the groups matter here: when only fromCache changes, the profiles aren't read
-            // again.
+            // again, unless the last read failed (for example offline, then back online).
             .map { if (it is GroupsResult.Success) it.copy(fromCache = false) else it }
-            .distinctUntilChanged()
+            .distinctUntilChanged { old, new -> profilesRead && old == new }
             .mapLatest { result ->
               when (result) {
                 GroupsResult.Loading -> Ranking.Loading
-                is GroupsResult.Success -> Ranking.Done(rank(result.groups))
+                is GroupsResult.Success -> {
+                  val read = readProfiles(result.groups)
+                  profilesRead = read != null
+                  Ranking.Done(rank(result.groups, read.orEmpty()))
+                }
                 GroupsResult.NetworkError,
                 GroupsResult.UnexpectedError -> Ranking.Failed
               }
@@ -235,16 +242,21 @@ constructor(
     }
   }
 
-  /** Ranks [stored] for the signed-in student, with the profiles that could be read. */
-  private suspend fun rank(stored: List<Group>): List<GroupSuggestion> {
+  /**
+   * The public profiles of [stored]'s members and the student, or null if they couldn't be read.
+   */
+  private suspend fun readProfiles(stored: List<Group>): Map<String, PublicProfile>? {
+    val uids = stored.flatMap { it.memberUids } + auth.currentUser()?.uid.orEmpty()
+    return when (val result = profiles.getPublicProfiles(uids.filter { it.isNotEmpty() })) {
+      is PublicProfilesResult.Found -> result.profiles
+      PublicProfilesResult.NetworkError,
+      PublicProfilesResult.UnexpectedError -> null
+    }
+  }
+
+  /** Ranks [stored] for the signed-in student, with the profiles [read]. */
+  private fun rank(stored: List<Group>, read: Map<String, PublicProfile>): List<GroupSuggestion> {
     val me = auth.currentUser()?.uid.orEmpty()
-    val uids = stored.flatMap { it.memberUids } + me
-    val read =
-        when (val result = profiles.getPublicProfiles(uids.filter { it.isNotEmpty() })) {
-          is PublicProfilesResult.Found -> result.profiles
-          PublicProfilesResult.NetworkError,
-          PublicProfilesResult.UnexpectedError -> emptyMap()
-        }
     val student = read[me]?.toMatch() ?: MatchProfile(me, section = "", year = "", emptySet())
     val byId = stored.associateBy { it.id }
     return rankGroups(
