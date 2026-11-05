@@ -3,6 +3,7 @@
 // count on an association's manage event, #131).
 // Contributors: Claude (Opus 5.5, Anthropic) whether the event has ended, for Find a group, and the
 // student's group card, #233.
+// Contributors: Claude Opus 5.5 ("I'm going" and Cancel registration, #122).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -21,6 +22,9 @@ import com.polysocial.model.group.GroupRepository
 import com.polysocial.model.group.MyGroupResult
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.registration.AttendeeCountResult
+import com.polysocial.model.registration.CancelRegistrationResult
+import com.polysocial.model.registration.MyRegistrationsResult
+import com.polysocial.model.registration.RegisterResult
 import com.polysocial.model.registration.RegistrationRepository
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileRepository
@@ -106,6 +110,22 @@ data class YourGroup(
     val myUid: String,
 )
 
+/** Whether the signed-in student said "I'm going" to the event (#122). */
+enum class Attendance {
+  /** Their registrations aren't read yet: "I'm going" shows, but can't be tapped. */
+  UNKNOWN,
+  NOT_GOING,
+  GOING,
+}
+
+/** Why the last "I'm going" or "Cancel registration" didn't go through, shown once with Retry. */
+enum class AttendanceMessage {
+  REGISTER_OFFLINE,
+  REGISTER_FAILED,
+  CANCEL_OFFLINE,
+  CANCEL_FAILED,
+}
+
 /** What the event detail screen shows (Figma section 03, "Event detail" and its states). */
 sealed interface EventDetailUiState {
   data object Loading : EventDetailUiState
@@ -127,6 +147,9 @@ sealed interface EventDetailUiState {
    * @property yourGroup the student's group for the event, which then shows instead of Find a group
    *   (#233); null when they aren't in one, while it is read, when it can't be read, and on
    *   [isManaged] events.
+   * @property attendance whether the student is going (#122); organizers aren't offered "I'm
+   *   going", as in Figma's "Event detail · organizer", so theirs stays [Attendance.NOT_GOING].
+   * @property isSavingAttendance true while "I'm going" or "Cancel registration" is saved.
    */
   data class Loaded(
       val details: EventDetails,
@@ -137,6 +160,8 @@ sealed interface EventDetailUiState {
       val isLive: Boolean = false,
       val hasEnded: Boolean = false,
       val yourGroup: YourGroup? = null,
+      val attendance: Attendance = Attendance.NOT_GOING,
+      val isSavingAttendance: Boolean = false,
   ) : EventDetailUiState {
     /**
      * True when the signed-in association organizes this association event: the screen is then
@@ -215,7 +240,12 @@ sealed interface CancelEventState {
  * the event shows (#233), with its members' public profiles read through [profiles] each time the
  * group changes. It joins the event when it arrives; when the student isn't in a group, or it can't
  * be read, the screen keeps Find a group. An association's managed event never reads it, since
- * associations never reach groups.
+ * associations never reach groups. A student who doesn't organize the event can say "I'm going"
+ * ([onImGoing]) and cancel it ([onCancelRegistration]) through [registrations] (#122). Their
+ * registrations are observed live while the screen shows, so a registration changed elsewhere (My
+ * events) shows here too. If they can't be read, the screen offers "I'm going": registering twice
+ * changes nothing. A save that fails changes nothing and reports [attendanceMessage], whose Retry
+ * saves again.
  *
  * @param auth tells whether the signed-in user is one of the event's organizers.
  * @param clock gives the device's time zone, in which the times are shown, and the time that tells
@@ -258,6 +288,36 @@ constructor(
 
   /** True once a student's view of the event shows, so the student's group is observed. */
   private val watchesGroup = MutableStateFlow(false)
+  /** The attendance this screen saved, until the registrations' next answer replaces it. */
+  private val savedAttendance = MutableStateFlow<Attendance?>(null)
+
+  private val savingAttendance = MutableStateFlow(false)
+
+  private val _attendanceMessage = MutableStateFlow<AttendanceMessage?>(null)
+  val attendanceMessage: StateFlow<AttendanceMessage?> = _attendanceMessage.asStateFlow()
+
+  /**
+   * Read alongside the event, so it is usually known when the event shows. An association's read is
+   * refused (it never registers) and its own events never offer "I'm going" anyway.
+   */
+  private val observedAttendance: Flow<Attendance> =
+      registrations
+          .observeMyRegistrations()
+          .map { result ->
+            when (result) {
+              is MyRegistrationsResult.Registrations ->
+                  if (eventId in result.eventIds) Attendance.GOING else Attendance.NOT_GOING
+              // Registering twice changes nothing, so "I'm going" stays safe to offer.
+              MyRegistrationsResult.Error -> Attendance.NOT_GOING
+            }
+          }
+          .onEach { savedAttendance.value = null }
+          .onStart { emit(Attendance.UNKNOWN) }
+
+  private val attendance: Flow<Pair<Attendance, Boolean>> =
+      combine(observedAttendance, savedAttendance, savingAttendance) { observed, saved, saving ->
+        (saved ?: observed) to saving
+      }
 
   @OptIn(ExperimentalCoroutinesApi::class)
   val uiState: StateFlow<EventDetailUiState> =
@@ -279,6 +339,11 @@ constructor(
               group ->
             if (state is EventDetailUiState.Loaded && !state.isManaged)
                 state.copy(yourGroup = group)
+            else state
+          }
+          .combine(attendance) { state, (attendance, saving) ->
+            if (state is EventDetailUiState.Loaded && !state.isOrganizer)
+                state.copy(attendance = attendance, isSavingAttendance = saving)
             else state
           }
           .combine(_cancelState) { state, cancel ->
@@ -424,6 +489,48 @@ constructor(
             DeleteEventResult.UnexpectedError ->
                 CancelEventState.Failed(CancelEventState.Failed.Reason.UNEXPECTED)
           }
+    }
+  }
+
+  /** "I'm going": registers the student. Ignored while a save is running. */
+  fun onImGoing() = saveAttendance(going = true)
+
+  /** "Cancel registration": removes the student's registration. Ignored while a save is running. */
+  fun onCancelRegistration() = saveAttendance(going = false)
+
+  /** Clears [shown], unless a newer message replaced it meanwhile. */
+  fun onAttendanceMessageShown(shown: AttendanceMessage) {
+    _attendanceMessage.compareAndSet(shown, null)
+  }
+
+  private fun saveAttendance(going: Boolean) {
+    if (!savingAttendance.compareAndSet(expect = false, update = true)) return
+    _attendanceMessage.value = null
+    viewModelScope.launch {
+      try {
+        val failure =
+            if (going) {
+              when (registrations.register(eventId)) {
+                RegisterResult.Registered -> null
+                RegisterResult.NetworkError -> AttendanceMessage.REGISTER_OFFLINE
+                RegisterResult.NotSignedIn,
+                RegisterResult.NotFound,
+                RegisterResult.UnexpectedError -> AttendanceMessage.REGISTER_FAILED
+              }
+            } else {
+              when (registrations.cancel(eventId)) {
+                CancelRegistrationResult.Cancelled -> null
+                CancelRegistrationResult.NetworkError -> AttendanceMessage.CANCEL_OFFLINE
+                CancelRegistrationResult.NotSignedIn,
+                CancelRegistrationResult.UnexpectedError -> AttendanceMessage.CANCEL_FAILED
+              }
+            }
+        if (failure == null)
+            savedAttendance.value = if (going) Attendance.GOING else Attendance.NOT_GOING
+        _attendanceMessage.value = failure
+      } finally {
+        savingAttendance.value = false
+      }
     }
   }
 
