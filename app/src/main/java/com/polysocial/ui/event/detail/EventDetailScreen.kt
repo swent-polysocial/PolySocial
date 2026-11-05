@@ -4,9 +4,12 @@
 // Contributors: Claude (the shared offline banner, #251; the association's manage event, #131).
 // Contributors: Claude (Opus 5.5, Anthropic) opened Find a group from the action bar, hid it once
 // the event has ended, and showed the student's group card instead, #233.
+// Contributors: Claude Opus 5.5 ("I'm going" and Cancel registration from the Figma "Event
+// detail", "· registered" and "· in a group" frames, #122).
 package com.polysocial.ui.event.detail
 
 import androidx.annotation.DrawableRes
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -31,17 +34,22 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -59,6 +67,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextMotion
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
@@ -115,7 +124,22 @@ object EventDetailTags {
   const val CONFIRM_CANCEL = "event_detail_confirm_cancel"
   const val KEEP_EVENT = "event_detail_keep_event"
   const val CANCEL_FAILURE = "event_detail_cancel_failure"
+  const val IM_GOING = "event_detail_im_going"
+  const val GOING = "event_detail_going"
+  const val ATTENDANCE_SAVING = "event_detail_attendance_saving"
+  const val REGISTERED_NOTE = "event_detail_registered_note"
+  const val CANCEL_REGISTRATION = "event_detail_cancel_registration"
 }
+
+/**
+ * What a student can do about going to the event (#122): say "I'm going", cancel it, and mark a
+ * save failure's Snackbar as shown.
+ */
+data class EventAttendanceActions(
+    val onImGoing: () -> Unit = {},
+    val onCancelRegistration: () -> Unit = {},
+    val onMessageShown: (AttendanceMessage) -> Unit = {},
+)
 
 /**
  * What an organizer can do on the detail (#131): open Edit event, and cancel the event through its
@@ -144,6 +168,7 @@ fun EventDetailRoute(
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   val cancelState by viewModel.cancelState.collectAsStateWithLifecycle()
+  val attendanceMessage by viewModel.attendanceMessage.collectAsStateWithLifecycle()
   LaunchedEffect(cancelState) { if (cancelState == CancelEventState.Cancelled) onCancelled() }
   EventDetailScreen(
       state,
@@ -159,6 +184,13 @@ fun EventDetailRoute(
       ),
       onRetryGoing = viewModel::retryGoingCount,
       onFindGroup = onFindGroup,
+      attendanceMessage = attendanceMessage,
+      attendance =
+          EventAttendanceActions(
+              onImGoing = viewModel::onImGoing,
+              onCancelRegistration = viewModel::onCancelRegistration,
+              onMessageShown = viewModel::onAttendanceMessageShown,
+          ),
   )
 }
 
@@ -171,6 +203,10 @@ fun EventDetailRoute(
  * · organizer"), and the confirmation while [cancelState] isn't hidden. An association sees its own
  * events as Figma's "Association · manage event" instead ([ManageEventContent], #131), where
  * tapping a "Going" count that couldn't be read calls [onRetryGoing].
+ *
+ * A student who doesn't organize the event sees "I'm going" next to Find a group, and once going,
+ * "✓ Going" with "You're going. Cancel registration" above it (Figma "Event detail" and "·
+ * registered", #122). [attendanceMessage] is shown once in a Snackbar whose Retry saves again.
  */
 @Composable
 fun EventDetailScreen(
@@ -182,6 +218,8 @@ fun EventDetailScreen(
     organizer: EventOrganizerActions = EventOrganizerActions(),
     onRetryGoing: () -> Unit = {},
     onFindGroup: () -> Unit = {},
+    attendanceMessage: AttendanceMessage? = null,
+    attendance: EventAttendanceActions = EventAttendanceActions(),
 ) {
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
@@ -192,6 +230,7 @@ fun EventDetailScreen(
     snackbarHostState.currentSnackbarData?.dismiss()
     scope.launch { snackbarHostState.showSnackbar(message) }
   }
+  AttendanceSnackbar(attendanceMessage, attendance, snackbarHostState)
   Box(modifier.fillMaxSize().background(Bg).testTag(EventDetailTags.SCREEN)) {
     when (state) {
       EventDetailUiState.Loading -> {
@@ -218,6 +257,7 @@ fun EventDetailScreen(
                 onFindGroup = onFindGroup,
                 // The Group screen comes with #234.
                 onOpenGroup = { showSnackbar(groupUnavailable) },
+                attendance = attendance,
             )
           }
       EventDetailUiState.NotFound ->
@@ -272,6 +312,7 @@ private fun EventContent(
     organizer: EventOrganizerActions,
     onFindGroup: () -> Unit,
     onOpenGroup: () -> Unit,
+    attendance: EventAttendanceActions,
 ) {
   val details = state.details
   val event = details.event
@@ -372,10 +413,96 @@ private fun EventContent(
           Modifier.padding(start = 20.dp, end = 20.dp, bottom = 16.dp),
       )
     }
-    // Find a group only until the event has ended, and until the student is in a group, whose card
-    // then replaces it (#233).
-    if (state.yourGroup == null && !state.hasEnded) ActionBar(onFindGroup)
-    else Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+    // An ended event no longer offers Find a group or "I'm going": nobody plans to go anymore. In a
+    // group, its card replaces Find a group (#233), and "✓ Going" takes the whole bar (Figma "Event
+    // detail · in a group").
+    val findGroup = onFindGroup.takeIf { state.yourGroup == null }
+    if (state.hasEnded || (state.isOrganizer && findGroup == null)) {
+      Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
+    } else {
+      if (!state.isOrganizer && state.attendance == Attendance.GOING) {
+        RegisteredNote(
+            enabled = !state.isSavingAttendance,
+            onCancelRegistration = attendance.onCancelRegistration,
+            // Figma leaves 23 dp above the bar; the link's 48 dp touch area takes 16 dp of it.
+            modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 7.dp),
+        )
+      }
+      ActionBar(state, attendance.onImGoing, findGroup)
+    }
+  }
+}
+
+/** Shows [message] once in a Snackbar whose Retry saves the same change again. */
+@Composable
+private fun AttendanceSnackbar(
+    message: AttendanceMessage?,
+    actions: EventAttendanceActions,
+    snackbarHostState: SnackbarHostState,
+) {
+  val toShow = message?.let { it to stringResource(it.text) }
+  val retryLabel = stringResource(R.string.retry)
+  val currentActions by rememberUpdatedState(actions)
+  LaunchedEffect(toShow) {
+    val (shown, text) = toShow ?: return@LaunchedEffect
+    val result =
+        try {
+          snackbarHostState.showSnackbar(
+              text,
+              actionLabel = retryLabel,
+              duration = SnackbarDuration.Long,
+          )
+        } finally {
+          // Before Retry, so a new failure with the same message isn't cleared by this one.
+          currentActions.onMessageShown(shown)
+        }
+    if (result == SnackbarResult.ActionPerformed) {
+      when (shown) {
+        AttendanceMessage.REGISTER_OFFLINE,
+        AttendanceMessage.REGISTER_FAILED -> currentActions.onImGoing()
+        AttendanceMessage.CANCEL_OFFLINE,
+        AttendanceMessage.CANCEL_FAILED -> currentActions.onCancelRegistration()
+      }
+    }
+  }
+}
+
+private val AttendanceMessage.text: Int
+  @StringRes
+  get() =
+      when (this) {
+        AttendanceMessage.REGISTER_OFFLINE -> R.string.event_detail_register_offline
+        AttendanceMessage.CANCEL_OFFLINE -> R.string.event_detail_cancel_registration_offline
+        AttendanceMessage.REGISTER_FAILED,
+        AttendanceMessage.CANCEL_FAILED -> R.string.event_detail_attendance_failed
+      }
+
+/** Figma "Event detail · registered": "You're going." and its "Cancel registration" link. */
+@Composable
+private fun RegisteredNote(
+    enabled: Boolean,
+    onCancelRegistration: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+  Row(
+      modifier.fillMaxWidth().testTag(EventDetailTags.REGISTERED_NOTE),
+      horizontalArrangement = Arrangement.spacedBy(6.dp),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Text(stringResource(R.string.event_detail_youre_going), style = NOTE_STYLE, color = Ink2)
+    Text(
+        stringResource(R.string.event_detail_cancel_registration),
+        style =
+            NOTE_STYLE.copy(
+                fontWeight = FontWeight.Bold,
+                textDecoration = TextDecoration.Underline,
+            ),
+        color = AccentText,
+        modifier =
+            Modifier.minimumInteractiveComponentSize()
+                .clickable(enabled = enabled, role = Role.Button, onClick = onCancelRegistration)
+                .testTag(EventDetailTags.CANCEL_REGISTRATION),
+    )
   }
 }
 
@@ -634,32 +761,101 @@ internal fun DetailOfflineBanner(
 }
 
 /**
- * The bottom bar, with a top border: "Find a group" across the whole width, above the navigation
- * bar.
+ * The bottom bar, with a top border, above the navigation bar: "I'm going" (or "✓ Going") and "Find
+ * a group" in Figma's 137.5 : 172.5 widths. An organizer gets only "Find a group" (Figma "Event
+ * detail · organizer"), and without [onFindGroup], for a student in a group, the attendance button
+ * takes the whole width (Figma "Event detail · in a group").
  */
 @Composable
-private fun ActionBar(onFindGroup: () -> Unit) {
+private fun ActionBar(
+    state: EventDetailUiState.Loaded,
+    onImGoing: () -> Unit,
+    onFindGroup: (() -> Unit)?,
+) {
   Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars)) {
     HorizontalDivider(color = Border)
-    Box(
-        modifier =
-            Modifier.padding(horizontal = 20.dp, vertical = 12.dp)
-                .fillMaxWidth()
-                .height(52.dp)
-                .clip(RoundedCornerShape(26.dp))
-                .background(Accent)
-                .clickable(role = Role.Button, onClick = onFindGroup)
-                .testTag(EventDetailTags.FIND_GROUP),
-        contentAlignment = Alignment.Center,
+    Row(
+        Modifier.padding(horizontal = 20.dp, vertical = 12.dp).fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
+      if (!state.isOrganizer) {
+        AttendanceButton(
+            state.attendance,
+            state.isSavingAttendance,
+            onImGoing,
+            Modifier.weight(137.5f),
+        )
+      }
+      if (onFindGroup != null) {
+        Box(
+            modifier =
+                Modifier.weight(172.5f)
+                    .height(52.dp)
+                    .clip(ACTION_SHAPE)
+                    .background(Accent)
+                    .clickable(role = Role.Button, onClick = onFindGroup)
+                    .testTag(EventDetailTags.FIND_GROUP),
+            contentAlignment = Alignment.Center,
+        ) {
+          Text(
+              stringResource(R.string.event_detail_find_group),
+              style = MaterialTheme.typography.titleSmall,
+              color = Bg,
+          )
+        }
+      }
+    }
+  }
+}
+
+/**
+ * "I'm going", white with a border, or "✓ Going" in ink once the student is going. While a save
+ * runs it shows a progress indicator instead. It can't be tapped while the attendance is unknown or
+ * saving, nor once going: the note above it cancels.
+ */
+@Composable
+private fun AttendanceButton(
+    attendance: Attendance,
+    saving: Boolean,
+    onImGoing: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+  val going = attendance == Attendance.GOING
+  val content = if (going) Bg else Ink
+  Box(
+      modifier =
+          modifier
+              .height(52.dp)
+              .clip(ACTION_SHAPE)
+              .background(if (going) Ink else Bg)
+              .then(if (going) Modifier else Modifier.border(1.dp, Border, ACTION_SHAPE))
+              .clickable(
+                  enabled = attendance == Attendance.NOT_GOING && !saving,
+                  role = Role.Button,
+                  onClick = onImGoing,
+              )
+              .testTag(if (going) EventDetailTags.GOING else EventDetailTags.IM_GOING),
+      contentAlignment = Alignment.Center,
+  ) {
+    if (saving) {
+      CircularProgressIndicator(
+          color = content,
+          strokeWidth = 2.dp,
+          modifier = Modifier.size(20.dp).testTag(EventDetailTags.ATTENDANCE_SAVING),
+      )
+    } else {
       Text(
-          stringResource(R.string.event_detail_find_group),
+          stringResource(
+              if (going) R.string.event_detail_going else R.string.event_detail_im_going
+          ),
           style = MaterialTheme.typography.titleSmall,
-          color = Bg,
+          color = content,
       )
     }
   }
 }
+
+private val ACTION_SHAPE = RoundedCornerShape(26.dp)
 
 /**
  * A full-screen message centred on the screen, with a neutral header, as in the Figma "Event detail
@@ -782,6 +978,10 @@ private val CANCEL_STYLE =
             fontSize = 14.sp,
             lineHeight = 17.6.sp,
         )
+        .figmaExact()
+// Figma's "Registered note" uses the font's own line height ("auto").
+private val NOTE_STYLE =
+    TextStyle(fontFamily = PlusJakartaSans, fontWeight = FontWeight.Normal, fontSize = 13.sp)
         .figmaExact()
 private val ROW_SUBTITLE_STYLE =
     TextStyle(
