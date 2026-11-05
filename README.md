@@ -9,7 +9,7 @@
 
 <!-- Contributors: OpenAI Codex (CI APK download, installation and Mapbox setup instructions, #137). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the Cloud Functions section, #206; Mohamed Khellaf (reviewed and revised). -->
-<!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the Deploying to Firebase section, #228, and later named the new deploy owner; Franciszek Najda (reviewed #228). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the Deploying to Firebase section, #228, and later said any team member deploys; Franciszek Najda (reviewed #228). -->
 <!-- Contributors: Claude (public profiles deleted with the account, #229; the deletion marker and deploy order, after review, #229). -->
 
 # PolySocial
@@ -103,7 +103,7 @@ Before every commit, check that `git status` never lists these files. If it does
 
 ### Deploying to Firebase
 
-Nothing deploys the Security Rules, the Firestore indexes or the Cloud Functions automatically: CI only tests them. When a PR that changes `firebase/firestore/firestore.rules`, `firebase/firestore/firestore.indexes.json` or `firebase/functions` is merged into `main`, **its author asks the deploy owner, Mohamed (@mohamedkhellaf)**, and notes in the PR that it was deployed. The deploy owner deploys from an up-to-date `main` (`git switch main && git pull` first), never from a feature branch, which could publish rules that aren't merged yet; the Firebase console (Firestore → Rules) then shows the new version with its publish time. Until then the app on `main` and production disagree: #220's rules and #214's index were missing from production until 2026-10-29.
+Nothing deploys the Security Rules, the Firestore indexes or the Cloud Functions automatically: CI only tests them. When a PR that changes `firebase/firestore/firestore.rules`, `firebase/firestore/firestore.indexes.json` or `firebase/functions` is merged into `main`, **its author deploys it, or asks a teammate to: any team member can deploy**. They note in the PR that it was deployed. Always deploy from an up-to-date `main` (`git switch main && git pull` first), never from a feature branch, which could publish rules that aren't merged yet; the Firebase console (Firestore → Rules) then shows the new version with its publish time. Until then the app on `main` and production disagree: #220's rules and #214's index were missing from production until 2026-10-29.
 
 Deploy with the [Firebase CLI](https://firebase.google.com/docs/cli) (`firebase login` first), and always with `--only`, since a plain `firebase deploy` deploys everything at once:
 
@@ -188,7 +188,7 @@ firebase emulators:exec --project demo-polysocial --only firestore,auth,function
 
 Use the npm Firebase CLI (`npm install -g firebase-tools`, as CI does) with Node.js 22.12 or newer. The standalone CLI (`curl -sL firebase.tools | bash`) ignores the installed Node.js and runs the function with its own bundled Node 20, which fails to load the function (`ERR_REQUIRE_ESM`) before any test runs; the same applies to the deploy below, which loads the code locally first. The emulator warns if your Node.js isn't version 22; the tests still run on a newer one.
 
-**Deploying is manual.** After a change to `firebase/functions` reaches `main`, the deploy owner deploys it (see [Deploying to Firebase](#deploying-to-firebase); `firebase login` first). Cloud Functions need the Blaze plan with its budget alert; whether the project is on it yet is an open question in `CONTEXT.md`:
+**Deploying is manual.** After a change to `firebase/functions` reaches `main`, its author deploys it, or asks a teammate to (see [Deploying to Firebase](#deploying-to-firebase); `firebase login` first). Cloud Functions need the Blaze plan with its budget alert; whether the project is on it yet is an open question in `CONTEXT.md`:
 
 ```bash
 npm ci --prefix firebase/functions
@@ -215,8 +215,9 @@ Email verification and association approval are separate checks.
 3. In **Firestore Database → Rules**, compare the published rules with
    `firebase/firestore/firestore.rules` on current `main`, including the
    `associations/{uid}` owner access and verified name/type lock from #126
-   (merged in #220). If they differ, ask the deploy owner to reconcile them
-   before continuing; see [Deploying to Firebase](#deploying-to-firebase).
+   (merged in #220). If they differ, deploy the rules from current `main`
+   (any team member can) before continuing; see
+   [Deploying to Firebase](#deploying-to-firebase).
    Open **Data → associations → {uid}** and check the name, type, about and
    optional website against independent official evidence. If either document
    is missing, ask the applicant to finish setup; do not create it by hand.

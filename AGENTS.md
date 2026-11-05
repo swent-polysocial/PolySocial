@@ -270,10 +270,10 @@ guessing. It also shows how the design evolved.
 - Merging a rules change does not deploy it: Firebase keeps serving the old
   rules until someone runs the deploy command in the README, so the app's new
   reads and writes fail in production (#220 was missed this way). Right after
-  the merge, the human author asks the deploy owner named in the README's
-  "Deploying to Firebase" section, who deploys from an up-to-date `main`
-  (never from a feature branch, which could publish unmerged rules). Remind
-  the author in the PR. An agent never deploys.
+  the merge, the human author deploys it, or asks a teammate to (any team
+  member can; see the README's "Deploying to Firebase" section), from an
+  up-to-date `main` (never from a feature branch, which could publish
+  unmerged rules). Remind the author in the PR. An agent never deploys.
 - Never loosen a rule (for example widen a match or remove a condition) to make
   a feature or test work. If a feature seems to need broader access, stop and
   ask.
