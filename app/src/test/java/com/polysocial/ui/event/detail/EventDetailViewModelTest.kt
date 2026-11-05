@@ -1,6 +1,7 @@
 // Contributors: Claude (wrote these tests of the event detail ViewModel, #112; the server timeout
 // and Retry, #194; Edit and Cancel event for organizers, #131; the association names dependency,
 // #128; the manage event's "Going" count, #131).
+// Contributors: Claude (Opus 5.5, Anthropic) whether the event has ended, #233.
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -692,5 +693,31 @@ class EventDetailViewModelTest {
     val later = viewModel()
     observe(later)
     assertFalse(later.uiState.value.loaded().isLive)
+  }
+
+  @Test
+  fun anEventThatHasEnded_hasEnded_andOneRunningNowHasNot() = runTest {
+    // The clock reads 7 October 2026, 10:00 UTC.
+    repository.seed(
+        event.copy(
+            id = "ended",
+            startTime = Instant.parse("2026-10-07T08:00:00Z"),
+            endTime = Instant.parse("2026-10-07T09:00:00Z"),
+        )
+    )
+    val ended = viewModel(args = mapOf("eventId" to "ended"))
+    observe(ended)
+    assertTrue(ended.uiState.value.loaded().hasEnded)
+
+    repository.seed(
+        event.copy(
+            id = "running",
+            startTime = Instant.parse("2026-10-07T09:00:00Z"),
+            endTime = Instant.parse("2026-10-07T11:00:00Z"),
+        )
+    )
+    val running = viewModel(args = mapOf("eventId" to "running"))
+    observe(running)
+    assertFalse(running.uiState.value.loaded().hasEnded)
   }
 }

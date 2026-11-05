@@ -1,6 +1,7 @@
 // Contributors: Claude (drafted the event detail ViewModel, #112; the server timeout and Retry,
 // #194; Edit and Cancel event for organizers, #131; the association's name, #128; the "Going"
 // count on an association's manage event, #131).
+// Contributors: Claude (Opus 5.5, Anthropic) whether the event has ended, for Find a group, #233.
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -13,6 +14,7 @@ import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.EventResult
 import com.polysocial.model.event.isLive
+import com.polysocial.model.event.isPast
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.registration.AttendeeCountResult
 import com.polysocial.model.registration.RegistrationRepository
@@ -97,6 +99,8 @@ sealed interface EventDetailUiState {
    * @property going the "Going" count, only on [isManaged] events; null otherwise.
    * @property isLive true while the event runs, when it was read (Figma's "Live now" on the manage
    *   screen); it is updated with the event's next change.
+   * @property hasEnded true once the event has ended, when it was read ([isPast]), so the detail no
+   *   longer offers Find a group; it is updated with the event's next change, like [isLive].
    */
   data class Loaded(
       val details: EventDetails,
@@ -105,6 +109,7 @@ sealed interface EventDetailUiState {
       val associationName: String? = null,
       val going: GoingCount? = null,
       val isLive: Boolean = false,
+      val hasEnded: Boolean = false,
   ) : EventDetailUiState {
     /**
      * True when the signed-in association organizes this association event: the screen is then
@@ -181,7 +186,7 @@ sealed interface CancelEventState {
  *
  * @param auth tells whether the signed-in user is one of the event's organizers.
  * @param clock gives the device's time zone, in which the times are shown, and the time that tells
- *   whether the event is live.
+ *   whether the event is live or has ended.
  */
 @HiltViewModel
 class EventDetailViewModel
@@ -355,6 +360,7 @@ constructor(
                 isOffline = result.fromCache && !network.isOnline(),
                 isOrganizer = auth.currentUser()?.uid in result.event.organizerIds,
                 isLive = result.event.isLive(clock.instant()),
+                hasEnded = result.event.isPast(clock.instant()),
             )
         EventResult.NotFound -> EventDetailUiState.NotFound
         // Even offline, the cache answers a moment later and may have the event.
