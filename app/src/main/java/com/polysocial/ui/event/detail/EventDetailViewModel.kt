@@ -16,12 +16,12 @@ import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.EventResult
 import com.polysocial.model.event.isLive
 import com.polysocial.model.event.isPast
-import com.polysocial.model.group.Group
 import com.polysocial.model.group.GroupRepository
 import com.polysocial.model.group.MyGroupResult
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.registration.AttendeeCountResult
 import com.polysocial.model.registration.RegistrationRepository
+import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.PublicProfilesResult
 import com.polysocial.ui.group.GroupMember
@@ -331,31 +331,39 @@ constructor(
 
   /**
    * The signed-in student's group for the event, with its members' public profiles, or null. Only
-   * the group matters: when only `fromCache` changes, the profiles aren't read again.
+   * the group matters: when only `fromCache` changes, the profiles aren't read again, unless the
+   * last read failed.
    */
   @OptIn(ExperimentalCoroutinesApi::class)
-  private fun yourGroup(): Flow<YourGroup?> =
-      groups
-          .observeMyGroup(eventId)
-          .map { (it as? MyGroupResult.Success)?.group }
-          .distinctUntilChanged()
-          .mapLatest { group -> group?.let { withProfiles(it) } }
-
-  private suspend fun withProfiles(group: Group): YourGroup? {
-    val me = auth.currentUser()?.uid ?: return null
-    val read =
-        when (val result = profiles.getPublicProfiles(group.memberUids.filter { it != me })) {
-          is PublicProfilesResult.Found -> result.profiles
-          PublicProfilesResult.NetworkError,
-          PublicProfilesResult.UnexpectedError -> emptyMap()
+  private fun yourGroup(): Flow<YourGroup?> {
+    // If the last read of the members' profiles failed, the same group goes through again, so
+    // coming back online names them.
+    var profilesRead = true
+    return groups
+        .observeMyGroup(eventId)
+        .map { (it as? MyGroupResult.Success)?.group }
+        .distinctUntilChanged { old, new -> profilesRead && old == new }
+        .mapLatest { group ->
+          val me = auth.currentUser()?.uid
+          if (group == null || me == null) return@mapLatest null
+          val read = readProfiles(group.memberUids.filter { it != me })
+          profilesRead = read != null
+          YourGroup(
+              groupId = group.id,
+              capacity = group.capacity,
+              members = group.memberUids.map { GroupMember(it, read?.get(it)) },
+              myUid = me,
+          )
         }
-    return YourGroup(
-        groupId = group.id,
-        capacity = group.capacity,
-        members = group.memberUids.map { GroupMember(it, read[it]) },
-        myUid = me,
-    )
   }
+
+  /** The public profiles of [uids], or null if they couldn't be read. */
+  private suspend fun readProfiles(uids: List<String>): Map<String, PublicProfile>? =
+      when (val result = profiles.getPublicProfiles(uids)) {
+        is PublicProfilesResult.Found -> result.profiles
+        PublicProfilesResult.NetworkError,
+        PublicProfilesResult.UnexpectedError -> null
+      }
 
   /** Counts the attendees again after the count failed (tapping the unavailable count). */
   fun retryGoingCount() {
