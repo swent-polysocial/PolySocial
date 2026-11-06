@@ -35,6 +35,8 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneOffset
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -343,29 +345,6 @@ class EventDetailAttendanceScreenTest {
   }
 
   @Test
-  fun route_offlineRetryStillOffline_showsTheErrorAgain() {
-    // Each failure carries its own id, so a Retry that fails the same way is reported again
-    // instead of being silently dropped as an unchanged value.
-    val registrations = registrations().apply { registerFailure = RegisterResult.NetworkError }
-    showRoute(registrations)
-
-    node(EventDetailTags.IM_GOING).performClick()
-    settle()
-    composeTestRule
-        .onNodeWithText(string(R.string.event_detail_register_offline))
-        .assertIsDisplayed()
-
-    // Still offline.
-    composeTestRule.onNodeWithText(string(R.string.retry)).performClick()
-    settle()
-
-    composeTestRule
-        .onNodeWithText(string(R.string.event_detail_register_offline))
-        .assertIsDisplayed()
-    node(EventDetailTags.IM_GOING).assertIsDisplayed().assertIsEnabled()
-  }
-
-  @Test
   fun route_aFailedCancellation_keepsGoing() {
     val registrations =
         registrations().apply {
@@ -384,6 +363,91 @@ class EventDetailAttendanceScreenTest {
         .onNodeWithTag(EventDetailTags.GOING)
         .assertTextEquals(string(R.string.event_detail_going))
     assertEquals(setOf(STUDENT), registrations.attendeesOf(EVENT_ID))
+  }
+
+  private companion object {
+    const val EVENT_ID = "event-1"
+    const val STUDENT = "student-1"
+  }
+}
+
+/**
+ * Retry while still offline, on its own (Mehdi's review of #317): the class above's
+ * [MainDispatcherRule] default, a [kotlinx.coroutines.test.StandardTestDispatcher], drains the
+ * ViewModel's `launch` with `advanceUntilIdle` before Compose ever reads the intermediate `null`,
+ * so the regression this test exists to catch wasn't actually reproduced there — it passed even on
+ * the unfixed code. [UnconfinedTestDispatcher] is closer to the app's `Dispatchers.Main.immediate`:
+ * the ViewModel's two `attendanceFeedback` writes ("null", then the new failure) happen within the
+ * same synchronous call, so Compose can conflate them into one unchanged value unless each failure
+ * carries its own id.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+@RunWith(AndroidJUnit4::class)
+class EventDetailOfflineRetryRegressionTest {
+
+  @get:Rule(order = 0) val mainDispatcherRule = MainDispatcherRule(UnconfinedTestDispatcher())
+
+  @get:Rule(order = 1) val composeTestRule = createComposeRule()
+
+  private val context = ApplicationProvider.getApplicationContext<Context>()
+
+  private fun string(id: Int) = context.getString(id)
+
+  private val event =
+      validEvent(
+              startTime = Instant.parse("2026-10-10T13:00:00Z"),
+              endTime = Instant.parse("2026-10-10T17:00:00Z"),
+          )
+          .copy(id = EVENT_ID, createdBy = "organizer", organizerIds = listOf("organizer"))
+
+  private fun settle() {
+    repeat(2) {
+      composeTestRule.waitForIdle()
+      mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+    }
+    composeTestRule.waitForIdle()
+  }
+
+  @Test
+  fun route_offlineRetryStillOffline_showsTheErrorAgain() {
+    val registrations =
+        FakeRegistrationRepository(currentUid = STUDENT).apply {
+          readableEventIds += EVENT_ID
+          registerFailure = RegisterResult.NetworkError
+        }
+    val events = FakeEventRepository().apply { seed(event) }
+    val viewModel =
+        EventDetailViewModel(
+            SavedStateHandle(mapOf("eventId" to EVENT_ID)),
+            events,
+            object : NetworkMonitor {
+              override fun isOnline() = true
+            },
+            FakeAuthRepository(AuthUser(STUDENT, "student@example.com", true)),
+            Clock.fixed(Instant.parse("2026-10-07T10:00:00Z"), ZoneOffset.UTC),
+            FakeAssociationNames(),
+            registrations,
+            FakeGroupRepository(),
+            FakePublicProfileRepository(),
+        )
+    composeTestRule.setContent {
+      PolySocialTheme { EventDetailRoute(onBack = {}, viewModel = viewModel) }
+    }
+    settle()
+
+    composeTestRule.onNodeWithTag(EventDetailTags.IM_GOING, useUnmergedTree = true).performClick()
+    settle()
+    composeTestRule
+        .onNodeWithText(string(R.string.event_detail_register_offline))
+        .assertIsDisplayed()
+
+    // Still offline: the Retry fails the same way, but it must still show its own Snackbar.
+    composeTestRule.onNodeWithText(string(R.string.retry)).performClick()
+    settle()
+
+    composeTestRule
+        .onNodeWithText(string(R.string.event_detail_register_offline))
+        .assertIsDisplayed()
   }
 
   private companion object {
