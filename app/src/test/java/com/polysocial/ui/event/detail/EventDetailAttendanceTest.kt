@@ -234,7 +234,11 @@ class EventDetailAttendanceTest {
       vm.onImGoing()
       runCurrent()
 
-      assertEquals("$failure", AttendanceMessage.REGISTER_FAILED, vm.attendanceFeedback.value?.message)
+      assertEquals(
+          "$failure",
+          AttendanceMessage.REGISTER_FAILED,
+          vm.attendanceFeedback.value?.message,
+      )
       assertEquals("$failure", Attendance.NOT_GOING, vm.loaded.attendance)
     }
   }

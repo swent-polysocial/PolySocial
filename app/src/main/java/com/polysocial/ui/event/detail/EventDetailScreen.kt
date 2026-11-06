@@ -497,9 +497,9 @@ private val AttendanceMessage.text: Int
 
 /**
  * Figma "Event detail · registered": "You're going." and its "Cancel registration" link.
- * [onCancelRegistration] is null for a student in a group, since cancelling would leave them in
- * the group without being registered, a state Figma's "in a group" sheet (#244) doesn't allow yet;
- * the link comes back once #244 ships it (#318).
+ * [onCancelRegistration] is null for a student in a group, since cancelling would leave them in the
+ * group without being registered, a state Figma's "in a group" sheet (#244) doesn't allow yet; the
+ * link comes back once #244 ships it (#318).
  */
 @Composable
 private fun RegisteredNote(
