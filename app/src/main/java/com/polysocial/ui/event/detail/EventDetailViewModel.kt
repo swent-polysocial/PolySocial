@@ -127,8 +127,8 @@ enum class AttendanceMessage {
 }
 
 /**
- * One failed save, with an [id] that tells two failures with the same [message] apart (for
- * example two offline Retries in a row), so the screen's Snackbar shows the second one too.
+ * One failed save, with an [id] that tells two failures with the same [message] apart (for example
+ * two offline Retries in a row), so the screen's Snackbar shows the second one too.
  */
 data class AttendanceFeedback(val message: AttendanceMessage, val id: Long)
 
@@ -324,8 +324,8 @@ constructor(
           .onStart { emit(Attendance.UNKNOWN) }
 
   /**
-   * [saved] while the observed registrations haven't caught up to it yet, [observed] once they
-   * have confirmed it (and for any later, live change). Clearing [savedAttendance] only once it is
+   * [saved] while the observed registrations haven't caught up to it yet, [observed] once they have
+   * confirmed it (and for any later, live change). Clearing [savedAttendance] only once it is
    * confirmed, instead of on every new observed value, keeps an unrelated snapshot from briefly
    * showing the old [observed] value while a save is still catching up.
    */
@@ -543,8 +543,9 @@ constructor(
             }
         if (failure == null)
             savedAttendance.value = if (going) Attendance.GOING else Attendance.NOT_GOING
-        _attendanceFeedback.value =
-            failure?.let { AttendanceFeedback(it, nextAttendanceFeedbackId++) }
+        _attendanceFeedback.value = failure?.let {
+          AttendanceFeedback(it, nextAttendanceFeedbackId++)
+        }
       } finally {
         savingAttendance.value = false
       }
