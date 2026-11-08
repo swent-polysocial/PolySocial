@@ -3,6 +3,7 @@
 // the public upcoming-events listener, #49; unexpected failures reported as errors, #182; the
 // single-event listener and its failures, #112; updating and deleting as an organizer, #130; an
 // association's own events, #132); Franciszek Najda (reviewed #130).
+// Contributors: Claude (Opus 5.5, Anthropic) added the readable private events query, #320.
 package com.polysocial.model.event
 
 import com.google.firebase.FirebaseException
@@ -245,6 +246,31 @@ class FirestoreEventRepository(
           },
           events = OwnEventsResult::Events,
           error = OwnEventsResult.Error,
+      )
+
+  /**
+   * Listens to `isPrivate == true` and `allowedUids` array-contains the signed-in UID: the only
+   * shape #52's read rule accepts for private events (rules aren't filters). It has no order, so it
+   * needs only the `isPrivate` + `allowedUids` composite index in
+   * `firebase/firestore/firestore.indexes.json`; the events are sorted here. Nobody signed in is a
+   * [PrivateEventsResult.Error] without a query. See [listenToEvents] for how it emits and fails.
+   */
+  override fun getReadablePrivateEvents(): Flow<PrivateEventsResult> =
+      listenToEvents(
+          query = {
+            auth.currentUser()?.let { user ->
+              db.collection(EVENTS_COLLECTION)
+                  .whereEqualTo("isPrivate", true)
+                  .whereArrayContains("allowedUids", user.uid)
+            }
+          },
+          events = { events, fromCache ->
+            PrivateEventsResult.Events(
+                events.sortedWith(compareBy({ it.startTime }, { it.id })),
+                fromCache,
+            )
+          },
+          error = PrivateEventsResult.Error,
       )
 
   /**

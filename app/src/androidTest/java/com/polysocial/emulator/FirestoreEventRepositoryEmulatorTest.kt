@@ -7,6 +7,8 @@
 // OpenAI Codex (Google sign-in contract in the event-test fixture, #106).
 // Claude Opus 5.5 (private event detail and offline cache tests, #209; shared signed-in user,
 // #121).
+// Contributors: Claude (Opus 5.5, Anthropic) tested the private events query against the rules,
+// #320.
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -20,6 +22,7 @@ import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.EventResult
 import com.polysocial.model.event.FirestoreEventRepository
 import com.polysocial.model.event.OwnEventsResult
+import com.polysocial.model.event.PrivateEventsResult
 import com.polysocial.model.event.PublicEventsResult
 import com.polysocial.model.event.UpdateEventResult
 import com.polysocial.model.event.eventFromFirestore
@@ -538,6 +541,50 @@ class FirestoreEventRepositoryEmulatorTest {
     seed("public", publicEvent(startsIn = Duration.ofDays(1)))
 
     assertEquals(OwnEventsResult.Error, firstOwnEvents())
+  }
+
+  /**
+   * The first result of [FirestoreEventRepository.getReadablePrivateEvents] read from the server.
+   */
+  private suspend fun firstPrivateEvents(): PrivateEventsResult =
+      withTimeout(TIMEOUT_MS) {
+        repository.getReadablePrivateEvents().first {
+          it !is PrivateEventsResult.Events || !it.fromCache
+        }
+      }
+
+  @Test
+  fun privateEvents_aStudentReadsTheOnesListingThem_pastAndFarAhead_andNoOthers() = runBlocking {
+    val uid = signInStudent()
+    seed("member", privateEvent(uid, startsIn = WINDOW.plusDays(30)))
+    seed(
+        "organized",
+        publicEvent(startsIn = Duration.ofDays(-3))
+            .copy(
+                isPrivate = true,
+                createdBy = uid,
+                organizerIds = listOf(uid),
+                allowedUids = listOf(uid),
+            ),
+    )
+    seed("someoneElses", privateEvent(MEMBER_UID, startsIn = Duration.ofDays(1)))
+    seed("public", publicEvent(startsIn = Duration.ofDays(1)))
+
+    val result = firstPrivateEvents()
+
+    assertTrue("Expected events, got $result", result is PrivateEventsResult.Events)
+    assertEquals(
+        listOf("organized", "member"),
+        (result as PrivateEventsResult.Events).events.map { it.id },
+    )
+  }
+
+  @Test
+  fun privateEvents_aVerifiedAssociationIsDeniedAndGetsAnError() = runBlocking {
+    val uid = signInVerifiedAssociation()
+    seed("listed", privateEvent(uid, startsIn = Duration.ofDays(1)))
+
+    assertEquals(PrivateEventsResult.Error, firstPrivateEvents())
   }
 
   private suspend fun collectAll(): List<PublicEventsResult> {

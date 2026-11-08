@@ -16,6 +16,14 @@
         { "fieldPath": "isAssociationEvent", "order": "ASCENDING" },
         { "fieldPath": "startTime", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "events",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "isPrivate", "order": "ASCENDING" },
+        { "fieldPath": "allowedUids", "arrayConfig": "CONTAINS" }
+      ]
     }
   ],
   "fieldOverrides": [

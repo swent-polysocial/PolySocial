@@ -4,6 +4,7 @@
 // unknown fields, #130 review; an association's own events, #132); Franciszek Najda (reviewed
 // #130).
 // Contributors: OpenAI Codex (listener disposal failure and cancellation tests, #156).
+// Contributors: Claude (Opus 5.5, Anthropic) tested the readable private events query, #320.
 package com.polysocial.model.event
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -1168,5 +1169,101 @@ class FirestoreEventRepositoryTest {
     every { collection.whereEqualTo("createdBy", "creator") } throws terminated()
 
     assertEquals(listOf(OwnEventsResult.Error), repository.getOwnAssociationEvents().toList())
+  }
+
+  // The private events the student may read (#320)
+
+  private val privateQuery = mockk<Query>()
+  private val readableQuery = mockk<Query>()
+
+  /**
+   * Stubs exactly the query #52's read rule allows for private events; any other fails the test.
+   */
+  private fun stubPrivateEventsQuery() {
+    every { collection.whereEqualTo("isPrivate", true) } returns privateQuery
+    every { privateQuery.whereArrayContains("allowedUids", "creator") } returns readableQuery
+    every { readableQuery.addSnapshotListener(MetadataChanges.INCLUDE, capture(listener)) } returns
+        registration
+  }
+
+  private fun TestScope.collectPrivateEvents(results: MutableList<PrivateEventsResult>) =
+      launch(UnconfinedTestDispatcher(testScheduler)) {
+        repository.getReadablePrivateEvents().toList(results)
+      }
+
+  @Test
+  fun privateEvents_queriesTheStudentsReadableOnesAndEmitsThemSortedOnEveryChange() = runTest {
+    stubPrivateEventsQuery()
+    val later = stored.copy(isPrivate = true, startTime = TEST_NOW.plus(Duration.ofDays(30)))
+    val sooner = later.copy(startTime = TEST_NOW.minus(Duration.ofDays(2)))
+    val results = mutableListOf<PrivateEventsResult>()
+    val collecting = collectPrivateEvents(results)
+
+    listener.captured.onEvent(snapshot(fromCache = true), null)
+    // The query has no order: the documents come by ID, and the repository sorts them.
+    listener.captured.onEvent(
+        snapshot(
+            document("a-later", later.toFirestoreMap()),
+            document("b-malformed", later.toFirestoreMap() - "startTime"),
+            document("c-sooner", sooner.toFirestoreMap()),
+        ),
+        null,
+    )
+    collecting.cancel()
+
+    assertEquals(
+        listOf(
+            PrivateEventsResult.Events(emptyList(), fromCache = true),
+            PrivateEventsResult.Events(
+                listOf(sooner.copy(id = "c-sooner"), later.copy(id = "a-later")),
+                fromCache = false,
+            ),
+        ),
+        results,
+    )
+    verify { registration.remove() }
+  }
+
+  @Test
+  fun privateEvents_aQueryTheRulesDeny_emitsAnErrorAndEnds() = runTest {
+    stubPrivateEventsQuery()
+    val results = mutableListOf<PrivateEventsResult>()
+    val collecting = collectPrivateEvents(results)
+
+    listener.captured.onEvent(null, denied())
+    collecting.join()
+
+    assertEquals(listOf(PrivateEventsResult.Error), results)
+    verify { registration.remove() }
+  }
+
+  @Test
+  fun privateEvents_withNobodySignedIn_emitsAnErrorWithoutQuerying() = runTest {
+    auth.user = null
+
+    assertEquals(listOf(PrivateEventsResult.Error), repository.getReadablePrivateEvents().toList())
+    verify { db wasNot Called }
+  }
+
+  @Test
+  fun privateEvents_theStudentIsReadWhenCollectionStarts() = runTest {
+    stubPrivateEventsQuery()
+    val events = repository.getReadablePrivateEvents()
+    auth.user = AuthUser("next", "next@epfl.ch", true)
+    every { collection.whereEqualTo("isPrivate", true) } returns privateQuery
+    every { privateQuery.whereArrayContains("allowedUids", "next") } returns readableQuery
+
+    val collecting = launch(UnconfinedTestDispatcher(testScheduler)) { events.collect {} }
+    collecting.cancel()
+
+    verify { privateQuery.whereArrayContains("allowedUids", "next") }
+    verify(exactly = 0) { privateQuery.whereArrayContains("allowedUids", "creator") }
+  }
+
+  @Test
+  fun privateEvents_anUnexpectedExceptionWhileStartingToListen_emitsAnErrorAndEnds() = runTest {
+    every { collection.whereEqualTo("isPrivate", true) } throws terminated()
+
+    assertEquals(listOf(PrivateEventsResult.Error), repository.getReadablePrivateEvents().toList())
   }
 }

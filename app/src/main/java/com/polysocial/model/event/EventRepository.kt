@@ -2,6 +2,7 @@
 // public upcoming-events query, #49; reading one event, #112); Mohamed Khellaf (reviewed). Claude
 // (updating and deleting, #130; an association's own events, #132); Franciszek Najda (reviewed).
 // Claude (NotCached KDoc, #194).
+// Contributors: Claude (Opus 5.5, Anthropic) added getReadablePrivateEvents and its result, #320.
 package com.polysocial.model.event
 
 import kotlinx.coroutines.flow.Flow
@@ -104,6 +105,24 @@ sealed interface OwnEventsResult {
    * a verified association may read its own association events).
    */
   data object Error : OwnEventsResult
+}
+
+/** What [EventRepository.getReadablePrivateEvents] emits. */
+sealed interface PrivateEventsResult {
+  /**
+   * Every private event the signed-in student may read, past and upcoming, sorted by start time
+   * (then ID).
+   *
+   * @property fromCache true when the list comes from Firestore's offline cache, like
+   *   [PublicEventsResult.Events].
+   */
+  data class Events(val events: List<Event>, val fromCache: Boolean) : PrivateEventsResult
+
+  /**
+   * The events couldn't be read, for example because nobody is signed in, the Security Rules denied
+   * the query or its index is missing.
+   */
+  data object Error : PrivateEventsResult
 }
 
 /** What [EventRepository.getEvent] emits. */
@@ -213,6 +232,17 @@ interface EventRepository {
    * first. The user is read when collection starts.
    */
   fun getOwnAssociationEvents(): Flow<OwnEventsResult>
+
+  /**
+   * Observes the private events whose [Event.allowedUids] list the signed-in student (their
+   * organizers, members and approved requesters), for My events (#320). Public events are never
+   * returned, and there is no time window.
+   *
+   * Like [getUpcomingPublicEvents], the flow emits on every change, including from the offline
+   * cache, is conflated, and ends after a [PrivateEventsResult.Error], which is always delivered
+   * first. The student is read when collection starts, so a new account needs a new collection.
+   */
+  fun getReadablePrivateEvents(): Flow<PrivateEventsResult>
 
   /**
    * Observes the event `events/[id]`, for its detail screen.
