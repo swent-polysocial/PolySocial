@@ -1,6 +1,6 @@
 // Contributors: OpenAI Codex (permission launcher and foreground location lifecycle for #51).
 // Contributors: Claude (passes the "+" action to the map screen, #110; the search and filters,
-// #116).
+// #116; the Map tab's ViewModel for each account type, #133).
 package com.polysocial.ui.map
 
 import android.Manifest
@@ -25,13 +25,23 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
 import com.polysocial.model.event.Event
+import com.polysocial.model.user.AccountType
+
+/**
+ * The Map tab's ViewModel for [accountType]: a verified association's own upcoming events, private
+ * ones included (#133), or the students' public events.
+ */
+@Composable
+fun mapViewModel(accountType: AccountType): MapViewModel =
+    if (accountType == AccountType.ASSOCIATION) hiltViewModel<AssociationMapViewModel>()
+    else hiltViewModel<StudentMapViewModel>()
 
 /** Android permission UI boundary; device reads and permission history stay in the ViewModel. */
 @Composable
 fun MapRoute(
     onViewDetails: (String) -> Unit,
     onCreateEvent: (() -> Unit)? = null,
-    viewModel: MapViewModel = hiltViewModel(),
+    viewModel: MapViewModel = hiltViewModel<StudentMapViewModel>(),
     tokenConfigured: Boolean = stringResource(R.string.mapbox_access_token).startsWith("pk."),
     permissionRationale: (() -> Boolean)? = null,
     renderer: @Composable (List<Event>, (String) -> Unit, (MapRenderStatus) -> Unit, Dp) -> Unit =
