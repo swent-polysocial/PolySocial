@@ -171,7 +171,7 @@ class MapViewModelTest {
   @Test
   fun duplicateIdsAreOneMarkerAndBoundaryCoordinatesAreValid() {
     val bounds = event.copy(location = Coordinates(-90.0, 180.0))
-    assertEquals(listOf(bounds), publicMapEvents(listOf(bounds, bounds.copy(title = "duplicate"))))
+    assertEquals(listOf(bounds), mapEvents(listOf(bounds, bounds.copy(title = "duplicate"))))
   }
 
   @Test
@@ -231,7 +231,7 @@ class MapViewModelTest {
         val repository = FakeEventRepository().apply { readFailure = true }
         assertEquals(
             MapEventResult.Error,
-            RepositoryMapEventSource(repository).observePublicUpcomingEvents().first(),
+            RepositoryMapEventSource(repository).observeEvents().first(),
         )
       }
 

@@ -53,7 +53,7 @@ class RepositoryMapEventSourceTest {
 
     assertEquals(
         MapEventResult.Events(listOf(sooner, later)),
-        RepositoryMapEventSource(repository).observePublicUpcomingEvents().first(),
+        RepositoryMapEventSource(repository).observeEvents().first(),
     )
   }
 
@@ -105,7 +105,7 @@ class RepositoryMapEventSourceTest {
 
     assertEquals(
         listOf(MapEventResult.Error),
-        RepositoryMapEventSource(repository).observePublicUpcomingEvents().toList(),
+        RepositoryMapEventSource(repository).observeEvents().toList(),
     )
   }
 
@@ -164,9 +164,7 @@ class RepositoryMapEventSourceTest {
             }
           }
         }
-    val collecting = launch {
-      RepositoryMapEventSource(repository).observePublicUpcomingEvents().collect {}
-    }
+    val collecting = launch { RepositoryMapEventSource(repository).observeEvents().collect {} }
     testScheduler.runCurrent()
     assertTrue(listening)
 
