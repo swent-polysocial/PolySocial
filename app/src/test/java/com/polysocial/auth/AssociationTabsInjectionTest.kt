@@ -2,11 +2,12 @@
 // Contributors: OpenAI Codex (session-guard fake for rebased association integration tests).
 // Contributors: OpenAI Codex (approved association tabs, Privacy return caching and session
 // cleanup, #140).
+// Contributors: Claude (Opus 5.5, Anthropic) left the association's map, now a real map, to
+// MapTabAccountTest, #133.
 package com.polysocial.auth
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
-import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -133,11 +134,9 @@ class AssociationTabsInjectionTest {
     compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.nav_item_chats).assertDoesNotExist()
     compose.onNodeWithTag(C.Tag.nav_item_profile).assertDoesNotExist()
-    compose.onNodeWithTag(C.Tag.nav_item_map).performClick()
-    compose.waitUntil(5000) {
-      compose.onAllNodesWithTag(C.Tag.screen_map).fetchSemanticsNodes().isNotEmpty()
-    }
-    compose.onNodeWithText("Your events map is not available yet").assertIsDisplayed()
+    // Not opened: since #133 it draws the real Mapbox map, which can't run under Robolectric.
+    // MapTabAccountTest checks the association's map with a fake renderer.
+    compose.onNodeWithTag(C.Tag.nav_item_map).assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.nav_item_organization).performClick()
     compose.onNodeWithText(identity.name).assertIsDisplayed()
     compose.onNodeWithTag(OrganizationTags.Verified).assertIsDisplayed()
