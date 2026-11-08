@@ -2,16 +2,23 @@
 // Khellaf (reviewed and revised).
 // Contributors: Claude (Opus 5.5, Anthropic) tested the lost session's cleanup, too many attempts
 // and a cancelled cleanup, from #286's review.
+// Contributors: Claude (Opus 5.5, Anthropic) tested a Google failure sent as a cancellation on the
+// real repository, #319.
 package com.polysocial.ui.profile
 
 import android.content.Context
+import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
 import com.polysocial.auth.MemoryVerificationStore
 import com.polysocial.model.account.AccountDeletionResult
 import com.polysocial.model.account.FakeAccountDeletionRepository
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
+import com.polysocial.model.auth.FirebaseAuthRepository
+import com.polysocial.model.auth.GoogleCredentialSource
 import com.polysocial.model.auth.ReauthResult
 import com.polysocial.model.auth.SignInMethod
 import com.polysocial.model.auth.VerificationStore
@@ -20,6 +27,7 @@ import com.polysocial.model.firebase.CacheClearResult
 import com.polysocial.model.firebase.SessionCache
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.utils.MainDispatcherRule
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -251,6 +259,32 @@ class DeleteAccountViewModelTest {
         runCurrent()
         assertEquals(DeleteAccountStep.Reauthenticate, step)
         assertEquals(DeleteAccountError.GoogleCancelled, error)
+        assertEquals(0, deletion.calls)
+        assertAccountUntouched()
+      }
+
+  @Test
+  fun googleFailureReportedAsCancellationIsAnUnexpectedErrorOnTheStep() =
+      runTest(main.dispatcher) {
+        // The real repository, with Google's sheet failing behind a cancellation (#319).
+        val firebase = mockk<FirebaseAuth> { every { currentUser } returns mockk<FirebaseUser>() }
+        val failingSheet = GoogleCredentialSource {
+          throw GetCredentialCancellationException("[16] Account reauth failed.")
+        }
+        val google = FirebaseAuthRepository(firebase, failingSheet)
+        val withSheet =
+            object : AuthRepository by auth {
+              override suspend fun reauthenticateWithGoogle(context: Context) =
+                  google.reauthenticateWithGoogle(context)
+            }
+        fakeAuth.signInMethods = setOf(SignInMethod.GOOGLE)
+        val model = DeleteAccountViewModel(withSheet, deletion, network, cache, verification)
+        model.request()
+        model.confirm()
+        model.continueWithGoogle(context)
+        runCurrent()
+        assertEquals(DeleteAccountStep.Reauthenticate, model.uiState.value.step)
+        assertEquals(DeleteAccountError.Unexpected, model.uiState.value.error)
         assertEquals(0, deletion.calls)
         assertAccountUntouched()
       }

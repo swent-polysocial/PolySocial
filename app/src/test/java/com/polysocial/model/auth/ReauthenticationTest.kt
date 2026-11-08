@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) wrote these re-authentication tests for #206; Mohamed
 // Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) tested Google failures sent as a cancellation, #319.
 package com.polysocial.model.auth
 
 import android.app.Application
@@ -182,6 +183,25 @@ class ReauthenticationTest {
     coEvery { google.get(context) } throws GetCredentialCancellationException()
 
     assertEquals(ReauthResult.Cancelled, repository.reauthenticateWithGoogle(context))
+    verify(exactly = 0) { user.reauthenticate(any()) }
+  }
+
+  @Test
+  fun google_sheetClosedInGoogleOrAndroidxWording_returnsCancelled() = runTest {
+    for (message in listOf("activity is cancelled by the user.", "[16] Cancelled by user.")) {
+      coEvery { google.get(context) } throws GetCredentialCancellationException(message)
+      assertEquals(message, ReauthResult.Cancelled, repository.reauthenticateWithGoogle(context))
+    }
+    verify(exactly = 0) { user.reauthenticate(any()) }
+  }
+
+  @Test
+  fun google_failureReportedAsCancellation_returnsUnexpectedError() = runTest {
+    // Google's failure behind an unregistered SHA-1 is not the user closing the sheet (#319).
+    coEvery { google.get(context) } throws
+        GetCredentialCancellationException("[16] Account reauth failed.")
+
+    assertEquals(ReauthResult.UnexpectedError, repository.reauthenticateWithGoogle(context))
     verify(exactly = 0) { user.reauthenticate(any()) }
   }
 
