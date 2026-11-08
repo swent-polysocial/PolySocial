@@ -1,4 +1,5 @@
 // Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143; publicProfiles/{uid} tests, written test-first, #229; reads by ID only and the fixed section and year lists, after review, #229; private edits keep the public copy, and deleted accounts stay deleted, after review, #229; interests from the fixed list, test-first, #230; any code read in the list check, after review, #230); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121); Claude (Opus 5.5, Anthropic) (event group and groupMembers marker tests, #232, with more after review).
+// Contributors: Claude (Opus 5.5, Anthropic) (a non-EPFL association in allowedUids can't run My events' private query, #320).
 const { after, before, beforeEach, test } = require("node:test");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
@@ -804,6 +805,23 @@ test("the private query requires the current student's allowedUids membership", 
     collection(db, "events"), where("isPrivate", "==", true),
     where("allowedUids", "array-contains", "u2"),
   )));
+});
+
+// My events (#320) runs exactly this query; the @epfl.ch associations are covered under #161 below.
+test("an association listed in allowedUids can't run the students' private query", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await updateDoc(doc(context.firestore(), "events/private"), {
+      allowedUids: ["u2", "verifiedClub", "club"],
+    });
+  });
+  for (const uid of ["verifiedClub", "club"]) {
+    await assertFails(getDocs(query(
+      collection(associationDb(uid), "events"), where("isPrivate", "==", true),
+      where("allowedUids", "array-contains", uid),
+    ))).catch((error) => {
+      throw new Error(`${uid}'s private query was allowed: ${error.message}`);
+    });
+  }
 });
 
 for (const [name, getDb] of [
