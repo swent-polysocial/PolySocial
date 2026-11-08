@@ -1,5 +1,7 @@
 // Contributors: OpenAI Codex, GPT-6.1 Sol (medium) (shared day labels, #306 review).
 // Contributors: Claude Opus 5.5 (medium) (My events from the Figma section 12 frames, #204).
+// Contributors: Claude (Opus 5.5, Anthropic) added the "Some of your events couldn't be loaded"
+// row with Retry, #320.
 package com.polysocial.ui.event.list
 
 import androidx.compose.foundation.background
@@ -72,6 +74,8 @@ object MyEventsTags {
   const val UPCOMING_HEADER = "my_events_upcoming_header"
   const val PAST_HEADER = "my_events_past_header"
   const val MISSING = "my_events_missing"
+  const val INCOMPLETE = "my_events_incomplete"
+  const val INCOMPLETE_RETRY = "my_events_incomplete_retry"
 
   fun card(eventId: String) = "my_events_card_$eventId"
 
@@ -88,7 +92,8 @@ object MyEventsTags {
  * Draws My events (Figma section 12): the chosen events under Upcoming and Past, the ones no longer
  * available, and the loading, empty, offline and error states. Dates and times are shown in [zone];
  * [today] names today's and tomorrow's dates. Tapping a card calls [onEventClick], Remove on an
- * unavailable event [onRemove], and "Browse upcoming events" [onBrowseUpcoming]. A
+ * unavailable event [onRemove], "Browse upcoming events" [onBrowseUpcoming], and Retry (on an error
+ * state, or on the row saying some events couldn't be loaded) [onRetry]. A
  * [MyEventsUiState.message] is shown once in a Snackbar, then [onMessageShown] is called.
  */
 @Composable
@@ -134,7 +139,7 @@ fun MyEventsScreen(
               onRetry = onRetry,
           )
       is MyEventsList.Events ->
-          ChosenEventList(list, state.removing, zone, today, onEventClick, onRemove)
+          ChosenEventList(list, state.removing, zone, today, onEventClick, onRemove, onRetry)
     }
     SnackbarHost(snackbarHostState, Modifier.align(Alignment.BottomCenter))
   }
@@ -165,6 +170,7 @@ private fun ChosenEventList(
     today: LocalDate,
     onEventClick: (eventId: String) -> Unit,
     onRemove: (eventId: String) -> Unit,
+    onRetry: () -> Unit,
 ) {
   LazyColumn(
       modifier = Modifier.fillMaxSize().testTag(MyEventsTags.LIST),
@@ -194,7 +200,8 @@ private fun ChosenEventList(
         ChosenEventCard(event, list.now, zone, today, onClick = { onEventClick(event.id) })
       }
     }
-    if (list.missingCount > 0) {
+    // Online, the incomplete row below already says some events are missing, with Retry.
+    if (list.missingCount > 0 && (list.isOffline || !list.incomplete)) {
       item(key = "missing") {
         DashedRow(
             title =
@@ -213,13 +220,30 @@ private fun ChosenEventList(
         )
       }
     }
+    if (list.incomplete) {
+      item(key = "incomplete") {
+        DashedRow(
+            title = stringResource(R.string.my_events_incomplete_title),
+            body = stringResource(R.string.my_events_incomplete_body),
+            tag = MyEventsTags.INCOMPLETE,
+        ) {
+          TextLink(
+              text = stringResource(R.string.retry),
+              enabled = true,
+              onClick = onRetry,
+              tag = MyEventsTags.INCOMPLETE_RETRY,
+          )
+        }
+      }
+    }
     items(list.unavailableIds, key = { "unavailable-$it" }) { eventId ->
       DashedRow(
           title = stringResource(R.string.my_events_unavailable_title),
           body = stringResource(R.string.my_events_unavailable_body),
           tag = MyEventsTags.unavailable(eventId),
       ) {
-        RemoveLink(
+        TextLink(
+            text = stringResource(R.string.my_events_remove),
             enabled = eventId !in removing,
             onClick = { onRemove(eventId) },
             tag = MyEventsTags.remove(eventId),
@@ -364,9 +388,9 @@ private fun DashedRow(
   }
 }
 
-/** Figma's underlined "Remove", with a 48 dp touch target. */
+/** Figma's underlined "Remove" (also used for Retry), with a 48 dp touch target. */
 @Composable
-private fun RemoveLink(enabled: Boolean, onClick: () -> Unit, tag: String) {
+private fun TextLink(text: String, enabled: Boolean, onClick: () -> Unit, tag: String) {
   Box(
       modifier =
           Modifier.heightIn(min = 48.dp)
@@ -376,7 +400,7 @@ private fun RemoveLink(enabled: Boolean, onClick: () -> Unit, tag: String) {
       contentAlignment = Alignment.Center,
   ) {
     Text(
-        text = stringResource(R.string.my_events_remove),
+        text = text,
         style =
             MaterialTheme.typography.labelLarge.copy(
                 fontWeight = FontWeight.Bold,

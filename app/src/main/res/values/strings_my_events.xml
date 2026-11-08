@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Contributors: Claude Opus 5.5 (medium) (My events texts from the Figma section 12 frames, #204). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) wrote the "couldn't be loaded" row's texts, #320 (no Figma frame). -->
 <resources>
     <string name="events_segment_upcoming">Upcoming</string>
     <string name="events_segment_my_events">My events</string>
@@ -31,4 +32,6 @@
         <item quantity="other">%d events couldn\'t be loaded yet</item>
     </plurals>
     <string name="my_events_not_loaded_body">It shows up as soon as it loads</string>
+    <string name="my_events_incomplete_title">Some of your events couldn\'t be loaded</string>
+    <string name="my_events_incomplete_body">Try again in a moment</string>
 </resources>
