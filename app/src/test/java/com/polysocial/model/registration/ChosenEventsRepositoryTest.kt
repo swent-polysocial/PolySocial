@@ -1,10 +1,14 @@
 // Contributors: Claude Opus 5.5 (medium) (wrote these tests, #203).
+// Contributors: Claude (Opus 5.5, Anthropic) tested private events in the chosen events
+// (duplicates,
+// Remove, failures, waiting, offline, account switch), #320.
 package com.polysocial.model.registration
 
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.EventResult
 import com.polysocial.model.event.FakeEventRepository
+import com.polysocial.model.event.PrivateEventsResult
 import com.polysocial.model.event.TEST_NOW
 import com.polysocial.model.event.validEvent
 import java.time.Duration
@@ -14,6 +18,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.consumeAsFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.launch
@@ -22,6 +27,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -37,6 +43,10 @@ class ChosenEventsRepositoryTest {
   private val tomorrow = event("tomorrow", Duration.ofDays(1))
   private val inTwoMonths = event("inTwoMonths", Duration.ofDays(60))
   private val lastWeek = event("lastWeek", Duration.ofDays(-7))
+
+  /** A private event [STUDENT] may read (they organize it, are a member or were approved). */
+  private fun readable(id: String, startsIn: Duration, reader: String = STUDENT) =
+      event(id, startsIn).copy(isPrivate = true, allowedUids = listOf("organizer", reader))
 
   /** Seeds [chosen] as stored events the student registered for. */
   private fun choose(vararg chosen: Event) {
@@ -214,6 +224,7 @@ class ChosenEventsRepositoryTest {
   fun aCachedEvent_alone_makesTheListFromCache() = runTest {
     choose(tomorrow)
     events.delegate.readFromCache = true
+    events.privateEvents = flowOf(PrivateEventsResult.Events(emptyList(), fromCache = false))
 
     val (results, _) = startCollecting()
 
@@ -233,12 +244,82 @@ class ChosenEventsRepositoryTest {
   }
 
   @Test
-  fun failedRegistrations_areAnError_thatEndsTheFlowAndItsListeners() = runTest {
+  fun failedRegistrations_stillListThePrivateEvents_andSayTheReadFailed() = runTest {
+    val organized = readable("organized", Duration.ofDays(3))
+    events.delegate.seed(organized)
+    choose(tomorrow)
     registrations.readFailure = true
+
+    val (results, _) = startCollecting()
+
+    assertEquals(listOf(organized), results.latest.events)
+    assertTrue(results.latest.failed)
+    assertFalse(results.latest.waiting)
+    assertEquals(0, events.active)
+  }
+
+  @Test
+  fun failedPrivateEvents_stillListTheRegisteredOnes_andSayTheReadFailed() = runTest {
+    choose(tomorrow)
+    events.delegate.seed(readable("organized", Duration.ofDays(3)))
+    events.delegate.privateEventsFailure = true
+
+    val (results, _) = startCollecting()
+
+    assertEquals(listOf(tomorrow), results.latest.events)
+    assertTrue(results.latest.failed)
+  }
+
+  @Test
+  fun registrationsFailingLater_dropTheRegisteredEvents_andKeepThePrivateOnesListening() = runTest {
+    val organized = readable("organized", Duration.ofDays(3))
+    events.delegate.seed(tomorrow, organized)
+    val answers = Channel<MyRegistrationsResult>(Channel.UNLIMITED)
+    val failingLater =
+        object : RegistrationRepository by registrations {
+          override fun observeMyRegistrations() = answers.consumeAsFlow()
+        }
+    val results = mutableListOf<ChosenEventsResult>()
+    val job =
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+          ChosenEventsRepository(failingLater, events).observeChosenEvents().collect {
+            results += it
+          }
+        }
+    answers.send(MyRegistrationsResult.Registrations(setOf(tomorrow.id), fromCache = false))
+    runCurrent()
+    assertEquals(listOf(tomorrow, organized), results.latest.events)
+    assertEquals(1, events.active)
+
+    // Left open after its error, so the listeners must stop at the error itself, not only once
+    // the registrations flow ends.
+    answers.send(MyRegistrationsResult.Error)
+    runCurrent()
+    // A late change to the registered event must not bring it back.
+    events.delegate.events[0] = tomorrow.copy(title = "Renamed")
+    events.delegate.seed()
+    runCurrent()
+
+    assertEquals(listOf(organized), results.latest.events)
+    assertTrue(results.latest.failed)
+    assertEquals(emptySet<String>(), results.latest.pendingIds)
+    assertEquals(0, events.active)
+    // The private events are still listened to.
+    assertTrue(job.isActive)
+    val created = readable("created", Duration.ofDays(4))
+    events.delegate.seed(created)
+    runCurrent()
+    assertEquals(listOf(organized, created), results.latest.events)
+  }
+
+  @Test
+  fun bothReadsFailing_isAnError_thatEndsTheFlowAndItsListeners() = runTest {
+    registrations.readFailure = true
+    events.delegate.privateEventsFailure = true
 
     val (results, job) = startCollecting()
 
-    assertEquals(listOf(ChosenEventsResult.Error), results)
+    assertEquals(ChosenEventsResult.Error, results.last())
     assertTrue(job.isCompleted)
     assertEquals(0, events.active)
   }
@@ -251,6 +332,8 @@ class ChosenEventsRepositoryTest {
         object : RegistrationRepository by registrations {
           override fun observeMyRegistrations() = answers.consumeAsFlow()
         }
+    // With the private events failing too, the registrations' error ends everything.
+    events.delegate.privateEventsFailure = true
     val results = mutableListOf<ChosenEventsResult>()
     val job =
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
@@ -279,10 +362,12 @@ class ChosenEventsRepositoryTest {
   @Test
   fun nobodySignedIn_isAnError() = runTest {
     registrations.currentUid = null
+    events.delegate.currentUid = null
 
-    val (results, _) = startCollecting()
+    val (results, job) = startCollecting()
 
-    assertEquals(listOf(ChosenEventsResult.Error), results)
+    assertEquals(ChosenEventsResult.Error, results.last())
+    assertTrue(job.isCompleted)
   }
 
   @Test
@@ -299,10 +384,148 @@ class ChosenEventsRepositoryTest {
     assertEquals(listOf(inTwoMonths), results.latest.events)
   }
 
+  @Test
+  fun privateEventsTheStudentMayRead_areListedWithoutRegistering_inStartOrder() = runTest {
+    choose(tomorrow)
+    val organizedLastWeek = readable("organizedLastWeek", Duration.ofDays(-7))
+    val memberInTwoMonths = readable("memberInTwoMonths", Duration.ofDays(60))
+    events.delegate.seed(
+        memberInTwoMonths,
+        organizedLastWeek,
+        readable("someoneElses", Duration.ofDays(2), reader = "another-student"),
+        event("public", Duration.ofDays(2)),
+    )
+
+    val (results, _) = startCollecting()
+
+    assertEquals(listOf(organizedLastWeek, tomorrow, memberInTwoMonths), results.latest.events)
+    assertEquals(emptySet<String>(), results.latest.unavailableIds)
+    assertFalse(results.latest.waiting)
+    assertFalse(results.latest.failed)
+  }
+
+  @Test
+  fun aRegisteredPrivateEvent_isListedOnce() = runTest {
+    val registeredPrivate = readable("registeredPrivate", Duration.ofDays(1))
+    choose(registeredPrivate)
+
+    val (results, _) = startCollecting()
+
+    assertEquals(listOf(registeredPrivate), results.latest.events)
+    assertEquals(emptySet<String>(), results.latest.pendingIds)
+  }
+
+  @Test
+  fun aNewPrivateEvent_appears_andOneTheStudentCanNoLongerRead_leavesWithoutATrace() = runTest {
+    val (results, _) = startCollecting()
+
+    val created = readable("created", Duration.ofDays(1))
+    events.delegate.seed(created)
+    runCurrent()
+    assertEquals(listOf(created), results.latest.events)
+
+    // The organizer removes the student from the readers: no "unavailable" row, nothing to remove.
+    events.delegate.events[0] = created.copy(allowedUids = listOf("organizer"))
+    events.delegate.seed()
+    runCurrent()
+    assertEquals(emptyList<Event>(), results.latest.events)
+    assertEquals(emptySet<String>(), results.latest.unavailableIds)
+  }
+
+  @Test
+  fun aDeletedPrivateEvent_isUnavailableOnlyIfTheStudentRegisteredForIt() = runTest {
+    val registeredPrivate = readable("registeredPrivate", Duration.ofDays(1))
+    val onlyReadable = readable("onlyReadable", Duration.ofDays(2))
+    choose(registeredPrivate)
+    events.delegate.seed(onlyReadable)
+    val (results, _) = startCollecting()
+    assertEquals(listOf(registeredPrivate, onlyReadable), results.latest.events)
+
+    events.delegate.remove(registeredPrivate.id)
+    events.delegate.remove(onlyReadable.id)
+    runCurrent()
+
+    assertEquals(emptyList<Event>(), results.latest.events)
+    // Only the registration can be removed (Remove cancels it).
+    assertEquals(setOf(registeredPrivate.id), results.latest.unavailableIds)
+  }
+
+  @Test
+  fun aRegisteredEventThatCouldNotBeRead_isShownFromThePrivateEvents() = runTest {
+    // The event's own read was denied (it ended with NotFound), but the student may read it now.
+    val registeredPrivate = readable("registeredPrivate", Duration.ofDays(1))
+    choose(registeredPrivate)
+    events.delegate.deniedIds += registeredPrivate.id
+
+    val (results, _) = startCollecting()
+
+    assertEquals(listOf(registeredPrivate), results.latest.events)
+    assertEquals(emptySet<String>(), results.latest.unavailableIds)
+  }
+
+  @Test
+  fun privateEventsThatHaveNotAnsweredYet_areWaiting_butTheRegisteredOnesShow() = runTest {
+    choose(tomorrow)
+    events.privateEvents = flow { awaitCancellation() }
+
+    val (results, _) = startCollecting()
+
+    assertEquals(listOf(tomorrow), results.latest.events)
+    assertTrue(results.latest.waiting)
+  }
+
+  @Test
+  fun registrationsThatHaveNotAnsweredYet_areWaiting_butThePrivateEventsShow() = runTest {
+    val organized = readable("organized", Duration.ofDays(3))
+    events.delegate.seed(organized)
+    val silent =
+        object : RegistrationRepository by registrations {
+          override fun observeMyRegistrations(): Flow<MyRegistrationsResult> = flow {
+            awaitCancellation()
+          }
+        }
+    val results = mutableListOf<ChosenEventsResult>()
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+      ChosenEventsRepository(silent, events).observeChosenEvents().collect { results += it }
+    }
+    runCurrent()
+
+    assertEquals(listOf(organized), results.latest.events)
+    assertTrue(results.latest.waiting)
+  }
+
+  @Test
+  fun offline_cachedPrivateEventsAreListed_fromCache() = runTest {
+    val organized = readable("organized", Duration.ofDays(3))
+    events.delegate.seed(organized)
+    events.delegate.readFromCache = true
+
+    val (results, _) = startCollecting()
+
+    assertEquals(listOf(organized), results.latest.events)
+    assertTrue(results.latest.fromCache)
+  }
+
+  @Test
+  fun aNewCollection_afterAnAccountChange_listsOnlyTheNewAccountsPrivateEvents() = runTest {
+    val mine = readable("mine", Duration.ofDays(1))
+    val theirs = readable("theirs", Duration.ofDays(2), reader = "next-student")
+    events.delegate.seed(mine, theirs)
+    val (before, first) = startCollecting()
+    assertEquals(listOf(mine), before.latest.events)
+    first.cancel()
+
+    registrations.currentUid = "next-student"
+    events.delegate.currentUid = "next-student"
+    val (results, _) = startCollecting()
+
+    assertEquals(listOf(theirs), results.latest.events)
+  }
+
   /**
    * Counts the listeners [ChosenEventsRepository] starts on [delegate]: [started] lists the IDs in
    * start order and [active] how many are still running. An ID in [silentIds] never answers, like a
-   * read still waiting for the server.
+   * read still waiting for the server. The private events come from [privateEvents] when it is set.
    */
   private class CountingEventRepository(val delegate: FakeEventRepository) :
       EventRepository by delegate {
@@ -311,6 +534,11 @@ class ChosenEventsRepositoryTest {
       private set
 
     val silentIds = mutableSetOf<String>()
+
+    var privateEvents: Flow<PrivateEventsResult>? = null
+
+    override fun getReadablePrivateEvents(): Flow<PrivateEventsResult> =
+        privateEvents ?: delegate.getReadablePrivateEvents()
 
     override fun getEvent(id: String): Flow<EventResult> {
       val source =

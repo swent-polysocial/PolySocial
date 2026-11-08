@@ -1,10 +1,13 @@
 // Contributors: Claude Opus 5.5 (medium) (wrote these tests, #204).
+// Contributors: Claude (Opus 5.5, Anthropic) tested private events in My events (split, count,
+// partial failures, Retry, loading and timeout), #320.
 package com.polysocial.ui.event.list
 
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.EventResult
 import com.polysocial.model.event.FakeEventRepository
+import com.polysocial.model.event.PrivateEventsResult
 import com.polysocial.model.event.TEST_NOW
 import com.polysocial.model.event.validEvent
 import com.polysocial.model.network.NetworkMonitor
@@ -22,6 +25,8 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -37,12 +42,22 @@ class MyEventsViewModelTest {
   private val registrations = FakeRegistrationRepository(currentUid = STUDENT)
   private val fakeEvents = FakeEventRepository(currentUid = STUDENT)
 
-  /** The fake events, except that an ID in [silentIds] never answers, like a late server. */
+  /**
+   * The fake events, except that an ID in [silentIds] never answers, like a late server, an ID in
+   * [lateEvents] answers once its value is set, and the private events come from [privateEvents]
+   * when it is set.
+   */
   private val silentIds = mutableSetOf<String>()
+  private val lateEvents = mutableMapOf<String, MutableStateFlow<EventResult?>>()
+  private var privateEvents: Flow<PrivateEventsResult>? = null
   private val events =
       object : EventRepository by fakeEvents {
         override fun getEvent(id: String): Flow<EventResult> =
-            if (id in silentIds) flow { awaitCancellation() } else fakeEvents.getEvent(id)
+            lateEvents[id]?.filterNotNull()
+                ?: if (id in silentIds) flow { awaitCancellation() } else fakeEvents.getEvent(id)
+
+        override fun getReadablePrivateEvents(): Flow<PrivateEventsResult> =
+            privateEvents ?: fakeEvents.getReadablePrivateEvents()
       }
 
   /** A clock the tests move forward, starting at [TEST_NOW]. */
@@ -68,6 +83,10 @@ class MyEventsViewModelTest {
   private val tomorrow = event("tomorrow", Duration.ofDays(1))
   private val inTwoMonths = event("inTwoMonths", Duration.ofDays(60))
   private val lastWeek = event("lastWeek", Duration.ofDays(-7))
+
+  /** A private event the student may read (they organize it, are a member or were approved). */
+  private fun readable(id: String, startsIn: Duration) =
+      event(id, startsIn).copy(isPrivate = true, allowedUids = listOf("organizer", STUDENT))
 
   private fun choose(vararg chosen: Event) {
     fakeEvents.seed(*chosen)
@@ -391,6 +410,189 @@ class MyEventsViewModelTest {
     scheduler.advanceTimeBy(MyEventsViewModel.LOAD_TIMEOUT.inWholeMilliseconds + 1)
 
     assertEquals(MyEventsList.OfflineNothingSaved, viewModel.list)
+  }
+
+  @Test
+  fun privateEventsTheStudentMayRead_areSplitAndCounted_withTheRegisteredOnes() {
+    val organized = readable("organized", Duration.ofDays(3))
+    val organizedLastMonth = readable("organizedLastMonth", Duration.ofDays(-30))
+    choose(tomorrow, lastWeek)
+    fakeEvents.seed(organized, organizedLastMonth)
+
+    val viewModel = createViewModel()
+
+    assertEquals(listOf(tomorrow, organized), viewModel.events.upcoming)
+    assertEquals(listOf(lastWeek, organizedLastMonth), viewModel.events.past)
+    assertEquals(2, viewModel.state.value.upcomingCount)
+    assertEquals(false, viewModel.events.incomplete)
+  }
+
+  @Test
+  fun aRegisteredPrivateEvent_isShownAndCountedOnce() {
+    choose(readable("registeredPrivate", Duration.ofDays(1)))
+
+    val viewModel = createViewModel()
+
+    assertEquals(listOf("registeredPrivate"), viewModel.events.upcoming.map { it.id })
+    assertEquals(1, viewModel.state.value.upcomingCount)
+  }
+
+  @Test
+  fun aNewPrivateEvent_shows_andOneThatIsDeleted_leavesWithNothingToRemove() {
+    val viewModel = createViewModel()
+    assertEquals(MyEventsList.Empty, viewModel.list)
+
+    val created = readable("created", Duration.ofDays(1))
+    fakeEvents.seed(created)
+    runPending()
+    assertEquals(listOf(created), viewModel.events.upcoming)
+
+    fakeEvents.remove(created.id)
+    runPending()
+    assertEquals(MyEventsList.Empty, viewModel.list)
+  }
+
+  @Test
+  fun failedPrivateEvents_showTheRegisteredOnes_asIncomplete_andRetryReadsBothAgain() {
+    choose(tomorrow)
+    fakeEvents.privateEventsFailure = true
+    val viewModel = createViewModel()
+
+    assertEquals(listOf(tomorrow), viewModel.events.upcoming)
+    assertEquals(true, viewModel.events.incomplete)
+    // Figma omits an incomplete count.
+    assertNull(viewModel.state.value.upcomingCount)
+
+    fakeEvents.privateEventsFailure = false
+    val organized = readable("organized", Duration.ofDays(3))
+    fakeEvents.seed(organized)
+    viewModel.retry()
+    // The events stay on screen while they are read again.
+    assertEquals(listOf(tomorrow), viewModel.events.upcoming)
+    runPending()
+
+    assertEquals(listOf(tomorrow, organized), viewModel.events.upcoming)
+    assertEquals(false, viewModel.events.incomplete)
+    assertEquals(2, viewModel.state.value.upcomingCount)
+  }
+
+  @Test
+  fun failedRegistrations_showThePrivateEvents_asIncomplete() {
+    val organized = readable("organized", Duration.ofDays(3))
+    fakeEvents.seed(organized)
+    registrations.readFailure = true
+
+    val viewModel = createViewModel()
+
+    assertEquals(listOf(organized), viewModel.events.upcoming)
+    assertEquals(true, viewModel.events.incomplete)
+  }
+
+  @Test
+  fun bothReadsFailing_isAnError() {
+    registrations.readFailure = true
+    fakeEvents.privateEventsFailure = true
+
+    assertEquals(MyEventsList.Error, createViewModel().list)
+  }
+
+  @Test
+  fun failedPrivateEvents_withNothingRegistered_isAnError_notNothingPlanned() {
+    fakeEvents.privateEventsFailure = true
+
+    assertEquals(MyEventsList.Error, createViewModel().list)
+  }
+
+  @Test
+  fun failedPrivateEvents_keepLoadingWhileARegisteredEventLoads_thenShowItAsIncomplete() {
+    choose(tomorrow)
+    fakeEvents.privateEventsFailure = true
+    val answer = MutableStateFlow<EventResult?>(null)
+    lateEvents[tomorrow.id] = answer
+    val viewModel = newViewModel()
+    scheduler.runCurrent()
+    assertEquals(MyEventsList.Loading, viewModel.list)
+
+    answer.value = EventResult.Found(tomorrow, fromCache = false)
+    scheduler.runCurrent()
+
+    assertEquals(listOf(tomorrow), viewModel.events.upcoming)
+    assertEquals(true, viewModel.events.incomplete)
+  }
+
+  @Test
+  fun failedPrivateEvents_keepLoadingWhileTheRegistrationsAreSilent_untilTheTimeout() {
+    fakeEvents.privateEventsFailure = true
+    val viewModel = viewModelWithSilentRegistrations()
+
+    scheduler.advanceTimeBy(MyEventsViewModel.LOAD_TIMEOUT.inWholeMilliseconds - 1)
+    assertEquals(MyEventsList.Loading, viewModel.list)
+
+    scheduler.advanceTimeBy(2)
+    assertEquals(MyEventsList.Error, viewModel.list)
+  }
+
+  @Test
+  fun theCount_isOmittedUntilBothReadsHaveAnswered() {
+    choose(tomorrow)
+    val answer = MutableStateFlow<PrivateEventsResult?>(null)
+    privateEvents = answer.filterNotNull()
+    val viewModel = newViewModel()
+    scheduler.runCurrent()
+    assertEquals(listOf(tomorrow), viewModel.events.upcoming)
+    assertNull(viewModel.state.value.upcomingCount)
+
+    answer.value = PrivateEventsResult.Events(emptyList(), fromCache = false)
+    scheduler.runCurrent()
+
+    assertEquals(1, viewModel.state.value.upcomingCount)
+  }
+
+  @Test
+  fun nothingRegistered_whileThePrivateEventsLoad_isLoading_untilTheTimeout() {
+    privateEvents = flow { awaitCancellation() }
+    val viewModel = newViewModel()
+
+    scheduler.advanceTimeBy(MyEventsViewModel.LOAD_TIMEOUT.inWholeMilliseconds - 1)
+    assertEquals(MyEventsList.Loading, viewModel.list)
+
+    scheduler.advanceTimeBy(2)
+    assertEquals(MyEventsList.Error, viewModel.list)
+  }
+
+  @Test
+  fun silentPrivateEvents_areIncompleteAfterTheTimeout_andALateAnswerStillShows() {
+    choose(tomorrow)
+    val answer = MutableStateFlow<PrivateEventsResult?>(null)
+    privateEvents = answer.filterNotNull()
+    val viewModel = newViewModel()
+    scheduler.runCurrent()
+    assertEquals(listOf(tomorrow), viewModel.events.upcoming)
+    assertEquals(false, viewModel.events.incomplete)
+
+    runPending()
+    assertEquals(true, viewModel.events.incomplete)
+
+    val organized = readable("organized", Duration.ofDays(3))
+    answer.value = PrivateEventsResult.Events(listOf(organized), fromCache = false)
+    scheduler.runCurrent()
+
+    assertEquals(listOf(tomorrow, organized), viewModel.events.upcoming)
+    assertEquals(false, viewModel.events.incomplete)
+  }
+
+  @Test
+  fun offline_cachedPrivateEventsShow_withTheOfflineBanner() {
+    val organized = readable("organized", Duration.ofDays(3))
+    fakeEvents.seed(organized)
+    fakeEvents.readFromCache = true
+    registrations.readFromCache = true
+    online = false
+
+    val viewModel = createViewModel()
+
+    assertEquals(listOf(organized), viewModel.events.upcoming)
+    assertEquals(true, viewModel.events.isOffline)
   }
 
   /** A view model whose registrations never answer, like a server that stays silent. */

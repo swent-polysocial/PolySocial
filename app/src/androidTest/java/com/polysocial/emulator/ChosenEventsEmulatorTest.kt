@@ -1,4 +1,5 @@
 // Contributors: Claude Opus 5.5 (medium) (chosen events against the rules, #203).
+// Contributors: Claude (Opus 5.5, Anthropic) tested readable private events listed once, #320.
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -20,6 +21,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -27,8 +29,8 @@ import org.junit.runner.RunWith
 
 /**
  * Tests [ChosenEventsRepository] on the real Firestore repositories against the Firestore and Auth
- * emulators, so the registrations query and the event reads run under the real Security Rules.
- * Events and registrations are seeded as an admin would, bypassing the rules.
+ * emulators, so the registrations query, the event reads and the private events query run under the
+ * real Security Rules. Events and registrations are seeded as an admin would, bypassing the rules.
  */
 @EmulatorTest
 @RunWith(AndroidJUnit4::class)
@@ -64,12 +66,13 @@ class ChosenEventsEmulatorTest {
           mapOf("uid" to uid, "registeredAt" to NOW),
       )
 
-  /** The first result where every registered event has answered from the server. */
+  /** The first result where both reads and every registered event have answered from the server. */
   private suspend fun settled(): ChosenEventsResult.Events =
       withTimeout(TIMEOUT_MS) {
         val result =
             repository.observeChosenEvents().first {
-              it !is ChosenEventsResult.Events || (!it.fromCache && it.pendingIds.isEmpty())
+              it !is ChosenEventsResult.Events ||
+                  (!it.fromCache && !it.waiting && it.pendingIds.isEmpty())
             }
         assertTrue("Expected events, got $result", result is ChosenEventsResult.Events)
         result as ChosenEventsResult.Events
@@ -113,6 +116,27 @@ class ChosenEventsEmulatorTest {
     assertEquals(listOf("readable"), result.events.map { it.id })
     assertEquals(setOf("private", "deleted"), result.unavailableIds)
   }
+
+  @Test
+  fun privateEventsTheStudentMayRead_areListedOnce_withoutRegistering() = runBlocking {
+    val uid = emulator.signInVerifiedUser(STUDENT_EMAIL).uid
+    seed("registered", event(Instant.parse("2030-03-02T18:00:00Z")).allowing(uid))
+    seed("organized", event(Instant.parse("2030-01-15T18:00:00Z")).organizedBy(uid))
+    seed("member", event(Instant.parse("2030-06-01T18:00:00Z")).allowing(uid))
+    // Another student's private event, and a public one nobody registered for.
+    seed("theirs", event(Instant.parse("2030-03-03T18:00:00Z")).allowing(OTHER_STUDENT_UID))
+    seed("public", event(Instant.parse("2030-03-04T18:00:00Z")))
+    seedRegistration("registered", uid)
+
+    val result = settled()
+
+    assertEquals(listOf("organized", "registered", "member"), result.events.map { it.id })
+    assertEquals(emptySet<String>(), result.unavailableIds)
+    assertFalse(result.failed)
+  }
+
+  private fun Event.organizedBy(uid: String) =
+      copy(isPrivate = true, createdBy = uid, organizerIds = listOf(uid), allowedUids = listOf(uid))
 
   private fun Event.allowing(uid: String) = copy(isPrivate = true, allowedUids = allowedUids + uid)
 

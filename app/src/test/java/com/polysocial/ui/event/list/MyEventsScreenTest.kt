@@ -1,4 +1,6 @@
 // Contributors: Claude Opus 5.5 (medium) (wrote these screen tests, #204).
+// Contributors: Claude (Opus 5.5, Anthropic) tested the "couldn't be loaded" row and that cards
+// offer no Remove, #320.
 package com.polysocial.ui.event.list
 
 import android.content.Context
@@ -92,9 +94,18 @@ class MyEventsScreenTest {
       unavailableIds: List<String> = emptyList(),
       missingCount: Int = 0,
       isOffline: Boolean = false,
+      incomplete: Boolean = false,
   ) =
       MyEventsUiState(
-          MyEventsList.Events(upcoming, past, unavailableIds, missingCount, TEST_NOW, isOffline)
+          MyEventsList.Events(
+              upcoming,
+              past,
+              unavailableIds,
+              missingCount,
+              TEST_NOW,
+              isOffline,
+              incomplete,
+          )
       )
 
   private fun scrollTo(tag: String) =
@@ -243,6 +254,66 @@ class MyEventsScreenTest {
     }
     val switches = dashes.zipWithNext().count { (a, b) -> a != b }
     assertTrue("only $switches switches between dashes and gaps", switches >= 4)
+  }
+
+  @Test
+  fun aCard_offersNoRemove_onlyAnUnavailableRegistrationDoes() {
+    show(loaded(past = emptyList(), unavailableIds = listOf("gone")))
+
+    // A card can be a private event the student only may read: it never offers to cancel.
+    composeTestRule.onAllNodesWithTag(MyEventsTags.remove(running.id)).assertCountEquals(0)
+    composeTestRule.onAllNodesWithTag(MyEventsTags.remove(cineClub.id)).assertCountEquals(0)
+    scrollTo(MyEventsTags.remove("gone"))
+    composeTestRule.onNodeWithTag(MyEventsTags.remove("gone")).assertIsDisplayed()
+  }
+
+  @Test
+  fun anIncompleteList_saysSomeEventsCouldNotBeLoaded_andRetryReadsAgain() {
+    show(loaded(past = emptyList(), incomplete = true))
+
+    scrollTo(MyEventsTags.INCOMPLETE)
+    composeTestRule.onNodeWithText(string(R.string.my_events_incomplete_title)).assertIsDisplayed()
+    composeTestRule.onNodeWithText(string(R.string.my_events_incomplete_body)).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(MyEventsTags.INCOMPLETE_RETRY).performClick()
+
+    assertEquals(1, retries)
+  }
+
+  @Test
+  fun online_anIncompleteList_showsOnlyTheIncompleteRow_notAlsoTheNotLoadedOne() {
+    // One card only, so both rows would be on screen (composed) if they were there.
+    show(
+        loaded(upcoming = listOf(running), past = emptyList(), missingCount = 1, incomplete = true)
+    )
+
+    composeTestRule.onNodeWithTag(MyEventsTags.INCOMPLETE).assertIsDisplayed()
+    composeTestRule.onAllNodesWithTag(MyEventsTags.MISSING).assertCountEquals(0)
+  }
+
+  @Test
+  fun offline_anIncompleteList_stillSaysWhichEventsAreNotSaved() {
+    show(
+        loaded(
+            upcoming = listOf(running),
+            past = emptyList(),
+            missingCount = 1,
+            isOffline = true,
+            incomplete = true,
+        )
+    )
+
+    composeTestRule
+        .onNodeWithText(context.resources.getQuantityString(R.plurals.my_events_not_saved, 1, 1))
+        .assertIsDisplayed()
+    composeTestRule.onNodeWithTag(MyEventsTags.INCOMPLETE).assertIsDisplayed()
+  }
+
+  @Test
+  fun aCompleteList_hasNoIncompleteRow() {
+    // One card only, so the row would be on screen (composed) if it were there.
+    show(loaded(upcoming = listOf(running), past = emptyList()))
+
+    composeTestRule.onAllNodesWithTag(MyEventsTags.INCOMPLETE).assertCountEquals(0)
   }
 
   @Test
