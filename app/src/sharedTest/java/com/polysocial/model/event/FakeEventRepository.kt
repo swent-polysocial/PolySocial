@@ -2,6 +2,7 @@
 // pending save, #46, and reading one event, #112; the ID guard, #112); Mohamed Khellaf
 // (reviewed). Claude (updating and deleting, #130; an association's own events, #132); Franciszek
 // Najda (reviewed).
+// Contributors: Claude (Opus 5.5, Anthropic) added the readable private events to this fake, #320.
 package com.polysocial.model.event
 
 import java.time.Instant
@@ -62,6 +63,12 @@ class FakeEventRepository(
    * deny.
    */
   var ownEventsFailure = false
+
+  /**
+   * When true, [getReadablePrivateEvents] emits [PrivateEventsResult.Error], like a query the rules
+   * deny.
+   */
+  var privateEventsFailure = false
 
   /** The `fromCache` flag the event flows report, to simulate being offline. */
   var readFromCache = false
@@ -166,6 +173,24 @@ class FakeEventRepository(
           events
               .filter { it.createdBy == uid && it.isAssociationEvent }
               .sortedBy { it.startTime },
+          readFromCache,
+      )
+    }
+  }
+
+  /**
+   * Emits the stored private events whose `allowedUids` list [currentUid], sorted by start time
+   * (then ID), and again on changes. The user is read when collection starts. Nobody signed in, or
+   * [privateEventsFailure], is [PrivateEventsResult.Error], like the real repository.
+   */
+  override fun getReadablePrivateEvents(): Flow<PrivateEventsResult> {
+    val uid = currentUid
+    if (uid == null || privateEventsFailure) return flowOf(PrivateEventsResult.Error)
+    return changes.map {
+      PrivateEventsResult.Events(
+          events
+              .filter { it.isPrivate && uid in it.allowedUids }
+              .sortedWith(compareBy({ it.startTime }, { it.id })),
           readFromCache,
       )
     }

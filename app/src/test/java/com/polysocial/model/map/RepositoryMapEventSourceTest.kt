@@ -1,6 +1,7 @@
 // Contributors: OpenAI Codex (repository-to-map stream tests for #50; location fakes for #51);
 // Claude (getEvent stub, #112; update and delete stubs, #130; own association events stub, #132;
 // the association names dependency, #128).
+// Contributors: Claude (Opus 5.5, Anthropic) stubbed the readable private events, #320.
 package com.polysocial.model.map
 
 import com.polysocial.model.association.FakeAssociationNames
@@ -11,6 +12,7 @@ import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.EventResult
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.OwnEventsResult
+import com.polysocial.model.event.PrivateEventsResult
 import com.polysocial.model.event.PublicEventsResult
 import com.polysocial.model.event.TEST_NOW
 import com.polysocial.model.event.UpdateEventResult
@@ -148,6 +150,9 @@ class RepositoryMapEventSourceTest {
               error("This test only observes events")
 
           override fun getOwnAssociationEvents(): Flow<OwnEventsResult> =
+              error("This test only observes public events")
+
+          override fun getReadablePrivateEvents(): Flow<PrivateEventsResult> =
               error("This test only observes public events")
 
           override fun getUpcomingPublicEvents(windowDays: Int): Flow<PublicEventsResult> = flow {

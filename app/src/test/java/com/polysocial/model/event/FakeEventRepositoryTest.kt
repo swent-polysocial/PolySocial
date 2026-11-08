@@ -1,5 +1,6 @@
 // Contributors: Claude (wrote these tests of the fake's getEvent contract, #112; updateEvent and
 // deleteEvent, #130; its own association events, #132); Franciszek Najda (reviewed #130).
+// Contributors: Claude (Opus 5.5, Anthropic) tested the fake's readable private events, #320.
 package com.polysocial.model.event
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -13,8 +14,9 @@ import org.junit.Test
 
 /**
  * Checks that [FakeEventRepository] follows the [EventRepository] contracts of
- * [EventRepository.getEvent], [EventRepository.updateEvent], [EventRepository.deleteEvent] and
- * [EventRepository.getOwnAssociationEvents], since the ViewModel tests rely on them.
+ * [EventRepository.getEvent], [EventRepository.updateEvent], [EventRepository.deleteEvent],
+ * [EventRepository.getOwnAssociationEvents] and [EventRepository.getReadablePrivateEvents], since
+ * the ViewModel tests rely on them.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class FakeEventRepositoryTest {
@@ -165,5 +167,35 @@ class FakeEventRepositoryTest {
     repository.ownEventsFailure = false
     repository.currentUid = null
     assertEquals(listOf(OwnEventsResult.Error), repository.getOwnAssociationEvents().toList())
+  }
+
+  @Test
+  fun getReadablePrivateEvents_emitsOnlyThePrivateEventsListingTheUserSortedByStart() = runTest {
+    val reader = "test-creator"
+    val later =
+        validEvent(startTime = TEST_NOW.plusSeconds(7200))
+            .copy(id = "later", isPrivate = true, allowedUids = listOf("other", reader))
+    val sooner = later.copy(id = "sooner", startTime = TEST_NOW.plusSeconds(3600))
+    repository.seed(
+        later,
+        sooner,
+        later.copy(id = "notAllowed", allowedUids = listOf("other")),
+        later.copy(id = "public", isPrivate = false),
+    )
+
+    assertEquals(
+        PrivateEventsResult.Events(listOf(sooner, later), fromCache = false),
+        repository.getReadablePrivateEvents().first(),
+    )
+  }
+
+  @Test
+  fun getReadablePrivateEvents_signedOutOrFailing_isAnErrorThatEnds() = runTest {
+    repository.privateEventsFailure = true
+    assertEquals(listOf(PrivateEventsResult.Error), repository.getReadablePrivateEvents().toList())
+
+    repository.privateEventsFailure = false
+    repository.currentUid = null
+    assertEquals(listOf(PrivateEventsResult.Error), repository.getReadablePrivateEvents().toList())
   }
 }
