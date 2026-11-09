@@ -1,4 +1,4 @@
-// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143; publicProfiles/{uid} tests, written test-first, #229; reads by ID only and the fixed section and year lists, after review, #229; private edits keep the public copy, and deleted accounts stay deleted, after review, #229; interests from the fixed list, test-first, #230; any code read in the list check, after review, #230); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121); Claude (Opus 5.5, Anthropic) (event group and groupMembers marker tests, #232, with more after review; group chat message tests, #237, and a deleted account's messages, after review).
+// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143; publicProfiles/{uid} tests, written test-first, #229; reads by ID only and the fixed section and year lists, after review, #229; private edits keep the public copy, and deleted accounts stay deleted, after review, #229; interests from the fixed list, test-first, #230; any code read in the list check, after review, #230); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121; deleted accounts can't register, #275); Claude (Opus 5.5, Anthropic) (event group and groupMembers marker tests, #232, with more after review; group chat message tests, #237, and a deleted account's messages, after review).
 // Contributors: Claude (Opus 5.5, Anthropic) (a non-EPFL association in allowedUids can't run My events' private query, #320).
 const { after, before, beforeEach, test } = require("node:test");
 const { readFileSync } = require("node:fs");
@@ -1733,6 +1733,14 @@ test("a student can't register for a private event they aren't allowed in", asyn
 
 test("a student can't register for an event that doesn't exist", async () => {
   await assertFails(setDoc(doc(studentDb("u1"), "events/missing/attendees/u1"), registration("u1")));
+});
+
+// deleteAccount writes the marker, then deletes the student's registrations, then their Auth user
+// (#275). Their ID token stays valid meanwhile, so the rules must refuse a new registration.
+test("a deleted account can't register again with its still-valid token", async () => {
+  await seedDeletedAccount("u1");
+  await assertFails(setDoc(doc(studentDb("u1"), "events/e1/attendees/u1"), registration("u1")));
+  await assertSucceeds(setDoc(doc(studentDb("u3"), "events/e1/attendees/u3"), registration("u3")));
 });
 
 test("a student can't register another student", async () => {
