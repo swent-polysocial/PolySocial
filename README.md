@@ -14,6 +14,7 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (deleteAccount deploy status, budget alert and image cleanup policy, 2026-11-05). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the Seeding demo data section, #243). -->
 <!-- Contributors: Claude (Fable 5.2, Anthropic) (Features table statuses, section order and the move of behavior notes to docs/App-behavior.md, #340; review fixes by Claude (Opus 5.5, Anthropic)). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (the deleteEventRegistrations trigger and registrations in deleteAccount, #275). -->
 
 # PolySocial
 
@@ -64,7 +65,7 @@ How the privacy notice, the one-off location read and the startup routing behave
 ## Tech stack
 
 - **Kotlin** and **Jetpack Compose** (Material 3), **MVVM** with `StateFlow` UI state; dependency injection with **Hilt**
-- **Firebase:** Authentication, Cloud Firestore (with offline persistence), Cloud Storage for photos, Cloud Functions (account deletion), Local Emulator Suite for tests
+- **Firebase:** Authentication, Cloud Firestore (with offline persistence), Cloud Storage for photos, Cloud Functions (account deletion, and registrations deleted with their event), Local Emulator Suite for tests
 - **Maps:** Mapbox Maps SDK and its Compose extension; **Nominatim / OpenStreetMap** for geocoding
 - **Device:** GPS (one-off location), CameraX + ML Kit for QR codes, WorkManager for reminders
 - **Quality:** JUnit, Robolectric, Kaspresso, JaCoCo coverage, SonarCloud, ktfmt, GitHub Actions CI
@@ -172,19 +173,22 @@ firebase deploy --only firestore:indexes --project <project-id>   # firebase/fir
 
 ## Cloud Functions
 
-Server code lives in `firebase/functions` (plain JavaScript, Node.js 22, region `europe-west6`). Today it has one callable function, **`deleteAccount`**: it deletes the signed-in user's private profile `users/{uid}` and public profile `publicProfiles/{uid}` together, with an empty `deletedAccounts/{uid}` marker that stops the user's still-valid ID token from recreating them, then their Firebase Auth user, and returns `{ deleted: true }` only once all are gone. It refuses a sign-in older than 5 minutes (`failed-precondition`, details `recent-login-required`) and association accounts (`failed-precondition`, details `association`: they ask the PolySocial team through the privacy contact). Each step can be retried safely. Events the user created are kept. The Admin SDK bypasses the Security Rules, so the function itself checks who may delete what.
+Server code lives in `firebase/functions` (plain JavaScript, Node.js 22). It has two functions:
+
+- the callable **`deleteAccount`** (region `europe-west6`): it deletes the signed-in user's private profile `users/{uid}` and public profile `publicProfiles/{uid}` together, with an empty `deletedAccounts/{uid}` marker that stops the user's still-valid ID token from recreating them or registering for an event, then their registrations for events, then their Firebase Auth user, and returns `{ deleted: true }` only once all are gone. It refuses a sign-in older than 5 minutes (`failed-precondition`, details `recent-login-required`) and association accounts (`failed-precondition`, details `association`: they ask the PolySocial team through the privacy contact). Each step can be retried safely. Events the user created are kept. The Admin SDK bypasses the Security Rules, so the function itself checks who may delete what.
+- the Firestore trigger **`deleteEventRegistrations`** (region `europe-west1`, because Eventarc delivers the `eur3` database's events only to `europe-west1` or `europe-west4`): when `events/{eventId}` is deleted, it deletes the event's registrations `events/{eventId}/attendees/*`. It is deployed with retries, so a failed run is retried until it succeeds.
 
 Install the packages once (Node.js **22.12 or newer**: `firebase-admin` depends on `jwks-rsa`, which needs `^20.19 || ^22.12 || >=23`), then run the unit tests, which use fakes and need no emulator:
 
 ```bash
 npm ci --prefix firebase/functions
-node firebase/functions/deleteAccountHandler.test.js
+node --test firebase/functions/deleteAccountHandler.test.js firebase/functions/registrations.test.js
 ```
 
-The emulator test calls the function over HTTP, like the app, with the Auth, Firestore and Functions emulators:
+The emulator tests call `deleteAccount` over HTTP, like the app, and delete events to run the trigger, with the Auth, Firestore and Functions emulators (one file at a time, since each clears the emulators):
 
 ```bash
-firebase emulators:exec --project demo-polysocial --only firestore,auth,functions "node firebase/functions/deleteAccount.emulator.test.js"
+firebase emulators:exec --project demo-polysocial --only firestore,auth,functions "node --test --test-concurrency=1 firebase/functions/*.emulator.test.js"
 ```
 
 Use the npm Firebase CLI (`npm install -g firebase-tools`, as CI does) with Node.js 22.12 or newer. The standalone CLI (`curl -sL firebase.tools | bash`) ignores the installed Node.js and runs the function with its own bundled Node 20, which fails to load the function (`ERR_REQUIRE_ESM`) before any test runs; the same applies to the deploy below, which loads the code locally first. The emulator warns if your Node.js isn't version 22; the tests still run on a newer one.
@@ -196,9 +200,9 @@ npm ci --prefix firebase/functions
 firebase deploy --only functions --project <project-id>
 ```
 
-Keep `--only functions`: a plain `firebase deploy` would also deploy the Security Rules and indexes. The app calls the function in `europe-west6`; if the region changes, change it in both `firebase/functions/deleteAccountHandler.js` (`REGION`) and the app.
+Keep `--only functions`: a plain `firebase deploy` would also deploy the Security Rules and indexes. The app calls `deleteAccount` in `europe-west6`; if the region changes, change it in both `firebase/functions/deleteAccountHandler.js` (`REGION`) and the app. The first deploy of `deleteEventRegistrations` (#275) enables Eventarc and grants its service agent access; if it fails because those permissions are still propagating, run the same deploy again a few minutes later.
 
-Each deploy also stores the function's image in Artifact Registry. `europe-west6` deletes images older than 1 day, which keeps it within the free tier; a new region needs the same policy (`firebase functions:artifacts:setpolicy --location <region> --days 1 --project <project-id>`), or the deploy asks for it and, without a terminal, fails after deploying the function.
+Each deploy also stores the function's image in Artifact Registry. `europe-west6` deletes images older than 1 day, which keeps it within the free tier; `europe-west1` (the trigger's region) and any new region need the same policy (`firebase functions:artifacts:setpolicy --location <region> --days 1 --project <project-id>`), or the deploy asks for it and, without a terminal, fails after deploying the function.
 
 **Not in CI yet:** CI runs neither the function's unit tests nor the Functions emulator, and doesn't deploy. Adding them needs a workflow change, which needs team approval, so run both commands above locally and paste their output in any PR that changes `firebase/functions`.
 
