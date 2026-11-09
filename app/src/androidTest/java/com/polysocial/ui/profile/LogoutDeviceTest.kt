@@ -3,6 +3,7 @@
 // Contributors: OpenAI Codex (inject Google entry state after #107 rebase).
 // Contributors: OpenAI Codex (association signup contract, #125).
 // Contributors: OpenAI Codex (device logout proof with fakes and verification wiring, #109).
+// Contributors: Claude (the public profile repair's stub, #291).
 // Contributors: OpenAI Codex (Google sign-in contract compatibility during #106 rebase).
 // Contributors: Claude (Opus 5.5, Anthropic) passed a fake session guard to app start, #198;
 // Mohamed Khellaf (reviewed and revised).
@@ -95,6 +96,9 @@ class LogoutDeviceTest {
 
         override suspend fun updateProfile(profile: UserProfile): UpdateProfileResult =
             error("Unexpected profile write in this test")
+
+        // App start repairs a missing public profile; this student already has one.
+        override suspend fun ensurePublicProfile(uid: String) = EnsurePublicProfileResult.NotNeeded
       }
   private val cache =
       object : SessionCache {
