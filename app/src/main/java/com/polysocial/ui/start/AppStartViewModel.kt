@@ -112,8 +112,10 @@ constructor(
   private var profileRead: Job? = null
 
   /**
-   * The running public profile repair. It ends with the session: [logOut] cancels it, and so does
-   * every new routing ([refresh] after a sign-out from anywhere, a log in or a Retry).
+   * The running public profile repair. [logOut] and every new routing ([refresh] after a sign-out
+   * from anywhere, a log in or a Retry) stop waiting for it. A transaction already sent to
+   * Firestore still finishes on its own; under another account the rules deny it, since it reads
+   * the previous account's `users/{uid}`.
    */
   private var publicProfileRepair: Job? = null
 
