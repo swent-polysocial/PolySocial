@@ -117,7 +117,10 @@ data class MyEventsUiState(
  * all could be shown the list becomes [MyEventsList.OfflineNothingSaved] or [MyEventsList.Error],
  * both with Retry. A late answer still shows. If only one of the two reads fails (or stays silent),
  * the other's events are shown with [MyEventsList.Events.incomplete], and Retry reads both again;
- * with nothing to show yet, it keeps loading while an event can still arrive.
+ * with nothing to show yet, it keeps loading while an event can still arrive. Events already shown
+ * never give way to the spinner, though: while new answers have nothing to show yet (after Retry,
+ * the registrations usually answer before their events), they stay until an answer has something
+ * else to show or [LOAD_TIMEOUT] passes, and past it, with their Retry, if neither read answered.
  *
  * An unavailable event shows no detail; [remove] deletes the student's own registration for it,
  * which works even once the event is deleted. Only registered events can be unavailable: a private
@@ -159,7 +162,8 @@ constructor(
 
   /**
    * Reads the chosen events again. Does nothing unless the list is an error or offline state, or
-   * [MyEventsList.Events.incomplete]; the events already shown then stay until the new answer.
+   * [MyEventsList.Events.incomplete]; the events already shown then stay, without the spinner,
+   * until the new answers replace them (see the class).
    */
   fun retry() {
     when (val list = _state.value.list) {
@@ -248,7 +252,7 @@ constructor(
             result.pendingIds.isEmpty() &&
             !result.waiting &&
             !result.failed
-    setList(
+    val list =
         when {
           // Online, the cache's first answer can be empty until the server's arrives.
           nothingChosen && result.fromCache && !isOffline && !timedOut -> MyEventsList.Loading
@@ -275,7 +279,10 @@ constructor(
             )
           }
         }
-    )
+    // Events already shown (say, before Retry) stay instead of the spinner: the next answer that
+    // isn't loading, or the timeout, replaces them.
+    if (list == MyEventsList.Loading && _state.value.list is MyEventsList.Events) return
+    setList(list)
   }
 
   /** The list when no chosen event could be shown at all. */

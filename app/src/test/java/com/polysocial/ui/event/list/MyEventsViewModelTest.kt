@@ -60,6 +60,14 @@ class MyEventsViewModelTest {
             privateEvents ?: fakeEvents.getReadablePrivateEvents()
       }
 
+  /** The fake registrations, except that they come from [lateRegistrations] when it is set. */
+  private var lateRegistrations: Flow<MyRegistrationsResult>? = null
+  private val readRegistrations =
+      object : RegistrationRepository by registrations {
+        override fun observeMyRegistrations(): Flow<MyRegistrationsResult> =
+            lateRegistrations ?: registrations.observeMyRegistrations()
+      }
+
   /** A clock the tests move forward, starting at [TEST_NOW]. */
   private val clock =
       object : Clock() {
@@ -95,7 +103,7 @@ class MyEventsViewModelTest {
 
   private fun newViewModel() =
       MyEventsViewModel(
-          ChosenEventsRepository(registrations, events),
+          ChosenEventsRepository(readRegistrations, events),
           registrations,
           network,
           clock,
@@ -474,6 +482,71 @@ class MyEventsViewModelTest {
     assertEquals(listOf(tomorrow, organized), viewModel.events.upcoming)
     assertEquals(false, viewModel.events.incomplete)
     assertEquals(2, viewModel.state.value.upcomingCount)
+  }
+
+  @Test
+  fun retry_keepsTheEventsShown_whileTheRegistrationsAnswerBeforeTheirEvents() {
+    choose(tomorrow)
+    fakeEvents.privateEventsFailure = true
+    val viewModel = createViewModel()
+    val shown = viewModel.events
+    assertEquals(true, shown.incomplete)
+
+    // Like Firestore: the registrations answer first, then the private events, then the event.
+    val eventAnswer = MutableStateFlow<EventResult?>(null)
+    lateEvents[tomorrow.id] = eventAnswer
+    val privateAnswer = MutableStateFlow<PrivateEventsResult?>(null)
+    privateEvents = privateAnswer.filterNotNull()
+    viewModel.retry()
+    scheduler.runCurrent()
+    assertEquals(shown, viewModel.list)
+
+    privateAnswer.value = PrivateEventsResult.Events(emptyList(), fromCache = false)
+    scheduler.runCurrent()
+    assertEquals(shown, viewModel.list)
+
+    eventAnswer.value = EventResult.Found(tomorrow, fromCache = false)
+    scheduler.runCurrent()
+    assertEquals(listOf(tomorrow), viewModel.events.upcoming)
+    assertEquals(false, viewModel.events.incomplete)
+    assertEquals(1, viewModel.state.value.upcomingCount)
+  }
+
+  @Test
+  fun retry_keepsTheEventsShown_whileThePrivateEventsAnswerFirst_withNothing() {
+    choose(tomorrow)
+    fakeEvents.privateEventsFailure = true
+    val viewModel = createViewModel()
+    val shown = viewModel.events
+
+    fakeEvents.privateEventsFailure = false
+    val registrationsAnswer = MutableStateFlow<MyRegistrationsResult?>(null)
+    lateRegistrations = registrationsAnswer.filterNotNull()
+    viewModel.retry()
+    scheduler.runCurrent()
+    assertEquals(shown, viewModel.list)
+
+    registrationsAnswer.value =
+        MyRegistrationsResult.Registrations(setOf(tomorrow.id), fromCache = false)
+    scheduler.runCurrent()
+    assertEquals(listOf(tomorrow), viewModel.events.upcoming)
+    assertEquals(false, viewModel.events.incomplete)
+  }
+
+  @Test
+  fun retry_whoseReadsNeverAnswer_keepsTheEventsShown_withTheirRetry_afterTheTimeout() {
+    choose(tomorrow)
+    fakeEvents.privateEventsFailure = true
+    val viewModel = createViewModel()
+    val shown = viewModel.events
+
+    lateRegistrations = flow { awaitCancellation() }
+    privateEvents = flow { awaitCancellation() }
+    viewModel.retry()
+    scheduler.advanceTimeBy(MyEventsViewModel.LOAD_TIMEOUT.inWholeMilliseconds + 1)
+
+    assertEquals(shown, viewModel.list)
+    assertEquals(true, viewModel.events.incomplete)
   }
 
   @Test
