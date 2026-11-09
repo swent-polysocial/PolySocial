@@ -12,6 +12,7 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the Deploying to Firebase section, #228, and later said any team member deploys; Franciszek Najda (reviewed #228). -->
 <!-- Contributors: Claude (public profiles deleted with the account, #229; the deletion marker and deploy order, after review, #229). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (deleteAccount deploy status, budget alert and image cleanup policy, 2026-11-05). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (the Seeding demo data section, #243). -->
 
 # PolySocial
 
@@ -201,6 +202,33 @@ Keep `--only functions`: a plain `firebase deploy` would also deploy the Securit
 Each deploy also stores the function's image in Artifact Registry. `europe-west6` deletes images older than 1 day, which keeps it within the free tier; a new region needs the same policy (`firebase functions:artifacts:setpolicy --location <region> --days 1 --project <project-id>`), or the deploy asks for it and, without a terminal, fails after deploying the function.
 
 **Not in CI yet:** CI runs neither the function's unit tests nor the Functions emulator, and doesn't deploy. Adding them needs a workflow change, which needs team approval, so run both commands above locally and paste their output in any PR that changes `firebase/functions`.
+
+## Seeding demo data
+
+For demos such as the M2 review (#243), `firebase/functions/scripts/seedDemo.js` fills the project with **fictional** data, so a demo never depends on whatever is in the database: a verified association ("Campus Sounds"), 8 public events over the next week around EPFL (2 of them the association's), 6 fictional students' public profiles and 3 open groups whose members are going. Nobody can sign in as any of them: demo with your own account. Only the venues are real places.
+
+Every document it writes has an ID starting with `demo-`, and it only ever writes or deletes those, by path; nothing else in the project is read or changed. Dates are relative to when it runs (tomorrow to 6 days ahead, Zurich time), so seed again shortly before a demo. Running it again replaces the demo documents, including any change made to them in the app.
+
+It uses the Admin SDK, which bypasses the Security Rules, with **your own Google sign-in**, never a key file. Run it yourself (never from CI or an agent), from the repository root, with an account that can edit the project:
+
+```bash
+npm ci --prefix firebase/functions                     # once
+gcloud auth application-default login                  # once; needs the Google Cloud CLI
+node firebase/functions/scripts/seedDemo.js --project <project-id> --yes            # write or refresh
+node firebase/functions/scripts/seedDemo.js --project <project-id> --remove --yes   # delete it all
+```
+
+`<project-id>` is the `project_id` in your `app/google-services.json`. The script refuses to run without an explicit `--project` and `--yes`, and refuses a `demo-` project outside the emulator. If Google reports a missing quota project, run `gcloud auth application-default set-quota-project <project-id>` once.
+
+Tests (CI doesn't run them, like the Cloud Functions tests; paste their output in a PR that changes the scripts). The emulator test needs the npm Firebase CLI, as in [Cloud Functions](#cloud-functions):
+
+```bash
+node firebase/functions/scripts/demoData.test.js
+node firebase/functions/scripts/seedDemo.test.js
+firebase emulators:exec --project demo-polysocial --only firestore "node firebase/functions/scripts/seedDemo.emulator.test.js"
+```
+
+The `scripts` folder is excluded from the Cloud Functions deploy in `firebase.json`.
 
 ## Verifying an association
 
