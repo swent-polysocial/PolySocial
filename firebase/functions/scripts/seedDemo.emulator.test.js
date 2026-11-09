@@ -101,6 +101,49 @@ test("removing deletes every demo document and nothing else", async () => {
   assert.deepEqual(await existing(OTHERS), OTHERS);
 });
 
+/** A real student going to the demo jam session and joining its group, as the app writes it. */
+async function realStudentJoinsTheJam() {
+  await db.doc("events/demo-event-jam/attendees/real-student").set({ uid: "real-student" });
+  await db.doc("events/demo-event-jam/groupMembers/real-student").set({ groupId: "demo-group-jam" });
+  await db.doc("events/demo-event-jam/groups/demo-group-jam").update({
+    memberUids: ["demo-student-4", "demo-student-1", "demo-student-5", "real-student"],
+  });
+  await db.doc("events/demo-event-jam/groups/real-group").set({ memberUids: ["real-student"] });
+}
+
+const REAL_STUDENT_ON_THE_JAM = [
+  "events/demo-event-jam/attendees/real-student",
+  "events/demo-event-jam/groupMembers/real-student",
+  "events/demo-event-jam/groups/real-group",
+];
+
+test("removing also deletes what real students added under demo events", async () => {
+  await seedDemo(db, NOW);
+  await realStudentJoinsTheJam();
+
+  await removeDemo(db);
+
+  assert.deepEqual(await existing([...demoPaths(), ...REAL_STUDENT_ON_THE_JAM]), []);
+  assert.deepEqual(await existing(OTHERS), OTHERS);
+});
+
+test("seeding again resets the demo events, dropping students who went or joined", async () => {
+  await seedDemo(db, NOW);
+  await realStudentJoinsTheJam();
+
+  await seedDemo(db, NOW);
+
+  assert.deepEqual(await existing(demoPaths()), demoPaths());
+  assert.deepEqual(await existing(REAL_STUDENT_ON_THE_JAM), []);
+  assert.deepEqual((await db.doc("events/demo-event-jam/groups/demo-group-jam").get()).get("memberUids"), [
+    "demo-student-4",
+    "demo-student-1",
+    "demo-student-5",
+  ]);
+  // Another event's registration of the same student is theirs, not the demo's.
+  assert.deepEqual(await existing(OTHERS), OTHERS);
+});
+
 test("removing when nothing was seeded succeeds and changes nothing", async () => {
   await removeDemo(db);
 

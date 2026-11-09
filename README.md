@@ -207,7 +207,7 @@ Each deploy also stores the function's image in Artifact Registry. `europe-west6
 
 For demos such as the M2 review (#243), `firebase/functions/scripts/seedDemo.js` fills the project with **fictional** data, so a demo never depends on whatever is in the database: a verified association ("Campus Sounds"), 8 public events over the next week around EPFL (2 of them the association's), 6 fictional students' public profiles and 3 open groups whose members are going. Nobody can sign in as any of them: demo with your own account. Only the venues are real places.
 
-Every document it writes has an ID starting with `demo-`, and it only ever writes or deletes those, by path; nothing else in the project is read or changed. Dates are relative to when it runs (tomorrow to 6 days ahead, Zurich time), so seed again shortly before a demo. Running it again replaces the demo documents, including any change made to them in the app.
+Every document it writes has an ID starting with `demo-`. Removing (and seeding, which first removes) deletes those, and each demo event **with everything under it, whoever wrote it**: a teammate's "I'm going" or group on a demo event goes too, since it only exists because of a fictional event. Nothing else in the project is read or changed. Dates are relative to when it runs (tomorrow to 6 days ahead, Zurich time), so seed again shortly before a demo; that also resets the scenario, so a demo can start with nobody going.
 
 It uses the Admin SDK, which bypasses the Security Rules, with **your own Google sign-in**, never a key file. Run it yourself (never from CI or an agent), from the repository root, with an account that can edit the project:
 
