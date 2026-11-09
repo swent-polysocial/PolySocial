@@ -1,11 +1,11 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the deleteAccount emulator test, #206; Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (the public profile deleted with the account, #229; profiles can't be saved
-// again once deleted, after review, #229).
+// again once deleted, after review, #229; the user's registrations, #275).
 "use strict";
 
 // Calls the deployed-to-emulator deleteAccount over HTTP, as the Android client does, against the
 // Auth, Firestore and Functions emulators. Run from the repository root (see the README):
-// firebase emulators:exec --project demo-polysocial --only firestore,auth,functions "node firebase/functions/deleteAccount.emulator.test.js"
+// firebase emulators:exec --project demo-polysocial --only firestore,auth,functions "node --test --test-concurrency=1 firebase/functions/*.emulator.test.js"
 const { after, before, beforeEach, test } = require("node:test");
 const assert = require("node:assert/strict");
 const { deleteApp, initializeApp } = require("firebase-admin/app");
@@ -142,6 +142,29 @@ test("a student's profiles and Auth user are deleted, their event is kept", asyn
   assert.equal(await documentExists(`deletedAccounts/${uid}`), true);
   assert.equal(await authUserExists(uid), false);
   assert.equal(await documentExists(`events/event-of-${uid}`), true);
+});
+
+/** Stores a registration `events/{eventId}/attendees/{uid}`, as the app writes it. */
+async function seedRegistration(eventId, uid) {
+  await db.doc(`events/${eventId}/attendees/${uid}`).set({ uid, registeredAt: new Date() });
+}
+
+test("a student's registrations are deleted, other students' are kept", async () => {
+  const uid = await seedUser("student@epfl.ch", { accountType: "student" });
+  const other = await seedUser("other@epfl.ch", { accountType: "student" });
+  await seedRegistration(`event-of-${other}`, uid);
+  await seedRegistration(`event-of-${uid}`, uid);
+  await seedRegistration(`event-of-${other}`, other);
+  const idToken = await signIn("student@epfl.ch");
+
+  const { status } = await callDeleteAccount(idToken);
+
+  assert.equal(status, 200);
+  const left = await db.collectionGroup("attendees").get();
+  assert.deepEqual(
+    left.docs.map((document) => document.ref.path),
+    [`events/event-of-${other}/attendees/${other}`],
+  );
 });
 
 test("an account without a profile is deleted", async () => {

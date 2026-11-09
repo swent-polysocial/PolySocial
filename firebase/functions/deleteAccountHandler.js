@@ -1,9 +1,10 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the deleteAccount handler, #206; Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (the public profile deleted with the account, #229; the deletion marker,
-// after review, #229).
+// after review, #229; the user's registrations, #275).
 "use strict";
 
 const { HttpsError } = require("firebase-functions/v2/https");
+const { deleteUserRegistrations } = require("./registrations");
 
 /**
  * Region of the deleteAccount callable (Zurich). The Android client calls it with
@@ -41,11 +42,14 @@ const TRANSIENT_CODES = new Set([
 
 /**
  * Deletes the signed-in user's account: first their private profile `users/{uid}` and their public
- * profile `publicProfiles/{uid}` (#229), together, then their Firebase Auth user. Returns
- * `{ deleted: true }` only once all are gone. The same transaction writes the deletion marker
- * `deletedAccounts/{uid}`: the deleted user's ID token stays valid until it expires (up to an
- * hour), and the Security Rules refuse to recreate either profile under a marked UID, so another
- * of the user's devices can't bring the public profile back after the deletion (#229 review).
+ * profile `publicProfiles/{uid}` (#229), together, then their registrations for events (#275), then
+ * their Firebase Auth user. Returns `{ deleted: true }` only once all are gone. The same
+ * transaction writes the deletion marker `deletedAccounts/{uid}`: the deleted user's ID token stays
+ * valid until it expires (up to an hour), and the Security Rules refuse to recreate either profile
+ * under a marked UID, so another of the user's devices can't bring the public profile back after
+ * the deletion (#229 review). They refuse a new registration under a marked UID too, which is why
+ * the registrations are deleted after the marker is written: none can be added once they are
+ * deleted.
  *
  * Refuses, before deleting anything:
  * - a call without a signed-in user (`unauthenticated`);
@@ -90,6 +94,7 @@ async function deleteAccountHandler({ auth, db, adminAuth, now, logger }) {
   const uid = auth.uid;
 
   await callBackend("delete-profile", logger, () => deleteStudentProfile(db, uid));
+  await callBackend("delete-registrations", logger, () => deleteUserRegistrations(db, uid));
   await callBackend("delete-auth-user", logger, () => deleteAuthUser(adminAuth, uid));
   return { deleted: true };
 }
