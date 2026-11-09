@@ -1,5 +1,6 @@
 // Contributors: Claude (app start repairs a missing public profile without waiting for it,
-// test-first, #291).
+// test-first, #291); Claude (testing agent: a new start replaces a running repair, and another
+// account's start repairs that account, #291).
 package com.polysocial.ui.start
 
 import com.polysocial.model.association.Association
@@ -122,6 +123,39 @@ class AppStartPublicProfileTest {
 
     assertEquals(1, profiles.ensureCancellations)
     assertEquals(StartDestination.Login, viewModel.destination.value)
+  }
+
+  @Test
+  fun aNewStart_replacesARepairStillRunning() = runTest {
+    profiles.ensureGate = CompletableDeferred()
+    val viewModel = start()
+    advanceUntilIdle()
+
+    viewModel.refresh()
+    advanceUntilIdle()
+
+    // Only one repair at a time: the first one is cancelled, the second one still waits.
+    assertEquals(listOf("u1", "u1"), profiles.ensuredUids)
+    assertEquals(1, profiles.ensureCancellations)
+    assertEquals(StartDestination.Main, viewModel.destination.value)
+  }
+
+  @Test
+  fun anotherStudentLoggingIn_afterLogOut_repairsTheirOwnProfile() = runTest {
+    profiles.ensureGate = CompletableDeferred()
+    val viewModel = start()
+    advanceUntilIdle()
+    viewModel.logOut()
+
+    auth.user = AuthUser(uid = "u2", email = "b@epfl.ch", isEmailVerified = true)
+    profiles.getProfileResult = ProfileResult.Found(student.copy(uid = "u2", email = "b@epfl.ch"))
+    viewModel.refresh()
+    advanceUntilIdle()
+
+    assertEquals(StartDestination.Main, viewModel.destination.value)
+    assertEquals(listOf("u1", "u2"), profiles.ensuredUids)
+    // Only the first account's repair was cancelled; the second one's is still running.
+    assertEquals(1, profiles.ensureCancellations)
   }
 
   @Test
