@@ -111,7 +111,10 @@ constructor(
   /** The running profile read, cancelled by [logOut] so it can't route the signed-out user. */
   private var profileRead: Job? = null
 
-  /** The running public profile repair, cancelled by [logOut] so it ends with the session. */
+  /**
+   * The running public profile repair. It ends with the session: [logOut] cancels it, and so does
+   * every new routing ([refresh] after a sign-out from anywhere, a log in or a Retry).
+   */
   private var publicProfileRepair: Job? = null
 
   private val _accountType = MutableStateFlow(AccountType.STUDENT)
@@ -166,6 +169,7 @@ constructor(
   }
 
   private fun resolve() {
+    publicProfileRepair?.cancel()
     _destination.value = StartDestination.Loading
     _accountType.value = AccountType.STUDENT
     _signupMarkerCleanup.value = SignupMarkerCleanup.NotRequired
@@ -235,7 +239,6 @@ constructor(
 
   /** Starts [UserProfileRepository.ensurePublicProfile] on its own; its result needs no action. */
   private fun repairPublicProfile(uid: String) {
-    publicProfileRepair?.cancel()
     publicProfileRepair = viewModelScope.launch { profiles.ensurePublicProfile(uid) }
   }
 
