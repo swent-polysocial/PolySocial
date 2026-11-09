@@ -1,5 +1,6 @@
 // Contributors: OpenAI Codex (adapted retained-map-detail assertions to the real detail route).
 // Contributors: OpenAI Codex (association tab graphs and retained stack isolation, #140).
+// Contributors: Claude (Opus 5.5, Anthropic) replaced the Hilt-backed association header, #322.
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.layout.Column
@@ -7,6 +8,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
@@ -66,6 +68,7 @@ class AssociationAppShellTest {
               logout = done
               Text("Organization fixture")
             },
+            associationHeader = { title -> Text(stringResource(title)) },
             onLoggedOut = { completions++ },
         )
       }

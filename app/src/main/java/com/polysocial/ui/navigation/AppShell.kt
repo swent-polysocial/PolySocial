@@ -15,7 +15,7 @@
 // deletion, #207; Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (Opus 5.5, Anthropic) opened Find a group from the detail, #233.
 // Contributors: Claude (Opus 5.5, Anthropic) showed an association's own events on its Map tab,
-// #133.
+// #133; its header on the Events and Map tabs, #322.
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.layout.Box
@@ -71,6 +71,7 @@ import com.polysocial.model.user.AccountType
 import com.polysocial.resources.C
 import com.polysocial.ui.association.AssociationShell
 import com.polysocial.ui.association.AssociationTab
+import com.polysocial.ui.association.AssociationTabHeader
 import com.polysocial.ui.association.OrganizationRoute
 import com.polysocial.ui.event.create.CreateEventButton
 import com.polysocial.ui.event.create.CreateEventScreen
@@ -121,7 +122,8 @@ data class EventDetailNavigation(
  * Approved associations use Events, Map and Organization; students retain their four tabs.
  * Organization reuses the Profile graph for its own identity, privacy and cache-first logout. The
  * association's Map shows its own upcoming events (#133) under the app bar, which the students' map
- * leaves out, until #322 gives both association tabs Figma's header.
+ * leaves out. On the association's Events and Map tabs, the app bar shows its header (initials,
+ * name with the Verified tick, and the tab's title, #322) instead of the title alone.
  *
  * Root of the signed-in app: an app bar with the current tab's title and, at the tab's root, its
  * action (see [TabAction]), the current tab's screen, and the bottom navigation bar. The Events tab
@@ -145,6 +147,8 @@ data class EventDetailNavigation(
  *   too.
  * @param editEventContent the Edit event screen, given what leaves it (back to the detail). Tests
  *   replace it, because the real one needs Hilt.
+ * @param associationHeader the verified association's header on its Events and Map tabs, given the
+ *   tab's title (#322). Tests replace it, because the real one needs Hilt.
  */
 @Composable
 fun AppShell(
@@ -180,6 +184,7 @@ fun AppShell(
         { onBack, onDone ->
           FindGroupRoute(onBack = onBack, onDone = onDone)
         },
+    associationHeader: @Composable (title: Int) -> Unit = { title -> AssociationTabHeader(title) },
     onLoggedOut: () -> Unit = {},
     onAccountDeleted: () -> Unit = onLoggedOut,
     organizationContent: @Composable (() -> Unit, () -> Unit) -> Unit = { done, privacy ->
@@ -384,15 +389,20 @@ fun AppShell(
   }
   val topBar: @Composable () -> Unit = {
     // The students' map draws its search where the app bar would be; the association's keeps the
-    // bar for its title, like its Events tab, until #322.
-    if (showBars && !onEventDetail && (association || destination?.route != Tab.MAP.rootRoute))
-        AppBar(
-            title = stringResource(currentTab.presentation(association).label),
-            action = action,
-            onAction = {
-              navController.navigate(currentTab.routeOf(it)) { launchSingleTop = true }
-            },
-        )
+    // bar for its header, like its Events tab.
+    if (showBars && !onEventDetail && (association || destination?.route != Tab.MAP.rootRoute)) {
+      val label = currentTab.presentation(association).label
+      val withHeader =
+          association &&
+              (destination?.route == Tab.EVENTS.rootRoute ||
+                  destination?.route == Tab.MAP.rootRoute)
+      AppBar(
+          title = stringResource(label),
+          action = action,
+          onAction = { navController.navigate(currentTab.routeOf(it)) { launchSingleTop = true } },
+          header = if (withHeader) ({ associationHeader(label) }) else null,
+      )
+    }
   }
   if (association) {
     AssociationShell(
@@ -465,8 +475,14 @@ private fun NavHostController.navigateToTab(tab: Tab) {
   }
 }
 
+/** The tab's app bar: its [title], or [header] in its place when given, and its [action]. */
 @Composable
-private fun AppBar(title: String, action: TabAction?, onAction: (TabAction) -> Unit) {
+private fun AppBar(
+    title: String,
+    action: TabAction?,
+    onAction: (TabAction) -> Unit,
+    header: (@Composable () -> Unit)? = null,
+) {
   // Figma: the title starts 20 dp from the left; the action's 22 dp icon ends 31 dp from the right,
   // centred on the title, inside a 48 dp touch target. The bar keeps that height with or without an
   // action, so the content below doesn't move.
@@ -477,11 +493,20 @@ private fun AppBar(title: String, action: TabAction?, onAction: (TabAction) -> U
               .padding(start = 20.dp, end = 18.dp, top = 8.dp, bottom = 8.dp)
               .heightIn(min = 48.dp)
   ) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.headlineMedium,
-        modifier = Modifier.align(Alignment.CenterStart).testTag(C.Tag.app_bar_title),
-    )
+    if (header != null) {
+      // Leaves room for the action, so a long name is cut before it.
+      Box(
+          Modifier.align(Alignment.CenterStart).padding(end = if (action != null) 56.dp else 0.dp)
+      ) {
+        header()
+      }
+    } else {
+      Text(
+          text = title,
+          style = MaterialTheme.typography.headlineMedium,
+          modifier = Modifier.align(Alignment.CenterStart).testTag(C.Tag.app_bar_title),
+      )
+    }
     if (action != null) {
       IconButton(
           onClick = { onAction(action) },
