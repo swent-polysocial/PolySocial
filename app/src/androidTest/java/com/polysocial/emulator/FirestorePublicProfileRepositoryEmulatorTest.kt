@@ -232,6 +232,11 @@ class FirestorePublicProfileRepositoryEmulatorTest {
 
     assertEquals(EnsurePublicProfileResult.Created, profiles.ensurePublicProfile(legacy.uid))
     assertEquals(EnsurePublicProfileResult.NotNeeded, profiles.ensurePublicProfile(legacy.uid))
+
+    assertEquals(
+        PublicProfileResult.Found(PublicProfile(legacy.uid, "First Student", "IN", "BA3")),
+        publicProfiles.getPublicProfile(legacy.uid),
+    )
   }
 
   @Test
@@ -284,6 +289,8 @@ class FirestorePublicProfileRepositoryEmulatorTest {
   @Test
   fun ensurePublicProfile_aDeletedAccount_isRefused_andGetsNone() = runBlocking {
     // deleteAccount's marker: the deleted user's ID token is still valid for up to an hour.
+    // deleteAccount deletes users/{uid} with it, so this state is artificial: it checks that the
+    // rules' isDeletedAccount refuses the copy even while a private profile is still there.
     val legacy = profileSavedBeforePublicProfiles(FIRST_EMAIL, "First Student")
     emulator.createAsAdmin(DELETED_ACCOUNTS_COLLECTION, legacy.uid, emptyMap())
 
