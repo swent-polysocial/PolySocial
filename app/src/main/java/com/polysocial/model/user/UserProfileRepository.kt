@@ -91,7 +91,9 @@ sealed interface EnsurePublicProfileResult {
 
   /**
    * Any other failure: an unreadable stored profile, or a write the Security Rules deny (for
-   * example a deleted account's, or a stored section the app no longer offers).
+   * example a deleted account's, or a stored section the app no longer offers). An interest code
+   * removed from [INTERESTS] would be denied too: it is dropped from the copy but still stored in
+   * `users/{uid}`, so the two lists differ. Every such failure is retried at each start, quietly.
    */
   data object UnexpectedError : EnsurePublicProfileResult
 }
