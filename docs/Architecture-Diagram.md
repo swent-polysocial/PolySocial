@@ -11,6 +11,7 @@
 <!-- Contributors: OpenAI Codex (Google entry routing for #107). -->
 <!-- Contributors: OpenAI Codex (Sprint 2 architecture, navigation, registration/reminder design and open questions, #139; documented Mapbox renderer/setup decisions and production/privacy open questions, #50); Claude (drafted this page and its diagrams from the README, the Scrum Board and the issue descriptions; association accounts without an EPFL email; Create Event design update, #44; ViewModel rule wording; Security Rules state after #35; the profile step's year question, #34; association badge from the profile, #45; synced the place-name and sign-in decisions with `CONTEXT.md`; association profiles and their rules, #126; association names, #128; open questions on shared association code, #125/#127, and their answers; the Create Event organizer row, #134; routing of association accounts and Edit details, #127; the full name's limit, #143; the map's Details open the event detail, #112; association log in, #208). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (any team member deploys, row 18, #310). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (the missing public profile created at app start, #291). -->
 
 How PolySocial is built, as we currently envision it. The page follows the [Android App Architecture guide](https://developer.android.com/topic/architecture/intro): a **UI layer** (Compose screens and ViewModels), a **domain layer** of pure Kotlin logic, and a **data layer** of repositories in front of Firebase, the map and geocoding services, and the device sensors.
 
@@ -146,7 +147,7 @@ flowchart TB
   vm["<b>per-screen auth ViewModels</b><br/>Idle · Loading · SignedUp · Verified<br/>ResendThrottled · StillUnverified<br/>WrongCredentials · Error"]:::s1
   val["EPFL email check<br/><i>domain</i>"]:::s1
   auth["<b>AuthRepository</b><br/>signUp · logIn · logOut · currentUser<br/>sendVerificationEmail<br/>reloadAndCheckVerified"]:::s1
-  prof["<b>UserProfileRepository</b><br/>createProfile · getProfile<br/>updateProfile"]:::s1
+  prof["<b>UserProfileRepository</b><br/>createProfile · getProfile<br/>updateProfile · ensurePublicProfile, #291"]:::s1
   fa[("Firebase Auth")]:::ext
   fs[("Firestore<br/>users/{uid}<br/>publicProfiles/{uid}, #229")]:::ext
 
@@ -161,6 +162,7 @@ flowchart TB
 - **Result types (#30–#32).** `signUp` returns success, invalid domain, already in use or network error. `logIn` adds wrong credentials. `sendVerificationEmail` has a distinct *throttled* failure for Firebase's too-many-requests error, which the UI shows differently from a real error.
 - **Profile (#34).** `UserProfile` has at least `uid`, `email` and `createdAt`. #45 adds `accountType` (`student` or `association`, default `student`) and `isAssociationVerified` (default `false`). The document ID is always the Auth UID, never a client-generated ID. The profile is created **exactly once, at the first verified entry** (Verify Email "Continue", or app-start routing finding a verified user without a profile), because the Security Rules only allow writes from verified accounts. If account creation fails, no profile is written. If the profile write fails, the user sees an error state. Fields other students may see live in a separate `publicProfiles/{uid}` document (see [5.2](#52-collections-and-key-fields)).
 - **Email verification.** Every student account must have a verified `@epfl.ch` email, and the Security Rules check this whatever the sign-in method. **Associations** have no EPFL email, so they sign up with their own verified email, and they get no access beyond their own `users/{uid}` and `associations/{uid}` until a PolySocial admin verifies them (decision 11). Sprint 1 uses email/password, where Firebase marks the email unverified until the student clicks the link we send, hence the Verify Email screen. Google sign-in (#106) delivers already-verified emails, so those users skip that screen. The rules would not change.
+- **Public profiles of older profiles (#291).** App start (4.3) starts `ensurePublicProfile(uid)` whenever it opens the students' app, without waiting: in one transaction it creates a missing `publicProfiles/{uid}` from the stored `users/{uid}` of a student, and never overwrites one, writes the private profile or gives an association one. A failure opens the app anyway and is retried at the next start. The rules already accept that copy on its own (no rules change).
 - **Log out (#8, #32).** Logging out clears the session, and the next launch routes to Log In.
 
 ### 3.2 Map (Sprint 1)
@@ -342,7 +344,7 @@ flowchart TD
   q3 -- yes --> q4{"Association an admin<br/>hasn't verified?"}
   q4 -- "no, association" --> main
   q4 -- "no, other account" --> q6{"EPFL email?"}
-  q6 -- yes --> main
+  q6 -- "yes, and ensurePublicProfile() without waiting, #291" --> main
   q4 -- yes --> pending["Pending association app, #127<br/>Events · Map · Organization"]:::s1
   pending -- "Log out" --> welcome
   q3 -- "load failed" --> err["Couldn't load your profile<br/>+ Retry, never a blank screen"]:::s1
@@ -456,7 +458,7 @@ flowchart LR
 | `deletedAccounts/{uid}` | empty: only the deleted account's UID, as document ID. Written by `deleteAccount` with the profile deletion; the rules refuse recreating either profile under it. No app access | 🟩 #229 |
 | `events/{eventId}` | `title`, `description`, `category`, `location`, `locationName?` (#112), `startTime`, `endTime?`, `capacity?`, `isPrivate`, `createdBy`, `organizerIds`, `allowedUids`, `isAssociationEvent` | 🟩 #45 |
 | `associations/{uid}` | `name` (1–60), `type` (`ASSOCIATION`, `COMMISSION`, `CLUB`, `EPFL_UNIT`), `about` (1–1000), `website?` (`https://`, at most 200), `createdAt`. Document ID = the association account's UID | 🟩 #126 |
-| `publicProfiles/{uid}` | `displayName`, `section`, `year`, `interests` (codes from #230's fixed list), always visible; never the email. Written in the same transaction as `users/{uid}`. `section`, `year` and `interests` must be codes from `ProfileOptions.kt`; `interests` copies the private list in the same order (`[]` when the private profile has none). A profile saved before #229 has none until #291. `username`, `visibility` (public or private) and `bio` come later | 🟩 S4 #229, #230 (built) |
+| `publicProfiles/{uid}` | `displayName`, `section`, `year`, `interests` (codes from #230's fixed list), always visible; never the email. Written in the same transaction as `users/{uid}`. `section`, `year` and `interests` must be codes from `ProfileOptions.kt`; `interests` copies the private list in the same order (`[]` when the private profile has none). A profile saved before #229 gets it at its next app start (#291, `ensurePublicProfile`). `username`, `visibility` (public or private) and `bio` come later | 🟩 S4 #229, #230 (built) |
 | `events/{eventId}/attendees/{uid}` | student UID as document ID; `uid` (same UID, for the collection-group query) and server-set `registeredAt` | 🟩 S2 #121; no separate top-level registrations collection |
 | Device reminder state | event ID, title and start time for a local notification; unique work, opt-in | 🟩 S2 #123; no Firestore collection |
 | `matchRequests/{id}` | `eventId`, `fromUid`, `toUid`, `status` | ⬜ not used by Find a group, where students join open groups directly (#228); revisit with #26, #27 |
@@ -531,7 +533,7 @@ Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after re
 | Firebase Auth user | deleted (step 2) | function (Admin SDK) |
 | `users/{uid}`, `publicProfiles/{uid}` | deleted together (step 1) | function (Admin SDK) |
 | `deletedAccounts/{uid}` | written empty in the same transaction (step 1) and kept: only the UID, so the deleted user's still-valid ID token can't recreate either profile | function (Admin SDK) |
-| `events/*` the user created or organizes | kept unchanged; co-organizers keep managing it, a sole organizer's event can't be edited any more; a missing public profile is a deleted account, an association or a profile saved before #229 (#291), so not shown as "Deleted user" on its own | none |
+| `events/*` the user created or organizes | kept unchanged; co-organizers keep managing it, a sole organizer's event can't be edited any more; a missing public profile is a deleted account, an association or a profile saved before #229 whose student hasn't opened the app since (#291), so not shown as "Deleted user" on its own | none |
 | `allowedUids` entries on others' private events | kept (opaque UID, no personal data) | none |
 | attendees (#121), reminders (#123) | not built yet; their issues add cleanup to the function or the reminder worker | — |
 | Firestore disk cache | cleared after `Deleted` (`SessionCache.clear()`) | client |
