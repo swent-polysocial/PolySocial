@@ -1,5 +1,6 @@
 // Contributors: OpenAI Codex (Organization identity, retained Privacy return state and shared
 // controls, #140).
+// Contributors: Claude (Opus 5.5, Anthropic) added the verified association's tab header, #322.
 package com.polysocial.ui.association
 
 import androidx.activity.compose.BackHandler
@@ -94,6 +95,23 @@ fun OrganizationRoute(
       actions.cancel,
       actions.confirm,
       onOpenPrivacy,
+  )
+}
+
+/**
+ * The verified association's header on its Events and Map tabs (#322): its initials, its name with
+ * the Verified tick, and the tab's [title], from its own identity, read once per session like the
+ * Organization tab's. Before the identity is read, or if it can't be, only the title shows, as on
+ * the pending tabs.
+ */
+@Composable
+fun AssociationTabHeader(@StringRes title: Int, viewModel: ProfileViewModel = hiltViewModel()) {
+  val organization by viewModel.organization.collectAsStateWithLifecycle()
+  LaunchedEffect(viewModel) { viewModel.loadOrganization() }
+  AssociationHeader(
+      (organization as? OrganizationUiState.Ready)?.association,
+      title,
+      verified = true,
   )
 }
 
