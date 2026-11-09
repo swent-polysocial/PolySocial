@@ -3,8 +3,9 @@
 
 // Writes (or, with --remove, deletes) the fictional demo data from demoData.js. Usage and the
 // one-time sign-in are in the README ("Seeding demo data"). It touches only the demo- documents
-// listed in demoData.js, never anything else, and takes no key file: on a real project it uses the
-// person's own Google Cloud sign-in (gcloud auth application-default login).
+// listed in demoData.js and everything under the demo events (including registrations and groups
+// real students added to them), never anything else, and takes no key file: on a real project it
+// uses the person's own Google Cloud sign-in (gcloud auth application-default login).
 const { FieldValue, GeoPoint, Timestamp } = require("firebase-admin/firestore");
 const { buildDemoData, demoPaths } = require("./demoData");
 
@@ -43,8 +44,12 @@ function parseArgs(argv, env) {
   return { project, remove };
 }
 
-/** Writes every demo document as of [now], in one batch, replacing earlier demo versions. */
+/**
+ * Writes every demo document as of [now], in one batch, after [removeDemo]: the scenario starts
+ * again from scratch, without students who went to or joined a demo event since the last run.
+ */
 async function seedDemo(db, now) {
+  await removeDemo(db);
   const docs = buildDemoData({
     now,
     geoPoint: (latitude, longitude) => new GeoPoint(latitude, longitude),
@@ -57,11 +62,17 @@ async function seedDemo(db, now) {
   return docs.length;
 }
 
-/** Deletes every demo document, by path (no query), in one batch; missing ones are fine. */
+/**
+ * Deletes every demo document: each demo event with everything under it, whoever wrote it
+ * (registrations, groups and markers real students added only exist because of the fictional
+ * event), and the other demo documents by path. Missing ones are fine; nothing else is touched.
+ */
 async function removeDemo(db) {
   const paths = demoPaths();
+  const events = paths.filter((path) => /^events\/[^/]+$/.test(path));
+  await Promise.all(events.map((path) => db.recursiveDelete(db.doc(path))));
   const batch = db.batch();
-  for (const path of paths) batch.delete(db.doc(path));
+  for (const path of paths.filter((path) => !path.startsWith("events/"))) batch.delete(db.doc(path));
   await batch.commit();
   return paths.length;
 }
