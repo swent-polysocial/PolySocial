@@ -1,6 +1,7 @@
 // Contributors: Claude (app start repairs a missing public profile without waiting for it,
 // test-first, #291); Claude (testing agent: a new start replaces a running repair, and another
-// account's start repairs that account, #291).
+// account's start repairs that account, #291); Claude (a sign-out from the Profile tab ends the
+// repair too, after review, #291).
 package com.polysocial.ui.start
 
 import com.polysocial.model.association.Association
@@ -96,6 +97,22 @@ class AppStartPublicProfileTest {
       assertEquals("after $failure", StartDestination.Main, viewModel.destination.value)
     }
     assertEquals(listOf("u1", "u1", "u1"), profiles.ensuredUids)
+  }
+
+  @Test
+  fun aSignOutFromTheProfileTab_endsARepairStillRunning() = runTest {
+    profiles.ensureGate = CompletableDeferred()
+    val viewModel = start()
+    advanceUntilIdle()
+
+    // Profile's Log out signs out through AuthRepository, not through logOut(); startup routing
+    // then runs again with nobody signed in.
+    auth.logOut()
+    viewModel.refresh()
+    advanceUntilIdle()
+
+    assertEquals(StartDestination.Login, viewModel.destination.value)
+    assertEquals(1, profiles.ensureCancellations)
   }
 
   @Test
