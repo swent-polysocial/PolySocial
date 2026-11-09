@@ -12,6 +12,7 @@
 // which Find a group's ViewModel needs, #233.
 // Contributors: Claude (Opus 5.5, Anthropic) kept the test store's address cooldown, #225;
 // Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (shared fakes and dateDigits instead of private copies, #276).
 package com.polysocial.endtoend
 
 import androidx.activity.compose.setContent
@@ -44,6 +45,7 @@ import androidx.compose.ui.test.performTextInput
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.MainActivity
+import com.polysocial.auth.MemoryVerificationStore
 import com.polysocial.model.account.AccountDeletionModule
 import com.polysocial.model.account.AccountDeletionRepository
 import com.polysocial.model.account.FakeAccountDeletionRepository
@@ -63,7 +65,6 @@ import com.polysocial.model.auth.SignUpResult
 import com.polysocial.model.auth.VerificationClock
 import com.polysocial.model.auth.VerificationResult
 import com.polysocial.model.auth.VerificationStore
-import com.polysocial.model.auth.VerificationTiming
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
@@ -88,6 +89,7 @@ import com.polysocial.model.group.GroupRepository
 import com.polysocial.model.location.FakeLocationService
 import com.polysocial.model.location.LocationModule
 import com.polysocial.model.location.LocationService
+import com.polysocial.model.network.FakeNetworkMonitor
 import com.polysocial.model.network.NetworkModule
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.registration.FakeRegistrationRepository
@@ -127,10 +129,6 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
-import java.time.chrono.IsoChronology
-import java.time.format.DateTimeFormatterBuilder
-import java.time.format.FormatStyle
-import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Rule
@@ -211,8 +209,8 @@ class M1EndToEndTest {
   // PolySocialApp injects the real guard, which needs these too, though nothing starts it here.
   @BindValue @JvmField val sessionSource: AuthSessionSource = FakeAuthSessionSource()
   @BindValue @JvmField val sessionOwner: SessionOwnerStore = FakeSessionOwnerStore()
-  @BindValue @JvmField val verificationStore: VerificationStore = InMemoryVerificationStore()
-  @BindValue @JvmField val network: NetworkMonitor = AlwaysOnline
+  @BindValue @JvmField val verificationStore: VerificationStore = MemoryVerificationStore()
+  @BindValue @JvmField val network: NetworkMonitor = FakeNetworkMonitor()
   @BindValue @JvmField val deletion: AccountDeletionRepository = fakeDeletion
   @BindValue
   @JvmField
@@ -481,37 +479,6 @@ class M1EndToEndTest {
     }
   }
 
-  private class InMemoryVerificationStore : VerificationStore {
-    private val timings = mutableMapOf<String, VerificationTiming>()
-
-    override suspend fun read(uid: String) = timings[uid] ?: VerificationTiming()
-
-    override suspend fun write(uid: String, timing: VerificationTiming) {
-      timings[uid] = timing
-    }
-
-    override suspend fun clear(uid: String) {
-      timings.remove(uid)
-    }
-
-    private val addresses = mutableMapOf<String, VerificationTiming>()
-
-    override suspend fun readAddress(email: String) =
-        addresses[email.trim().lowercase()] ?: VerificationTiming()
-
-    override suspend fun writeAddress(email: String, timing: VerificationTiming) {
-      addresses[email.trim().lowercase()] = timing
-    }
-
-    override suspend fun clearAddress(email: String) {
-      addresses.remove(email.trim().lowercase())
-    }
-  }
-
-  private object AlwaysOnline : NetworkMonitor {
-    override fun isOnline() = true
-  }
-
   private companion object {
     // Generous for CI's freshly booted emulator; a passing run doesn't wait for it.
     const val TIMEOUT_MS = 30_000L
@@ -550,30 +517,5 @@ class M1EndToEndTest {
             capacity = null,
             isPrivate = false,
         )
-
-    /**
-     * [date] as the digits the date picker's text field expects, in the order of the device
-     * locale's short date pattern (MMddyyyy in English (US)), as Material 3 reads it.
-     */
-    fun dateDigits(date: LocalDate): String {
-      val pattern =
-          DateTimeFormatterBuilder.getLocalizedDateTimePattern(
-              FormatStyle.SHORT,
-              null,
-              IsoChronology.INSTANCE,
-              Locale.getDefault(),
-          )
-      return pattern
-          .filter { it in "dMy" }
-          .toList()
-          .distinct()
-          .joinToString("") {
-            when (it) {
-              'd' -> "%02d".format(date.dayOfMonth)
-              'M' -> "%02d".format(date.monthValue)
-              else -> "%04d".format(date.year)
-            }
-          }
-    }
   }
 }
