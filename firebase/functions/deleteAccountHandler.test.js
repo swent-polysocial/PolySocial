@@ -1,6 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the deleteAccount handler tests, #206; Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (the public profile deleted with the account, written test-first, #229;
-// the deletion marker, test-first, after review, #229).
+// the deletion marker, test-first, after review, #229; the user's registrations, #275).
 "use strict";
 
 // Unit tests with fakes, no emulator: node firebase/functions/deleteAccountHandler.test.js
@@ -17,6 +17,14 @@ const {
 const UID = "student-uid-1";
 const NOW = Date.UTC(2026, 9, 28, 12, 0, 0);
 const RECENT_AUTH_TIME = NOW / 1000 - 60;
+const OTHER_REGISTRATION = "events/e1/attendees/student-uid-2";
+/** The calls deleting the student's two registrations, as the default fake backend holds them. */
+const REGISTRATION_CALLS = [
+  "collectionGroup:attendees",
+  `query:attendees uid == ${UID}`,
+  `commit:events/e1/attendees/${UID},events/e2/attendees/${UID}`,
+  `query:attendees uid == ${UID}`,
+];
 
 /** An error as the Admin SDK reports it: a gRPC status code for Firestore, a string for Auth. */
 function backendError(code) {
@@ -24,19 +32,27 @@ function backendError(code) {
 }
 
 /**
- * A fake Firestore holding at most the user's private and public profiles and deletion marker,
- * and a fake Auth. A transaction's writes are applied together at its end, or none of them when
- * one fails, as in Firestore. `calls` records every operation in order; a failure set in `fail`
+ * A fake Firestore holding at most the user's private and public profiles, deletion marker and
+ * registrations (paths `events/{eventId}/attendees/{uid}`, also other students'), and a fake Auth.
+ * A transaction's writes are applied together at its end, or none of them when one fails, as in
+ * Firestore. `calls` records every operation in order; a failure set in `fail`
  * makes that operation throw (once, when `once`).
  */
 function fakeBackend({
   profile = { accountType: "student" },
   publicProfile = { displayName: "Student One", section: "IN", year: "BA3", interests: [] },
   authUserExists = true,
+  registrations = [`events/e1/attendees/${UID}`, `events/e2/attendees/${UID}`, OTHER_REGISTRATION],
 } = {}) {
   const calls = [];
   const fail = {};
-  const state = { profile, publicProfile, deletionMarker: null, authUserExists };
+  const state = {
+    profile,
+    publicProfile,
+    deletionMarker: null,
+    authUserExists,
+    registrations: new Set(registrations),
+  };
   const failIfAsked = (operation) => {
     const error = fail[operation];
     if (error) {
@@ -50,6 +66,37 @@ function fakeBackend({
       return {
         doc(id) {
           return { path: `${path}/${id}` };
+        },
+      };
+    },
+    // The collection-group query `attendees where uid == <uid>`, with a limit, and batched deletes.
+    collectionGroup(group) {
+      calls.push(`collectionGroup:${group}`);
+      return {
+        where(field, op, value) {
+          const query = {
+            limit: () => query,
+            async get() {
+              calls.push(`query:${group} ${field} ${op} ${value}`);
+              failIfAsked("query");
+              const docs = [...state.registrations]
+                .filter((path) => path.split("/")[3] === value)
+                .map((path) => ({ ref: { path } }));
+              return { empty: docs.length === 0, docs };
+            },
+          };
+          return query;
+        },
+      };
+    },
+    batch() {
+      const deletes = [];
+      return {
+        delete: (ref) => deletes.push(ref.path),
+        async commit() {
+          calls.push(`commit:${deletes.join(",")}`);
+          failIfAsked("commit");
+          for (const path of deletes) state.registrations.delete(path);
         },
       };
     },
@@ -184,7 +231,7 @@ test("an association is refused and keeps its profile and Auth user", async () =
   }
 });
 
-test("a student's profiles are deleted and marked deleted, then the Auth user, then success", async () => {
+test("profiles deleted and marked deleted, then registrations, then the Auth user", async () => {
   const backend = fakeBackend();
   assert.deepEqual(await call(backend), { deleted: true });
   assert.deepEqual(backend.calls, [
@@ -195,11 +242,44 @@ test("a student's profiles are deleted and marked deleted, then the Auth user, t
     `set:deletedAccounts/${UID}`,
     `delete:users/${UID}`,
     `delete:publicProfiles/${UID}`,
+    ...REGISTRATION_CALLS,
     `deleteUser:${UID}`,
   ]);
   assert.equal(backend.state.profile, null);
   assert.equal(backend.state.publicProfile, null);
   assert.equal(backend.state.authUserExists, false);
+});
+
+test("only the student's registrations are deleted, other students' are kept", async () => {
+  const backend = fakeBackend();
+  await call(backend);
+  assert.deepEqual([...backend.state.registrations], [OTHER_REGISTRATION]);
+});
+
+test("a student without registrations is deleted too", async () => {
+  const backend = fakeBackend({ registrations: [OTHER_REGISTRATION] });
+  assert.deepEqual(await call(backend), { deleted: true });
+  assert.ok(!backend.calls.some((c) => c.startsWith("commit:")));
+  assert.equal(backend.state.authUserExists, false);
+});
+
+// The marker is written first, so the Security Rules refuse a new registration from the deleted
+// user's still-valid token before the query runs: none can be left behind.
+test("a failed registration deletion keeps the Auth user, and a retry finishes", async () => {
+  for (const operation of ["query", "commit"]) {
+    const backend = fakeBackend();
+    backend.fail[operation] = { error: backendError(14), once: true };
+    await assertHttpsError(call(backend), "unavailable", undefined);
+    assert.equal(backend.state.profile, null);
+    assert.deepEqual(backend.state.deletionMarker, {});
+    assert.equal(backend.state.registrations.size, 3);
+    assert.equal(backend.state.authUserExists, true);
+    assert.ok(!backend.calls.some((c) => c.startsWith("deleteUser")));
+
+    assert.deepEqual(await call(backend), { deleted: true });
+    assert.deepEqual([...backend.state.registrations], [OTHER_REGISTRATION]);
+    assert.equal(backend.state.authUserExists, false);
+  }
 });
 
 // The marker is what the Security Rules check to refuse recreating the profiles with the deleted
@@ -251,16 +331,19 @@ test("an account without a profile (never verified) can delete itself", async ()
   assert.equal(backend.state.authUserExists, false);
 });
 
-test("only the user's profiles and deletion marker are touched, never the user's events", async () => {
+test("only the user's profiles, marker and registrations are touched, never events", async () => {
   const backend = fakeBackend();
   await call(backend);
-  const collections = backend.calls.filter((c) => c.startsWith("collection:"));
+  const collections = backend.calls.filter((c) => c.startsWith("collection"));
   assert.deepEqual(collections, [
     "collection:users",
     "collection:deletedAccounts",
     "collection:publicProfiles",
+    "collectionGroup:attendees",
   ]);
-  assert.ok(backend.calls.every((c) => !c.includes("events")));
+  // Event paths appear only in the deleted registrations.
+  const eventCalls = backend.calls.filter((c) => c.includes("events"));
+  assert.deepEqual(eventCalls, [REGISTRATION_CALLS[2]]);
 });
 
 test("a profile read that can't reach Firestore is unavailable and deletes nothing", async () => {
@@ -354,13 +437,20 @@ test("a failed step logs only its name and the error code, a success logs nothin
     ],
   ]);
 
+  const registrationsFailed = fakeBackend();
+  registrationsFailed.fail.commit = { error: backendError(4) };
+  await assertHttpsError(call(registrationsFailed), "unavailable", undefined);
+  assert.deepEqual(registrationsFailed.logs, [
+    ["error", "deleteAccount step failed", { step: "delete-registrations", code: 4 }],
+  ]);
+
   const noCode = fakeBackend();
   noCode.fail.get = { error: new TypeError(`unexpected for ${UID}`) };
   await assertHttpsError(call(noCode), "internal", undefined);
   assert.deepEqual(noCode.logs, [
     ["error", "deleteAccount step failed", { step: "delete-profile", code: null }],
   ]);
-  for (const backend of [profileFailed, authFailed, noCode]) {
+  for (const backend of [profileFailed, authFailed, registrationsFailed, noCode]) {
     const logged = JSON.stringify(backend.logs);
     assert.ok(!logged.includes(UID), "the log must not contain the uid");
     assert.ok(!logged.includes("raw backend failure"), "the log must not hold the error message");
