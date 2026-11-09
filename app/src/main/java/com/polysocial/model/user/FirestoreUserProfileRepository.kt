@@ -2,7 +2,8 @@
 // Contributors: Claude (Firestore profile repository, #34; cancelled tasks and wrong-typed fields
 // reported as errors after review; reading isAssociationVerified, #45; other unexpected failures
 // reported as errors, #182; the student's public profile written in the same transaction, #229;
-// reportFailures moved to FirestoreFailures.kt to share it, after review, #229; interests, #230).
+// reportFailures moved to FirestoreFailures.kt to share it, after review, #229; interests, #230;
+// the missing public profile repaired, #291).
 package com.polysocial.model.user
 
 import com.google.firebase.firestore.DocumentReference
@@ -88,6 +89,31 @@ class FirestoreUserProfileRepository(private val database: () -> FirebaseFiresto
                 }
                 .await()
         if (updated) UpdateProfileResult.Updated else UpdateProfileResult.NotFound
+      }
+
+  override suspend fun ensurePublicProfile(uid: String): EnsurePublicProfileResult =
+      reportFailures(
+          EnsurePublicProfileResult.NetworkError,
+          EnsurePublicProfileResult.UnexpectedError,
+      ) {
+        val publicRef = publicDocument(uid)
+        db.runTransaction<EnsurePublicProfileResult> { transaction ->
+              val stored = transaction.get(document(uid))
+              val profile = stored.toUserProfile()
+              when {
+                !stored.exists() -> EnsurePublicProfileResult.NotFound
+                profile == null -> EnsurePublicProfileResult.UnexpectedError
+                // Before reading publicProfiles, which the rules deny an association.
+                profile.accountType == AccountType.ASSOCIATION ->
+                    EnsurePublicProfileResult.NotNeeded
+                transaction.get(publicRef).exists() -> EnsurePublicProfileResult.NotNeeded
+                else -> {
+                  transaction.set(publicRef, profile.toPublicProfileDocument())
+                  EnsurePublicProfileResult.Created
+                }
+              }
+            }
+            .await()
       }
 }
 

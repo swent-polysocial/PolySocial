@@ -1,6 +1,6 @@
 // Contributors: Claude (profile lookup needed by app-start routing, #32; profile model, create and
 // update, #34; isAssociationVerified, #45; the public profile written with it, #229; interests,
-// #230).
+// #230; the missing public profile repaired, #291).
 package com.polysocial.model.user
 
 import java.time.Instant
@@ -75,6 +75,27 @@ sealed interface UpdateProfileResult {
   data object UnexpectedError : UpdateProfileResult
 }
 
+/** Outcome of [UserProfileRepository.ensurePublicProfile]. */
+sealed interface EnsurePublicProfileResult {
+  /** The student had no public profile; it was created as a copy of their stored profile. */
+  data object Created : EnsurePublicProfileResult
+
+  /** Nothing to do: the public profile already exists, or the account is an association's. */
+  data object NotNeeded : EnsurePublicProfileResult
+
+  /** There is no `users/{uid}` to copy. */
+  data object NotFound : EnsurePublicProfileResult
+
+  /** The device is offline. Nothing was written or queued; the next app start tries again. */
+  data object NetworkError : EnsurePublicProfileResult
+
+  /**
+   * Any other failure: an unreadable stored profile, or a write the Security Rules deny (for
+   * example a deleted account's, or a stored section the app no longer offers).
+   */
+  data object UnexpectedError : EnsurePublicProfileResult
+}
+
 /**
  * Reads and writes profiles in `users/{uid}`, where the document ID is always the Firebase Auth
  * UID. The Security Rules let a user reach only their own document, and only once their email is
@@ -104,4 +125,15 @@ interface UserProfileRepository {
    * [UpdateProfileResult.NetworkError] is returned.
    */
   suspend fun updateProfile(profile: UserProfile): UpdateProfileResult
+
+  /**
+   * Gives a student whose profile was saved before #229 their public profile (#291): if
+   * `users/{uid}` is a student's and `publicProfiles/{uid}` is missing, creates it as a copy of the
+   * stored profile, without the email, and changes nothing else. An existing public profile is
+   * never overwritten, and an association never gets one ([EnsurePublicProfileResult.NotNeeded]).
+   * App start calls it for every student, so it reads the two documents each time. The copy and its
+   * check run in one transaction, so a concurrent edit can't make it stale; offline, nothing is
+   * queued and [EnsurePublicProfileResult.NetworkError] is returned.
+   */
+  suspend fun ensurePublicProfile(uid: String): EnsurePublicProfileResult
 }
