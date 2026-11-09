@@ -4,6 +4,7 @@
 // Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (Opus 5.5, Anthropic) passed the deletion and network fakes, #225;
 // Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (the public profile repair's stub, #291).
 package com.polysocial.auth
 
 import android.graphics.Bitmap
@@ -23,6 +24,7 @@ import com.polysocial.model.auth.GoogleAccount
 import com.polysocial.model.auth.GoogleSignInResult
 import com.polysocial.model.firebase.FakeSessionGuard
 import com.polysocial.model.network.FakeNetworkMonitor
+import com.polysocial.model.user.EnsurePublicProfileResult
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.UserProfile
 import com.polysocial.model.user.UserProfileRepository
@@ -62,6 +64,8 @@ class GoogleSignInScreenTest {
           result
         }
     coEvery { profiles.getProfile(any()) } returns ProfileResult.NotFound
+    // App start repairs a missing public profile (#291); these students already have one.
+    coEvery { profiles.ensurePublicProfile(any()) } returns EnsurePublicProfileResult.NotNeeded
   }
 
   private fun launch(existing: Boolean = false) {
