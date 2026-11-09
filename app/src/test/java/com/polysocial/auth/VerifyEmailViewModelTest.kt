@@ -9,6 +9,7 @@
 // now that leaving reloads it first, #225 review.
 // Contributors: Claude (Opus 5.5, Anthropic) dropped the disposes runVerifyTest already covers,
 // #225.
+// Contributors: Claude (moved MemoryVerificationStore to sharedTest, #276).
 package com.polysocial.auth
 
 import androidx.lifecycle.ViewModelStore
@@ -21,7 +22,6 @@ import com.polysocial.model.auth.LogInResult
 import com.polysocial.model.auth.SendVerificationResult
 import com.polysocial.model.auth.VerificationClock
 import com.polysocial.model.auth.VerificationResult
-import com.polysocial.model.auth.VerificationStore
 import com.polysocial.model.auth.VerificationTiming
 import com.polysocial.model.network.FakeNetworkMonitor
 import com.polysocial.ui.auth.VerificationExit
@@ -42,46 +42,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
-
-class MemoryVerificationStore : VerificationStore {
-  val timings = mutableMapOf<String, VerificationTiming>()
-  /** Keyed by the normalised address, like the real store's digest. */
-  val addressTimings = mutableMapOf<String, VerificationTiming>()
-  var failure: Exception? = null
-  var readGate: CompletableDeferred<Unit>? = null
-  var clearFailure: Exception? = null
-
-  override suspend fun read(uid: String): VerificationTiming {
-    readGate?.await()
-    failure?.let { throw it }
-    return timings[uid] ?: VerificationTiming()
-  }
-
-  override suspend fun write(uid: String, timing: VerificationTiming) {
-    failure?.let { throw it }
-    timings[uid] = timing
-  }
-
-  override suspend fun clear(uid: String) {
-    clearFailure?.let { throw it }
-    timings.remove(uid)
-  }
-
-  override suspend fun readAddress(email: String): VerificationTiming {
-    failure?.let { throw it }
-    return addressTimings[email.trim().lowercase()] ?: VerificationTiming()
-  }
-
-  override suspend fun writeAddress(email: String, timing: VerificationTiming) {
-    failure?.let { throw it }
-    addressTimings[email.trim().lowercase()] = timing
-  }
-
-  override suspend fun clearAddress(email: String) {
-    clearFailure?.let { throw it }
-    addressTimings.remove(email.trim().lowercase())
-  }
-}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class VerifyEmailViewModelTest {
