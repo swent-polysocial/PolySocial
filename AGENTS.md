@@ -6,7 +6,8 @@ This repository is PolySocial, an EPFL SwEnt Android team project (team of 6,
 public repository). At the start of every session, read this file and
 `CONTEXT.md` (see "Session context"). Before making changes, also read the
 README, the relevant issue, the project wiki (in particular the Team
-Agreement, where team process decisions live), and nearby code. The team owns every change,
+Agreement, where team process decisions live), `MODULARITY.md` (how to reuse
+and adapt existing code correctly), and nearby code. The team owns every change,
 including code written with AI. Keep each change small enough for a teammate
 to review and understand.
 
@@ -306,6 +307,10 @@ guessing. It also shows how the design evolved.
   self-explanatory functions do not need it.
 - No commented-out code, no `println` or debug logging left behind, and no TODO
   without an issue number.
+- Reuse existing code only where it truly fits, and adapt it correctly:
+  follow `MODULARITY.md` (search before writing, check that a candidate means
+  the same thing and is current on `main`, check every caller of shared code,
+  and never drop correct code to make a change smaller).
 - Do not add or upgrade dependencies unless the issue requires it. Use the
   existing version catalog.
 - Follow the SonarCloud quality gate. Fix reported issues in code you touched
@@ -474,7 +479,10 @@ as the source of truth and flag any mismatch with this list in the PR:
 8. The README is updated if setup, configuration, or run steps changed.
 9. `CONTEXT.md` is updated if the change makes or changes an important
    decision (see "Session context").
-10. The PR description is complete as described above.
+10. Existing code was searched and reused or adapted as `MODULARITY.md`
+    says, every caller of changed shared code still works, and the PR's
+    "Design choices" has its Reuse note.
+11. The PR description is complete as described above.
 
 **Merging is done by the human author, only when:** the definition of done
 still holds on the latest commit; CI is green on the latest commit; the branch
@@ -576,14 +584,17 @@ change that would touch the "Never do" list.
 1. Read `CONTEXT.md` and run the secrets check on the remote (see "Backend and
    configuration"). Restate the issue's goal and acceptance criteria.
    Inspect the smallest relevant part of the codebase and the existing tests.
-2. Implement one reviewable change consistent with the current architecture and
-   the conventions above, with tests in the same change.
+2. Before writing code, search the codebase for what can be reused or adapted
+   (`MODULARITY.md`, sections 1 to 3). Implement one reviewable change
+   consistent with the current architecture and the conventions above, with
+   tests in the same change.
 3. Run `ktfmtFormat`, then the commands in "Build and test commands" (plus the
    rules tests if Security Rules changed). Inspect failures and fix their
    causes.
 4. Check the result against the definition of done, including a review of the
    full diff for accidental files, leaked credentials, missing contributor
-   comments, error handling, and real test assertions. Update `CONTEXT.md` if
+   comments, error handling, real test assertions, and duplicated or wrongly
+   reused code (`MODULARITY.md`, section 9). Update `CONTEXT.md` if
    the change made an important decision.
 5. Open or update the PR with the required description. Leave code review,
    approval, and the merge decision to the team.
