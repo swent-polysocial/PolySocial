@@ -1,5 +1,6 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the groups, chat and public profile model, its rules, the co-organizer model and the deploy owner (#228); Franciszek Najda (decided and reviewed). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (members get their own group in the rules table, and groups of an ended event as an open question, #295). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (group chat messages built, refused offline rather than queued, and the messages left behind by a deleted group or account, #237). -->
 <!-- Contributors: Claude Opus 5.5 (attendees schema, rules and capacity question, #121; the organizers' attendee count and the association's manage event, #131). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (deleteAccount deployed, region note, Blaze question closed, 2026-11-05). -->
 <!-- Contributors: Claude (public profiles marked as built, #229; the deletion marker and the public copy kept in step, after review, #229; the interests step, #230). -->
@@ -50,7 +51,7 @@ The source is [docs/images/architecture-overview.svg](images/architecture-overvi
 **How to read it.**
 - Every screen that holds state has exactly one ViewModel. The app shell (app bar, bottom bar and `NavHost`, #41) has none: its only state is navigation, which the `NavController` owns, and a ViewModel copy of it could get out of sync. The ViewModel exposes a single immutable UI-state `StateFlow` with loading, empty, success and error variants, and receives user actions as function calls.
 - Repositories are Kotlin interfaces with a Firebase (or device) implementation and a `Fake…` implementation for tests. ViewModels get them through their constructor, injected by **Hilt** (`@HiltViewModel`). Tests swap in the fakes with Hilt's test modules.
-- **Offline:** Firestore offline persistence is the only cache (no Room, no custom sync). Loaded events, registered events and their schedule stay readable offline. Writes such as chat messages are queued and synced on reconnect. Reminders are scheduled on the device. The map shows cached events on tiles the Maps SDK already cached, with **no tile prefetching**. Sign-up and log-in need a network and show a clear error without one.
+- **Offline:** Firestore offline persistence is the only cache (no Room, no custom sync). Loaded events, registered events and their schedule stay readable offline. Writes the app waits for, such as creating an event, joining a group or sending a chat message, are refused offline with a way to try again, not queued (#45, #228). Reminders are scheduled on the device. The map shows cached events on tiles the Maps SDK already cached, with **no tile prefetching**. Sign-up and log-in need a network and show a clear error without one.
 - **Map provider:** Mapbox is approved (#50), replacing Google Maps. Its SDK is a UI component isolated in `MapboxRenderer`; `MapScreen` renders markers from `MapViewModel` state and never queries data itself. The public `pk.` token comes from each checkout's ignored `local.properties` through a generated string resource, with an empty-token setup state. One signup token is approved for initial development; a dedicated token with only `styles:read`/`fonts:read` is required before production. The token value never belongs in architecture documents or tracked resources. Firebase event data flows through `RepositoryMapEventSource`, adapting #49's live public-event repository without backend SDK imports in the ViewModel. Cached events remain usable, and cancellation releases the repository listener.
 
 ## 2. Navigation map
@@ -231,7 +232,7 @@ flowchart TB
   findVM --> pub["<b>PublicProfileRepository</b><br/>getPublicProfile · getPublicProfiles<br/>by UID only, built, #229"]:::s1
   detailVM["<b>EventDetailViewModel</b><br/>group card: yourGroup, #233"]:::pb --> groups
   detailVM --> pub
-  chat["Group chat<br/>#238"]:::pb --> chatVM["<b>Chat ViewModel</b>"]:::pb --> msgs["<b>MessageRepository</b><br/>observe · send, #237"]:::pb
+  chat["Group chat<br/>#238"]:::pb --> chatVM["<b>Chat ViewModel</b>"]:::pb --> msgs["<b>MessageRepository</b><br/>observeMessages · sendMessage, built, #237"]:::s1
   groups --> fs[("Firestore<br/>events/{e}/groups · groupMembers")]:::ext
   pub --> fs2[("Firestore<br/>publicProfiles")]:::ext
   msgs --> fs3[("Firestore<br/>events/{e}/groups/{g}/messages")]:::ext
@@ -464,7 +465,7 @@ flowchart LR
 | `matchRequests/{id}` | `eventId`, `fromUid`, `toUid`, `status` | ⬜ not used by Find a group, where students join open groups directly (#228); revisit with #26, #27 |
 | `events/{eventId}/groups/{groupId}` | `capacity` (4), `memberUids` (1 to `capacity`, creator first), `createdBy`, server-set `createdAt` | 🟦 S4 #232 |
 | `events/{eventId}/groupMembers/{uid}` | `groupId`: the student's group for this event, written in the same transaction as `memberUids` | 🟦 S4 #232 |
-| `events/{eventId}/groups/{groupId}/messages/{id}` | `senderId`, `text` (1–1000), server-set `createdAt`. A one-to-one chat is a two-member group | 🟦 S4 #237 |
+| `events/{eventId}/groups/{groupId}/messages/{id}` | `senderId`, `text` (1–1000), server-set `createdAt`. A one-to-one chat is a two-member group | 🟩 S4 #237 (built) |
 | `events/{eventId}/groups/{groupId}/checkIns/{uid}` | `method` (gps or qr), `checkedInAt` | 🟦 #22 |
 | `events/{eventId}/groups/{groupId}/locations/{uid}` | position, `updatedAt`. Only during the event, deleted after | 🟦 #20 |
 | `friendships/{id}` | `uidA`, `uidB`, `status` | 🟦 #16 |
@@ -474,7 +475,7 @@ flowchart LR
 
 ## 6. Security Rules
 
-Rules live in `firebase/firestore/firestore.rules` and are tested against the Firebase Local Emulator Suite. **Main today** allows each account's own `users/{uid}` (#35), an association's own `associations/{uid}` and students' reads of verified ones (#126), plus public/private and own-association event reads (#52). Event writes (#47) and attendees (#121) have their rules; every other subcollection remains denied until its reviewed rules land. The rows below describe the planned policy as well as the current reads; this documentation does not grant access.
+Rules live in `firebase/firestore/firestore.rules` and are tested against the Firebase Local Emulator Suite. **Main today** allows each account's own `users/{uid}` (#35), an association's own `associations/{uid}` and students' reads of verified ones (#126), plus public/private and own-association event reads (#52). Event writes (#47), attendees (#121), groups with their markers (#232) and group chat messages (#237) have their rules; every other subcollection remains denied until its reviewed rules land. The rows below describe the planned policy as well as the current reads; this documentation does not grant access.
 
 | Collection | Read | Create | Update / delete | Issue | Status |
 |---|---|---|---|---|---|
@@ -489,7 +490,7 @@ Rules live in `firebase/firestore/firestore.rules` and are tested against the Fi
 | `publicProfiles/{uid}` | any student, one document by UID (no list, so no student directory); no association | owner only, only the fields above, no email; `section`, `year` and `interests` from the app's fixed lists | owner only, as an exact copy of their `users/{uid}` after the same write (`getAfter`), never under a `deletedAccounts/{uid}` marker; no delete except with the account (`deleteAccount`) | #229 | 🟩 S4 (built) |
 | `events/{eventId}/groups/{groupId}` | a student who can read the event; a member also gets their own group without it, so they can still leave it (#295); a student lists their own groups across events (`memberUids array-contains` their UID) | a student who can read the event, with `memberUids == [own UID]`, `capacity == 4`, `createdBy` = own UID, server `createdAt`, and their `groupMembers` marker in the same write | update: only `memberUids` changes, by adding or removing the caller's own UID, `size() <= capacity`, with the marker created or deleted alongside (`getAfter`); delete: the last member leaving. No association access | #232 | 🟦 S4 |
 | `events/{eventId}/groupMembers/{uid}` | own document only | own UID, `groupId` of a group whose `memberUids` contain them after the write | delete own, when leaving that group; no update | #232 | 🟦 S4 |
-| `events/{eventId}/groups/{groupId}/messages/{id}` | group members only | members, `senderId` = own UID, `text` 1–1000, server `createdAt`; per operation, so rate limiting fits later | nobody yet (report/block later) | #237 | 🟦 S4 |
+| `events/{eventId}/groups/{groupId}/messages/{id}` | group members only, from the group's `memberUids` (so, like the group, #295, a member removed from a private event keeps it); no query across groups | members, exactly `senderId` = own UID, `text` 1–1000, server `createdAt`; per operation, so rate limiting fits later. No association access | nobody yet (report/block later) | #237 | 🟩 S4 (built) |
 | `matchRequests` | sender and recipient | sender | recipient responds | #26, #27 | 🟦 PB |
 | Storage `events/{id}/album/**` | event group members | checked-in members, size and type limits | uploader | album | 🟦 PB |
 
@@ -556,7 +557,7 @@ How each failure behaves:
 | user cancels before the function call (Cancel, or the Google picker dismissed) | nothing changes; the reauthentication step stays open |
 
 **Open questions** (add new ones here and in `CONTEXT.md`), with an owner where one is agreed:
-- **Groups of a deleted event or account (owner: Ayoub with #275 for events, Mohamed for `deleteAccount`):** deleting an event must also delete its `groups`, `groupMembers` and messages, and deleting an account must take its UID out of `memberUids` and delete its marker. Client-side deletion of nested messages doesn't scale; a function triggered by the deletion may be needed (possible now that the project is on Blaze).
+- **Groups of a deleted event or account (owner: Ayoub with #275 for events, Mohamed for `deleteAccount`):** deleting an event must also delete its `groups`, `groupMembers` and messages, and deleting an account must take its UID out of `memberUids` and delete its marker. Client-side deletion of nested messages doesn't scale; a function triggered by the deletion may be needed (possible now that the project is on Blaze). The same holds when the last member leaves (#237): the client deletes the group, but its `messages` stay behind, personal data nobody can read or delete. `deleteAccount` doesn't delete a student's messages either; deleting or anonymizing them is the team's call. Until `deleteAccount` takes the UID out of `memberUids`, a deleted account's ID token, valid up to 1 h, can still send messages in its groups: `isDeletedAccount` guards only the profile rules today.
 - **"I'm going" in the rules (owner: Ayoub, #244):** whether joining a group also requires an `attendees` document in the rules, or only in the app.
 - **Groups of an ended event (#295):** starting or joining a group doesn't check that the event hasn't ended, unlike registering; accepted for now, as #233's screen doesn't offer Find a group on past events. A rule for it would deny after the reads, so it needs its own result first (see `write`'s KDoc in `FirestoreGroupRepository`).
 - **Association co-organizers (owner: Sprint 5 PO, at Sprint 5 Planning):** see decision 17.
