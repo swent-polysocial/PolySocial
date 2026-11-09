@@ -95,6 +95,7 @@ class AppStartPublicProfileTest {
 
       assertEquals("after $failure", StartDestination.Main, viewModel.destination.value)
     }
+    assertEquals(listOf("u1", "u1", "u1"), profiles.ensuredUids)
   }
 
   @Test
