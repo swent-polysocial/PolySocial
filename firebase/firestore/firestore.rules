@@ -8,7 +8,8 @@
 // OpenAI Codex (public/private event read rules, #52); Claude Opus 5.5 (event write rules, #47;
 // badge and locationName checks after review; isStudent for writes after #161; organizers
 // stay allowed readers after review; event registrations, #121); Claude (Opus 5.5, Anthropic)
-// (event groups and their groupMembers markers, #232, with fixes after review).
+// (event groups and their groupMembers markers, #232, with fixes after review; group chat
+// messages, #237).
 rules_version = '2';
 
 service cloud.firestore {
@@ -171,9 +172,9 @@ service cloud.firestore {
           && copiesPrivateProfile();
     }
 
-    // Of the event subcollections, only attendees (below), groups and groupMembers (after this
-    // block) are reachable. Private queries also need isPrivate == true and allowedUids
-    // array-contains auth.uid; public queries need isPrivate == false.
+    // Of the event subcollections, only attendees (below), groups, their messages and
+    // groupMembers (after this block) are reachable. Private queries also need isPrivate == true
+    // and allowedUids array-contains auth.uid; public queries need isPrivate == false.
     match /events/{eventId} {
       function isVerifiedAssociationOwner() {
         let profile = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
@@ -425,6 +426,32 @@ service cloud.firestore {
       allow delete: if isSelf()
           && !(existsAfter(group(resource.data.groupId))
               && getAfter(group(resource.data.groupId)).data.memberUids.hasAny([uid]));
+    }
+
+    // A group's chat (#237): each message has exactly senderId, text (1 to 1000 characters,
+    // counted like the app's MAX_MESSAGE_LENGTH) and the server's createdAt. Only the group's
+    // members read and send, each message as themselves; nobody edits or deletes one yet (report
+    // and block come later). Membership is read from the group itself, as its own get rule does:
+    // a member removed from a private event's allowedUids still reaches their group (#295), so
+    // they keep its chat too. Each operation has its own rule, so a rate limit can be added to
+    // create without touching reads. Associations get no access (isStudent).
+    match /events/{eventId}/groups/{groupId}/messages/{messageId} {
+      function isMember() {
+        let group = /databases/$(database)/documents/events/$(eventId)/groups/$(groupId);
+        return isStudent()
+            && exists(group)
+            && get(group).data.memberUids.hasAny([request.auth.uid]);
+      }
+
+      allow get, list: if isMember();
+      allow create: if isMember()
+          && request.resource.data.keys().hasAll(['senderId', 'text', 'createdAt'])
+          && request.resource.data.keys().hasOnly(['senderId', 'text', 'createdAt'])
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() >= 1
+          && request.resource.data.text.size() <= 1000
+          && request.resource.data.createdAt == request.time;
     }
 
     // An association's public profile (#126), keyed by the association account's UID. Its

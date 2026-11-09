@@ -1,4 +1,4 @@
-// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143; publicProfiles/{uid} tests, written test-first, #229; reads by ID only and the fixed section and year lists, after review, #229; private edits keep the public copy, and deleted accounts stay deleted, after review, #229; interests from the fixed list, test-first, #230; any code read in the list check, after review, #230); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121); Claude (Opus 5.5, Anthropic) (event group and groupMembers marker tests, #232, with more after review).
+// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143; publicProfiles/{uid} tests, written test-first, #229; reads by ID only and the fixed section and year lists, after review, #229; private edits keep the public copy, and deleted accounts stay deleted, after review, #229; interests from the fixed list, test-first, #230; any code read in the list check, after review, #230); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121); Claude (Opus 5.5, Anthropic) (event group and groupMembers marker tests, #232, with more after review; group chat message tests, #237).
 // Contributors: Claude (Opus 5.5, Anthropic) (a non-EPFL association in allowedUids can't run My events' private query, #320).
 const { after, before, beforeEach, test } = require("node:test");
 const { readFileSync } = require("node:fs");
@@ -2886,4 +2886,234 @@ test("a student deletes a marker whose group no longer has them", async () => {
     await setDoc(doc(context.firestore(), "events/e1/groupMembers/u1"), { groupId: "gone" });
   });
   await assertSucceeds(deleteDoc(doc(studentDb("u1"), "events/e1/groupMembers/u1")));
+});
+
+// ---- events/{eventId}/groups/{groupId}/messages/{id} (#237) ----
+// A message has exactly senderId (the sender's UID), text (1 to 1000 characters) and the
+// server's createdAt. Only the group's members read and send; nobody edits or deletes one.
+
+/** A message as the app sends it: [uid] as its sender, [text], the server's time. */
+function newMessage(uid, text = "See you at 6?") {
+  return { senderId: uid, text, createdAt: serverTimestamp() };
+}
+
+function messagePath(eventId, groupId, id) {
+  return `events/${eventId}/groups/${groupId}/messages/${id}`;
+}
+
+/** Sends [message] as a new document in a transaction, the way sendMessage does. */
+function sendAs(db, eventId, groupId, message, id = "new") {
+  return runTransaction(db, async (transaction) => {
+    transaction.set(doc(db, messagePath(eventId, groupId, id)), message);
+  });
+}
+
+/** The query FirestoreMessageRepository.observeMessages listens to. */
+function chatOf(db, eventId, groupId) {
+  return query(
+    collection(db, `events/${eventId}/groups/${groupId}/messages`), orderBy("createdAt"),
+  );
+}
+
+/** Stores the message [id] from [senderId] at [millis], rules off. */
+async function seedMessage(eventId, groupId, id, senderId, millis = 1_790_000_000_000) {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), messagePath(eventId, groupId, id)), {
+      senderId, text: "Seeded", createdAt: Timestamp.fromMillis(millis),
+    });
+  });
+}
+
+/** The stored message [id], or null without it, rules off. */
+async function storedMessage(eventId, groupId, id) {
+  let message;
+  await env.withSecurityRulesDisabled(async (context) => {
+    const snapshot = await getDoc(doc(context.firestore(), messagePath(eventId, groupId, id)));
+    message = snapshot.exists() ? snapshot.data() : null;
+  });
+  return message;
+}
+
+/** Fails if the message [id] was stored. */
+async function expectNoMessage(eventId, groupId, id = "new") {
+  const message = await storedMessage(eventId, groupId, id);
+  if (message !== null) throw new Error(`Expected no message, got ${JSON.stringify(message)}`);
+}
+
+// -- reading --
+
+test("a member reads their group's chat in the server's time order, as the app does", async () => {
+  await seedGroup("e1", "g1", ["u2", "u1"]);
+  await seedMessage("e1", "g1", "later", "u2", 1_790_000_060_000);
+  await seedMessage("e1", "g1", "earlier", "u1", 1_790_000_000_000);
+  const db = studentDb("u1");
+  await assertSucceeds(getDoc(doc(db, messagePath("e1", "g1", "later"))));
+  const chat = await assertSucceeds(getDocs(chatOf(db, "e1", "g1")));
+  const ids = chat.docs.map((message) => message.id);
+  if (ids.join(",") !== "earlier,later") throw new Error(`Unexpected order: ${ids}`);
+});
+
+test("a student who isn't in the group can't read its chat, even if they can read the event", async () => {
+  await seedGroup("e1", "g1", ["u2"]);
+  await seedMessage("e1", "g1", "m1", "u2");
+  const db = studentDb("u1");
+  await assertSucceeds(getDoc(doc(db, "events/e1/groups/g1")));
+  await assertFails(getDoc(doc(db, messagePath("e1", "g1", "m1"))));
+  await assertFails(getDocs(chatOf(db, "e1", "g1")));
+});
+
+test("a member of another group of the event can't read or send in this one", async () => {
+  await seedGroup("e1", "g1", ["u2"]);
+  await seedGroup("e1", "g2", ["u1"]);
+  await seedMessage("e1", "g1", "m1", "u2");
+  const db = studentDb("u1");
+  await assertSucceeds(getDocs(chatOf(db, "e1", "g2")));
+  await assertFails(getDoc(doc(db, messagePath("e1", "g1", "m1"))));
+  await assertFails(getDocs(chatOf(db, "e1", "g1")));
+  await assertFails(sendAs(db, "e1", "g1", newMessage("u1")));
+  await expectNoMessage("e1", "g1");
+});
+
+test("nobody reads or sends in the chat of a group that doesn't exist", async () => {
+  await seedMessage("e1", "gone", "m1", "u1");
+  const db = studentDb("u1");
+  await assertFails(getDoc(doc(db, messagePath("e1", "gone", "m1"))));
+  await assertFails(getDocs(chatOf(db, "e1", "gone")));
+  await assertFails(sendAs(db, "e1", "gone", newMessage("u1")));
+});
+
+test("a member who left their group can no longer read or send in its chat", async () => {
+  await seedGroup("e1", "g1", ["u2", "u1"]);
+  await seedMessage("e1", "g1", "m1", "u1");
+  await assertSucceeds(leaveAs(studentDb("u1"), "u1", "e1", "g1"));
+  const db = studentDb("u1");
+  await assertFails(getDoc(doc(db, messagePath("e1", "g1", "m1"))));
+  await assertFails(getDocs(chatOf(db, "e1", "g1")));
+  await assertFails(sendAs(db, "e1", "g1", newMessage("u1")));
+});
+
+test("a member removed from a private event keeps their group's chat, like the group", async () => {
+  await seedGroup("private", "g1", ["u2", "u3"]);
+  await seedMessage("private", "g1", "m1", "u2");
+  await removeU3FromPrivateEvent();
+  const db = studentDb("u3");
+  await assertSucceeds(getDocs(chatOf(db, "private", "g1")));
+  await assertSucceeds(sendAs(db, "private", "g1", newMessage("u3")));
+});
+
+test("nobody lists messages across groups", async () => {
+  await seedGroup("e1", "g1", ["u1"]);
+  await seedMessage("e1", "g1", "m1", "u1");
+  const db = studentDb("u1");
+  await assertFails(getDocs(collectionGroup(db, "messages")));
+  await assertFails(getDocs(query(collectionGroup(db, "messages"), where("senderId", "==", "u1"))));
+});
+
+for (const verified of [false, true]) {
+  const kind = verified ? "verified" : "unverified";
+  const clubUid = verified ? "verifiedClub" : "club";
+  for (const [name, uid, db, seed] of [
+    ["a non-EPFL association", clubUid, () => associationDb(clubUid), async () => {}],
+    ["an @epfl.ch association", "epflClub", () => epflAssociationDb("epflClub"),
+      () => seedEpflAssociation("epflClub", verified)],
+  ]) {
+    test(`${name} (${kind}) listed in a group can't read or send in its chat`, async () => {
+      await seed();
+      for (const eventId of ["e1", "clubPublic"]) {
+        await seedGroup(eventId, "g1", [uid, "u2"]);
+        await seedMessage(eventId, "g1", "m1", "u2");
+        await assertFails(getDoc(doc(db(), messagePath(eventId, "g1", "m1"))));
+        await assertFails(getDocs(chatOf(db(), eventId, "g1")));
+        await assertFails(sendAs(db(), eventId, "g1", newMessage(uid)));
+        await expectNoMessage(eventId, "g1");
+      }
+    });
+  }
+}
+
+for (const [name, db] of [
+  ["an unverified @epfl.ch member", () => firestoreAs("student@epfl.ch", false, "u1")],
+  ["a member without an email_verified claim",
+    () => env.authenticatedContext("u1", { email: "student@epfl.ch" }).firestore()],
+  ["a signed-out user", () => env.unauthenticatedContext().firestore()],
+]) {
+  test(`${name} can't read or send in a group's chat`, async () => {
+    await seedGroup("e1", "g1", ["u1", "u2"]);
+    await seedMessage("e1", "g1", "m1", "u2");
+    await assertFails(getDoc(doc(db(), messagePath("e1", "g1", "m1"))));
+    await assertFails(getDocs(chatOf(db(), "e1", "g1")));
+    await assertFails(sendAs(db(), "e1", "g1", newMessage("u1")));
+    await expectNoMessage("e1", "g1");
+  });
+}
+
+// -- sending --
+
+test("a member sends their own message in a transaction, as the app does", async () => {
+  await seedGroup("e1", "g1", ["u2", "u1"]);
+  await assertSucceeds(sendAs(studentDb("u1"), "e1", "g1", newMessage("u1")));
+  const stored = await storedMessage("e1", "g1", "new");
+  if (stored.senderId !== "u1" || stored.text !== "See you at 6?") {
+    throw new Error(`Unexpected message: ${JSON.stringify(stored)}`);
+  }
+  const reply = doc(studentDb("u2"), messagePath("e1", "g1", "reply"));
+  await assertSucceeds(setDoc(reply, newMessage("u2", "Yes!")));
+});
+
+test("a student who isn't in the group can't send to it", async () => {
+  await seedGroup("e1", "g1", ["u2"]);
+  await assertFails(sendAs(studentDb("u1"), "e1", "g1", newMessage("u1")));
+  await expectNoMessage("e1", "g1");
+});
+
+test("a member can't send a message as another member", async () => {
+  await seedGroup("e1", "g1", ["u2", "u1"]);
+  await assertFails(sendAs(studentDb("u1"), "e1", "g1", newMessage("u2")));
+  await expectNoMessage("e1", "g1");
+});
+
+for (const [name, changes] of [
+  ["an empty text", { text: "" }],
+  ["a text of 1001 characters", { text: "a".repeat(1001) }],
+  ["501 emoji (1002 UTF-16 units)", { text: "\u{1F600}".repeat(501) }],
+  ["a text that isn't a string", { text: 42 }],
+  ["a null text", { text: null }],
+  ["no text", { text: undefined }],
+  ["no sender", { senderId: undefined }],
+  ["a createdAt the client chose", { createdAt: Timestamp.fromMillis(1_790_000_000_000) }],
+  ["no createdAt", { createdAt: undefined }],
+  ["another field", { editedAt: serverTimestamp() }],
+]) {
+  test(`a message with ${name} is denied`, async () => {
+    await seedGroup("e1", "g1", ["u1"]);
+    const message = { ...newMessage("u1"), ...changes };
+    for (const key of Object.keys(message)) {
+      if (message[key] === undefined) delete message[key];
+    }
+    await assertFails(sendAs(studentDb("u1"), "e1", "g1", message));
+    await expectNoMessage("e1", "g1");
+  });
+}
+
+test("the text limit allows 1 and 1000 characters, and 500 emoji", async () => {
+  await seedGroup("e1", "g1", ["u1"]);
+  const db = studentDb("u1");
+  await assertSucceeds(sendAs(db, "e1", "g1", newMessage("u1", "a"), "shortest"));
+  await assertSucceeds(sendAs(db, "e1", "g1", newMessage("u1", "a".repeat(1000)), "longest"));
+  await assertSucceeds(sendAs(db, "e1", "g1", newMessage("u1", "\u{1F600}".repeat(500)), "emoji"));
+});
+
+// -- nobody edits or deletes --
+
+test("nobody edits or deletes a message, not even its sender", async () => {
+  await seedGroup("e1", "g1", ["u2", "u1"]);
+  await seedMessage("e1", "g1", "m1", "u1");
+  for (const uid of ["u1", "u2"]) {
+    const message = doc(studentDb(uid), messagePath("e1", "g1", "m1"));
+    await assertFails(updateDoc(message, { text: "Edited" }));
+    await assertFails(setDoc(message, newMessage("u1", "Overwritten")));
+    await assertFails(deleteDoc(message));
+  }
+  const stored = await storedMessage("e1", "g1", "m1");
+  if (stored.text !== "Seeded") throw new Error(`The message changed: ${JSON.stringify(stored)}`);
 });
