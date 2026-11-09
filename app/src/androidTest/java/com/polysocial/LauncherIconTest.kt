@@ -1,4 +1,4 @@
-// Contributors: Claude Opus 5.5 (launcher icon checks, #279).
+// Contributors: Claude Opus 5.5 (launcher icon checks and glyph contrast check, #279).
 package com.polysocial
 
 import android.graphics.Bitmap
@@ -9,6 +9,7 @@ import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.os.Build
 import androidx.compose.ui.graphics.toArgb
+import androidx.core.graphics.ColorUtils
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.polysocial.ui.theme.Accent
@@ -46,6 +47,9 @@ class LauncherIconTest {
       val tile = icon.background
       assertTrue("$name's background is not a plain colour", tile is ColorDrawable)
       assertEquals("$name's tile is not Accent", Accent.toArgb(), (tile as ColorDrawable).color)
+      // WCAG 1.4.11 asks 3:1 for graphics; an opaque tile keeps it on any wallpaper.
+      val contrast = ColorUtils.calculateContrast(Color.WHITE, tile.color)
+      assertTrue("$name's glyph contrast $contrast is below 3:1", contrast >= MIN_CONTRAST)
 
       assertGlyph(name, icon.foreground)
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -87,5 +91,6 @@ class LauncherIconTest {
   private companion object {
     const val LAYER_SIZE = 108
     const val SAFE_ZONE_RADIUS = 33f
+    const val MIN_CONTRAST = 3.0
   }
 }
