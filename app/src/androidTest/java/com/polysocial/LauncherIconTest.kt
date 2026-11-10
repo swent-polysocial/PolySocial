@@ -29,11 +29,20 @@ class LauncherIconTest {
 
   private val context = InstrumentationRegistry.getInstrumentation().targetContext
 
+  /**
+   * On a device whose framework sets `config_useRoundIcon` (CI's API 34 `google_apis` image does),
+   * the package parser stores `android:roundIcon` in [android.content.pm.ApplicationInfo.icon], so
+   * either of the two icons is the manifest's; [launcherAndRoundIconsAreTheGroupTile] checks both.
+   */
   @Test
   fun theManifestUsesTheLauncherIcon() {
     val app = context.packageManager.getApplicationInfo(context.packageName, 0)
 
-    assertEquals(R.mipmap.ic_launcher, app.icon)
+    val launcherIcons = listOf(R.mipmap.ic_launcher, R.mipmap.ic_launcher_round)
+    assertTrue(
+        "the app's icon ${app.icon} is not ic_launcher or ic_launcher_round",
+        app.icon in launcherIcons,
+    )
   }
 
   @Test
