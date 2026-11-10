@@ -14,6 +14,7 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (any team member deploys, row 18, #310). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the missing public profile created at app start, #291). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (registrations deleted with their event and account, #275). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (the QR payload parser marked as built, #337). -->
 
 How PolySocial is built, as we currently envision it. The page follows the [Android App Architecture guide](https://developer.android.com/topic/architecture/intro): a **UI layer** (Compose screens and ViewModels), a **domain layer** of pure Kotlin logic, and a **data layer** of repositories in front of Firebase, the map and geocoding services, and the device sensors.
 
@@ -255,7 +256,7 @@ flowchart TB
 - **Find my group (#20).** Locations are shared **only with the group and only during the event** (README). Each member's position lives in `events/{eventId}/groups/{groupId}/locations/{uid}`. It is written only during the event window, readable only by group members, and deleted when the event ends. There is no location history.
 - **Album.** Photos are compressed and resized on the device, then stored in Cloud Storage. A Firestore document holds each photo's metadata. Storage Security Rules enforce size and type limits and check-in membership. Thumbnails are cached.
 - **Reminders (#21, #36).** WorkManager schedules them when the student registers, so they fire offline and survive reboots. The notification permission (Android 13+) is requested at that moment.
-- **QR codes (#17, #22).** Scanned with CameraX + ML Kit barcode scanning. Payloads are typed strings such as `polysocial://checkin/{eventId}/{token}` and `polysocial://friend/{uid}`, validated by a pure parser.
+- **QR codes (#17, #22).** Scanned with CameraX + ML Kit barcode scanning. Payloads are typed strings, `polysocial://checkin/{eventId}/{token}` and `polysocial://friend/{uid}`, validated by a pure parser. **The parser is built (#337):** `parseQrPayload` and `friendQrPayload` in `model/qr/QrPayload.kt`. It is strict: the scheme and host are exact lowercase, each ID is 1 to 128 of `[A-Za-z0-9_-]`, and anything else (a web link, another app's code, a damaged scan) is `Invalid`. Showing a code (#339) and scanning one are planned.
 
 ### 3.6 Sprint 2 additions (#103, #106–#123)
 
@@ -605,7 +606,7 @@ Every Scrum Board item mapped to the components it touches.
 | #15 Ping friends | Groups & Matchmaking | FriendRepository, notifications | ⬜ |
 | #25 Chat | Chat | Chats tab, ChatViewModel, ChatRepository, `messages` | 🟦 |
 | #16 Adding friends | — | Friends screen, FriendRepository, `username` | 🟦 |
-| #17 Meeting people by QR | — | QrScanner, QR payload parsing, FriendRepository | 🟦 |
+| #17 Meeting people by QR | — | QrScanner, QR payload parsing (built, #337), FriendRepository | 🟦 |
 | #22 Automatic check-in | — | check-in policy, LocationService, QR fallback, GroupRepository | 🟦 |
 | #20 Find my group | — | group venue map, `events/{e}/groups/{g}/locations` | 🟦 |
 | #21 Event notification | — | `ReminderScheduler`, pure reminder time, WorkManager, local notifications | 🟩 S2 #120, #123 |
