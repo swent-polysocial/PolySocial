@@ -1,4 +1,4 @@
-// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143; publicProfiles/{uid} tests, written test-first, #229; reads by ID only and the fixed section and year lists, after review, #229; private edits keep the public copy, and deleted accounts stay deleted, after review, #229; interests from the fixed list, test-first, #230; any code read in the list check, after review, #230); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121); Claude (Opus 5.5, Anthropic) (event group and groupMembers marker tests, #232, with more after review; group chat message tests, #237).
+// Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143; publicProfiles/{uid} tests, written test-first, #229; reads by ID only and the fixed section and year lists, after review, #229; private edits keep the public copy, and deleted accounts stay deleted, after review, #229; interests from the fixed list, test-first, #230; any code read in the list check, after review, #230); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121); Claude (Opus 5.5, Anthropic) (event group and groupMembers marker tests, #232, with more after review; group chat message tests, #237, and a deleted account's messages, after review).
 // Contributors: Claude (Opus 5.5, Anthropic) (a non-EPFL association in allowedUids can't run My events' private query, #320).
 const { after, before, beforeEach, test } = require("node:test");
 const { readFileSync } = require("node:fs");
@@ -3070,6 +3070,21 @@ test("a member can't send a message as another member", async () => {
   await seedGroup("e1", "g1", ["u2", "u1"]);
   await assertFails(sendAs(studentDb("u1"), "e1", "g1", newMessage("u2")));
   await expectNoMessage("e1", "g1");
+});
+
+// deleteAccount deletes the profiles and writes the deletion marker, but leaves the UID in
+// memberUids, and the deleted user's ID token stays valid for up to an hour.
+test("a deleted account can't send to a group it is still listed in", async () => {
+  await seedGroup("e1", "g1", ["u2", "u1"]);
+  await seedDeletedAccount("u1");
+  await assertFails(sendAs(studentDb("u1"), "e1", "g1", newMessage("u1")));
+  await expectNoMessage("e1", "g1");
+});
+
+test("another member's deletion marker doesn't stop a member sending", async () => {
+  await seedGroup("e1", "g1", ["u2", "u1"]);
+  await seedDeletedAccount("u2");
+  await assertSucceeds(sendAs(studentDb("u1"), "e1", "g1", newMessage("u1")));
 });
 
 for (const [name, changes] of [
