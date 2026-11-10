@@ -31,6 +31,11 @@ private const val CHECKIN = "checkin"
  */
 private val QR_ID = Regex("[A-Za-z0-9_-]{1,$MAX_QR_ID_LENGTH}")
 
+/** Firestore reserves document IDs of this form, so no code may carry one. */
+private val RESERVED_ID = Regex("__.*__")
+
+private fun isQrId(text: String) = QR_ID.matches(text) && !RESERVED_ID.matches(text)
+
 /**
  * Reads a scanned code. Only surrounding whitespace is ignored (scanners can add a newline); the
  * scheme and host must be exactly lowercase, and a query, fragment, trailing slash or extra segment
@@ -41,7 +46,7 @@ fun parseQrPayload(raw: String): QrPayload {
   if (!text.startsWith(SCHEME)) return QrPayload.Invalid
   val segments = text.removePrefix(SCHEME).split('/')
   val ids = segments.drop(1)
-  if (!ids.all(QR_ID::matches)) return QrPayload.Invalid
+  if (!ids.all(::isQrId)) return QrPayload.Invalid
   return when {
     segments[0] == FRIEND && ids.size == 1 -> QrPayload.Friend(ids[0])
     segments[0] == CHECKIN && ids.size == 2 -> QrPayload.CheckIn(ids[0], ids[1])
@@ -53,4 +58,4 @@ fun parseQrPayload(raw: String): QrPayload {
  * The code a student shows on their profile, or `null` for a UID [parseQrPayload] would refuse, so
  * the screen can show an error instead of a code nobody can scan.
  */
-fun friendQrPayload(uid: String): String? = if (QR_ID.matches(uid)) "$SCHEME$FRIEND/$uid" else null
+fun friendQrPayload(uid: String): String? = if (isQrId(uid)) "$SCHEME$FRIEND/$uid" else null

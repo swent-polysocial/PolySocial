@@ -129,6 +129,20 @@ class QrPayloadTest {
   }
 
   @Test
+  fun idsFirestoreReservesAreInvalid() {
+    // Firestore refuses document IDs of the form `__…__`; such a code must never reach a path.
+    assertInvalid("polysocial://friend/__name__")
+    assertInvalid("polysocial://friend/____")
+    assertInvalid("polysocial://checkin/__x__/token")
+    assertInvalid("polysocial://checkin/event/__x__")
+    assertNull(friendQrPayload("__name__"))
+    // Underscores elsewhere stay valid.
+    assertEquals(QrPayload.Friend("__a"), parseQrPayload("polysocial://friend/__a"))
+    assertEquals(QrPayload.Friend("a__"), parseQrPayload("polysocial://friend/a__"))
+    assertEquals(QrPayload.Friend("___"), parseQrPayload("polysocial://friend/___"))
+  }
+
+  @Test
   fun friendPayloadIsTheDecidedFormat() {
     assertEquals("polysocial://friend/abc", friendQrPayload("abc"))
   }
