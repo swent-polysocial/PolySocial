@@ -13,7 +13,7 @@
 <!-- Contributors: Claude (public profiles deleted with the account, #229; the deletion marker and deploy order, after review, #229). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (deleteAccount deploy status, budget alert and image cleanup policy, 2026-11-05). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the Seeding demo data section, #243). -->
-<!-- Contributors: Claude (Fable 5.2, Anthropic) (Features table statuses, section order and the move of behavior notes to docs/App-behavior.md, #340). -->
+<!-- Contributors: Claude (Fable 5.2, Anthropic) (Features table statuses, section order and the move of behavior notes to docs/App-behavior.md, #340; review fixes by Claude (Opus 5.5, Anthropic)). -->
 
 # PolySocial
 
@@ -44,18 +44,18 @@ The barrier to campus life is social rather than informational: PolySocial answe
 | Interactive map of upcoming public events, with distance when location is allowed | Done |
 | Create public or private events, with a map location picker and place search | Done |
 | "I'm going" and **My events**, available offline | Done |
-| **Find a group:** join or start a small group for an event, ranked by shared interests, section and year | Done |
+| **Find a group:** join or start a small group for an event, ranked by shared interests, section and year | Done (group screen in progress) |
 | Association accounts: sign up with any email, set up the association, verified by hand by a PolySocial admin; verified associations manage their own events | Done |
 | Account deletion from Profile → Privacy & data | Done |
 | Group chat | In progress |
 | Event reminders | In progress |
-| Friends (by username or QR code), public or private profiles | Planned |
+| Friends (by QR code), public or private profiles | Planned |
 | Check-in at the venue (one-off GPS read or entrance QR code) | Planned |
 | Shared event album, unlocked by check-in | Planned |
 | Association members and roles | Planned |
 | Report and block, in-app notifications | Planned |
 
-**Privacy:** location is never tracked continuously. It is read once for a feature, and only when you allow it. Profiles, photos, chats and locations are personal data under the Swiss nLPD; students can delete their account and its data in the app (Profile → **Privacy & data**), where the full privacy notice is also available offline.
+**Privacy:** location is never tracked continuously. It is read once for a feature, and only when you allow it. Profiles, photos, chats and locations are personal data under the Swiss nLPD; students can delete their account and its data in the app (Profile → **Privacy & data**), where the full privacy notice is also available offline; associations ask the project team. Data export isn't available yet.
 
 **Offline:** events you've loaded, your registered events and their schedule, and reminders stay available offline. The map shows cached events on whatever map tiles are already cached.
 
