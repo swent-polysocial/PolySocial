@@ -1,4 +1,4 @@
-# Contributors: Claude (Firestore rules-test entries, #33; Cloud Functions packages, #206).
+# Contributors: Claude (Firestore rules-test entries, #33; Cloud Functions packages, #206; local agent folder, #340).
 /.idea/
 .DS_Store
 .gradle
@@ -30,3 +30,5 @@ secrets.properties
 .firebase/
 # npm packages for the Firestore rules tests and the Cloud Functions (installed with npm ci)
 node_modules/
+# Local AI agent settings and worktrees
+.claude/
