@@ -18,7 +18,10 @@ sealed interface QrPayload {
   data object Invalid : QrPayload
 }
 
-/** The longest ID or token a code may hold; Firebase UIDs and Firestore IDs are far shorter. */
+/**
+ * The longest ID or token a code may hold: Firebase Auth's maximum UID length. Generated UIDs (28)
+ * and Firestore auto-IDs (20) are shorter.
+ */
 const val MAX_QR_ID_LENGTH = 128
 
 private const val SCHEME = "polysocial://"
@@ -37,9 +40,9 @@ private val RESERVED_ID = Regex("__.*__")
 private fun isQrId(text: String) = QR_ID.matches(text) && !RESERVED_ID.matches(text)
 
 /**
- * Reads a scanned code. Only surrounding whitespace is ignored (scanners can add a newline); the
- * scheme and host must be exactly lowercase, and a query, fragment, trailing slash or extra segment
- * makes the code [QrPayload.Invalid].
+ * Reads a scanned code. Only surrounding whitespace, as Kotlin's `trim()` defines it, is ignored
+ * (scanners can add a newline or a group separator); the scheme and host must be exactly lowercase,
+ * and a query, fragment, trailing slash or extra segment makes the code [QrPayload.Invalid].
  */
 fun parseQrPayload(raw: String): QrPayload {
   val text = raw.trim()
