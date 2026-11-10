@@ -55,7 +55,7 @@ class MapFiltersScreenTest {
         MapViewModel(
             MapEventSource {
               reads++
-              RepositoryMapEventSource(repository).observePublicUpcomingEvents()
+              RepositoryMapEventSource(repository).observeEvents()
             },
             FakeLocationService().apply { markPermissionRequested() },
             MAP_TEST_CLOCK,

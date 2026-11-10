@@ -3,6 +3,8 @@
 // Contributors: Claude (the "+" that opens Create Event among the map overlays, #110; an
 // association's badge and name on the event preview, #128; the preview realigned with its Figma
 // frames, #222; the search, filter chips, Filters sheet and "No matching events" card, #116).
+// Contributors: Claude (Opus 5.5, Anthropic) adapted the preview and empty state to an
+// association's own map, #133.
 package com.polysocial.ui.map
 
 import androidx.annotation.StringRes
@@ -113,6 +115,7 @@ object MapTags {
   const val LOCATION_ICON = "map_location_icon"
   const val DISTANCE = "map_preview_distance"
   const val VERIFIED = "map_preview_verified"
+  const val PRIVATE = "map_preview_private"
   const val FILTERS = "map_filters"
   const val NO_MATCH = "map_no_match"
   const val CLEAR_FILTERS = "map_clear_filters"
@@ -260,8 +263,8 @@ fun MapScreen(
           }
       tokenConfigured && state.status == MapContentStatus.EMPTY ->
           MapNotice(
-              R.string.map_empty_title,
-              R.string.map_empty_message,
+              if (state.ownEvents) R.string.map_own_empty_title else R.string.map_empty_title,
+              if (state.ownEvents) R.string.map_own_empty_message else R.string.map_empty_message,
               MapTags.EMPTY,
               Modifier.align(Alignment.Center).padding(24.dp),
           )
@@ -399,6 +402,7 @@ fun MapScreen(
           state.selectedEventIsToday,
           state.selectedEventIsTonight,
           state.selectedDistanceMeters,
+          state.ownEvents,
           Modifier.align(Alignment.BottomCenter).padding(12.dp).onSizeChanged {
             previewHeight = it.height
           },
@@ -471,7 +475,9 @@ private fun MapError(@StringRes message: Int, onRetry: () -> Unit, modifier: Mod
  * The selected event's card, as in the Figma frames "Map · event preview" (132:550) and "Map ·
  * event preview · association" (958:180): the icon tile, then a text column with the category and
  * day, the title and the time line (time, place and, for an association, its name); the
- * straight-line distance in a grey strip; then the two buttons (#222).
+ * straight-line distance in a grey strip; then the two buttons (#222). On an association's own map
+ * ([ownEvents], Figma "Association · Map · event preview", #133), Details is the only button, and a
+ * private event gets a "Private" chip in the strip.
  */
 @Composable
 private fun EventPreview(
@@ -482,9 +488,11 @@ private fun EventPreview(
     isToday: Boolean,
     isTonight: Boolean,
     distanceMeters: Double?,
+    ownEvents: Boolean,
     modifier: Modifier,
 ) {
   val typography = MaterialTheme.typography
+  val showPrivate = ownEvents && event.isPrivate
   Box(
       modifier
           .fillMaxWidth()
@@ -551,23 +559,28 @@ private fun EventPreview(
           )
         }
       }
-      distanceMeters?.let { meters ->
-        val roundedMeters = meters.roundToInt()
-        Box(
+      if (distanceMeters != null || showPrivate) {
+        Row(
             Modifier.padding(top = 11.dp)
                 .fillMaxWidth()
                 .heightIn(min = 48.dp)
                 .background(Surface, RoundedCornerShape(12.dp))
                 .padding(horizontal = 12.dp),
-            contentAlignment = Alignment.CenterStart,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-          Text(
-              if (roundedMeters < 1000) stringResource(R.string.map_distance_meters, roundedMeters)
-              else stringResource(R.string.map_distance_kilometers, meters / 1000),
-              color = Ink2,
-              style = typography.labelMedium.figma(16.4f),
-              modifier = Modifier.testTag(MapTags.DISTANCE),
-          )
+          if (showPrivate) PrivateChip()
+          distanceMeters?.let { meters ->
+            val roundedMeters = meters.roundToInt()
+            Text(
+                if (roundedMeters < 1000)
+                    stringResource(R.string.map_distance_meters, roundedMeters)
+                else stringResource(R.string.map_distance_kilometers, meters / 1000),
+                color = Ink2,
+                style = typography.labelMedium.figma(16.4f),
+                modifier = Modifier.testTag(MapTags.DISTANCE),
+            )
+          }
         }
       }
       Row(
@@ -576,6 +589,7 @@ private fun EventPreview(
       ) {
         OutlinedButton(
             onDetails,
+            // Associations don't join groups: Details alone takes the whole width.
             Modifier.weight(123.5f).heightIn(min = 48.dp).testTag(MapTags.DETAILS),
             border = BorderStroke(1.dp, Border),
             colors = ButtonDefaults.outlinedButtonColors(contentColor = Ink),
@@ -586,14 +600,19 @@ private fun EventPreview(
               style = typography.titleSmall.figma(18.9f),
           )
         }
-        Button(
-            {},
-            Modifier.weight(170.5f).heightIn(min = 48.dp).testTag(MapTags.FIND_GROUP),
-            enabled = false,
-            colors = ButtonDefaults.buttonColors(containerColor = Accent),
-            contentPadding = PaddingValues(0.dp),
-        ) {
-          Text(stringResource(R.string.map_find_group), style = typography.titleSmall.figma(18.9f))
+        if (!ownEvents) {
+          Button(
+              {},
+              Modifier.weight(170.5f).heightIn(min = 48.dp).testTag(MapTags.FIND_GROUP),
+              enabled = false,
+              colors = ButtonDefaults.buttonColors(containerColor = Accent),
+              contentPadding = PaddingValues(0.dp),
+          ) {
+            Text(
+                stringResource(R.string.map_find_group),
+                style = typography.titleSmall.figma(18.9f),
+            )
+          }
         }
       }
     }
@@ -615,6 +634,22 @@ private fun EventPreview(
       }
     }
   }
+}
+
+/**
+ * Figma's grey "Private" chip before the distance, on an association's own private event (#133).
+ */
+@Composable
+private fun PrivateChip() {
+  Text(
+      stringResource(R.string.map_private),
+      color = Ink2,
+      style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+      modifier =
+          Modifier.background(Border, RoundedCornerShape(50))
+              .padding(horizontal = 10.dp, vertical = 4.dp)
+              .testTag(MapTags.PRIVATE),
+  )
 }
 
 /** "20:00–01:00 · Satellite · by AGEPoly": the place and the association's name when known. */

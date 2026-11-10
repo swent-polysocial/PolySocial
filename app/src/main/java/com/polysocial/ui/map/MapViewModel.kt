@@ -1,7 +1,7 @@
 // Contributors: OpenAI Codex (map state, selection, day labels and failure handling for #50;
 // one-off location permission and distance state for #51).
 // Contributors: Claude (the names of the associations with events on the map, #128; the search
-// and filters on the loaded events, #116).
+// and filters on the loaded events, #116; an association's own events, #133).
 package com.polysocial.ui.map
 
 import androidx.lifecycle.SavedStateHandle
@@ -17,6 +17,7 @@ import com.polysocial.model.location.LocationService
 import com.polysocial.model.location.straightLineDistanceMeters
 import com.polysocial.model.map.MapEventResult
 import com.polysocial.model.map.MapEventSource
+import com.polysocial.model.map.OwnAssociationMapEventSource
 import com.polysocial.ui.event.list.DateChoice
 import com.polysocial.ui.event.list.EventSelection
 import com.polysocial.ui.event.list.EventsLocationState
@@ -88,6 +89,11 @@ data class MapUiState(
     val associationNames: Map<String, String> = emptyMap(),
     /** The search and filters, separate from the Events tab's (#113). */
     val selection: EventSelection = EventSelection(),
+    /**
+     * True on a verified association's map, which shows its own events (#133): private ones too, no
+     * Find a group in the preview, and its own empty state.
+     */
+    val ownEvents: Boolean = false,
 ) {
   /**
    * The location as the shared Filters sheet shows it: the distance chips work only with a fix, and
@@ -112,7 +118,9 @@ data class MapUiState(
 }
 
 /**
- * Observes events, protects the public map and retains cached markers during transient failures.
+ * Observes [source]'s events, protects the public map and retains cached markers during transient
+ * failures. A student's map shows the public events and drops any private one; a verified
+ * association's map shows its own events, private ones included ([MapEventSource.ownEvents], #133).
  * The search and filters (#116) run [filterEvents] on the events already loaded, so a change needs
  * no new request and works offline; they are kept in [savedState], so they survive rotation. A
  * distance applies only with a location fix, and a lost permission or fix clears it, as on the
@@ -121,10 +129,7 @@ data class MapUiState(
  * [associationNames], so its preview shows it (#128); a name that can't be read is left out, and
  * tried again when its preview opens.
  */
-@HiltViewModel
-class MapViewModel
-@Inject
-constructor(
+open class MapViewModel(
     private val source: MapEventSource,
     private val locationService: LocationService,
     private val clock: Clock,
@@ -132,7 +137,12 @@ constructor(
     private val savedState: SavedStateHandle = SavedStateHandle(),
 ) : ViewModel() {
   private val mutableState =
-      MutableStateFlow(MapUiState(selection = restoreEventSelection(savedState, SAVED_PREFIX)))
+      MutableStateFlow(
+          MapUiState(
+              selection = restoreEventSelection(savedState, SAVED_PREFIX),
+              ownEvents = source.ownEvents,
+          )
+      )
   val uiState: StateFlow<MapUiState> = mutableState.asStateFlow()
   private var observation: Job? = null
   private var locationRequest: Job? = null
@@ -383,14 +393,14 @@ constructor(
   private fun observeEvents() {
     observation?.cancel()
     observation = viewModelScope.launch {
-      flow { emitAll(source.observePublicUpcomingEvents()) }
+      flow { emitAll(source.observeEvents()) }
           .catch { emit(MapEventResult.Error) }
           .collect { result ->
             when (result) {
               MapEventResult.Error ->
                   mutableState.update { it.copy(status = MapContentStatus.ERROR) }
               is MapEventResult.Events -> {
-                val events = publicMapEvents(result.events)
+                val events = mapEvents(result.events, keepPrivate = source.ownEvents)
                 loadNamesOf(events)
                 loadedEvents = events
                 showMatching(freshEvents = true)
@@ -416,16 +426,43 @@ constructor(
       event != null && isToday(event) && event.startTime.atZone(MAP_TIME_ZONE).hour >= 18
 }
 
+/** A student's map: the public upcoming events (#50). */
+@HiltViewModel
+class StudentMapViewModel
+@Inject
+constructor(
+    source: MapEventSource,
+    locationService: LocationService,
+    clock: Clock,
+    associationNames: AssociationNames,
+    savedState: SavedStateHandle,
+) : MapViewModel(source, locationService, clock, associationNames, savedState)
+
+/** A verified association's map: its own upcoming events, private ones included (#133). */
+@HiltViewModel
+class AssociationMapViewModel
+@Inject
+constructor(
+    source: OwnAssociationMapEventSource,
+    locationService: LocationService,
+    clock: Clock,
+    associationNames: AssociationNames,
+    savedState: SavedStateHandle,
+) : MapViewModel(source, locationService, clock, associationNames, savedState)
+
 /** The Map tab's saved-state keys start with it (map_search...), apart from the Events tab's. */
 private const val SAVED_PREFIX = "map"
 
 internal val MAP_TIME_ZONE: ZoneId = ZoneId.of("Europe/Zurich")
 
-/** Rejects private and malformed records before coordinates reach the native renderer. */
-internal fun publicMapEvents(events: List<Event>): List<Event> =
+/**
+ * Rejects malformed records before coordinates reach the native renderer, and private events unless
+ * [keepPrivate] (an association's own map, #133).
+ */
+internal fun mapEvents(events: List<Event>, keepPrivate: Boolean = false): List<Event> =
     events
         .filter {
-          !it.isPrivate &&
+          (keepPrivate || !it.isPrivate) &&
               it.id.isNotBlank() &&
               it.location.latitude.isFinite() &&
               it.location.latitude in -90.0..90.0 &&
