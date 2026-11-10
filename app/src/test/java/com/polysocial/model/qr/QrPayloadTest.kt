@@ -146,4 +146,115 @@ class QrPayloadTest {
     assertNull(friendQrPayload("a b"))
     assertNull(friendQrPayload("a".repeat(MAX_QR_ID_LENGTH + 1)))
   }
+
+  @Test
+  fun aOneCharacterIdIsValid() {
+    assertEquals(QrPayload.Friend("a"), parseQrPayload("polysocial://friend/a"))
+    assertEquals(QrPayload.CheckIn("e", "1"), parseQrPayload("polysocial://checkin/e/1"))
+  }
+
+  @Test
+  fun everyAllowedCharacterIsAccepted() {
+    // Each end of every range, so a narrowed character class breaks this test.
+    val all = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"
+    assertEquals(QrPayload.Friend(all), parseQrPayload("polysocial://friend/$all"))
+    assertEquals(QrPayload.CheckIn(all, all), parseQrPayload("polysocial://checkin/$all/$all"))
+  }
+
+  @Test
+  fun aCheckInTokenOrEventIdAtTheLimitIsValid() {
+    val longest = "a".repeat(128)
+    assertEquals(
+        QrPayload.CheckIn(longest, longest),
+        parseQrPayload("polysocial://checkin/$longest/$longest"),
+    )
+  }
+
+  @Test
+  fun surroundingWhitespaceIsIgnoredOnACheckInCode() {
+    // Tabs and a Windows line ending, on the other code form.
+    assertEquals(
+        QrPayload.CheckIn("event", "token"),
+        parseQrPayload("\tpolysocial://checkin/event/token\r\n"),
+    )
+  }
+
+  @Test
+  fun whitespaceInsideTheCodeIsInvalid() {
+    assertInvalid("polysocial://friend/abc\ndef")
+    assertInvalid("polysocial://\nfriend/abc")
+    assertInvalid("polysocial:// friend/abc")
+    assertInvalid("polysocial://friend /abc")
+    assertInvalid("polysocial://checkin/event\t/token")
+    assertInvalid("polysocial://friend/a b")
+  }
+
+  @Test
+  fun controlCharactersAreNotWhitespaceAndMakeTheCodeInvalid() {
+    // A damaged scan can carry a NUL; it is not surrounding whitespace, so it is not trimmed.
+    assertInvalid("polysocial://friend/abc\u0000")
+    assertInvalid("\u0000polysocial://friend/abc")
+    assertInvalid("polysocial://checkin/event/tok\u0007en")
+  }
+
+  @Test
+  fun nonAsciiLettersAndDigitsAreInvalid() {
+    // Unicode digits and letters look like IDs but are not Firebase IDs: Arabic-Indic digits,
+    // full-width letters, an umlaut and a Cyrillic е that looks like a Latin e.
+    assertInvalid("polysocial://friend/١٢٣")
+    assertInvalid("polysocial://friend/ａｂｃ")
+    assertInvalid("polysocial://checkin/event/töken")
+    assertInvalid("polysocial://checkin/еvent/token")
+  }
+
+  @Test
+  fun aQueryOrFragmentCannotStandInForASlash() {
+    // Read as a separator, these would turn into a valid check-in code.
+    assertInvalid("polysocial://checkin/event?token")
+    assertInvalid("polysocial://checkin/event#token")
+  }
+
+  @Test
+  fun aHostThatOnlyStartsLikeAKnownOneIsInvalid() {
+    assertInvalid("polysocial://friends/abc")
+    assertInvalid("polysocial://frien/abc")
+    assertInvalid("polysocial://friend:80/abc")
+    assertInvalid("polysocial://checkins/event/token")
+    assertInvalid("polysocial://check/event/token")
+  }
+
+  @Test
+  fun aBuiltPayloadAtEitherLengthLimitParsesBack() {
+    for (uid in listOf("a", "_", "-", "a".repeat(MAX_QR_ID_LENGTH))) {
+      val payload = friendQrPayload(uid)
+      assertEquals("polysocial://friend/$uid", payload)
+      assertEquals(QrPayload.Friend(uid), parseQrPayload(payload!!))
+    }
+  }
+
+  @Test
+  fun theBuilderRefusesEveryUidTheParserRefuses() {
+    // Otherwise a profile could show a code that no scanner accepts.
+    val refused =
+        listOf(
+            " abc",
+            "abc ",
+            "abc\n",
+            "a.b",
+            ".",
+            "..",
+            "a?b",
+            "a#b",
+            "a%20b",
+            "élise",
+            "١",
+            "a\u0000",
+            "abc/",
+        )
+    for (uid in refused) {
+      // In the middle of a code, where the trim of surrounding whitespace does not reach.
+      assertInvalid("polysocial://checkin/$uid/token")
+      assertNull("\"$uid\" must not be built", friendQrPayload(uid))
+    }
+  }
 }
