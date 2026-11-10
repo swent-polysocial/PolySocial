@@ -9,7 +9,7 @@
 // badge and locationName checks after review; isStudent for writes after #161; organizers
 // stay allowed readers after review; event registrations, #121); Claude (Opus 5.5, Anthropic)
 // (event groups and their groupMembers markers, #232, with fixes after review; group chat
-// messages, #237).
+// messages, #237, and no messages from a deleted account, after review).
 rules_version = '2';
 
 service cloud.firestore {
@@ -40,8 +40,9 @@ service cloud.firestore {
     // Whether deleteAccount deleted this account: it writes deletedAccounts/{uid} in the transaction
     // that deletes both profiles (#229 review). The deleted user's ID token stays valid until it
     // expires, so without it another of their devices could recreate the profiles afterwards, and
-    // other students could read the public one. Firebase never reuses a UID. The app can't read or
-    // write deletedAccounts: no rule matches it.
+    // other students could read the public one; it could also still send messages to its groups
+    // (#237). Firebase never reuses a UID. The app can't read or write deletedAccounts: no rule
+    // matches it.
     function isDeletedAccount(uid) {
       return exists(/databases/$(database)/documents/deletedAccounts/$(uid));
     }
@@ -433,8 +434,11 @@ service cloud.firestore {
     // members read and send, each message as themselves; nobody edits or deletes one yet (report
     // and block come later). Membership is read from the group itself, as its own get rule does:
     // a member removed from a private event's allowedUids still reaches their group (#295), so
-    // they keep its chat too. Each operation has its own rule, so a rate limit can be added to
-    // create without touching reads. Associations get no access (isStudent).
+    // they keep its chat too. A deleted account can't send (isDeletedAccount): deleteAccount
+    // leaves its UID in memberUids, and its ID token stays valid for up to an hour, so it could
+    // otherwise still write new personal data after the deletion. Each operation has its own
+    // rule, so a rate limit can be added to create without touching reads. Associations get no
+    // access (isStudent).
     match /events/{eventId}/groups/{groupId}/messages/{messageId} {
       function isMember() {
         let group = /databases/$(database)/documents/events/$(eventId)/groups/$(groupId);
@@ -445,6 +449,7 @@ service cloud.firestore {
 
       allow get, list: if isMember();
       allow create: if isMember()
+          && !isDeletedAccount(request.auth.uid)
           && request.resource.data.keys().hasAll(['senderId', 'text', 'createdAt'])
           && request.resource.data.keys().hasOnly(['senderId', 'text', 'createdAt'])
           && request.resource.data.senderId == request.auth.uid
