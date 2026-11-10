@@ -1,7 +1,8 @@
 // Contributors: OpenAI Codex (blocked cache errors and SDK cancellation after rebase, #156).
 // Contributors: Claude (Opus 5.5, Anthropic) covered the association repository, event edits and
 // the session guard's block, #198; Mohamed Khellaf (reviewed and revised).
-// Contributors: Claude Opus 5.5 (covered the registration repository, #121).
+// Contributors: Claude Opus 5.5 (covered the registration repository, #121); Claude (the public
+// profile repair, #291).
 package com.polysocial.model.firebase
 
 import com.polysocial.model.association.*
@@ -52,6 +53,14 @@ class SessionRepositoryFailureTest {
   @Test
   fun profileUpdatesReportBlockedCache() = runTest {
     assertEquals(UpdateProfileResult.UnexpectedError, profiles.updateProfile(profile))
+  }
+
+  @Test
+  fun publicProfileRepairsReportBlockedCache() = runTest {
+    assertEquals(
+        EnsurePublicProfileResult.UnexpectedError,
+        profiles.ensurePublicProfile(profile.uid),
+    )
   }
 
   @Test

@@ -7,6 +7,7 @@
 // fails closed, with the rules' exact @epfl.ch check, #208).
 // Contributors: Claude (Opus 5.5, Anthropic) awaited the session guard before the profile read,
 // #198; Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (a student's missing public profile repaired without waiting, #291).
 package com.polysocial.ui.start
 
 import androidx.lifecycle.ViewModel
@@ -88,6 +89,11 @@ enum class SignupMarkerCleanup {
  * Before the first profile read, it waits for [sessions] to make the offline cache safe for the
  * account (#198): a different account than the cache was filled for clears it first. A failed clear
  * shows [StartDestination.Error], and its Retry ([refresh]) tries the clear again before reading.
+ *
+ * Each time it opens the students' app, it also asks [UserProfileRepository.ensurePublicProfile] to
+ * create the student's public profile if their profile was saved before #229 (#291). It doesn't
+ * wait for it: the app opens at once, and a failed repair (offline, denied) is tried again at the
+ * next start.
  */
 @HiltViewModel
 class AppStartViewModel
@@ -104,6 +110,14 @@ constructor(
 
   /** The running profile read, cancelled by [logOut] so it can't route the signed-out user. */
   private var profileRead: Job? = null
+
+  /**
+   * The running public profile repair. [logOut] and every new routing ([refresh] after a sign-out
+   * from anywhere, a log in or a Retry) stop waiting for it. A transaction already sent to
+   * Firestore still finishes on its own; under another account the rules deny it, since it reads
+   * the previous account's `users/{uid}`.
+   */
+  private var publicProfileRepair: Job? = null
 
   private val _accountType = MutableStateFlow(AccountType.STUDENT)
   /** Account kind used by Verify Email before the private profile exists. */
@@ -150,12 +164,14 @@ constructor(
    */
   fun logOut() {
     profileRead?.cancel()
+    publicProfileRepair?.cancel()
     auth.logOut()
     _accountType.value = AccountType.STUDENT
     _destination.value = StartDestination.Login
   }
 
   private fun resolve() {
+    publicProfileRepair?.cancel()
     _destination.value = StartDestination.Loading
     _accountType.value = AccountType.STUDENT
     _signupMarkerCleanup.value = SignupMarkerCleanup.NotRequired
@@ -205,7 +221,9 @@ constructor(
 
   private suspend fun resolveProfile(user: AuthUser, profile: UserProfile): StartDestination {
     if (profile.accountType != AccountType.ASSOCIATION) {
-      return if (isExactEpflEmail(user.email)) StartDestination.Main else StartDestination.Error
+      if (!isExactEpflEmail(user.email)) return StartDestination.Error
+      repairPublicProfile(user.uid)
+      return StartDestination.Main
     }
     _accountType.value = AccountType.ASSOCIATION
     clearSignupMarker(user.email)
@@ -219,6 +237,11 @@ constructor(
           else StartDestination.PendingAssociation
       AssociationResult.UnexpectedError -> StartDestination.Error
     }
+  }
+
+  /** Starts [UserProfileRepository.ensurePublicProfile] on its own; its result needs no action. */
+  private fun repairPublicProfile(uid: String) {
+    publicProfileRepair = viewModelScope.launch { profiles.ensurePublicProfile(uid) }
   }
 
   private suspend fun clearSignupMarker(email: String) {

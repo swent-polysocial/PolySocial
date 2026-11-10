@@ -9,6 +9,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) passed the deletion and network fakes and the Retry
 // callback, #225; Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (Opus 5.5, Anthropic) passed the Log out anyway callback, #225 review.
+// Contributors: Claude (the public profile repair's stub, #291).
 package com.polysocial.auth
 
 import android.content.res.Configuration
@@ -49,6 +50,7 @@ import com.polysocial.model.auth.VerificationStore
 import com.polysocial.model.auth.VerificationTiming
 import com.polysocial.model.firebase.FakeSessionGuard
 import com.polysocial.model.network.FakeNetworkMonitor
+import com.polysocial.model.user.EnsurePublicProfileResult
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.UserProfile
 import com.polysocial.model.user.UserProfileRepository
@@ -134,6 +136,8 @@ class VerifyEmailScreenTest {
     coEvery { repository.sendVerificationEmail() } returns SendVerificationResult.Sent
     coEvery { repository.reloadAndCheckVerified() } returns VerificationResult.Unverified
     coEvery { profiles.getProfile(user.uid) } returns ProfileResult.NotFound
+    // App start repairs a missing public profile (#291); these students already have one.
+    coEvery { profiles.ensurePublicProfile(any()) } returns EnsurePublicProfileResult.NotNeeded
     start =
         AppStartViewModel(
             repository,

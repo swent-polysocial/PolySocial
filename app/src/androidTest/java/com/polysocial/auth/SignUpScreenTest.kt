@@ -10,6 +10,7 @@
 // Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (Opus 5.5, Anthropic) passed the deletion and network fakes and stored
 // the address cooldown, #225; Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (the public profile repair's stub, #291).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -106,6 +107,8 @@ class SignUpScreenTest {
     every { repository.logOut() } answers { session = null }
     coEvery { repository.sendVerificationEmail() } returns SendVerificationResult.Sent
     coEvery { repository.reloadAndCheckVerified() } returns VerificationResult.Unverified
+    // App start repairs a missing public profile (#291); these students already have one.
+    coEvery { profiles.ensurePublicProfile(any()) } returns EnsurePublicProfileResult.NotNeeded
     verificationViewModel =
         VerifyEmailViewModel(
             repository,

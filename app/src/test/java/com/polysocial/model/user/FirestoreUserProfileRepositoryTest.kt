@@ -1,7 +1,9 @@
 // Contributors: Claude Opus 5.5 (wrote these tests; cancelled tasks and wrong-typed fields);
 // Claude (isAssociationVerified tests, #45; unexpected failures and cancelled writes, #182; the
 // public profile written with the private one, written test-first, #229; interests, test-first,
-// #230); Claude (testing agent: edited interests stored in the fixed order, #230).
+// #230); Claude (testing agent: edited interests stored in the fixed order, #230); Claude
+// (ensurePublicProfile, the missing public profile of a profile saved before #229, test-first,
+// #291).
 package com.polysocial.model.user
 
 import com.google.android.gms.tasks.TaskCompletionSource
@@ -596,6 +598,211 @@ class FirestoreUserProfileRepositoryTest {
     var result: UpdateProfileResult? = null
     val call =
         launch(start = CoroutineStart.UNDISPATCHED) { result = repository.updateProfile(profile) }
+
+    call.cancel()
+    call.join()
+
+    assertTrue(call.isCancelled)
+    assertEquals(null, result)
+  }
+
+  // ---- ensurePublicProfile (#291) ----
+
+  private val publicSnapshot = mockk<DocumentSnapshot>()
+
+  /**
+   * Runs every transaction against [transaction], where `users/u1` is [stored] and
+   * `publicProfiles/u1` exists when [publicExists].
+   */
+  private fun ensureTransactionsSee(stored: DocumentSnapshot, publicExists: Boolean = false) {
+    every { publicSnapshot.exists() } returns publicExists
+    every { transaction.get(ref) } returns stored
+    every { transaction.get(publicRef) } returns publicSnapshot
+    every { transaction.set(publicRef, any()) } returns transaction
+    every { db.runTransaction(any<Transaction.Function<EnsurePublicProfileResult>>()) } answers
+        {
+          Tasks.forResult(
+              firstArg<Transaction.Function<EnsurePublicProfileResult>>().apply(transaction)
+          )
+        }
+  }
+
+  private fun ensureTransactionsFail(error: Exception) {
+    every { db.runTransaction(any<Transaction.Function<EnsurePublicProfileResult>>()) } returns
+        Tasks.forException(error)
+  }
+
+  /** Nothing at all was written in the transaction, to either profile. */
+  private fun verifyNothingWritten() {
+    verify(exactly = 0) { transaction.set(any(), any()) }
+    verify(exactly = 0) { transaction.update(any(), any<Map<String, Any>>()) }
+    verify(exactly = 0) { transaction.delete(any()) }
+  }
+
+  @Test
+  fun ensurePublicProfile_aStudentWithoutOne_getsACopyOfTheStoredProfile_withoutTheEmail() =
+      runTest {
+        // A profile saved before #229, and so before #230's interests.
+        ensureTransactionsSee(snapshot(storedFields + ("displayName" to "Stored Name")))
+
+        assertEquals(EnsurePublicProfileResult.Created, repository.ensurePublicProfile("u1"))
+
+        verify(exactly = 1) {
+          transaction.set(
+              publicRef,
+              mapOf(
+                  "displayName" to "Stored Name",
+                  "section" to "IN",
+                  "year" to "BA3",
+                  "interests" to emptyList<String>(),
+              ),
+          )
+        }
+      }
+
+  @Test
+  fun ensurePublicProfile_neverWritesThePrivateProfile() = runTest {
+    ensureTransactionsSee(snapshot(storedFields))
+
+    assertEquals(EnsurePublicProfileResult.Created, repository.ensurePublicProfile("u1"))
+
+    verify(exactly = 0) { transaction.set(ref, any()) }
+    verify(exactly = 0) { transaction.update(ref, any<Map<String, Any>>()) }
+  }
+
+  @Test
+  fun ensurePublicProfile_copiesTheStoredInterests_inTheFixedListsOrder() = runTest {
+    ensureTransactionsSee(snapshot(storedFields + ("interests" to listOf("music", "tech"))))
+
+    assertEquals(EnsurePublicProfileResult.Created, repository.ensurePublicProfile("u1"))
+
+    verify(exactly = 1) {
+      transaction.set(
+          publicRef,
+          publicFieldsOf(profile.copy(interests = setOf("tech", "music"))),
+      )
+    }
+  }
+
+  @Test
+  fun ensurePublicProfile_aStoredProfileWithoutAnAccountType_isUnreadable_andWritesNothing() =
+      runTest {
+        // getProfile can't read it either, so app start never gets this far with one.
+        ensureTransactionsSee(snapshot(storedFields - "accountType"))
+
+        assertEquals(
+            EnsurePublicProfileResult.UnexpectedError,
+            repository.ensurePublicProfile("u1"),
+        )
+        verifyNothingWritten()
+      }
+
+  @Test
+  fun ensurePublicProfile_anExistingPublicProfile_isLeftUnchanged() = runTest {
+    ensureTransactionsSee(snapshot(storedFields), publicExists = true)
+
+    assertEquals(EnsurePublicProfileResult.NotNeeded, repository.ensurePublicProfile("u1"))
+
+    verifyNothingWritten()
+  }
+
+  @Test
+  fun ensurePublicProfile_anAssociation_getsNone_andItsPublicProfileIsNeverRead() = runTest {
+    // An association may not read publicProfiles at all: the read would fail the transaction.
+    ensureTransactionsSee(snapshot(storedFields + ("accountType" to "association")))
+
+    assertEquals(EnsurePublicProfileResult.NotNeeded, repository.ensurePublicProfile("u1"))
+
+    verify(exactly = 0) { transaction.get(publicRef) }
+    verifyNothingWritten()
+  }
+
+  @Test
+  fun ensurePublicProfile_aVerifiedAssociation_getsNoneEither() = runTest {
+    ensureTransactionsSee(
+        snapshot(
+            storedFields + ("accountType" to "association") + ("isAssociationVerified" to true)
+        )
+    )
+
+    assertEquals(EnsurePublicProfileResult.NotNeeded, repository.ensurePublicProfile("u1"))
+
+    verifyNothingWritten()
+  }
+
+  @Test
+  fun ensurePublicProfile_withoutAPrivateProfile_returnsNotFound_andWritesNothing() = runTest {
+    ensureTransactionsSee(snapshot(null))
+
+    assertEquals(EnsurePublicProfileResult.NotFound, repository.ensurePublicProfile("u1"))
+
+    verifyNothingWritten()
+  }
+
+  @Test
+  fun ensurePublicProfile_anUnreadablePrivateProfile_returnsUnexpectedError_andWritesNothing() =
+      runTest {
+        for (field in listOf("displayName", "section", "year")) {
+          ensureTransactionsSee(snapshot(storedFields - field))
+
+          assertEquals(
+              "without $field",
+              EnsurePublicProfileResult.UnexpectedError,
+              repository.ensurePublicProfile("u1"),
+          )
+        }
+        verifyNothingWritten()
+      }
+
+  @Test
+  fun ensurePublicProfile_readsTheProfilesOfTheGivenUid() = runTest {
+    ensureTransactionsSee(snapshot(storedFields))
+
+    repository.ensurePublicProfile("u1")
+
+    verify { users.document("u1") }
+    verify { publicProfiles.document("u1") }
+  }
+
+  @Test
+  fun ensurePublicProfile_offline_returnsNetworkError() = runTest {
+    ensureTransactionsFail(offline())
+
+    assertEquals(EnsurePublicProfileResult.NetworkError, repository.ensurePublicProfile("u1"))
+  }
+
+  @Test
+  fun ensurePublicProfile_deniedByTheRules_returnsUnexpectedError() = runTest {
+    ensureTransactionsFail(denied())
+
+    assertEquals(EnsurePublicProfileResult.UnexpectedError, repository.ensurePublicProfile("u1"))
+  }
+
+  @Test
+  fun ensurePublicProfile_cancelledTask_returnsUnexpectedError() = runTest {
+    every { db.runTransaction(any<Transaction.Function<EnsurePublicProfileResult>>()) } returns
+        Tasks.forCanceled()
+
+    assertEquals(EnsurePublicProfileResult.UnexpectedError, repository.ensurePublicProfile("u1"))
+  }
+
+  @Test
+  fun ensurePublicProfile_unexpectedException_returnsUnexpectedError() = runTest {
+    every { db.runTransaction(any<Transaction.Function<EnsurePublicProfileResult>>()) } throws
+        terminated()
+
+    assertEquals(EnsurePublicProfileResult.UnexpectedError, repository.ensurePublicProfile("u1"))
+  }
+
+  @Test
+  fun ensurePublicProfile_cancellingTheCaller_stillCancelsTheCall() = runTest {
+    every { db.runTransaction(any<Transaction.Function<EnsurePublicProfileResult>>()) } returns
+        TaskCompletionSource<EnsurePublicProfileResult>().task
+    var result: EnsurePublicProfileResult? = null
+    val call =
+        launch(start = CoroutineStart.UNDISPATCHED) {
+          result = repository.ensurePublicProfile("u1")
+        }
 
     call.cancel()
     call.join()
