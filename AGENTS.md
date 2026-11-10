@@ -7,8 +7,7 @@ public repository). At the start of every session, read this file and
 `CONTEXT.md` (see "Session context"). Before making changes, also read the
 README, the relevant issue, the project wiki (in particular the Team
 Agreement, where team process decisions live), `MODULARITY.md` (how to reuse
-and adapt existing code correctly, and its Ponytail rules for writing the least
-code), and nearby code. The team owns every change,
+and adapt existing code correctly), and nearby code. The team owns every change,
 including code written with AI. Keep each change small enough for a teammate
 to review and understand.
 
@@ -317,6 +316,63 @@ guessing. It also shows how the design evolved.
 - Follow the SonarCloud quality gate. Fix reported issues in code you touched
   instead of dismissing them.
 
+## Write the least code (Ponytail)
+
+Adapted from [Ponytail](https://github.com/DietrichGebert/ponytail) ("lazy senior
+dev mode", MIT licence, version 5.3.3), and always on: solve the whole task with
+the least new code. "Minimal code is not missing code" (`MODULARITY.md`,
+section 6): the least code that is fully correct, never less.
+
+- **Before you write,** list every place the change must reach: callers,
+  tests, the fakes in `app/src/sharedTest`, fixtures, Hilt modules, navigation
+  routes, string resources, Security Rules and docs. Check what it could break
+  for users: data it would destroy or expose, callers that stop working. That
+  is the scope; extra features are not.
+- **Take the first rung that fully works:**
+  1. Does it need to exist? Skip features, options and flexibility nobody asked
+     for, and name them ("Skipped" in the PR's Reuse note). A vague request
+     gets the smallest version that does the core job; if that isn't clear,
+     ask.
+  2. Already in this codebase (a helper, component, repository, pattern)? Use
+     it the way the surrounding code does, once `MODULARITY.md` sections 1 to 3
+     confirm it truly fits.
+  3. Kotlin's standard library or an Android/Jetpack feature? Use it, unless
+     the project has its own: a house component (`ui/common`) beats a platform
+     widget.
+  4. A dependency already in the version catalog? Use it. Never add one for a
+     few lines (and a new one needs its issue, see "Code conventions").
+  5. Can it be one line a reader gets at a glance? One line.
+  6. Otherwise, the minimum code that works.
+- Be lazy about the solution, never about the change: finish every part the
+  task needs, including the callers, tests and fakes it breaks.
+- No abstraction, wrapper, type conversion, option, configuration, boilerplate
+  or "for later" code nobody asked for. Keep values in the form the platform
+  already gives you, and the structure the codebase already has (MVVM,
+  repository interfaces, typed results). Deletion beats addition, within the
+  task's scope and once the code is proven unused (`MODULARITY.md`, section 6).
+- The shortest working diff wins, once you know everything it must touch. A
+  one-liner that needs decoding is not short. Between options of equal size,
+  take the one that is correct on edge cases.
+- Bug fix: search every caller of the function you touch first, then fix the
+  root cause once, in the shared code. Code you move or merge keeps its error
+  handling and validation.
+- **Never cut:** validation at trust boundaries (user input, QR codes, stored
+  or external data), error handling that prevents data loss, security and
+  Security Rules checks, accessibility, and anything the issue asks for.
+- **When you report back,** end with one or two lines: what you skipped or did
+  not check, and any risk the human must know. In a PR, the same goes in the
+  Reuse note ("Skipped") and under "How it was tested".
+- **Where Ponytail asks for less, this file wins.** Its "one small test" is a
+  floor: "Writing tests" still applies in full. Write the KDoc and contributor
+  headers this file requires, not only one-line "why" comments. A known
+  shortcut is marked `shortcut: <the limit>, <when to upgrade> (#N)` and needs
+  its follow-up issue, like any TODO.
+- **The plugin is optional:** these rules are all an agent needs. A teammate
+  who installs it for their own agent does so only from
+  `DietrichGebert/ponytail`, and leaves its webhook setting empty: its hooks
+  record each task's name, cost and tokens, and nothing about our tasks may
+  leave their machine.
+
 ## Build and test commands
 
 Run from the repository root with the checked-in Gradle wrapper (on Windows
@@ -501,8 +557,9 @@ are also the human author's job.
 - An AI review can help, but it does not replace a teammate's approval, and it
   must be acknowledged.
 - Read the entire diff. Discuss both design and implementation. Look for bugs,
-  integration issues, missing tests, error handling, and privacy problems.
-  Check every Security Rules change against the access guarantees above.
+  integration issues, missing tests, error handling, privacy problems, and
+  code nobody asked for ("Write the least code"). Check every Security Rules
+  change against the access guarantees above.
 - Write in English. Talk about the code, not the author. Ask when something is
   unclear, and include positive comments where deserved.
 - Prefix comments consistently with one word: `Important`, `Nitpick`, or
@@ -588,14 +645,17 @@ change that would touch the "Never do" list.
 2. Before writing code, search the codebase for what can be reused or adapted
    (`MODULARITY.md`, sections 1 to 3). Implement one reviewable change
    consistent with the current architecture and the conventions above, with
-   tests in the same change.
+   the least new code ("Write the least code"), and with tests in the same
+   change.
 3. Run `ktfmtFormat`, then the commands in "Build and test commands" (plus the
    rules tests if Security Rules changed). Inspect failures and fix their
    causes.
 4. Check the result against the definition of done, including a review of the
    full diff for accidental files, leaked credentials, missing contributor
-   comments, error handling, real test assertions, and duplicated or wrongly
-   reused code (`MODULARITY.md`, section 9). Update `CONTEXT.md` if
+   comments, error handling, real test assertions, duplicated or wrongly
+   reused code (`MODULARITY.md`, section 9), and code nobody asked for
+   ("Write the least code"). Update `CONTEXT.md` if
    the change made an important decision.
 5. Open or update the PR with the required description. Leave code review,
-   approval, and the merge decision to the team.
+   approval, and the merge decision to the team. End your report to the human
+   with what you skipped or did not check, and any risk.

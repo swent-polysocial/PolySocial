@@ -1,5 +1,5 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted this guide from the coaches' feedback on the codebase's growth and Lucas's report of an agent reusing stale fields; Konstantinos Perdikeas (directed, reviewed and owns it). -->
-<!-- Contributors: Claude (Opus 5.5, Anthropic) adapted the Ponytail rules (section 11) at mohamedkhellaf's suggestion; Konstantinos Perdikeas (directed, reviewed and owns it). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) linked the Ponytail rules in AGENTS.md (sections 8, 9 and 11) at mohamedkhellaf's suggestion; Konstantinos Perdikeas (directed, reviewed and owns it). -->
 
 # Modularity and code reuse
 
@@ -158,7 +158,8 @@ Under "Design choices", add a short **Reuse** note:
 - **Adapted:** what changed in shared code, why, which callers were checked and which tests cover
   them.
 - **Searched, not reused:** what you looked for and why it didn't fit (or that nothing existed).
-- **Skipped:** what you deliberately did not build because nobody asked for it (section 11, rung 1), in one line each.
+- **Skipped:** what you deliberately did not build because nobody asked for it (`AGENTS.md`,
+  "Write the least code", rung 1), in one line each.
 
 Reviewers check this note against the diff: look for new code that duplicates existing code, and
 for reused code whose names, fields, strings or tags still belong to its old context.
@@ -170,8 +171,8 @@ for reused code whose names, fields, strings or tags still belong to its old con
 - For every reused or adapted piece, go through section 3 again for the new use.
 - Make sure no leftover from another context remains: field names, string resources, test tags,
   KDoc and comments.
-- Walk the diff against section 11: is there an abstraction, option, wrapper or "for later" code
-  nobody asked for, or a new dependency that a few lines would replace?
+- Walk the diff against `AGENTS.md`, "Write the least code": is there an abstraction, option,
+  wrapper or "for later" code nobody asked for, or a new dependency that a few lines would replace?
 - Run every test touched by shared code, not only the new ones (`./gradlew check`, plus
   `connectedCheck` and the rules tests when they are affected, as `AGENTS.md` lists).
 
@@ -181,63 +182,9 @@ Stop and ask, as `AGENTS.md` says under "When blocked or unsure": say what you w
 you are unsure about, the options, and your recommendation. A wrong guess in shared code breaks
 features other teammates own.
 
-## 11. Write the least code: the Ponytail rules
+## 11. Write the least code
 
-Every change also follows [Ponytail](https://github.com/DietrichGebert/ponytail) ("lazy senior
-dev mode", MIT licence, adapted here from version 5.3.3): **solve the whole task with the least new
-code.** Sections 1 to 7 decide *whether existing code fits*; this section decides *how little new
-code to write*. Section 6 still holds: the least code that is **fully correct**, never less.
-
-**Before you write,** read the task and the code it touches, and list every place the change must
-reach: callers, tests, the fakes in `app/src/sharedTest`, fixtures, Hilt modules, navigation routes,
-string resources, Security Rules and docs. Check what it could break for users: data it would
-destroy or expose, callers that stop working. That is the scope. Extra features are not.
-
-**Take the first rung that fully works:**
-
-1. **Does it need to exist?** Skip features, options and flexibility nobody asked for, and name
-   them in the PR (section 8, "Skipped"). A vague request gets the smallest version that does the
-   core job; if what the core job is isn't clear, ask (section 10).
-2. **Already in this codebase?** A helper, component, repository or pattern: use it the way the
-   surrounding code does, after sections 1 to 3 confirm it truly fits.
-3. **Kotlin's standard library or an Android/Jetpack feature?** Use it, unless the project has its
-   own: a house component (`ui/common`) beats a platform widget.
-4. **A dependency already in `gradle/libs.versions.toml`?** Use it. Never add one for a few lines;
-   a new dependency also needs its issue and the team's approval (`AGENTS.md`).
-5. **Can it be one line a reader gets at a glance?** Write one line.
-6. **Otherwise,** write the minimum code that works.
-
-**While you write:**
-
-- Be lazy about the solution, never about the change: finish every part the task needs, including
-  the callers, tests and fakes your change breaks.
-- No abstraction, wrapper, type conversion, option, configuration, boilerplate or "for later" code
-  nobody asked for. Keep values in the form the platform already gives you. Keep the structure the
-  codebase already has: MVVM, repository interfaces, typed results, its conventions.
-- Deletion beats addition, within the task's scope and only once the code is proven unused
-  (section 6).
-- The shortest working diff wins once you know everything it must touch. A one-liner that needs
-  decoding is not short. Between options of equal size, take the one that is correct on edge cases.
-- Bug fix: before you edit, search every caller of the function you touch, then fix the root cause
-  once, in the shared code.
-- Code you move or merge keeps its error handling and validation.
-
-**Where `AGENTS.md` asks for more, it wins:**
-
-| Ponytail says | In PolySocial |
-|---|---|
-| New non-trivial logic leaves one small test | That is the floor: `AGENTS.md` "Writing tests" still applies (main behavior, edge and failure cases, 95% line and 65% branch coverage on new code, a regression test in the fix's commit). |
-| Comment only the why, in one line | Also write the KDoc `AGENTS.md` requires (repository and service interfaces, ViewModels, non-obvious logic) and the contributor header. |
-| Mark a known limit with `shortcut: <the limit>, <when to upgrade>` | Allowed only with its follow-up issue: `shortcut: <the limit>, <when to upgrade> (#N)`. No TODO or shortcut without an issue number. |
-| End your reply with what you skipped or didn't check | Put it in the PR: "Skipped" in the Reuse note, and every check not run under "How it was tested". |
-
-**Never cut,** on top of section 6: validation at trust boundaries (user input, QR codes, stored or
-external data), error handling that prevents data loss, security and Security Rules checks,
-accessibility (content descriptions, touch targets), and anything the issue asks for.
-
-**The plugin is optional.** These rules are all an agent needs, and `AGENTS.md` makes every agent
-read this file. A teammate may also install the plugin for their own agent (Claude Code:
-`/plugin marketplace add DietrichGebert/ponytail`, then `/plugin install ponytail@ponytail`), only
-from `DietrichGebert/ponytail`. Its Claude Code hooks record each task's name, cost and tokens in
-`~/.config/ponytail` on your machine; leave its webhook setting empty, so nothing about our tasks
-leaves it. Where the plugin and this file disagree, this file and `AGENTS.md` win.
+Reuse is one rung of a wider rule: solve the whole task with the least new code. That rule is
+`AGENTS.md`, "Write the least code (Ponytail)", kept there because agents load `AGENTS.md` on every
+turn. Sections 1 to 3 of this guide are its rung 2 ("already in this codebase?"), and section 6
+is its limit: the least code that is fully correct, never less.
