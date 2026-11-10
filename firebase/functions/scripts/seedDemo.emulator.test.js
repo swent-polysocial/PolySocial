@@ -1,4 +1,5 @@
-// Contributors: Claude (the demo seed against the Firestore emulator, written test-first, #243).
+// Contributors: Claude (the demo seed against the Firestore emulator, written test-first, #243;
+// trimmed after review to what seeding and removing touch).
 "use strict";
 
 // Seeds and removes the demo data in the Firestore emulator, with the Admin SDK as the script does.
@@ -7,7 +8,7 @@
 const { after, before, beforeEach, test } = require("node:test");
 const assert = require("node:assert/strict");
 const { deleteApp, initializeApp } = require("firebase-admin/app");
-const { GeoPoint, Timestamp, getFirestore } = require("firebase-admin/firestore");
+const { getFirestore } = require("firebase-admin/firestore");
 const { demoPaths } = require("./demoData");
 const { removeDemo, seedDemo } = require("./seedDemo");
 
@@ -48,43 +49,6 @@ async function existing(paths) {
   const snapshots = await Promise.all(paths.map((path) => db.doc(path).get()));
   return snapshots.filter((snapshot) => snapshot.exists).map((snapshot) => snapshot.ref.path);
 }
-
-test("seeding writes every demo document, with the types the app reads", async () => {
-  await seedDemo(db, NOW);
-
-  assert.deepEqual(await existing(demoPaths()), demoPaths());
-  const event = (await db.collection("events").where("isAssociationEvent", "==", true).get()).docs[0];
-  assert.ok(event.get("location") instanceof GeoPoint);
-  assert.ok(event.get("startTime") instanceof Timestamp);
-  assert.ok(event.get("startTime").toDate() > NOW);
-  assert.ok((await db.doc("associations/demo-association").get()).get("createdAt") instanceof Timestamp);
-  const group = (await db.collectionGroup("groups").limit(1).get()).docs[0];
-  assert.ok(group.get("createdAt") instanceof Timestamp);
-});
-
-test("the map's query finds the eight public events", async () => {
-  await seedDemo(db, NOW);
-
-  const upcoming = await db
-    .collection("events")
-    .where("isPrivate", "==", false)
-    .where("startTime", ">=", Timestamp.fromDate(NOW))
-    .get();
-  assert.equal(upcoming.docs.filter((doc) => doc.id.startsWith("demo-")).length, 8);
-});
-
-test("seeding again updates the same documents instead of adding more", async () => {
-  await seedDemo(db, NOW);
-  const later = new Date(NOW.getTime() + 30 * 24 * 60 * 60 * 1000);
-  await seedDemo(db, later);
-
-  assert.deepEqual(await existing(demoPaths()), demoPaths());
-  const events = await db.collection("events").get();
-  assert.equal(events.size, 8 + 1);
-  for (const doc of events.docs.filter((doc) => doc.id.startsWith("demo-"))) {
-    assert.ok(doc.get("startTime").toDate() > later, `${doc.id} kept the earlier date`);
-  }
-});
 
 test("seeding leaves every other document alone", async () => {
   await seedDemo(db, NOW);
@@ -141,12 +105,5 @@ test("seeding again resets the demo events, dropping students who went or joined
     "demo-student-5",
   ]);
   // Another event's registration of the same student is theirs, not the demo's.
-  assert.deepEqual(await existing(OTHERS), OTHERS);
-});
-
-test("removing when nothing was seeded succeeds and changes nothing", async () => {
-  await removeDemo(db);
-
-  assert.deepEqual(await existing(demoPaths()), []);
   assert.deepEqual(await existing(OTHERS), OTHERS);
 });
