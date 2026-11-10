@@ -42,8 +42,13 @@ class QrPayloadTest {
 
   @Test
   fun surroundingWhitespaceIsIgnored() {
-    // Scanners can add a trailing newline.
+    // Scanners can add a trailing newline, a Windows line ending or a group separator (GS).
     assertEquals(QrPayload.Friend("abc"), parseQrPayload("  polysocial://friend/abc\n"))
+    assertEquals(
+        QrPayload.CheckIn("event", "token"),
+        parseQrPayload("\tpolysocial://checkin/event/token\r\n"),
+    )
+    assertEquals(QrPayload.Friend("abc"), parseQrPayload("polysocial://friend/abc\u001D"))
   }
 
   @Test
@@ -118,7 +123,6 @@ class QrPayloadTest {
   @Test
   fun idsWithOtherCharactersAreInvalid() {
     assertInvalid("polysocial://friend/a%20b")
-    assertInvalid("polysocial://friend/a b")
     assertInvalid("polysocial://friend/ abc")
     assertInvalid("polysocial://friend/..")
     assertInvalid("polysocial://friend/.")
@@ -154,14 +158,6 @@ class QrPayloadTest {
   }
 
   @Test
-  fun noPayloadIsBuiltForAUidTheParserWouldRefuse() {
-    assertNull(friendQrPayload(""))
-    assertNull(friendQrPayload("a/b"))
-    assertNull(friendQrPayload("a b"))
-    assertNull(friendQrPayload("a".repeat(MAX_QR_ID_LENGTH + 1)))
-  }
-
-  @Test
   fun aOneCharacterIdIsValid() {
     assertEquals(QrPayload.Friend("a"), parseQrPayload("polysocial://friend/a"))
     assertEquals(QrPayload.CheckIn("e", "1"), parseQrPayload("polysocial://checkin/e/1"))
@@ -181,15 +177,6 @@ class QrPayloadTest {
     assertEquals(
         QrPayload.CheckIn(longest, longest),
         parseQrPayload("polysocial://checkin/$longest/$longest"),
-    )
-  }
-
-  @Test
-  fun surroundingWhitespaceIsIgnoredOnACheckInCode() {
-    // Tabs and a Windows line ending, on the other code form.
-    assertEquals(
-        QrPayload.CheckIn("event", "token"),
-        parseQrPayload("\tpolysocial://checkin/event/token\r\n"),
     )
   }
 
@@ -238,7 +225,7 @@ class QrPayloadTest {
   }
 
   @Test
-  fun aBuiltPayloadAtEitherLengthLimitParsesBack() {
+  fun aBuiltPayloadOfAnAllowedUidParsesBack() {
     for (uid in listOf("a", "_", "-", "a".repeat(MAX_QR_ID_LENGTH))) {
       val payload = friendQrPayload(uid)
       assertEquals("polysocial://friend/$uid", payload)
@@ -247,10 +234,14 @@ class QrPayloadTest {
   }
 
   @Test
-  fun theBuilderRefusesEveryUidTheParserRefuses() {
+  fun theBuilderRefusesUidsTheParserRefuses() {
     // Otherwise a profile could show a code that no scanner accepts.
     val refused =
         listOf(
+            "",
+            "a".repeat(MAX_QR_ID_LENGTH + 1),
+            "a/b",
+            "a b",
             " abc",
             "abc ",
             "abc\n",
