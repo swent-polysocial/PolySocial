@@ -1,6 +1,6 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the groups, chat and public profile model, its rules, the co-organizer model and the deploy owner (#228); Franciszek Najda (decided and reviewed). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (members get their own group in the rules table, and groups of an ended event as an open question, #295). -->
-<!-- Contributors: Claude (Opus 5.5, Anthropic) (group chat messages built, refused offline rather than queued, and the messages left behind by a deleted group or account, #237; no messages from a deleted account, after review). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (group chat messages built, refused offline rather than queued, and the messages left behind by a deleted group or account, #237; no messages from a deleted account and the Sprint 5 status, after review). -->
 <!-- Contributors: Claude Opus 5.5 (attendees schema, rules and capacity question, #121; the organizers' attendee count and the association's manage event, #131). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (deleteAccount deployed, region note, Blaze question closed, 2026-11-05). -->
 <!-- Contributors: Claude (public profiles marked as built, #229; the deletion marker and the public copy kept in step, after review, #229; the interests step, #230). -->
@@ -465,7 +465,7 @@ flowchart LR
 | `matchRequests/{id}` | `eventId`, `fromUid`, `toUid`, `status` | ⬜ not used by Find a group, where students join open groups directly (#228); revisit with #26, #27 |
 | `events/{eventId}/groups/{groupId}` | `capacity` (4), `memberUids` (1 to `capacity`, creator first), `createdBy`, server-set `createdAt` | 🟦 S4 #232 |
 | `events/{eventId}/groupMembers/{uid}` | `groupId`: the student's group for this event, written in the same transaction as `memberUids` | 🟦 S4 #232 |
-| `events/{eventId}/groups/{groupId}/messages/{id}` | `senderId`, `text` (1–1000), server-set `createdAt`. A one-to-one chat is a two-member group | 🟩 S4 #237 (built) |
+| `events/{eventId}/groups/{groupId}/messages/{id}` | `senderId`, `text` (1–1000), server-set `createdAt`. A one-to-one chat is a two-member group | 🟩 S5 #237 (built) |
 | `events/{eventId}/groups/{groupId}/checkIns/{uid}` | `method` (gps or qr), `checkedInAt` | 🟦 #22 |
 | `events/{eventId}/groups/{groupId}/locations/{uid}` | position, `updatedAt`. Only during the event, deleted after | 🟦 #20 |
 | `friendships/{id}` | `uidA`, `uidB`, `status` | 🟦 #16 |
@@ -490,7 +490,7 @@ Rules live in `firebase/firestore/firestore.rules` and are tested against the Fi
 | `publicProfiles/{uid}` | any student, one document by UID (no list, so no student directory); no association | owner only, only the fields above, no email; `section`, `year` and `interests` from the app's fixed lists | owner only, as an exact copy of their `users/{uid}` after the same write (`getAfter`), never under a `deletedAccounts/{uid}` marker; no delete except with the account (`deleteAccount`) | #229 | 🟩 S4 (built) |
 | `events/{eventId}/groups/{groupId}` | a student who can read the event; a member also gets their own group without it, so they can still leave it (#295); a student lists their own groups across events (`memberUids array-contains` their UID) | a student who can read the event, with `memberUids == [own UID]`, `capacity == 4`, `createdBy` = own UID, server `createdAt`, and their `groupMembers` marker in the same write | update: only `memberUids` changes, by adding or removing the caller's own UID, `size() <= capacity`, with the marker created or deleted alongside (`getAfter`); delete: the last member leaving. No association access | #232 | 🟦 S4 |
 | `events/{eventId}/groupMembers/{uid}` | own document only | own UID, `groupId` of a group whose `memberUids` contain them after the write | delete own, when leaving that group; no update | #232 | 🟦 S4 |
-| `events/{eventId}/groups/{groupId}/messages/{id}` | group members only, from the group's `memberUids` (so, like the group, #295, a member removed from a private event keeps it); no query across groups | members, exactly `senderId` = own UID, `text` 1–1000, server `createdAt`, never under a `deletedAccounts/{uid}` marker; per operation, so rate limiting fits later. No association access | nobody yet (report/block later) | #237 | 🟩 S4 (built) |
+| `events/{eventId}/groups/{groupId}/messages/{id}` | group members only, from the group's `memberUids` (so, like the group, #295, a member removed from a private event keeps it); no query across groups | members, exactly `senderId` = own UID, `text` 1–1000, server `createdAt`, never under a `deletedAccounts/{uid}` marker; per operation, so rate limiting fits later. No association access | nobody yet (report/block later) | #237 | 🟩 S5 (built) |
 | `matchRequests` | sender and recipient | sender | recipient responds | #26, #27 | 🟦 PB |
 | Storage `events/{id}/album/**` | event group members | checked-in members, size and type limits | uploader | album | 🟦 PB |
 
