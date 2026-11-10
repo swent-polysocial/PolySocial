@@ -13,6 +13,7 @@
 <!-- Contributors: Claude (public profiles deleted with the account, #229; the deletion marker and deploy order, after review, #229). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (deleteAccount deploy status, budget alert and image cleanup policy, 2026-11-05). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the Seeding demo data section, #243). -->
+<!-- Contributors: Claude (Fable 5.2, Anthropic) (Features table statuses, section order and the move of behavior notes to docs/App-behavior.md, #340; review fixes by Claude (Opus 5.5, Anthropic)). -->
 
 # PolySocial
 
@@ -36,33 +37,29 @@ The barrier to campus life is social rather than informational: PolySocial answe
 
 | Feature | Status |
 |---|---|
-| Sign up, log in and password recovery with an EPFL email (verified email required), profile with section and year | Sprints 1–2 |
-| App shell: Events, Map, Chats and Profile tabs, one back stack per tab | Sprint 1 |
-| Events list with search and filters (category, date, distance), grouped by day | Sprint 2 |
-| Event detail screen; organizers edit or cancel their own events from it | Sprints 2–3 |
-| Interactive map of upcoming public events, with straight-line distance when location is allowed | Sprint 2 |
-| Create events: private (off the map, people ask to join) or public, with a map location picker and place search; verified associations get a badge | Sprint 2 |
-| Sign in with Google (EPFL accounts only) from Welcome and Log in | Sprint 3; Firebase console setup required |
-| Register for events ("I'm going") and "My events" available offline | Planned; registration storage and Security Rules landed in Sprint 3, without UI |
-| **Find a group:** matching on interests, section, year and common friends; group proposals | Planned |
-| Group chat, with report and block | Planned |
-| One-off check-in at the venue (GPS read once, or an entrance QR code) and opt-in location sharing with your group until the event ends | Planned |
+| Sign up, log in and password recovery with a verified EPFL email; sign in with Google (EPFL accounts only) | Done |
+| Profile with section, year and interests | Done |
+| Events list with search and filters (category, date, distance), grouped by day | Done |
+| Event detail; organizers edit or cancel their own events | Done |
+| Interactive map of upcoming public events, with distance when location is allowed | Done |
+| Create public or private events, with a map location picker and place search | Done |
+| "I'm going" and **My events**, available offline | Done |
+| **Find a group:** join or start a small group for an event, ranked by shared interests, section and year | Done (group screen in progress) |
+| Association accounts: sign up with any email, set up the association, verified by hand by a PolySocial admin; verified associations manage their own events | Done |
+| Account deletion from Profile → Privacy & data | Done |
+| Group chat | In progress |
+| Event reminders | In progress |
+| Friends (by QR code), public or private profiles | Planned |
+| Check-in at the venue (one-off GPS read or entrance QR code) | Planned |
 | Shared event album, unlocked by check-in | Planned |
-| Friends (by username or QR code), public or private profiles | Planned |
-| Association accounts: sign up with any email, set up the association, and wait in a pending app until a PolySocial admin verifies it by hand; verified associations' names show on their events | Planned; the sign-up foundation, setup form, pending app and names on events landed in Sprint 3, but Welcome's association entry is not wired yet (#259, #208) |
 | Association members and roles | Planned |
-| Account deletion: agreed policy and the `deleteAccount` Cloud Function | Sprint 3; in the app (Profile → Privacy) since Sprint 4 (#270), with the function deployed on 2026-11-05 |
-| Event reminders (also offline) and in-app notifications | Planned |
+| Report and block, in-app notifications | Planned |
 
-**Privacy:** location is never tracked continuously. It is read once for a feature, or shared only with your group, only during the event, and only when you choose to. Profiles, photos, chats and locations are personal data under the Swiss nLPD, and account/data deletion can be requested privately from the project team; in-app deletion and export are not available yet.
-
-Profile → **Privacy & data** opens the current collection/access summary and a dated full notice, both bundled for offline reading. Attendance-based matching, export and deletion actions show **Not available yet**; the matching switch stays Off. The prototype explicitly marks the controller contact and provider processing countries/safeguards as draft details. The private contact button explains that the address is pending; once the team supplies it, set `privacy_contact_email` in `app/src/main/res/values/strings.xml` to enable a user-controlled email draft with no account data attached. Replace `privacy_notice_draft_body` with the confirmed details at the same time. A missing email app is handled in the screen.
-
-For Map distance badges, the app requests only approximate location. On first entry, the Map requests permission once if it is not already granted. The location service reads one foreground snapshot and keeps coordinates only in screen memory; it never stores or uploads them. Leaving the Map or backgrounding the app cancels any pending request and discards the snapshot without showing a location error. On return, use the floating **Refresh distance** button for another one-off fix; permission prompts and location reads do not repeat automatically. Only whether the permission prompt was requested is saved. Denying permission keeps map browsing available. **Turn on** asks again when Android allows another request, or opens this app's settings after a permanent denial. Granting permission there starts one fix on return.
+**Privacy:** location is never tracked continuously. It is read once for a feature, and only when you allow it. Profiles, photos, chats and locations are personal data under the Swiss nLPD; students can delete their account and its data in the app (Profile → **Privacy & data**), where the full privacy notice is also available offline; associations ask the project team. Data export isn't available yet.
 
 **Offline:** events you've loaded, your registered events and their schedule, and reminders stay available offline. The map shows cached events on whatever map tiles are already cached.
 
-Signed-out users see Welcome on launch. Unverified sessions reopen Verify Email; verified sessions load their profile before opening the app or profile setup. Association accounts land in the pending app for now, whether or not their setup is finished; the dedicated setup and verified screens follow (#259, #261). The screen sends a verification email, supports resend with a persistent cooldown, and checks verification on Continue or browser return. After verification, shared startup routing loads the profile and opens the app or the profile step; failed profile reads show Retry. Both the system Back action and the back icon sign out and reset the forms, so reopening shows Welcome. Change address also signs out and opens a fresh sign-up form. Verification uses Firebase’s browser action page, so no Hosting or App Links setup is needed.
+How the privacy notice, the one-off location read and the startup routing behave in detail is in [docs/App-behavior.md](docs/App-behavior.md).
 
 ## Tech stack
 
@@ -103,29 +100,6 @@ Without a token, CI and local builds still compile and the map displays a setup 
 
 Before every commit, check that `git status` never lists these files. If it does, fix `.gitignore` first and don't commit them.
 
-### Deploying to Firebase
-
-Nothing deploys the Security Rules, the Firestore indexes or the Cloud Functions automatically: CI only tests them. When a PR that changes `firebase/firestore/firestore.rules`, `firebase/firestore/firestore.indexes.json` or `firebase/functions` is merged into `main`, **its author deploys it, or asks a teammate to: any team member can deploy**. They note in the PR that it was deployed. Always deploy from an up-to-date `main` (`git switch main && git pull` first), never from a feature branch, which could publish rules that aren't merged yet; the Firebase console (Firestore → Rules) then shows the new version with its publish time. Until then the app on `main` and production disagree: #220's rules and #214's index were missing from production until 2026-10-29.
-
-Deploy with the [Firebase CLI](https://firebase.google.com/docs/cli) (`firebase login` first), and always with `--only`, since a plain `firebase deploy` deploys everything at once:
-
-```bash
-firebase deploy --only firestore:rules --project <project-id>     # firebase/firestore/firestore.rules
-firebase deploy --only firestore:indexes --project <project-id>   # firebase/firestore/firestore.indexes.json
-```
-
-**Order, when one change touches several of them:** deploy `deleteAccount` first, then the Security Rules, then distribute the app. For #229 this matters both ways: with the old function, deleting an account leaves the public profile behind and writes no `deletedAccounts/{uid}` marker; with the old rules, the new app's profile creation (which also writes `publicProfiles/{uid}`) is refused. The function uses the Admin SDK, so it works with either version of the rules.
-
-`<project-id>` is the `project_id` in your `app/google-services.json`. Functions deploy as described in [Cloud Functions](#cloud-functions). A new index takes a few minutes to build (Firebase console → Firestore → Indexes); until it's ready, the query that needs it fails. The local emulator doesn't need indexes.
-
-## Downloading the CI APK
-
-Sign in to GitHub (artifacts cannot be downloaded anonymously). After a successful push to `main`, open [CI - Test Runner](https://github.com/swent-polysocial/PolySocial/actions/workflows/ci.yml), choose the successful run for the desired commit on `main`, and download **polysocial-apk** from its **Artifacts** section. Extract the ZIP to obtain `app-debug.apk`. If an older PolySocial is installed, uninstall it first: each CI run generates a different debug signing key, so Android cannot install the new APK as an update. Uninstalling removes the app's local data. Install on an Android phone running Android 9 (API 28) or newer, allowing installation from that source when Android asks.
-
-The APK is built from the commit whose checks, unit tests, device-test shards, Sonar analysis and release build all succeeded; the device-test shards build their own APKs. Artifacts expire after **7 days**, so use a recent successful `main` run for the Sprint review or M1. PR runs do not publish an APK. The one-day `ci-main-debug-apk` artifact is an internal handoff between jobs; download **polysocial-apk**.
-
-For the CI APK to show the map, a repository maintainer must configure the GitHub Actions `LOCAL_PROPERTIES` secret with base64-encoded properties containing `MAPBOX_ACCESS_TOKEN=your-public-token` (see [Mapbox setup](#mapbox-setup)). A developer's local file is not available to GitHub's runner. An absent secret or token still allows a successful build, but the installed app shows the map setup state. Only use a public `pk.` token; never include a secret `sk.` token or a developer's SDK path in this CI configuration.
-
 ### Google sign-in setup
 
 In Firebase console → Authentication → Sign-in method, enable **Google** and select a support email. Keep **one account per email address** enabled.
@@ -133,6 +107,16 @@ In Firebase console → Authentication → Sign-in method, enable **Google** and
 In Project settings → Your apps → `com.polysocial`, register the **SHA-1 fingerprints** for every teammate's debug keystore, CI, and release/Play signing keystores (`./gradlew signingReport` for local fingerprints). Download a fresh, git-ignored `app/google-services.json` and ask the repository owner to update the CI secret. The config must include the **Web OAuth client ID**, which generates `default_web_client_id`; never hardcode it or commit keystores. If an older config has no Web OAuth client (`client_type: 3`), compilation fails with **unresolved reference `default_web_client_id`** before the runtime configuration check can run. Re-download the config and update the CI secret.
 
 **CI APK limitation:** runners currently generate a fresh debug signing key for every run, so Google sign-in cannot be configured reliably for `polysocial-apk`. The stable CI key and Firebase SHA-1 registration are tracked in [#137](https://github.com/swent-polysocial/PolySocial/issues/137). Resolve that follow-up before relying on Google sign-in in the next deliverable; each teammate must also register their local SHA-1 and download the updated config.
+
+## Downloading the CI APK
+
+Milestone builds are attached to the [Releases](https://github.com/swent-polysocial/PolySocial/releases). For any other commit on `main`, use the CI artifact:
+
+Sign in to GitHub (artifacts cannot be downloaded anonymously). After a successful push to `main`, open [CI - Test Runner](https://github.com/swent-polysocial/PolySocial/actions/workflows/ci.yml), choose the successful run for the desired commit on `main`, and download **polysocial-apk** from its **Artifacts** section. Extract the ZIP to obtain `app-debug.apk`. If an older PolySocial is installed, uninstall it first: each CI run generates a different debug signing key, so Android cannot install the new APK as an update. Uninstalling removes the app's local data. Install on an Android phone running Android 9 (API 28) or newer, allowing installation from that source when Android asks.
+
+The APK is built from the commit whose checks, unit tests, device-test shards, Sonar analysis and release build all succeeded; the device-test shards build their own APKs. Artifacts expire after **7 days**, so use a recent successful `main` run for the Sprint review or M1. PR runs do not publish an APK. The one-day `ci-main-debug-apk` artifact is an internal handoff between jobs; download **polysocial-apk**.
+
+For the CI APK to show the map, a repository maintainer must configure the GitHub Actions `LOCAL_PROPERTIES` secret with base64-encoded properties containing `MAPBOX_ACCESS_TOKEN=your-public-token` (see [Mapbox setup](#mapbox-setup)). A developer's local file is not available to GitHub's runner. An absent secret or token still allows a successful build, but the installed app shows the map setup state. Only use a public `pk.` token; never include a secret `sk.` token or a developer's SDK path in this CI configuration.
 
 ## Running and testing
 
@@ -170,6 +154,21 @@ firebase emulators:exec --project demo-polysocial --only firestore,auth "gradlew
 ```
 
 `-Pemulator` runs **only** the emulator tests, in place of the regular instrumented tests, so run `./gradlew connectedCheck` separately for those. Without the flag, `connectedCheck` skips the emulator tests. `-Pemulator=all` runs both, which is what CI does inside `firebase emulators:exec`. The tests reach the host machine at `10.0.2.2`, which only works from an Android emulator, not from a physical device.
+
+## Deploying to Firebase
+
+Nothing deploys the Security Rules, the Firestore indexes or the Cloud Functions automatically: CI only tests them. When a PR that changes `firebase/firestore/firestore.rules`, `firebase/firestore/firestore.indexes.json` or `firebase/functions` is merged into `main`, **its author deploys it, or asks a teammate to: any team member can deploy**. They note in the PR that it was deployed. Always deploy from an up-to-date `main` (`git switch main && git pull` first), never from a feature branch, which could publish rules that aren't merged yet; the Firebase console (Firestore → Rules) then shows the new version with its publish time. Until then the app on `main` and production disagree: #220's rules and #214's index were missing from production until 2026-10-29.
+
+Deploy with the [Firebase CLI](https://firebase.google.com/docs/cli) (`firebase login` first), and always with `--only`, since a plain `firebase deploy` deploys everything at once:
+
+```bash
+firebase deploy --only firestore:rules --project <project-id>     # firebase/firestore/firestore.rules
+firebase deploy --only firestore:indexes --project <project-id>   # firebase/firestore/firestore.indexes.json
+```
+
+**Order, when one change touches several of them:** deploy `deleteAccount` first, then the Security Rules, then distribute the app. For #229 this matters both ways: with the old function, deleting an account leaves the public profile behind and writes no `deletedAccounts/{uid}` marker; with the old rules, the new app's profile creation (which also writes `publicProfiles/{uid}`) is refused. The function uses the Admin SDK, so it works with either version of the rules.
+
+`<project-id>` is the `project_id` in your `app/google-services.json`. Functions deploy as described in [Cloud Functions](#cloud-functions). A new index takes a few minutes to build (Firebase console → Firestore → Indexes); until it's ready, the query that needs it fails. The local emulator doesn't need indexes.
 
 ## Cloud Functions
 
