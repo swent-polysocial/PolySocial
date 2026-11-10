@@ -7,7 +7,8 @@ public repository). At the start of every session, read this file and
 `CONTEXT.md` (see "Session context"). Before making changes, also read the
 README, the relevant issue, the project wiki (in particular the Team
 Agreement, where team process decisions live), `MODULARITY.md` (how to reuse
-and adapt existing code correctly), and nearby code. The team owns every change,
+and adapt existing code correctly, and its Ponytail rules for writing the least
+code), and nearby code. The team owns every change,
 including code written with AI. Keep each change small enough for a teammate
 to review and understand.
 
