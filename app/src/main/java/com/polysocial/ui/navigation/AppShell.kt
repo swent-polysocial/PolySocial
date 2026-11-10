@@ -14,9 +14,10 @@
 // Contributors: Claude (Opus 5.5, Anthropic) left the app through logout's reset after account
 // deletion, #207; Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (Opus 5.5, Anthropic) opened Find a group from the detail, #233.
+// Contributors: Claude (Opus 5.5, Anthropic) showed an association's own events on its Map tab,
+// #133.
 package com.polysocial.ui.navigation
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -80,6 +81,7 @@ import com.polysocial.ui.event.list.EventsTabRoute
 import com.polysocial.ui.group.FindGroupDone
 import com.polysocial.ui.group.FindGroupRoute
 import com.polysocial.ui.map.MapRoute
+import com.polysocial.ui.map.mapViewModel
 import com.polysocial.ui.profile.FullPrivacyNoticeRoute
 import com.polysocial.ui.profile.PrivacyRoute
 import com.polysocial.ui.profile.ProfileRoute
@@ -118,7 +120,8 @@ data class EventDetailNavigation(
 /**
  * Approved associations use Events, Map and Organization; students retain their four tabs.
  * Organization reuses the Profile graph for its own identity, privacy and cache-first logout. The
- * association Map remains a query-free placeholder until #133.
+ * association's Map shows its own upcoming events (#133) under the app bar, which the students' map
+ * leaves out, until #322 gives both association tabs Figma's header.
  *
  * Root of the signed-in app: an app bar with the current tab's title and, at the tab's root, its
  * action (see [TabAction]), the current tab's screen, and the bottom navigation bar. The Events tab
@@ -153,8 +156,7 @@ fun AppShell(
     },
     mapContent: @Composable (onViewDetails: (String) -> Unit, onCreateEvent: () -> Unit) -> Unit =
         { onDetails, onCreateEvent ->
-          if (accountType == AccountType.ASSOCIATION) AssociationMapUnavailable()
-          else MapRoute(onDetails, onCreateEvent = onCreateEvent)
+          MapRoute(onDetails, onCreateEvent = onCreateEvent, viewModel = mapViewModel(accountType))
         },
     createEventContent: @Composable (CreateEventNavigation) -> Unit = { navigation ->
       CreateEventScreen(
@@ -381,7 +383,9 @@ fun AppShell(
     }
   }
   val topBar: @Composable () -> Unit = {
-    if (showBars && !onEventDetail && destination?.route != Tab.MAP.rootRoute)
+    // The students' map draws its search where the app bar would be; the association's keeps the
+    // bar for its title, like its Events tab, until #322.
+    if (showBars && !onEventDetail && (association || destination?.route != Tab.MAP.rootRoute))
         AppBar(
             title = stringResource(currentTab.presentation(association).label),
             action = action,
@@ -534,23 +538,5 @@ private fun BottomNavBar(
         )
       }
     }
-  }
-}
-
-/** Explains the separate association-map integration without querying student events. */
-@Composable
-private fun AssociationMapUnavailable() {
-  Column(
-      Modifier.fillMaxSize().padding(20.dp).testTag(C.Tag.screen_map),
-      verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),
-  ) {
-    Text(
-        stringResource(R.string.association_map_unavailable_title),
-        style = MaterialTheme.typography.headlineSmall,
-    )
-    Text(
-        stringResource(R.string.association_map_unavailable_message),
-        style = MaterialTheme.typography.bodyLarge,
-    )
   }
 }

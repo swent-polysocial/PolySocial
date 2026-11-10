@@ -166,6 +166,9 @@
     <string name="map_render_loading">Loading map…</string>
     <string name="map_empty_title">No events nearby</string>
     <string name="map_empty_message">No public events in the next two weeks around here. Try another filter, or create one with +.</string>
+    <string name="map_own_empty_title">No upcoming events</string>
+    <string name="map_own_empty_message">Your association has no upcoming events yet. Create one with +.</string>
+    <string name="map_private">Private</string>
     <string name="map_no_match_body">No event matches your filters in the next two weeks. Try another date or a wider distance.</string>
     <string name="map_events_error">Unable to load events. Previously loaded events remain available.</string>
     <string name="map_tiles_error">Unable to load the map. Check your connection or map setup.</string>
@@ -290,6 +293,4 @@
     <string name="organization_loading">Loading your organization…</string>
     <string name="organization_error_title">Couldn’t load your organization</string>
     <string name="organization_error_message">Try again, or sign out and reopen your account.</string>
-    <string name="association_map_unavailable_title">Your events map is not available yet</string>
-    <string name="association_map_unavailable_message">You can view and manage your association’s events in the Events tab.</string>
 </resources>
