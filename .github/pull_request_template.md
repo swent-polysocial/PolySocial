@@ -4,7 +4,7 @@ Closes #
 <!-- The behavior change and the reason for it. A reviewer should understand the PR without opening the issue. -->
 
 ## Design choices
-<!-- What a reviewer should know: alternatives considered, trade-offs, follow-up work (with issue numbers). Write "None" if there are none. -->
+<!-- What a reviewer should know: alternatives considered, trade-offs, follow-up work (with issue numbers). Write "None" if there are none. Add a Reuse note (MODULARITY.md, section 8): what was reused, what was adapted and which callers were checked, and what was searched for but not reused. -->
 
 ## How it was tested
 <!-- Tests added or changed, and the commands you ran locally (e.g. ./gradlew ktfmtCheck, ./gradlew check, ./gradlew connectedCheck) with their result. List anything you could not run. -->
