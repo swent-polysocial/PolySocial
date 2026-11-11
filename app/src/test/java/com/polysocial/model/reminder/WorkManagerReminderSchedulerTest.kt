@@ -1,4 +1,4 @@
-// Contributors: Claude Opus 5.5 (wrote these tests, #123).
+// Contributors: Claude Opus 5.5 (wrote these tests, #123; isScheduled tests, second PR of #123).
 package com.polysocial.model.reminder
 
 import android.content.Context
@@ -18,6 +18,7 @@ import java.time.ZoneOffset
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -102,6 +103,36 @@ class WorkManagerReminderSchedulerTest {
 
     assertTrue(pending("e1").isEmpty())
     assertTrue(pending("e2").isEmpty())
+  }
+
+  @Test
+  fun isScheduled_trueRightAfterScheduling() = runTest {
+    scheduler.schedule(reminder("e1", startsInHours = 3))
+
+    assertTrue(scheduler.isScheduled("e1"))
+  }
+
+  @Test
+  fun isScheduled_falseForAnEventNeverScheduled() = runTest {
+    assertFalse(scheduler.isScheduled("never"))
+  }
+
+  @Test
+  fun isScheduled_falseAfterCancelling() = runTest {
+    scheduler.schedule(reminder("e1", startsInHours = 3))
+    scheduler.cancel("e1")
+
+    assertFalse(scheduler.isScheduled("e1"))
+  }
+
+  @Test
+  fun isScheduled_aWorkManagerFailure_isFalse() = runTest {
+    val broken = mockk<WorkManager>()
+    every { broken.getWorkInfosForUniqueWorkFlow(any()) } throws
+        IllegalStateException("database unavailable")
+    val failing = WorkManagerReminderScheduler(broken, clock)
+
+    assertFalse(failing.isScheduled("e1"))
   }
 
   @Test

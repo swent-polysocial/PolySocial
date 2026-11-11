@@ -14,7 +14,11 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.ViewModel
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.work.Configuration
+import androidx.work.testing.SynchronousExecutor
+import androidx.work.testing.WorkManagerTestInitHelper
 import com.polysocial.ui.event.detail.EventDetailUiState
 import com.polysocial.ui.event.detail.EventDetailViewModel
 import com.polysocial.utils.FirebaseStartupRule
@@ -24,6 +28,7 @@ import dagger.hilt.android.testing.HiltAndroidTest
 import dagger.hilt.android.testing.HiltTestApplication
 import javax.inject.Inject
 import org.junit.Assert.assertSame
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -50,6 +55,20 @@ class HiltViewModelInjectionTest {
   @get:Rule(order = 0) val hiltRule = HiltAndroidRule(this)
 
   @get:Rule(order = 2) val composeTestRule = createAndroidComposeRule<MainActivity>()
+
+  /**
+   * [EventDetailViewModel] now depends on a [com.polysocial.model.reminder.ReminderScheduler],
+   * which Hilt's real [com.polysocial.model.reminder.ReminderModule] backs with WorkManager; it
+   * needs test initialization, like [com.polysocial.model.reminder.WorkManagerReminderScheduler]'s
+   * own tests already do.
+   */
+  @Before
+  fun initializeTestWorkManager() {
+    WorkManagerTestInitHelper.initializeTestWorkManager(
+        ApplicationProvider.getApplicationContext(),
+        Configuration.Builder().setExecutor(SynchronousExecutor()).build(),
+    )
+  }
 
   @Test
   fun hiltViewModel_providesAViewModelWithItsDependencies() {

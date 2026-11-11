@@ -1,5 +1,6 @@
 // Contributors: Claude Opus 5.5 (wrote these tests, #123; late reminder title after review;
-// deleted events, #130; failed reads after review).
+// deleted events, #130; failed reads after review; distinct PendingIntents per event, second PR
+// of #123).
 package com.polysocial.model.reminder
 
 import android.Manifest
@@ -173,6 +174,19 @@ class ReminderWorkerTest {
     run(balelec.copy(eventId = "e2").toWorkData())
 
     assertEquals(2, notifications.size)
+  }
+
+  @Test
+  fun differentEvents_getDifferentPendingIntents() = runTest {
+    // Extras don't affect Intent.filterEquals, so a shared request code would make Android reuse
+    // the first reminder's cached PendingIntent for every later one (#180 review).
+    run(balelec.toWorkData())
+    run(balelec.copy(eventId = "e2").toWorkData())
+
+    val (first, second) = notifications.map { it.contentIntent }
+    assertTrue(first != second)
+    assertEquals("e1".hashCode(), shadowOf(first).requestCode)
+    assertEquals("e2".hashCode(), shadowOf(second).requestCode)
   }
 
   @Test

@@ -1,4 +1,5 @@
-// Contributors: Claude Opus 5.5 (WorkManager reminder scheduling, #123).
+// Contributors: Claude Opus 5.5 (WorkManager reminder scheduling, #123; isScheduled, second PR of
+// #123).
 package com.polysocial.model.reminder
 
 import androidx.work.ExistingWorkPolicy
@@ -9,6 +10,7 @@ import androidx.work.await
 import java.time.Clock
 import java.time.Duration
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 
 /** Tag of every reminder's work, so [WorkManagerReminderScheduler.cancelAll] finds them all. */
 internal const val REMINDER_WORK_TAG = "event_reminder"
@@ -55,6 +57,24 @@ class WorkManagerReminderScheduler(
 
   override suspend fun cancelAll(): CancelReminderResult =
       cancelResult(succeeded { workManager.cancelAllWorkByTag(REMINDER_WORK_TAG) })
+
+  /**
+   * True if [eventId]'s unique work is still enqueued or running. Uses the Flow query (not
+   * [androidx.work.await], which only wraps [Operation]) and takes its first answer: WorkManager
+   * replays the current list to a new collector, so this never waits for a future change. A failed
+   * query answers false (assume no reminder) rather than throwing, since this only seeds the
+   * toggle's initial state.
+   */
+  override suspend fun isScheduled(eventId: String): Boolean =
+      try {
+        workManager.getWorkInfosForUniqueWorkFlow(reminderWorkName(eventId)).first().any {
+          !it.state.isFinished
+        }
+      } catch (e: CancellationException) {
+        throw e
+      } catch (_: Exception) {
+        false
+      }
 
   private fun cancelResult(succeeded: Boolean) =
       if (succeeded) CancelReminderResult.Cancelled else CancelReminderResult.UnexpectedError
