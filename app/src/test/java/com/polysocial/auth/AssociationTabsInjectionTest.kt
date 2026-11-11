@@ -4,6 +4,7 @@
 // cleanup, #140).
 // Contributors: Claude (Opus 5.5, Anthropic) left the association's map, now a real map, to
 // MapTabAccountTest, #133; checked its header on the Events tab, #322.
+// Contributors: OpenAI Codex (scoped the chat fake to this Hilt test, #238).
 package com.polysocial.auth
 
 import androidx.compose.ui.test.assertIsDisplayed
@@ -32,6 +33,9 @@ import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.auth.FakeAuthSessionSource
 import com.polysocial.model.auth.VerificationClock
 import com.polysocial.model.auth.VerificationStore
+import com.polysocial.model.chat.FakeMessageRepository
+import com.polysocial.model.chat.MessageModule
+import com.polysocial.model.chat.MessageRepository
 import com.polysocial.model.event.EventModule
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.FakeEventRepository
@@ -74,6 +78,7 @@ import org.robolectric.annotation.Config
     AssociationModule::class,
     EventModule::class,
     FirebaseModule::class,
+    MessageModule::class,
 )
 @Config(application = HiltTestApplication::class)
 @RunWith(AndroidJUnit4::class)
@@ -90,6 +95,7 @@ class AssociationTabsInjectionTest {
   private val fakeAuth = FakeAuthRepository(user)
   private val identities = FakeAssociationRepository(AssociationResult.Found(identity))
   private var clears = 0
+  @BindValue @JvmField val messages: MessageRepository = FakeMessageRepository()
   @BindValue @JvmField val firestore: FirebaseFirestore = mockk()
   @BindValue @JvmField val authSessionSource: AuthSessionSource = FakeAuthSessionSource()
   @BindValue @JvmField val sessionOwner: SessionOwnerStore = FakeSessionOwnerStore()

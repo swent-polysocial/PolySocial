@@ -4,6 +4,7 @@
 // #140).
 // Contributors: Claude (Opus 5.5, Anthropic) stored the address cooldown in the test store, #225;
 // Mohamed Khellaf (reviewed and revised).
+// Contributors: OpenAI Codex (scoped the chat fake to this Hilt test, #238).
 package com.polysocial.auth
 
 import androidx.compose.ui.test.assertIsDisplayed
@@ -34,6 +35,9 @@ import com.polysocial.model.auth.FakeAuthSessionSource
 import com.polysocial.model.auth.VerificationClock
 import com.polysocial.model.auth.VerificationStore
 import com.polysocial.model.auth.VerificationTiming
+import com.polysocial.model.chat.FakeMessageRepository
+import com.polysocial.model.chat.MessageModule
+import com.polysocial.model.chat.MessageRepository
 import com.polysocial.model.event.EventModule
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.FakeEventRepository
@@ -73,6 +77,7 @@ import org.junit.runner.RunWith
     AssociationModule::class,
     EventModule::class,
     FirebaseModule::class,
+    MessageModule::class,
 )
 @RunWith(AndroidJUnit4::class)
 class AssociationTabsDeviceTest {
@@ -88,6 +93,7 @@ class AssociationTabsDeviceTest {
   private val fakeAuth = FakeAuthRepository(user)
   private val identities = FakeAssociationRepository(AssociationResult.Found(identity))
   private var clears = 0
+  @BindValue @JvmField val messages: MessageRepository = FakeMessageRepository()
   @BindValue @JvmField val firestore: FirebaseFirestore = mockk()
   @BindValue @JvmField val authSessionSource: AuthSessionSource = FakeAuthSessionSource()
   @BindValue @JvmField val sessionOwner: SessionOwnerStore = FakeSessionOwnerStore()

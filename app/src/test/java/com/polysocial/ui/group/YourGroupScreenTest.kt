@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (roster, confirmation and connectivity tests with fakes, #234).
+// Contributors: OpenAI Codex (roster, confirmation and connectivity tests, #234; chat route wiring,
+// #238).
 package com.polysocial.ui.group
 
 import android.content.Context
@@ -298,7 +299,9 @@ class YourGroupScreenTest {
             network,
             Clock.fixed(Instant.parse("2030-01-01T10:00:00Z"), ZoneId.of("Europe/Zurich")),
         )
-    compose.setContent { PolySocialTheme { YourGroupRoute({ backs++ }, { left++ }, viewModel) } }
+    compose.setContent {
+      PolySocialTheme { YourGroupRoute({ backs++ }, { left++ }, viewModel = viewModel) }
+    }
     settle()
     return viewModel
   }

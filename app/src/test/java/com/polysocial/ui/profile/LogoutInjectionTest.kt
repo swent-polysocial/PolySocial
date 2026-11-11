@@ -8,6 +8,7 @@
 // Khellaf (reviewed and revised); Claude explained why in a comment after #286's review.
 // Contributors: Claude (Opus 5.5, Anthropic) bound fake group and public profile repositories,
 // which Find a group's ViewModel needs, #233.
+// Contributors: OpenAI Codex (scoped the chat fake to this Hilt test, #238).
 package com.polysocial.ui.profile
 
 import androidx.compose.ui.test.*
@@ -24,6 +25,9 @@ import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
 import com.polysocial.model.auth.AssociationSignupStore
 import com.polysocial.model.auth.EmptyAssociationSignupStore
+import com.polysocial.model.chat.FakeMessageRepository
+import com.polysocial.model.chat.MessageModule
+import com.polysocial.model.chat.MessageRepository
 import com.polysocial.model.event.*
 import com.polysocial.model.firebase.*
 import com.polysocial.model.group.FakeGroupRepository
@@ -54,6 +58,7 @@ import org.robolectric.annotation.Config
     EventModule::class,
     UserProfileModule::class,
     FirebaseModule::class,
+    MessageModule::class,
     RegistrationModule::class,
     GroupModule::class,
     PublicProfileModule::class,
@@ -61,6 +66,7 @@ import org.robolectric.annotation.Config
 @Config(application = HiltTestApplication::class)
 @RunWith(AndroidJUnit4::class)
 class LogoutInjectionTest {
+  @BindValue @JvmField val messages: MessageRepository = FakeMessageRepository()
   @BindValue
   @JvmField
   val associationSignupStore: AssociationSignupStore = EmptyAssociationSignupStore
