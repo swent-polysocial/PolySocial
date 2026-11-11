@@ -1,4 +1,4 @@
-// Contributors: Claude (wrote the one-off check tests); OpenAI Codex (tested live connectivity,
+// Contributors: Claude (tested the one-off check); OpenAI Codex (tested connectivity and fallback,
 // #234).
 package com.polysocial.model.network
 
@@ -8,13 +8,19 @@ import android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET
 import android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import io.mockk.every
+import io.mockk.mockk
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -76,6 +82,50 @@ class AndroidNetworkMonitorTest {
     assertEquals(listOf(false, true, false), observed)
     collecting.cancelAndJoin()
     assertTrue(platform.networkCallbacks.isEmpty())
+  }
+
+  @Test
+  fun registrationFailureFallsBackToTheCurrentConnection() = runTest {
+    activeNetworkHas(NET_CAPABILITY_INTERNET, NET_CAPABILITY_VALIDATED)
+    val active = connectivity.activeNetwork!!
+    val capabilities = connectivity.getNetworkCapabilities(active)
+    val failing =
+        monitorWithRegistrationFailure(IllegalStateException("Callback unavailable")) {
+          every { activeNetwork } returns active
+          every { getNetworkCapabilities(active) } returns capabilities
+        }
+    assertTrue(failing.observeOnline().first())
+  }
+
+  @Test
+  fun deniedNetworkPermissionReportsOffline() = runTest {
+    val denied = SecurityException("Network permission denied")
+    val failing = monitorWithRegistrationFailure(denied) { every { activeNetwork } throws denied }
+    assertFalse(failing.observeOnline().first())
+  }
+
+  @Test
+  fun fatalErrorsAndCancellationPropagate() {
+    listOf(AssertionError("Test fatal error"), CancellationException("Test cancellation"))
+        .forEach { failure ->
+          val failing = monitorWithRegistrationFailure(failure)
+          val thrown =
+              assertThrows(failure.javaClass) { runBlocking { failing.observeOnline().first() } }
+          assertEquals(failure.message, thrown.message)
+        }
+  }
+
+  private fun monitorWithRegistrationFailure(
+      failure: Throwable,
+      setup: ConnectivityManager.() -> Unit = {},
+  ): AndroidNetworkMonitor {
+    val manager = mockk<ConnectivityManager>().apply(setup)
+    every {
+      manager.registerDefaultNetworkCallback(any<ConnectivityManager.NetworkCallback>())
+    } throws failure
+    val context = mockk<Context>()
+    every { context.getSystemService(ConnectivityManager::class.java) } returns manager
+    return AndroidNetworkMonitor(context)
   }
 
   @Test
