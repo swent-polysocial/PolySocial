@@ -1,0 +1,8 @@
+<!-- Contributors: Mehdi (@mehdifddl) supplied and selected the coral monogram reference;
+     OpenAI Codex traced the supplied logo as vectors and omitted its PolySocial wordmark (#335).
+     Source supplied on 2026-11-11: "Monogramme p corail pour PolySocial.png". -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="280 185 655 760">
+  <path fill="#ff4d4d" fill-rule="evenodd" d="M303 514C303 343 437 206 612 206C789 206 913 321 913 490C913 665 782 784 612 784C557 784 508 777 462 768V844C462 889 427 923 382 923C338 923 303 890 303 844ZM421 479C421 390 499 326 606 326H624C725 326 795 391 795 486C795 532 777 574 748 606C704 568 665 572 624 636C574 579 536 601 422 655Q403 664 407 640L443 552C428 530 421 507 421 479Z"/>
+  <circle fill="#ff4d4d" cx="575" cy="566" r="33"/>
+  <circle fill="#ff4d4d" cx="691" cy="541" r="34"/>
+</svg>
