@@ -1,5 +1,6 @@
 // Contributors: Claude (testing agent: the Organization tab's states, TalkBack, long names and
 // large font sizes, #127; the loading spinner, after a review, #127).
+// Contributors: Claude (Opus 5.5, Anthropic) checked the header's Verified tick, #322.
 package com.polysocial.ui.association
 
 import android.app.Application
@@ -23,6 +24,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.R
 import com.polysocial.ui.theme.PolySocialTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -202,6 +204,36 @@ class PendingAssociationScreensTest {
     assertTrue("The name ($name) runs into the margin", name.right <= screen.right - 20.dp)
     compose.onNode(isHeading() and hasText("Events")).assertIsDisplayed()
     compose.onNodeWithTag(AssociationTags.HEADER_INITIALS).assertTextEquals("AR")
+  }
+
+  @Test
+  fun thePendingHeader_hasNoVerifiedTick() {
+    show { PendingEventsScreen(testClub, onNotAvailable = {}) }
+
+    node(AssociationTags.HEADER_NAME).assertTextEquals("Test Club")
+    node(AssociationTags.HEADER_VERIFIED).assertDoesNotExist()
+  }
+
+  @Config(qualifiers = "w360dp-h800dp")
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  @Test
+  fun aVerifiedHeader_keepsItsTickAfterAVeryLongName() {
+    show {
+      AssociationHeader(
+          testClub.copy(name = longName),
+          R.string.association_tab_map,
+          verified = true,
+      )
+    }
+
+    assertTrue(
+        "The long name isn't shortened",
+        layoutOf(AssociationTags.HEADER_NAME).isLineEllipsized(0),
+    )
+    val screen = compose.onRoot().getBoundsInRoot()
+    val tick = node(AssociationTags.HEADER_VERIFIED).assertIsDisplayed().getBoundsInRoot()
+    assertTrue("The tick ($tick) is pushed off screen", tick.right <= screen.right)
+    compose.onNode(isHeading() and hasText("Map")).assertIsDisplayed()
   }
 
   @Config(qualifiers = "w360dp-h800dp")

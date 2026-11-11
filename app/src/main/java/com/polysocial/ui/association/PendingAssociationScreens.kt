@@ -1,5 +1,7 @@
 // Contributors: Claude (the pending association's Events, Map and Organization tabs, from the
 // Figma "Association · pending" frames, #127).
+// Contributors: Claude (Opus 5.5, Anthropic) shared the tabs' header with the verified association,
+// with its Verified tick, #322.
 package com.polysocial.ui.association
 
 import androidx.annotation.DrawableRes
@@ -54,6 +56,7 @@ import com.polysocial.ui.common.ErrorState
 import com.polysocial.ui.event.create.organizerInitialsOf
 import com.polysocial.ui.theme.Bg
 import com.polysocial.ui.theme.Border
+import com.polysocial.ui.theme.Info
 import com.polysocial.ui.theme.Ink
 import com.polysocial.ui.theme.Ink2
 import com.polysocial.ui.theme.Ink3
@@ -73,6 +76,7 @@ object AssociationTags {
 
   const val HEADER_NAME = "association_header_name"
   const val HEADER_INITIALS = "association_header_initials"
+  const val HEADER_VERIFIED = "association_header_verified"
   const val ORGANIZATION_INITIALS = "association_organization_initials"
   const val LOADING = "association_loading"
 
@@ -123,16 +127,23 @@ private val ABOUT_STYLE = jakarta(FontWeight.Normal, 14, 21f)
 /** Figma's 20 dp margin on each side of every association screen. */
 private val MARGIN = 20.dp
 
+/** Where the pending tabs' header sits, below the top of the screen. */
+private val HEADER_PADDING = Modifier.padding(start = MARGIN, end = MARGIN, top = 19.dp)
+
 /**
  * The Events and Map tabs' header: the association's initials, its name and the tab's [title]. Its
- * name and initials show once it is read; the tab's title always does.
+ * name and initials show once it is read; the tab's title always does. A [verified] association's
+ * name is blue with Figma's tick after it ("Association · events tab", #322); a pending one's is
+ * grey.
  */
 @Composable
-private fun PendingHeader(association: Association?, @StringRes title: Int) {
-  Row(
-      Modifier.fillMaxWidth().padding(start = MARGIN, end = MARGIN, top = 19.dp),
-      verticalAlignment = Alignment.CenterVertically,
-  ) {
+fun AssociationHeader(
+    association: Association?,
+    @StringRes title: Int,
+    modifier: Modifier = Modifier,
+    verified: Boolean = false,
+) {
+  Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
     InitialsTile(
         association,
         size = 36,
@@ -143,14 +154,27 @@ private fun PendingHeader(association: Association?, @StringRes title: Int) {
     Spacer(Modifier.width(10.dp))
     Column {
       if (association != null) {
-        Text(
-            association.name,
-            style = HEADER_NAME_STYLE,
-            color = Ink2,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.testTag(AssociationTags.HEADER_NAME),
-        )
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Text(
+              association.name,
+              style = HEADER_NAME_STYLE,
+              color = if (verified) Info else Ink2,
+              maxLines = 1,
+              overflow = TextOverflow.Ellipsis,
+              // Measured after the tick, so a long name is cut instead of the tick.
+              modifier = Modifier.weight(1f, fill = false).testTag(AssociationTags.HEADER_NAME),
+          )
+          if (verified) {
+            // Figma: a 13 dp tick, 3 dp after the name.
+            Spacer(Modifier.width(3.dp))
+            Icon(
+                painterResource(R.drawable.ic_check_small),
+                stringResource(R.string.organization_verified),
+                Modifier.size(13.dp).testTag(AssociationTags.HEADER_VERIFIED),
+                tint = Info,
+            )
+          }
+        }
       }
       Text(
           stringResource(title),
@@ -200,7 +224,7 @@ fun PendingEventsScreen(association: Association?, onNotAvailable: () -> Unit) {
           .verticalScroll(rememberScrollState())
           .testTag(AssociationTags.EVENTS_SCREEN)
   ) {
-    PendingHeader(association, R.string.association_tab_events)
+    AssociationHeader(association, R.string.association_tab_events, HEADER_PADDING)
     Spacer(Modifier.height(16.dp))
     ReviewCard()
     Spacer(Modifier.height(16.dp))
@@ -381,7 +405,7 @@ fun PendingMapScreen(association: Association?) {
           .testTag(AssociationTags.MAP_SCREEN),
       horizontalAlignment = Alignment.CenterHorizontally,
   ) {
-    PendingHeader(association, R.string.association_tab_map)
+    AssociationHeader(association, R.string.association_tab_map, HEADER_PADDING)
     // Figma places the tile 187 dp under the header.
     Spacer(Modifier.height(187.dp))
     Box(

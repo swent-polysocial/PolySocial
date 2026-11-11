@@ -3,10 +3,11 @@
 // Contributors: OpenAI Codex (approved association tabs, Privacy return caching and session
 // cleanup, #140).
 // Contributors: Claude (Opus 5.5, Anthropic) left the association's map, now a real map, to
-// MapTabAccountTest, #133.
+// MapTabAccountTest, #133; checked its header on the Events tab, #322.
 package com.polysocial.auth
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -48,6 +49,7 @@ import com.polysocial.model.user.UserProfile
 import com.polysocial.model.user.UserProfileModule
 import com.polysocial.model.user.UserProfileRepository
 import com.polysocial.resources.C
+import com.polysocial.ui.association.AssociationTags
 import com.polysocial.ui.association.OrganizationTags
 import com.polysocial.ui.auth.WelcomeTags
 import com.polysocial.ui.profile.ProfileTags
@@ -133,6 +135,9 @@ class AssociationTabsInjectionTest {
   fun approvedAssociationUsesRealOrganizationPrivacyAndLogoutWithoutStudentScreens() {
     compose.onNodeWithTag(C.Tag.app_shell).assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.nav_item_chats).assertDoesNotExist()
+    // Its header on the Events tab (#322), from its identity.
+    compose.onNodeWithTag(AssociationTags.HEADER_NAME).assertTextEquals(identity.name)
+    compose.onNodeWithTag(AssociationTags.HEADER_VERIFIED, useUnmergedTree = true).assertExists()
     compose.onNodeWithTag(C.Tag.nav_item_profile).assertDoesNotExist()
     // Not opened: since #133 it draws the real Mapbox map, which can't run under Robolectric.
     // MapTabAccountTest checks the association's map with a fake renderer.
