@@ -36,9 +36,8 @@ for the decision.
 5. If the owner declines approval or needs more evidence, leave the flag absent
    or `false`. The app still shows pending review. The applicant can edit
    permitted setup details, and any owner can check them again in the console.
-   Editing those details does not notify an owner or submit a new request.
-   A channel for informing rejected applicants and requesting another review
-   still needs a team decision.
+   The console workflow sends no rejection notice and provides no separate
+   resubmission action.
 
 ## Revocation and cleanup
 
@@ -54,9 +53,12 @@ clears that device's Firestore persistence before signing out and offers
 different account to use it. Revocation alone does not clear either device
 cache or server data.
 
-Existing public events stay visible to students and can still display the
-Verified badge because it comes from the event's stored `isAssociationEvent`
-field. Removing or changing a published event is a separate action.
+Public events published while an association was approved stay visible after
+revocation. They can still show the Verified badge because it comes from the
+event's stored `isAssociationEvent` field. The badge grants no access. A
+never-approved association cannot publish an association event, so declining
+its setup cannot leave an old badge. Removing or changing a published event
+is a separate action.
 
 Rejected and duplicate accounts retain verified email addresses, so
 [#226's planned cleanup][unverified-cleanup] would skip them. Removing a
@@ -105,9 +107,9 @@ set to `false`. Client updates to the flag are denied.
 ## Product backlog wording for the board owner
 
 > Sprint 3 delivered manual Firebase-console verification via #135. #210
-> documents what owners can review today and tracks how to notify a rejected
-> applicant and receive a renewed request. A future admin interface needs
-> its own agreed scope and server-side authorization.
+> documents the manual review and what happens when approval is declined or
+> revoked. A future admin interface, including any rejection notice or
+> resubmission action, needs its own agreed scope and server-side authorization.
 
 The board owner applies this wording to the product draft after merge.
 
