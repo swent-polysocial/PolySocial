@@ -1,5 +1,7 @@
 // Contributors: OpenAI Codex (offline Google authentication and Firebase-managed account regression
 // tests and exact-domain validation coverage for #106).
+// Contributors: Claude (Opus 5.5, Anthropic) tested dismissals and Google failures sent as a
+// cancellation, #319.
 package com.polysocial.model.auth
 
 import android.app.Application
@@ -141,6 +143,40 @@ class GoogleAuthRepositoryTest {
       auth.signInWithCredential(any())
       auth.signOut()
     }
+  }
+
+  @Test
+  fun closingTheSheetStaysSilentWhateverItsWording() = runTest {
+    // androidx's dismissal, Google's (either spelling), and a cancel with a blank message.
+    for (message in
+        listOf(
+            "activity is cancelled by the user.",
+            "[16] Cancelled by user.",
+            "[16] Canceled by user.",
+            " ",
+        )) {
+      coEvery { source.get(context) } throws GetCredentialCancellationException(message)
+      assertEquals(message, GoogleSignInResult.Cancelled, repository.signInWithGoogle(context))
+    }
+    verify(exactly = 0) {
+      auth.signInWithCredential(any())
+      auth.signOut()
+    }
+  }
+
+  @Test
+  fun googleFailureReportedAsCancellationIsAVisibleError() = runTest {
+    // Google's failure behind an unregistered SHA-1, then as the older Play services path words it.
+    for (message in listOf("[16] Account reauth failed.", "16: Account reauth failed.")) {
+      coEvery { source.get(context) } throws GetCredentialCancellationException(message)
+      assertEquals(
+          message,
+          GoogleSignInResult.UnexpectedError,
+          repository.signInWithGoogle(context),
+      )
+    }
+    verify(exactly = 0) { auth.signInWithCredential(any()) }
+    verify(exactly = 2) { auth.signOut() }
   }
 
   @Test

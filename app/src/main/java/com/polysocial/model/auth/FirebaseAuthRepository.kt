@@ -12,6 +12,8 @@
 // Contributors: Claude (moved the exact EPFL check to SignUpValidation to share it, #208).
 // Contributors: Claude (Opus 5.5, Anthropic) reported a deleted, disabled or revoked account as
 // signed out on reload, #225 review.
+// Contributors: Claude (Opus 5.5, Anthropic) reported Google failures disguised as a cancel, in
+// sign-in and re-authentication, #319.
 package com.polysocial.model.auth
 
 import android.content.Context
@@ -82,8 +84,13 @@ private constructor(
         return GoogleSignInResult.UnexpectedError
       }
       GoogleSignInResult.Success(user.snapshot())
-    } catch (_: GetCredentialCancellationException) {
-      GoogleSignInResult.Cancelled
+    } catch (cancellation: GetCredentialCancellationException) {
+      if (cancellation.isUserDismissal()) {
+        GoogleSignInResult.Cancelled
+      } else {
+        auth.signOut()
+        GoogleSignInResult.UnexpectedError
+      }
     } catch (_: FirebaseNetworkException) {
       auth.signOut()
       GoogleSignInResult.NetworkError
@@ -235,8 +242,8 @@ private constructor(
         // A cancelled SDK task is a failure; cancellation of our coroutine must still propagate.
         currentCoroutineContext().ensureActive()
         ReauthResult.UnexpectedError
-      } catch (_: GetCredentialCancellationException) {
-        ReauthResult.Cancelled
+      } catch (cancellation: GetCredentialCancellationException) {
+        if (cancellation.isUserDismissal()) ReauthResult.Cancelled else ReauthResult.UnexpectedError
       } catch (_: FirebaseAuthInvalidCredentialsException) {
         wrongCredential
       } catch (_: FirebaseAuthInvalidUserException) {

@@ -1,12 +1,14 @@
 // Contributors: OpenAI Codex (Google credential service and typed outcomes; removed collision
 // outcome for #106);
 // Android Developers (Credential Manager button-flow API reference).
+// Contributors: Claude (Opus 5.5, Anthropic) reported Google failures disguised as a cancel, #319.
 package com.polysocial.model.auth
 
 import android.content.Context
 import androidx.credentials.CredentialManager
 import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
+import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
@@ -30,6 +32,26 @@ sealed interface GoogleSignInResult {
 
 /** Token stays in the data layer; it is neither logged nor persisted. */
 class GoogleCredential(val account: GoogleAccount, val idToken: String)
+
+/**
+ * Whether this cancellation means the user closed Google's sheet, rather than a failure inside it
+ * (#319). On sign-in a dismissal stays silent (#107), in re-authentication it says so; a failure
+ * must show an error.
+ *
+ * Credential Manager also reports some Google failures as a cancellation, with the same Play
+ * services status 16 as a dismissal: `[16] Cancelled by user.` is the user, `[16] Account reauth
+ * failed.` is a failure, reported with an unregistered SHA-1, an OAuth consent screen set to
+ * Internal or no network (android/identity-samples#90). Only Google's wording tells them apart, so
+ * a message that says "cancel" (either spelling, any case) is a dismissal, like androidx's
+ * `activity is cancelled by the user.`. A missing message counts as one too, since a cancel from
+ * Android 14+'s own Credential Manager may carry none. An open PR,
+ * capawesome-team/capacitor-firebase#1061, uses a narrower check: the exact phrases "Cancelled by
+ * user" and "activity is cancelled by the user", with a missing message as a failure.
+ */
+internal fun GetCredentialCancellationException.isUserDismissal(): Boolean {
+  val text = message
+  return text.isNullOrBlank() || text.contains("cancel", ignoreCase = true)
+}
 
 /** Acquires a Google credential with the foreground activity, replaceable in offline tests. */
 fun interface GoogleCredentialSource {

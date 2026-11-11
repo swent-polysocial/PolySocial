@@ -1,12 +1,19 @@
 // Contributors: OpenAI Codex (removed obsolete collision outcome coverage for #107).
 // Contributors: OpenAI Codex (Google state, cancellation and submission-race tests for #107).
+// Contributors: Claude (Opus 5.5, Anthropic) tested both screens on the real repository with a fake
+// Google sheet, #319.
 package com.polysocial.ui.auth
 
 import android.content.Context
+import androidx.credentials.exceptions.GetCredentialCancellationException
+import com.google.firebase.auth.FirebaseAuth
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
+import com.polysocial.model.auth.FirebaseAuthRepository
 import com.polysocial.model.auth.GoogleAccount
+import com.polysocial.model.auth.GoogleCredential
+import com.polysocial.model.auth.GoogleCredentialSource
 import com.polysocial.model.auth.GoogleSignInResult
 import com.polysocial.model.auth.LogInResult
 import com.polysocial.ui.login.LoginStatus
@@ -17,6 +24,7 @@ import io.mockk.mockk
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -87,6 +95,55 @@ class GoogleSignInViewModelTest {
       assertNull(welcome.uiState.value.error)
       assertNull(login.uiState.value.google.error)
     }
+  }
+
+  /** Welcome's and Log in's Google state after one attempt each, through [repository]. */
+  private fun TestScope.bothScreensAfterGoogle(
+      repository: AuthRepository
+  ): List<GoogleSignInState> {
+    val welcome = WelcomeViewModel(repository)
+    val login = LoginViewModel(repository)
+    welcome.onGoogle(context)
+    login.onGoogle(context)
+    advanceUntilIdle()
+    return listOf(welcome.uiState.value, login.uiState.value.google)
+  }
+
+  /** The real repository, with Google's sheet replaced by [sheet] (#319). */
+  private fun repositoryWithSheet(sheet: GoogleCredentialSource) =
+      FirebaseAuthRepository(mockk<FirebaseAuth>(relaxUnitFun = true), sheet)
+
+  @Test
+  fun nonEpflGoogleAccountShowsNotEpflOnBothScreens() = runTest {
+    val account = GoogleAccount("someone@example.org", "Demo Person")
+    val states =
+        bothScreensAfterGoogle(repositoryWithSheet { GoogleCredential(account, "test-token") })
+    states.forEach { assertEquals(GoogleSignInResult.NotEpfl(account), it.error) }
+  }
+
+  @Test
+  fun googleFailureReportedAsCancellationShowsTheErrorOnBothScreens() = runTest {
+    val states =
+        bothScreensAfterGoogle(
+            repositoryWithSheet {
+              throw GetCredentialCancellationException("[16] Account reauth failed.")
+            }
+        )
+    states.forEach {
+      assertEquals(GoogleSignInResult.UnexpectedError, it.error)
+      assertFalse(it.busy)
+    }
+  }
+
+  @Test
+  fun closingGoogleSheetLeavesBothScreensIdle() = runTest {
+    val states =
+        bothScreensAfterGoogle(
+            repositoryWithSheet {
+              throw GetCredentialCancellationException("[16] Cancelled by user.")
+            }
+        )
+    states.forEach { assertEquals(GoogleSignInState(), it) }
   }
 
   @Test
