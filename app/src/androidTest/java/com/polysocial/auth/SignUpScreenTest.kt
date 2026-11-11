@@ -11,6 +11,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) passed the deletion and network fakes and stored
 // the address cooldown, #225; Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (the public profile repair's stub, #291).
+// Contributors: Claude (Opus 5.5, Anthropic) closed the keyboard after typing, #314.
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -22,6 +23,7 @@ import androidx.lifecycle.ViewModelStore
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.polysocial.R
+import com.polysocial.closeKeyboard
 import com.polysocial.model.account.FakeAccountDeletionRepository
 import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
@@ -162,8 +164,15 @@ class SignUpScreenTest {
     coVerify(exactly = 0) { repository.logIn(any(), any()) }
   }
 
+  // Typing ends with the keyboard closed, so no tap or check runs while it opens (#314).
   private fun input(field: SignUpField, value: String) {
     compose.onNodeWithTag(SignUpTags.input(field)).performScrollTo().performTextInput(value)
+    compose.closeKeyboard()
+  }
+
+  private fun replace(field: SignUpField, value: String) {
+    compose.onNodeWithTag(SignUpTags.input(field)).performScrollTo().performTextReplacement(value)
+    compose.closeKeyboard()
   }
 
   private fun fill(email: String = "student.test@epfl.ch", confirmPassword: String = "password1") {
@@ -222,10 +231,7 @@ class SignUpScreenTest {
     assertEquals(1, logIn)
     assertEquals(0, signedUp)
     coVerify(exactly = 1) { repository.signUp(any(), any(), any()) }
-    compose
-        .onNodeWithTag(SignUpTags.input(SignUpField.Email))
-        .performScrollTo()
-        .performTextReplacement("another.test@epfl.ch")
+    replace(SignUpField.Email, "another.test@epfl.ch")
     compose.onNodeWithTag(SignUpTags.BackendError).assertDoesNotExist()
     compose.onNodeWithTag(SignUpTags.LogInInstead).assertDoesNotExist()
   }
@@ -263,10 +269,7 @@ class SignUpScreenTest {
         .assertIsDisplayed()
         .assertTextContains(message(R.string.signup_password_mismatch))
     compose.onNodeWithTag(SignUpTags.Submit).performScrollTo().assertIsNotEnabled()
-    compose
-        .onNodeWithTag(SignUpTags.input(SignUpField.ConfirmPassword))
-        .performScrollTo()
-        .performTextReplacement("password1")
+    replace(SignUpField.ConfirmPassword, "password1")
     compose.onNodeWithTag(SignUpTags.error(SignUpField.ConfirmPassword)).assertDoesNotExist()
     compose.onNodeWithTag(SignUpTags.Submit).performScrollTo().assertIsEnabled()
     coVerify(exactly = 0) { repository.signUp(any(), any(), any()) }
@@ -289,10 +292,7 @@ class SignUpScreenTest {
   fun passwordRequirementsUpdateAndBlockWeakPassword() {
     launch()
     fill()
-    compose
-        .onNodeWithTag(SignUpTags.input(SignUpField.Password))
-        .performScrollTo()
-        .performTextReplacement("abcdefgh")
+    replace(SignUpField.Password, "abcdefgh")
     compose
         .onNodeWithTag(SignUpTags.NumberRule)
         .performScrollTo()
@@ -308,10 +308,7 @@ class SignUpScreenTest {
         .assertIsDisplayed()
         .assertTextContains(message(R.string.signup_password_rules))
     compose.onNodeWithTag(SignUpTags.Submit).performScrollTo().assertIsNotEnabled()
-    compose
-        .onNodeWithTag(SignUpTags.input(SignUpField.Password))
-        .performScrollTo()
-        .performTextReplacement("password1")
+    replace(SignUpField.Password, "password1")
     compose
         .onNodeWithTag(SignUpTags.NumberRule)
         .performScrollTo()
@@ -376,10 +373,7 @@ class SignUpScreenTest {
     }
 
     // Editing a partially created account must not enable another account-creation attempt.
-    compose
-        .onNodeWithTag(SignUpTags.input(SignUpField.FullName))
-        .performScrollTo()
-        .performTextReplacement("Changed Name")
+    replace(SignUpField.FullName, "Changed Name")
     compose
         .onNodeWithTag(SignUpTags.BackendError)
         .performScrollTo()
@@ -575,6 +569,7 @@ class SignUpScreenTest {
     compose.onNodeWithTag(SignUpTags.LogIn).performScrollTo().performClick()
     compose.onNodeWithTag(LoginScreenTestTags.EMAIL).performTextInput("student.test@epfl.ch")
     compose.onNodeWithTag(LoginScreenTestTags.PASSWORD).performTextInput("password1")
+    compose.closeKeyboard()
     compose.onNodeWithTag(LoginScreenTestTags.LOG_IN).performScrollTo().performClick()
     compose.onNodeWithTag(LoginScreenTestTags.ERROR).performScrollTo().assertIsDisplayed()
     compose.onNodeWithTag(LoginScreenTestTags.SCREEN).assertIsDisplayed()
@@ -617,14 +612,7 @@ class SignUpScreenTest {
     compose.onNodeWithTag(LoginScreenTestTags.EMAIL).performTextInput("student.test@epfl.ch")
     compose.onNodeWithTag(LoginScreenTestTags.PASSWORD).performTextInput("password1")
     // Finish text/IME layout and scrolling before pausing the clock for the redirect assertions.
-    compose.waitForIdle()
-    compose.runOnIdle {
-      androidx.core.view.WindowCompat.getInsetsController(
-              compose.activity.window,
-              compose.activity.window.decorView,
-          )
-          .hide(androidx.core.view.WindowInsetsCompat.Type.ime())
-    }
+    compose.closeKeyboard()
     compose.onNodeWithTag(LoginScreenTestTags.LOG_IN).performScrollTo()
     compose.mainClock.autoAdvance = false
     try {
