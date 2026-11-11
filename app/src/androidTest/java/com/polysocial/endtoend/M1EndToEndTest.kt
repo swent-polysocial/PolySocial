@@ -13,6 +13,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) kept the test store's address cooldown, #225;
 // Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (shared fakes and dateDigits instead of private copies, #276).
+// Contributors: Claude (Opus 5.5, Anthropic) closed the keyboard before signing up, #314.
 package com.polysocial.endtoend
 
 import androidx.activity.compose.setContent
@@ -46,6 +47,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.MainActivity
 import com.polysocial.auth.MemoryVerificationStore
+import com.polysocial.closeKeyboard
 import com.polysocial.model.account.AccountDeletionModule
 import com.polysocial.model.account.AccountDeletionRepository
 import com.polysocial.model.account.FakeAccountDeletionRepository
@@ -255,6 +257,8 @@ class M1EndToEndTest {
     type(SignUpTags.input(SignUpField.Email), EMAIL)
     type(SignUpTags.input(SignUpField.Password), PASSWORD)
     type(SignUpTags.input(SignUpField.ConfirmPassword), PASSWORD)
+    // The keyboard opens late and would move Submit after the scroll (#314).
+    compose.closeKeyboard()
     node(SignUpTags.Submit).performScrollTo().performClick()
 
     await(VerifyEmailTags.Screen)
