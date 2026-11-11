@@ -15,6 +15,7 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the missing public profile created at app start, #291). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (registrations deleted with their event and account, #275). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the QR payload parser marked as built, #337). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the friends data model, its rules design and open questions (#338); Konstantinos Perdikeas (decided and reviewed). -->
 
 How PolySocial is built, as we currently envision it. The page follows the [Android App Architecture guide](https://developer.android.com/topic/architecture/intro): a **UI layer** (Compose screens and ViewModels), a **domain layer** of pure Kotlin logic, and a **data layer** of repositories in front of Firebase, the map and geocoding services, and the device sensors.
 
@@ -274,6 +275,34 @@ This is the design to build against, not a claim that every component is already
 
 **Sprint Planning decisions** recorded in [#141](https://github.com/swent-polysocial/PolySocial/pull/141): only the creator is an organizer until Public profiles provides a way to find co-organizers; reminders are opt-in, not automatic; association screens move to Sprint 3; an eventual Cancel event deletes it rather than introducing a cancellation status; every unbuilt action reports its availability. This document records the design without changing Authentication or Security Rules.
 
+### 3.7 Friends (Product Backlog, decided in #338)
+
+```mermaid
+flowchart TB
+  classDef pb fill:#dbe4ff,stroke:#364fc7,color:#000
+  classDef ext fill:#fff3bf,stroke:#e67700,color:#000
+  classDef s1 fill:#d3f9d8,stroke:#2b8a3e,color:#000
+
+  scan["Scan a QR code<br/>camera, #336 frames"]:::pb --> scanVM["<b>Scan ViewModel</b><br/>friend card · Send request"]:::pb
+  scanVM --> qr["<b>parseQrPayload</b><br/><i>domain</i>, pure Kotlin, #337"]:::pb
+  scanVM --> pub["<b>PublicProfileRepository</b><br/>by UID only, built, #229"]:::s1
+  scanVM --> friendRepo["<b>FriendRepository</b><br/>observeFriendships · sendRequest<br/>accept · remove"]:::pb
+  friendsUi["Friends · requests list"]:::pb --> friendsVM["<b>Friends ViewModel</b><br/>friends · incoming · sent"]:::pb
+  friendsVM --> friendRepo
+  friendsVM --> pub
+  friendRepo --> fs[("Firestore<br/>friendships/{pairId}")]:::ext
+  delFn["<b>deleteAccount</b><br/>Cloud Function, built, #206"]:::s1 -. "deletes the UID's friendships" .-> fs
+```
+
+- **One document per pair of students:** `friendships/{pairId}`, where `pairId` is the two UIDs sorted and joined by `~` (`{lowerUid}~{higherUid}`; no UID contains `~`). It holds `uids` (the two UIDs, sorted), `requestedBy` (the sender's UID), `status` (`pending` or `accepted`), server-set `createdAt` and, once accepted, server-set `acceptedAt`. Only UIDs, no names or emails: names come from each student's public profile.
+- **The whole lifecycle in that document.** Sending a request creates it as `pending`. Accepting is the recipient's update to `accepted`. Declining (by the recipient), cancelling (by the sender) and removing a friend (by either) all delete it, so the pair can start again later.
+- **At most one request between two students, by construction.** A → B and B → A have the same ID, so a second request finds the document already there and the create is refused. When both send at the same time, the second one sees the first request and is offered Accept instead.
+- **Adding a friend: by QR code first.** The app scans `polysocial://friend/{uid}` and parses it with #337's `parseQrPayload`. It then reads that student's public profile by UID (#229), shows their card and sends the request on a tap. Scanning your own code shows a message, not a request. A student whose public profile is still missing (saved before #229, see #291) can't be added until they open the app again. The app has **no usernames** (the Figma v2 profile step had one, but it was never built), so finding a student by username is an open question (section 7).
+- **One listener per student:** `friendships where uids array-contains <UID>`, split on the device into friends (`accepted`), incoming (`pending`, someone else's `requestedBy`) and sent requests. A student has few friendships, so this needs no composite index. It works from the cache offline. Sending, accepting, declining and removing are **refused offline** with Try again, like chat, rather than queued.
+- **Requests are seen in the app.** There are no push notifications (Firebase Cloud Messaging is not in use), so incoming requests show in the friends list.
+- **Associations never take part:** they can't send, receive or read a friendship.
+- **Public profiles (#229) and the later public/private choice.** The friend card and the lists show only what a public profile already shows (`displayName`, `section`, `year`, `interests`). Nobody can see another student's friends yet. Showing friends on a **public** profile, or to approved connections on a private one (section 5.2), needs its own read rule when that choice is built. So does using common friends in matching: the matching engine runs on the device, and today it can't read other students' friendships (section 7).
+
 ## 4. Key flows
 
 Each flow shows who calls whom, top to bottom. "App" is the screen together with its ViewModel.
@@ -435,7 +464,7 @@ flowchart LR
   marker["events/{eventId}/groupMembers/{uid}<br/>one group per event, #232"]:::pb
   sub["messages #237 · locations<br/>check-ins"]:::pb
   mreq["matchRequests<br/>undecided"]:::pb
-  friends["friendships"]:::pb
+  friends["friendships/{pairId}<br/>two students, #338"]:::pb
   storage[("Cloud Storage<br/>photo files")]:::ext
 
   users --- |"same uid"| pub
@@ -470,7 +499,7 @@ flowchart LR
 | `events/{eventId}/groups/{groupId}/messages/{id}` | `senderId`, `text` (1–1000), server-set `createdAt`. A one-to-one chat is a two-member group | 🟩 S5 #237 (built) |
 | `events/{eventId}/groups/{groupId}/checkIns/{uid}` | `method` (gps or qr), `checkedInAt` | 🟦 #22 |
 | `events/{eventId}/groups/{groupId}/locations/{uid}` | position, `updatedAt`. Only during the event, deleted after | 🟦 #20 |
-| `friendships/{id}` | `uidA`, `uidB`, `status` | 🟦 #16 |
+| `friendships/{pairId}` | `pairId` = `{lowerUid}~{higherUid}`; `uids` (the two UIDs, sorted), `requestedBy` (the sender), `status` (`pending` or `accepted`), server-set `createdAt`, server-set `acceptedAt` once accepted. Deleted on decline, cancel or removal, and with either account | 🟦 PB, decided in #338 |
 | `events/{id}/photos/{photoId}` | `storagePath`, `uploaderId`, `createdAt`. The file itself is in Cloud Storage. | 🟦 album |
 
 **Profiles are split, Instagram-style.** `users/{uid}` is private to its owner. `publicProfiles/{uid}` is what other students see. Section, year and interests are always visible because matching needs them. A **public** profile also shows friends, events attended, photos and the full bio to everyone. A **private** profile shows those only to approved connections.
@@ -494,6 +523,7 @@ Rules live in `firebase/firestore/firestore.rules` and are tested against the Fi
 | `events/{eventId}/groupMembers/{uid}` | own document only | own UID, `groupId` of a group whose `memberUids` contain them after the write | delete own, when leaving that group; no update | #232 | 🟦 S4 |
 | `events/{eventId}/groups/{groupId}/messages/{id}` | group members only, from the group's `memberUids` (so, like the group, #295, a member removed from a private event keeps it); no query across groups | members, exactly `senderId` = own UID, `text` 1–1000, server `createdAt`, never under a `deletedAccounts/{uid}` marker; per operation, so rate limiting fits later. No association access | nobody yet (report/block later) | #237 | 🟩 S5 (built) |
 | `matchRequests` | sender and recipient | sender | recipient responds | #26, #27 | 🟦 PB |
+| `friendships/{pairId}` | the two students only (`isStudent()`, own UID in `uids`); a list only with `uids array-contains` the caller's UID, so no listing of other students | the sender only (`requestedBy` = own UID, in `uids`, not under a `deletedAccounts/{uid}` marker): two different UIDs, sorted, the document ID built from them, `status == "pending"`, server `createdAt`, only these fields; the other UID has a `publicProfiles/{uid}`, so associations and deleted accounts can't be added. Per operation, so a rate limit and a blocks check fit later | update: the recipient only (in `uids`, not `requestedBy`), `pending` → `accepted` with server `acceptedAt`, nothing else changes; delete: either student (decline, cancel, remove). No association access | #338 | 🟦 PB |
 | Storage `events/{id}/album/**` | event group members | checked-in members, size and type limits | uploader | album | 🟦 PB |
 
 Every PR that changes rules follows the process in `AGENTS.md`: "Changes Security Rules" in the description, allowed and denied emulator tests, and explicit reviewer sign-off.
@@ -504,7 +534,7 @@ Every PR that changes rules follows the process in `AGENTS.md`: "Changes Securit
 
 - **Google sign-in (#106):** both entry buttons use Credential Manager through the auth repository. Invalid domains are rejected before Firebase account creation; Firebase validates the token and verified exact `@epfl.ch` identity before profile access. Firebase manages compatible account linking; the owner confirmed automatic linking for EPFL Google accounts through EPFL SSO. Use Firebase's returned UID without client-side linking or a dedicated collision flow.
 
-Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after review, and 5 and 11 revised on 2026-10-06; 15 added on 2026-10-28 (#201); 16 to 18 decided by the Sprint 4 PO on 2026-11-01 (#228). The issues are being updated to match.
+Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after review, and 5 and 11 revised on 2026-10-06; 15 added on 2026-10-28 (#201); 16 to 18 decided by the Sprint 4 PO on 2026-11-01 (#228); 19 added on 2026-11-11 (#210); 20 decided by the Sprint 5 PO on 2026-11-11 (#338). The issues are being updated to match.
 
 | # | Topic | Decision |
 |---|---|---|
@@ -527,6 +557,7 @@ Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after re
 | 17 | Co-organizers | Sprint 5 (#280): an organizer adds **students** as co-organizers, picked among the event's registered attendees (organizers can already list them), so no student directory is exposed; at most 5 organizers per event, the creator can't be removed, every organizer stays in `allowedUids`. Associations as co-organizers need new rules (an association finding another, reading an event it didn't create), so they are a team decision at Sprint 5 Planning (added on 2026-11-01, #228) |
 | 18 | Deploying rules, indexes and functions | Nothing deploys automatically. After a PR changing `firestore.rules`, `firestore.indexes.json` or `firebase/functions` merges, its author deploys it with `--only`, or asks a teammate to (any team member can), and notes it in the PR. #220's rules and #214's index were missing from production until 2026-10-29 (added on 2026-11-01, #228) |
 | 19 | Manual association review | Project owners follow the [manual review workflow](Association-Review.md) in the Firebase console, checking representation and duplicates before approval. An account that is declined stays pending and can edit its setup. A future admin interface requires a server-checked reviewer role. (#210) |
+| 20 | Friends | One `friendships/{pairId}` document per pair of students (`{lowerUid}~{higherUid}`), `pending` → `accepted`; declining, cancelling and removing delete it, so two students never have more than one request. Added by scanning `polysocial://friend/{uid}` first; no usernames yet (open question). Only the two students read it, students only, and the other must have a public profile. Writes refused offline. `deleteAccount` deletes the account's friendships (added on 2026-11-11, #338) |
 
 **Sprint 2 decisions:** sign-in is email/password and Google only, not Microsoft, which would need EPFL's admin to whitelist the app, while Google goes through EPFL's SSO (#106, #107, PR #197 review); events store the picked place's name as an optional `locationName` of at most 100 characters (rules #102, app #151; blank for older events); Nominatim remains the approved explicit-search geocoder; one shared detail screen replaces the Map placeholder, using each entry tab's event-ID route; co-organizers wait for Public profiles; associations move to Sprint 3; unbuilt actions show a Snackbar. Sources: #103, #106, #111, #112 and the Sprint Planning record #141.
 
@@ -541,6 +572,7 @@ Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after re
 | `allowedUids` entries on others' private events | kept (opaque UID, no personal data) | none |
 | the student's attendees (#121) | deleted after the marker (step 2, #275), with the collection-group query on `uid`; the rules refuse a new one under the marker | function (Admin SDK) |
 | reminders (#123) | not built yet; its issue adds cleanup to the function or the reminder worker | — |
+| `friendships/*` containing the UID (#338) | deleted, pending or accepted, by a query on `uids array-contains` in the function, **after** the profile transaction: from then on the public profile is gone and the marker exists, so no new request can name the UID; idempotent like the other steps, so Retry finishes it. Added by the friendships storage task, together with its rules | function (Admin SDK) |
 | Firestore disk cache | cleared after `Deleted` (`SessionCache.clear()`) | client |
 | `verification_timing` keys for the UID | cleared (`VerificationStore.clear(uid)`) | client |
 | tab and auth UI state | reset; Welcome shown, Back can't return | client |
@@ -573,6 +605,9 @@ How each failure behaves:
 - **Logout/reminders (#109, #123):** confirm account-scoped reminder cancellation on logout and account deletion before another account enters; cache isolation is decided (#198, decision 15).
 - **Association account deletion (#201):** associations can't delete their own `users/{uid}` (#161), and the deletion flow refuses them with the privacy contact. Who deletes an association account, its `associations/{uid}` and its events, and how, is not decided.
 - **Year field values:** the profile step offers BA1–BA6 and MA1–MA4 under "Year" (as in Figma and #34), but these are EPFL semesters, and there is no option for exchange or PhD students. Rename to "Semester" and/or add options?
+- **Usernames (owner: Sprint 5 PO, for the Sprint 6 backlog; #338):** the "Adding friends" story mentions finding a student by username, but the app has none (the Figma v2 profile step had one; it was never built). Adding them means a unique name in the profile step and on the public profile, a `usernames/{name}` → UID lookup that students can `get` but never list (so there is still no student directory, though names can be guessed), rules for claiming and renaming, a name for profiles saved before, and `deleteAccount` releasing it. Until then a friend is added by QR code only.
+- **Friends beyond the two students (#338):** showing a student's friends on their public profile (or to approved connections on a private one), and common friends in matching, both need someone other than the two students to read a friendship. Decide the read rule (or a server-side count) when the public/private profile choice and matching by friends are built.
+- **Rate limiting and blocking friend requests (#338):** a declined request can be sent again. The create rule is separate, so a per-student limit or a check that neither student blocked the other can be added to it later, with their own issues.
 
 ## 8. Backlog traceability
 
@@ -605,8 +640,8 @@ Every Scrum Board item mapped to the components it touches.
 | #28 Real-time list of matches | Groups & Matchmaking | Profile matches list, snapshot listener | 🟦 |
 | #15 Ping friends | Groups & Matchmaking | FriendRepository, notifications | ⬜ |
 | #25 Chat | Chat | Chats tab, ChatViewModel, ChatRepository, `messages` | 🟦 |
-| #16 Adding friends | — | Friends screen, FriendRepository, `username` | 🟦 |
-| #17 Meeting people by QR | — | QrScanner, QR payload parsing (built, #337), FriendRepository | 🟦 |
+| #16 Adding friends | Groups & Matchmaking | Friends screen, Friends ViewModel, FriendRepository, `friendships/{pairId}`, rules, `deleteAccount` cleanup; usernames an open question | 🟦 decided in #338 |
+| #17 Meeting people by QR | Groups & Matchmaking | QrScanner, QR payload parsing (built, #337), show my QR (#339), FriendRepository | 🟦 S5 #336, #337, #339 |
 | #22 Automatic check-in | — | check-in policy, LocationService, QR fallback, GroupRepository | 🟦 |
 | #20 Find my group | — | group venue map, `events/{e}/groups/{g}/locations` | 🟦 |
 | #21 Event notification | — | `ReminderScheduler`, pure reminder time, WorkManager, local notifications | 🟩 S2 #120, #123 |
