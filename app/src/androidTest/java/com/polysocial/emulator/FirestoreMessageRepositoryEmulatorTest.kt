@@ -1,4 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (group chat repository tests against the rules, #237).
+// Contributors: OpenAI Codex (verified same-ID retry against Firestore rules, #238).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -103,6 +104,29 @@ class FirestoreMessageRepositoryEmulatorTest {
         "Expected the server's times in order: ${chat.map { it.createdAt }}",
         chat.zipWithNext().all { (first, next) -> first.createdAt < next.createdAt },
     )
+  }
+
+  @Test
+  fun retryingAStoredDraftKeepsOneMessageWithTheOriginalText() = runBlocking {
+    val uid = signIn(STUDENT_EMAIL)
+    seedGroup(listOf(uid))
+    val result =
+        withTimeout(TIMEOUT_MS) {
+          listOf(
+              repository.sendMessage(EVENT, GROUP, "Meet at six", "retry-draft"),
+              repository.sendMessage(EVENT, GROUP, " Meet at six ", "retry-draft"),
+              repository.sendMessage(EVENT, GROUP, "Different text", "retry-draft"),
+          )
+        }
+
+    assertEquals(
+        listOf(SendMessageResult.Sent, SendMessageResult.Sent, SendMessageResult.UnexpectedError),
+        result,
+    )
+    val message = messages().single()
+    assertEquals("retry-draft", message.id)
+    assertEquals("Meet at six", message.text)
+    assertEquals(uid, message.senderId)
   }
 
   @Test

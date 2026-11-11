@@ -236,6 +236,7 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 ## Decision log
 
+- 2026-11-11 · A retry of the same chat draft uses its existing message ID. The repository reports Sent when that ID already holds the same sender and text. ([#238](https://github.com/swent-polysocial/PolySocial/issues/238))
 - 2026-11-11 · Record manual association review, duplicate handling and revocation in the Firebase console. Declined accounts stay pending and owners can reconsider setup edits manually. ([#346](https://github.com/swent-polysocial/PolySocial/pull/346))
 - 2026-11-11 · The random sign-up device-test failures came from the keyboard opening late and moving Submit between the scroll and the tap; the tests close it after typing (`closeKeyboard()`), with no app change. ([#314](https://github.com/swent-polysocial/PolySocial/issues/314))
 - 2026-11-11 · A verified association's Events and Map tabs show its header (initials, name with the Verified tick, tab title) in the app bar, reusing the pending tabs' header; only the title while the name is unknown; its ViewModel belongs to the Events graph, so logout clears it. ([#322](https://github.com/swent-polysocial/PolySocial/issues/322))
