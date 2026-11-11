@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) wrote these tests of the group card on the event
 // detail, #233.
+// Contributors: OpenAI Codex (asserted the group card opens the roster, #234).
 package com.polysocial.ui.event.detail
 
 import android.content.Context
@@ -11,7 +12,6 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
@@ -36,6 +36,7 @@ class YourGroupCardTest {
   private val context = ApplicationProvider.getApplicationContext<Context>()
 
   private var findGroups = 0
+  private var openedGroups = 0
 
   private val lea = GroupMember("lea", PublicProfile("lea", "Léa Martin", "IN", "BA3", setOf()))
   private val tom = GroupMember("tom", PublicProfile("tom", "Tom Rossi", "SC", "BA3", setOf()))
@@ -61,6 +62,7 @@ class YourGroupCardTest {
             onBack = {},
             onRetry = {},
             onFindGroup = { findGroups++ },
+            onOpenGroup = { openedGroups++ },
         )
       }
     }
@@ -87,14 +89,12 @@ class YourGroupCardTest {
   }
 
   @Test
-  fun tappingTheCard_saysTheGroupScreenIsntAvailableYet() {
+  fun tappingTheCard_opensTheGroupRoster() {
     show(listOf(lea, me))
 
     composeTestRule.onNodeWithTag(EventDetailTags.YOUR_GROUP).performScrollTo().performClick()
 
-    composeTestRule
-        .onNodeWithText(context.getString(R.string.your_group_not_available))
-        .assertIsDisplayed()
+    assertEquals(1, openedGroups)
     assertEquals(0, findGroups)
   }
 

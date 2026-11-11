@@ -16,6 +16,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) opened Find a group from the detail, #233.
 // Contributors: Claude (Opus 5.5, Anthropic) showed an association's own events on its Map tab,
 // #133; its header on the Events and Map tabs, #322, scoped to the Events graph after review.
+// Contributors: OpenAI Codex (wired the group roster below the student event detail, #234).
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.layout.Box
@@ -83,6 +84,7 @@ import com.polysocial.ui.event.detail.EventDetailViewModel
 import com.polysocial.ui.event.list.EventsTabRoute
 import com.polysocial.ui.group.FindGroupDone
 import com.polysocial.ui.group.FindGroupRoute
+import com.polysocial.ui.group.YourGroupRoute
 import com.polysocial.ui.map.MapRoute
 import com.polysocial.ui.map.mapViewModel
 import com.polysocial.ui.profile.FullPrivacyNoticeRoute
@@ -111,13 +113,14 @@ data class CreateEventNavigation(
 /**
  * Where the event detail leaves to: [onBack] to the screen it was opened from, [onEdit] to Edit
  * event, [onCancelled] back to that screen once the event is cancelled, which then says so, and
- * [onFindGroup] to Find a group (#233).
+ * [onFindGroup] to Find a group (#233) and [onOpenGroup] to the group roster (#234).
  */
 data class EventDetailNavigation(
     val onBack: () -> Unit,
     val onEdit: () -> Unit,
     val onCancelled: () -> Unit,
     val onFindGroup: () -> Unit = {},
+    val onOpenGroup: () -> Unit = {},
 )
 
 /**
@@ -178,6 +181,7 @@ fun AppShell(
           onEdit = navigation.onEdit,
           onCancelled = navigation.onCancelled,
           onFindGroup = navigation.onFindGroup,
+          onOpenGroup = navigation.onOpenGroup,
       )
     },
     editEventContent: @Composable (onClose: () -> Unit) -> Unit = { onClose ->
@@ -199,6 +203,10 @@ fun AppShell(
           onOpenPrivacy = dropUnlessResumed { navController.navigate(Tab.PROFILE.privacyRoute) },
       )
     },
+    yourGroupContent: @Composable (onBack: () -> Unit, onLeft: () -> Unit) -> Unit =
+        { onBack, onLeft ->
+          YourGroupRoute(onBack, onLeft)
+        },
 ) {
   val association = accountType == AccountType.ASSOCIATION
   val tabs = if (association) listOf(Tab.EVENTS, Tab.MAP, Tab.PROFILE) else Tab.entries
@@ -215,6 +223,7 @@ fun AppShell(
       destination?.route != currentTab.createEventRoute &&
           destination?.route != currentTab.editEventRoute &&
           destination?.route != currentTab.findGroupRoute &&
+          destination?.route != currentTab.yourGroupRoute &&
           !privacyScreen
   // The app bar action (TabAction, set per tab in Tab.action) shows only on the current tab's root
   // screen: it is hidden on the screens opened from there, including the one the action opens.
@@ -328,19 +337,23 @@ fun AppShell(
                     navArgument(EventDetailViewModel.EVENT_ID_ARG) { type = NavType.StringType }
                 ),
         ) { entry ->
+          val id = entry.arguments?.getString(EventDetailViewModel.EVENT_ID_ARG)
           eventDetailContent(
               EventDetailNavigation(
                   onBack = { if (entry.isResumed) navController.popBackStack() },
                   onEdit = {
-                    val id = entry.arguments?.getString(EventDetailViewModel.EVENT_ID_ARG)
                     if (entry.isResumed && id != null) {
                       navController.navigate(tab.editEventRoute(id))
                     }
                   },
                   onFindGroup = {
-                    val id = entry.arguments?.getString(EventDetailViewModel.EVENT_ID_ARG)
                     if (entry.isResumed && id != null) {
                       navController.navigate(tab.findGroupRoute(id))
+                    }
+                  },
+                  onOpenGroup = {
+                    if (!association && entry.isResumed && id != null) {
+                      navController.navigate(tab.yourGroupRoute(id))
                     }
                   },
                   // Not isResumed: the event may be deleted while a transition runs.
@@ -365,6 +378,20 @@ fun AppShell(
           // that can't be read), and must not stay open on a blank screen then.
           editEventContent {
             if (navController.currentBackStackEntry == entry) navController.popBackStack()
+          }
+        }
+        if (!association) {
+          composable(
+              tab.yourGroupRoute,
+              arguments =
+                  listOf(
+                      navArgument(EventDetailViewModel.EVENT_ID_ARG) { type = NavType.StringType }
+                  ),
+          ) { entry ->
+            yourGroupContent(
+                { if (entry.isResumed) navController.popBackStack() },
+                { if (navController.currentBackStackEntry == entry) navController.popBackStack() },
+            )
           }
         }
         composable(
