@@ -1,5 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (drafted the group chat repository contract, #237).
-// Contributors: OpenAI Codex (added a stable retry ID to the send contract, #238).
+// Contributors: OpenAI Codex (added and documented the retry ID, #238).
 package com.polysocial.model.chat
 
 import kotlinx.coroutines.flow.Flow
@@ -31,13 +31,16 @@ sealed interface MessagesResult {
 
 /** Outcome of [MessageRepository.sendMessage]. */
 sealed interface SendMessageResult {
-  /** The server stored the message. */
+  /** The server stored the message or had already stored this draft under the same ID. */
   data object Sent : SendMessageResult
 
   /** The text can't be sent (see [validateMessageText]). Nothing was written. */
   data class Invalid(val error: MessageTextError) : SendMessageResult
 
-  /** The server could not confirm the write. A retry with the same ID is safe. */
+  /**
+   * The server could not confirm the write. Nothing was queued. Retrying the same draft with its
+   * original message ID can't duplicate the message.
+   */
   data object NetworkError : SendMessageResult
 
   /**
@@ -72,9 +75,6 @@ interface MessageRepository {
    */
   fun observeMessages(eventId: String, groupId: String): Flow<MessagesResult>
 
-  /** Sends a new message using a repository-generated document ID. */
-  suspend fun sendMessage(eventId: String, groupId: String, text: String): SendMessageResult
-
   /**
    * Sends [text] to the group [groupId] of the event [eventId] as the signed-in student.
    *
@@ -84,13 +84,21 @@ interface MessageRepository {
    * the signed-in user ([SendMessageResult.UnexpectedError]), and the connection
    * ([SendMessageResult.NetworkError] offline). Offline, the message is refused rather than queued
    * (#228): Firestore would otherwise keep the write until the device is back online, and a chat
-   * waiting for it would never finish sending. Reusing [messageId] for the same draft succeeds if
-   * the server already stored that sender and text under the ID.
+   * waiting for it would never finish sending.
+   *
+   * For a retryable send, generate a Firestore document ID such as `UUID.randomUUID().toString()`
+   * for each new draft. Reuse it on Try again while the trimmed text is unchanged. If the student
+   * changes that text, use a new ID. If the original send already reached the server, its message
+   * remains in the chat. An existing ID returns [SendMessageResult.Sent] only if it holds the same
+   * sender and trimmed text, and [SendMessageResult.UnexpectedError] otherwise.
+   *
+   * A null [messageId] gets a fresh repository-generated ID on every call, so such calls cannot
+   * deduplicate a retry.
    */
   suspend fun sendMessage(
       eventId: String,
       groupId: String,
       text: String,
-      messageId: String?,
+      messageId: String? = null,
   ): SendMessageResult
 }
