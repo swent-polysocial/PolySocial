@@ -8,6 +8,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
@@ -24,11 +25,13 @@ class AndroidNetworkMonitor @Inject constructor(@ApplicationContext context: Con
   private val connectivity: ConnectivityManager =
       context.getSystemService(ConnectivityManager::class.java)
 
-  override fun isOnline(): Boolean {
-    val capabilities =
-        connectivity.getNetworkCapabilities(connectivity.activeNetwork) ?: return false
-    return capabilities.hasValidatedInternet()
-  }
+  override fun isOnline(): Boolean =
+      try {
+        connectivity.getNetworkCapabilities(connectivity.activeNetwork)?.hasValidatedInternet() ==
+            true
+      } catch (_: SecurityException) {
+        false
+      }
 
   override fun observeOnline(): Flow<Boolean> = callbackFlow {
     val callback =
@@ -50,7 +53,10 @@ class AndroidNetworkMonitor @Inject constructor(@ApplicationContext context: Con
     }
   }
       // If observation is unavailable, keep the one-off network check for this screen.
-      .catch { emit(isOnline()) }
+      .catch { failure ->
+        if (failure is CancellationException || failure !is RuntimeException) throw failure
+        emit(isOnline())
+      }
       .distinctUntilChanged()
 
   private fun NetworkCapabilities.hasValidatedInternet(): Boolean =
