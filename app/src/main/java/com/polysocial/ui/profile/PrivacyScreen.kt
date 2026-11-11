@@ -2,6 +2,8 @@
 // #103).
 // Contributors: Claude (Opus 5.5, Anthropic) connected Delete account to its flow, #207; Mohamed
 // Khellaf (reviewed and revised).
+// Contributors: Claude Opus 5.5 (shared the header and row with My friend code, #339); Konstantinos
+// Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.profile
 
 import androidx.annotation.DrawableRes
@@ -345,18 +347,26 @@ private fun privacySnackbar(message: String?, onMessageDismissed: () -> Unit): S
   return snackbar
 }
 
+/**
+ * The title row of the Profile screens opened from the Profile tab: a 22 dp [icon] button that
+ * calls [onBack] (the back arrow by default; My friend code uses Figma's close icon, #339) and the
+ * [title], tagged [tag].
+ */
 @Composable
-private fun PrivacyHeader(@StringRes title: Int, tag: String, onBack: () -> Unit) {
+internal fun PrivacyHeader(
+    @StringRes title: Int,
+    tag: String,
+    onBack: () -> Unit,
+    @DrawableRes icon: Int = R.drawable.ic_back,
+    @StringRes iconDescription: Int = R.string.privacy_back,
+    backTag: String = C.Tag.privacy_back,
+) {
   Row(
       Modifier.fillMaxWidth().padding(start = 6.dp, top = 10.dp, end = 20.dp).height(48.dp),
       verticalAlignment = Alignment.CenterVertically,
   ) {
-    IconButton(onBack, Modifier.testTag(C.Tag.privacy_back)) {
-      Image(
-          painterResource(R.drawable.ic_back),
-          stringResource(R.string.privacy_back),
-          Modifier.size(22.dp),
-      )
+    IconButton(onBack, Modifier.testTag(backTag)) {
+      Image(painterResource(icon), stringResource(iconDescription), Modifier.size(22.dp))
     }
     Spacer(Modifier.width(2.dp))
     Text(
@@ -385,8 +395,13 @@ private fun PrivacyDataRow(@StringRes title: Int, @StringRes body: Int, @Drawabl
   }
 }
 
+/**
+ * A Profile row: a 20 dp [icon], a [title] (and an optional [subtitle]) and a chevron, tagged
+ * [tag]. Shared by the Privacy screen and the Profile tab's entries (Privacy & data, My friend
+ * code, #339).
+ */
 @Composable
-private fun PrivacyActionRow(
+internal fun PrivacyActionRow(
     @StringRes title: Int,
     @DrawableRes icon: Int,
     tag: String,
@@ -439,7 +454,7 @@ private fun NoticeSection(@StringRes title: Int, @StringRes body: Int) {
 
 // Preserve the Figma sizes and line heights while inheriting the app's font family.
 @Composable
-private fun privacyTextStyle(
+internal fun privacyTextStyle(
     size: Int,
     lineHeight: Float,
     weight: FontWeight = FontWeight.Normal,
