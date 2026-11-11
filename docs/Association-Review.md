@@ -8,11 +8,11 @@ This workflow covers intake, evidence, duplicates, rejection and reapplication.
 ## Review setup
 
 The team assigns a primary reviewer and a backup from the PolySocial admins
-with the Owner role on the app's Firebase project. Find current role holders
-under IAM in Google Cloud Console for that project. The primary checks for
-completed association setups that are still pending in the Firebase console on
-the team's agreed schedule. The backup covers absences and conflicts of
-interest.
+with the Owner role on the app's Firebase project. In the Firebase console,
+open **Project settings → Users and permissions** to see the current Owners.
+The primary checks for completed association setups that are still pending in
+the Firebase console on the team's agreed schedule. The backup covers absences
+and conflicts of interest.
 
 Before reviewing real applications, record the reviewers, check schedule, shared team
 mailbox, private evidence location and deletion deadline in the team's private
