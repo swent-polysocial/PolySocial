@@ -98,8 +98,21 @@ class FriendCodeViewModelTest {
       profiles.getProfileResult = result
       val vm = FriendCodeViewModel(auth, profiles)
       advanceUntilIdle()
-      assertEquals("Fictional Auth", shown(vm).name)
+      val state = shown(vm)
+      assertSameModules(encodeQrCode(friendQrPayload(uid)!!)!!, state.code)
+      assertEquals("Fictional Auth", state.name)
+      assertEquals("", state.details)
     }
+  }
+
+  @Test
+  fun aProfileWithABlankNameKeepsTheAccountName() = runTest {
+    profiles.getProfileResult = ProfileResult.Found(profile(displayName = " "))
+    val vm = FriendCodeViewModel(auth, profiles)
+    advanceUntilIdle()
+
+    assertEquals("Fictional Auth", shown(vm).name)
+    assertEquals("IN · BA3", shown(vm).details)
   }
 
   @Test
