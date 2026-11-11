@@ -5,7 +5,7 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (deleteAccount deployed, region note, Blaze question closed, 2026-11-05). -->
 <!-- Contributors: Claude (public profiles marked as built, #229; the deletion marker and the public copy kept in step, after review, #229; the interests step, #230). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the account deletion decision, its deletion/failure matrix and the related open questions (#201); Mohamed Khellaf (reviewed and revised). -->
-<!-- Contributors: OpenAI Codex (verified association shell and remaining map handoff, #140; recorded the manual association review workflow, #210). -->
+<!-- Contributors: OpenAI Codex (verified association shell and remaining map handoff, #140; recorded the manual association review workflow, #210; marked the group roster route as built, #234). -->
 <!-- Contributors: OpenAI Codex (association signup/setup routing and built/planned integration, #125). -->
 <!-- Contributors: OpenAI Codex (Google authentication architecture, Firebase-managed linking clarification and review cleanup for #106; preserved contributor acknowledgments during rebase); Claude (the shared UI parts, #251; the confirmation sheet parts, #296; Find a group's ViewModel states and the detail's group card, #233). -->
 <!-- Contributors: OpenAI Codex (removed obsolete Google collision UI, #107). -->
@@ -119,7 +119,7 @@ flowchart TB
   profile --> logout["Confirm Log out<br/>#108, #109"]:::s1
   logout --> welcome["Welcome: empty back stack<br/>#74"]:::s1
   attend -- "going, #244" --> findg["Find a group: ranked groups<br/>Join · Start a new group, #233"]:::pb
-  findg --> groupS["Group: members · Leave<br/>#234"]:::pb
+  detail -- "Your group card" --> groupS["Group: members · Leave<br/>#234"]:::s1
   groupS --> chat["Group chat<br/>#238"]:::pb
   profile -.-> friends["Friends · QR · matches"]:::pb
   chats["Chats list"]:::pb -.-> chat

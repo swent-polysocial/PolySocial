@@ -69,6 +69,7 @@ internal object YourGroupTags {
   const val CONFIRM = "your_group_confirm_leave"
   const val STAY = "your_group_stay"
   const val RETRY = "your_group_retry"
+  const val BACK_TO_EVENT = "your_group_back_to_event"
 }
 
 @Composable
@@ -91,7 +92,7 @@ internal fun YourGroupRoute(
       state.event?.let { GroupEventCard(it, YourGroupTags.EVENT) }
       when (val roster = state.roster) {
         GroupRoster.Loading -> LoadingRoster()
-        is GroupRoster.Members -> MemberRoster(roster)
+        is GroupRoster.Members -> MemberRoster(roster, state.offline)
         is GroupRoster.Unavailable -> UnavailableRoster(roster)
       }
     }
@@ -102,7 +103,7 @@ internal fun YourGroupRoute(
             PrimaryButton(
                 stringResource(R.string.event_detail_navigate_back),
                 true,
-                YourGroupTags.RETRY,
+                YourGroupTags.BACK_TO_EVENT,
                 onClick = onBack,
             )
         is GroupRoster.Unavailable ->
@@ -114,7 +115,7 @@ internal fun YourGroupRoute(
             )
         else ->
             LeaveButton(
-                enabled = (state.roster as? GroupRoster.Members)?.offline == false,
+                enabled = state.roster is GroupRoster.Members && !state.offline,
                 onClick = viewModel::askToLeave,
             )
       }
@@ -124,8 +125,8 @@ internal fun YourGroupRoute(
 }
 
 @Composable
-private fun MemberRoster(roster: GroupRoster.Members) {
-  if (roster.offline) {
+private fun MemberRoster(roster: GroupRoster.Members, offline: Boolean) {
+  if (offline) {
     OfflineBanner(
         stringResource(R.string.group_saved_offline),
         tag = YourGroupTags.OFFLINE,
@@ -202,7 +203,7 @@ private fun MemberRow(member: GroupMember, isMe: Boolean, colorIndex: Int) {
       MemberAvatar(
           if (isMe) name else initials(name),
           if (isMe) 0 else colorIndex,
-          Modifier.size(40.dp),
+          size = 40.dp,
       )
     }
     Column {

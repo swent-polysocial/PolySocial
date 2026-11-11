@@ -1,9 +1,10 @@
-// Contributors: OpenAI Codex (roster, confirmation and offline tests with fakes, #234).
+// Contributors: OpenAI Codex (roster, confirmation and connectivity tests with fakes, #234).
 package com.polysocial.ui.group
 
 import android.content.Context
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -160,6 +161,26 @@ class YourGroupScreenTest {
   }
 
   @Test
+  fun leaveFollowsConnectivityWithoutAnotherGroupSnapshot() {
+    groups.seedGroup(EVENT, listOf(ME, "peer"))
+    network.online = false
+    show()
+
+    compose.onNodeWithTag(YourGroupTags.OFFLINE).assertIsDisplayed()
+    compose.onNodeWithTag(YourGroupTags.LEAVE).assertIsNotEnabled()
+
+    network.online = true
+    settle()
+    compose.onNodeWithTag(YourGroupTags.OFFLINE).assertDoesNotExist()
+    compose.onNodeWithTag(YourGroupTags.LEAVE).assertIsEnabled()
+
+    network.online = false
+    settle()
+    compose.onNodeWithTag(YourGroupTags.OFFLINE).assertIsDisplayed()
+    compose.onNodeWithTag(YourGroupTags.LEAVE).assertIsNotEnabled()
+  }
+
+  @Test
   fun aConnectionLostAfterOpeningConfirmationCanBeRetried() {
     groups.seedGroup(EVENT, listOf(ME, "peer"))
     show()
@@ -229,7 +250,7 @@ class YourGroupScreenTest {
     snapshots.value = MyGroupResult.Success(null, fromCache = false)
     settle()
     text(R.string.group_missing_title).assertIsDisplayed()
-    tap(YourGroupTags.RETRY)
+    tap(YourGroupTags.BACK_TO_EVENT)
     assertEquals(1, backs)
   }
 
