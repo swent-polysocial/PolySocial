@@ -46,6 +46,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -370,10 +371,10 @@ private fun Avatar(member: GroupMember, index: Int) =
 
 /** A round avatar showing [text], in the [index]-th of Figma's avatar colors. */
 @Composable
-internal fun MemberAvatar(text: String, index: Int, modifier: Modifier = Modifier) {
+internal fun MemberAvatar(text: String, index: Int, size: Dp = 34.dp) {
   val (fg, bg) = AVATAR_COLORS[index % AVATAR_COLORS.size]
   Box(
-      modifier.size(34.dp).border(2.dp, Bg, CircleShape).background(bg, CircleShape),
+      Modifier.size(size).border(2.dp, Bg, CircleShape).background(bg, CircleShape),
       contentAlignment = Alignment.Center,
   ) {
     Text(

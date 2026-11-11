@@ -165,8 +165,8 @@ fun EventDetailRoute(
     onEdit: () -> Unit = {},
     onCancelled: () -> Unit = {},
     onFindGroup: () -> Unit = {},
-    viewModel: EventDetailViewModel = hiltViewModel(),
     onOpenGroup: () -> Unit = {},
+    viewModel: EventDetailViewModel = hiltViewModel(),
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   val cancelState by viewModel.cancelState.collectAsStateWithLifecycle()
