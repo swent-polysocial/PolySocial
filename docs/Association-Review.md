@@ -1,21 +1,39 @@
-<!-- Contributors: OpenAI Codex (drafted the association review proposal and access matrix, #210). -->
+<!-- Contributors: OpenAI Codex (drafted the workflow and access matrix, then revised intake, evidence handling and revocation after review, #210). -->
 
 # Association review and rejection
 
-**Proposal for team review.** The [manual Firebase console procedure][console] is
-the Sprint 3 delivery. This proposal covers the decisions that procedure leaves
-open.
+The [manual Firebase console procedure][console] is the Sprint 3 delivery.
+This workflow covers intake, evidence, duplicates, rejection and reapplication.
+
+## Review setup
+
+The team assigns a primary reviewer and a backup from the PolySocial admins
+with the Owner role on the app's Firebase project. Find current role holders
+under IAM in Google Cloud Console for that project. The primary checks for
+completed association setups that are still pending in the Firebase console on
+the team's agreed schedule. The backup covers absences and conflicts of
+interest.
+
+Before reviewing real applications, record the reviewers, check schedule, shared team
+mailbox, private evidence location and deletion deadline in the team's private
+handoff. Use the privacy contact as the shared mailbox only if the team
+confirms it is suitable for association reviews. Keep correspondence and
+evidence in that mailbox or the agreed private location, with access limited
+to the reviewers who need it. Collect only what the decision requires and
+delete the material by the agreed deadline. Keep applicant details out of
+public issues and personal inboxes.
 
 ## Manual review
 
-1. A PolySocial project owner reviews applications. A reviewer who belongs to the
-   applicant association hands the request to another owner.
+1. Match the pending `associations/{uid}` setup to the same UID in Firebase
+   Authentication and `users/{uid}`. Confirm the email is verified and the
+   account type is `association`. Hand the request to another owner if you
+   belong to the applicant association.
 2. Check the submitted name and type against an official EPFL directory or the
    association’s official website. Confirm that the applicant can represent the
    association through a committee contact found independently of the submission.
    Both EPFL and non-EPFL addresses can be valid. An email domain or a link
-   supplied by the applicant is insufficient on its own. Keep any correspondence
-   private and collect only the evidence needed for the decision.
+   supplied by the applicant is insufficient on its own.
 3. Check for an existing account for the same association, including variants of
    its name. If an approved account already exists, keep the duplicate pending
    and direct the committee to recover the existing account. If two pending
@@ -24,18 +42,24 @@ open.
    owner for review.
 4. Approve a confirmed request using the [console procedure][console]. Set
    `users/{uid}.isAssociationVerified` to boolean `true`, then re-check the reviewed
-   identity. The approved account opens its association tabs at the next start.
+   identity. If it changed, revoke approval and review again before notifying
+   the applicant. The approved account opens its association tabs at the next
+   start.
 5. When evidence is insufficient or an application is rejected, the owner emails
-   the applicant privately with the reason and any next step. Approval stays
-   absent or `false` and the app stays in pending review. The proposal uses manual
-   communication with the verified signup address and adds no status field.
+   the verified signup address from the shared team mailbox with the reason
+   and any next step. The flag stays absent or `false` and the app shows
+   pending review. There is no stored rejection status.
+   Rejected and duplicate accounts still have verified email addresses, so the
+   planned cleanup for unverified accounts ([#226][unverified-cleanup]) would
+   skip them. Associations cannot delete their own accounts in the app. The
+   [association account deletion procedure][association-deletion] remains open.
 6. To reapply, the applicant edits their permitted setup details if needed and
    replies to the review email with corrected evidence. A project owner reviews
    the request again against the same criteria. To revoke approval, use the
    [console procedure][console] to set the boolean to `false`. The next app start
    returns to pending review and new verified-only operations are denied.
 
-## Access matrix to review
+## Access matrix
 
 | Actor | Allowed | Denied |
 | --- | --- | --- |
@@ -50,8 +74,10 @@ A future review interface must verify an explicitly assigned reviewer role on
 the server before every operation. Sign-in, an EPFL email address and a
 client-writable account role cannot grant reviewer access. Client code never
 writes `isAssociationVerified`, including when a reviewer uses the interface.
+The current rules allow a client to initialize its own profile with the flag
+set to `false`. Client updates to the flag are denied.
 
-## Cases for teammate sign-off
+## Review cases
 
 - **Approve.** An independently contacted committee confirms which account it
   controls. The owner approves it and checks that its name and type match the
@@ -64,8 +90,11 @@ writes `isAssociationVerified`, including when a reviewer uses the interface.
   The owner sends the decision privately. The applicant can still edit their own
   setup, then submit corrected evidence for a fresh review.
 - **Revoke.** The owner sets the flag to `false`. On the next start the account sees
-  pending review. Previously cached data can still exist, and any later approval
-  requires rechecking the name and type.
+  pending review. The association's own events and identity may remain in the
+  Firestore cache. Existing public events remain visible to students and can
+  still show the Verified badge, which comes from the event's
+  `isAssociationEvent` field. Any later approval requires rechecking the name
+  and type.
 
 ## Product backlog wording for the board owner
 
@@ -75,8 +104,8 @@ writes `isAssociationVerified`, including when a reviewer uses the interface.
 > once the team has agreed its scope and server-side authorization. Refine and
 > schedule that implementation after approval.
 
-Review the four cases and the access matrix before adopting the proposal. After
-agreement, record the agreed process in CONTEXT.md and the project wiki, and
-apply the wording above to the product draft.
+The board owner applies this wording to the product draft after merge.
 
 [console]: ../README.md#verifying-an-association
+[unverified-cleanup]: https://github.com/swent-polysocial/PolySocial/issues/226
+[association-deletion]: ../CONTEXT.md#open-questions-dont-guess-ask
