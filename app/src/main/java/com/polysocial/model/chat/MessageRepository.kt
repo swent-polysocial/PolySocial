@@ -1,4 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (drafted the group chat repository contract, #237).
+// Contributors: OpenAI Codex (added a stable retry ID to the send contract, #238).
 package com.polysocial.model.chat
 
 import kotlinx.coroutines.flow.Flow
@@ -36,7 +37,7 @@ sealed interface SendMessageResult {
   /** The text can't be sent (see [validateMessageText]). Nothing was written. */
   data class Invalid(val error: MessageTextError) : SendMessageResult
 
-  /** The device is offline. Nothing was written or queued, so the student can try again. */
+  /** The server could not confirm the write. A retry with the same ID is safe. */
   data object NetworkError : SendMessageResult
 
   /**
@@ -80,7 +81,13 @@ interface MessageRepository {
    * the signed-in user ([SendMessageResult.UnexpectedError]), and the connection
    * ([SendMessageResult.NetworkError] offline). Offline, the message is refused rather than queued
    * (#228): Firestore would otherwise keep the write until the device is back online, and a chat
-   * waiting for it would never finish sending.
+   * waiting for it would never finish sending. Reusing [messageId] for the same draft succeeds if
+   * the server already stored that sender and text under the ID.
    */
-  suspend fun sendMessage(eventId: String, groupId: String, text: String): SendMessageResult
+  suspend fun sendMessage(
+      eventId: String,
+      groupId: String,
+      text: String,
+      messageId: String? = null,
+  ): SendMessageResult
 }

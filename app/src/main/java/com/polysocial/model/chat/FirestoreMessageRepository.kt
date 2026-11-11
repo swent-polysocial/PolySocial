@@ -1,4 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (drafted the Firestore group chat repository, #237).
+// Contributors: OpenAI Codex (made explicit message IDs safe to retry, #238).
 package com.polysocial.model.chat
 
 import com.google.firebase.firestore.CollectionReference
@@ -123,20 +124,35 @@ class FirestoreMessageRepository(
       eventId: String,
       groupId: String,
       text: String,
+      messageId: String?,
   ): SendMessageResult {
     validateMessageText(text)?.let {
       return SendMessageResult.Invalid(it)
     }
-    if (!isReadableEventId(eventId) || !isReadableEventId(groupId)) {
+    if (!listOfNotNull(eventId, groupId, messageId).all(::isReadableEventId)) {
       return SendMessageResult.UnexpectedError
     }
     val user = auth.currentUser() ?: return SendMessageResult.UnexpectedError
     if (!network.isOnline()) return SendMessageResult.NetworkError
     return try {
-      val message = messages(eventId, groupId).document()
-      val fields = newMessageFirestoreMap(user.uid, text.trim())
-      db.runTransaction(SINGLE_ATTEMPT) { it.set(message, fields) }.await()
-      SendMessageResult.Sent
+      val collection = messages(eventId, groupId)
+      val message = messageId?.let(collection::document) ?: collection.document()
+      val trimmed = text.trim()
+      db.runTransaction(SINGLE_ATTEMPT) { transaction ->
+            val existing = messageId?.let { transaction.get(message) }
+            when {
+              existing?.exists() != true -> {
+                transaction.set(message, newMessageFirestoreMap(user.uid, trimmed))
+                SendMessageResult.Sent
+              }
+              else -> {
+                val stored = messageFromFirestore(message.id, existing.data)
+                if (stored?.senderId == user.uid && stored.text == trimmed) SendMessageResult.Sent
+                else SendMessageResult.UnexpectedError
+              }
+            }
+          }
+          .await()
     } catch (e: FirebaseFirestoreException) {
       if (e.isOffline()) SendMessageResult.NetworkError else SendMessageResult.UnexpectedError
     } catch (_: CancellationException) {
