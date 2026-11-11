@@ -1,6 +1,7 @@
 // Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143; publicProfiles/{uid} tests, written test-first, #229; reads by ID only and the fixed section and year lists, after review, #229; private edits keep the public copy, and deleted accounts stay deleted, after review, #229; interests from the fixed list, test-first, #230; any code read in the list check, after review, #230); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121; deleted accounts can't register, #275); Claude (Opus 5.5, Anthropic) (event group and groupMembers marker tests, #232, with more after review; group chat message tests, #237, and a deleted account's messages, after review).
 // Contributors: Claude (Opus 5.5, Anthropic) (a non-EPFL association in allowedUids can't run My events' private query, #320).
 const { after, before, beforeEach, test } = require("node:test");
+// Contributors: OpenAI Codex (deleted-token membership creation/join regression, #241).
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
 const { appInterests, appProfileOptions } = require("../appProfileOptions");
@@ -2487,6 +2488,37 @@ function joinAs(db, uid, eventId, groupId) {
     transaction.set(doc(db, `events/${eventId}/groupMembers/${uid}`), { groupId });
   });
 }
+
+test("an active student can create and join groups; a deleted token cannot recreate membership", async () => {
+  const db = studentDb("u1");
+  await assertSucceeds(createGroupAs(db, "u1", "e1", "own"));
+  await assertSucceeds(leaveAs(db, "u1", "e1", "own"));
+  await seedGroup("e1", "other", ["u2"]);
+  await assertSucceeds(joinAs(db, "u1", "e1", "other"));
+  await assertSucceeds(leaveAs(db, "u1", "e1", "other"));
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "deletedAccounts/u1"), {});
+    await deleteDoc(doc(context.firestore(), "users/u1"));
+  });
+  await assertFails(createGroupAs(db, "u1", "e1", "recreated"));
+  await assertFails(joinAs(db, "u1", "e1", "other"));
+  await expectMembers("e1", "other", ["u2"]);
+});
+
+test("only an active member can recreate their own marker for a surviving group", async () => {
+  await seedGroup("e1", "g1", ["u1", "u2"]);
+  const marker = doc(studentDb("u1"), "events/e1/groupMembers/u1");
+  const removeMarker = () => env.withSecurityRulesDisabled(async (context) => {
+    await deleteDoc(doc(context.firestore(), "events/e1/groupMembers/u1"));
+  });
+  await removeMarker();
+  await assertSucceeds(setDoc(marker, { groupId: "g1" }));
+  await removeMarker();
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "deletedAccounts/u1"), {});
+  });
+  await assertFails(setDoc(marker, { groupId: "g1" }));
+});
 
 /** Leaves [groupId] as [uid], the way leaveGroup does: removed, or the group deleted if last. */
 function leaveAs(db, uid, eventId, groupId) {

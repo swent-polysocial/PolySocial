@@ -3,6 +3,8 @@
 // after review, #229; the user's registrations, #275).
 "use strict";
 
+// Contributors: OpenAI Codex (retryable group membership cleanup before Auth deletion, #241).
+
 const { HttpsError } = require("firebase-functions/v2/https");
 const { deleteUserRegistrations } = require("./registrations");
 
@@ -63,7 +65,9 @@ const TRANSIENT_CODES = new Set([
  * deleted is not an error, and neither is an Auth user that no longer exists. The association check
  * and the profile deletion run in one transaction, so a profile created in between can't escape the
  * check. Events the user created are never touched (the deletion policy, #201, keeps them).
- * Cleanup of other personal data is added here by the issues that store it.
+ * Group membership cleanup mirrors leaveGroup; the deletion marker prevents rejoining while it
+ * runs. Message anonymisation still depends on the merged chat schema (#237). Cleanup of further
+ * personal data is added here by the issues that store it.
  *
  * Failures are HttpsErrors with a generic message (never the uid or the original error):
  * `unavailable` when the backend could not be reached and a retry may work, `internal` otherwise.
@@ -95,8 +99,43 @@ async function deleteAccountHandler({ auth, db, adminAuth, now, logger }) {
 
   await callBackend("delete-profile", logger, () => deleteStudentProfile(db, uid));
   await callBackend("delete-registrations", logger, () => deleteUserRegistrations(db, uid));
+  await callBackend("delete-group-memberships", logger, () => deleteGroupMemberships(db, uid));
   await callBackend("delete-auth-user", logger, () => deleteAuthUser(adminAuth, uid));
   return { deleted: true };
+}
+
+/**
+ * Removes membership and its per-event marker together, using the same shape as leaveGroup (#232).
+ * The deletion marker has already been committed: rules prevent this UID from starting/joining a
+ * group with its still-valid token while cleanup runs. Transactions reread each group so another
+ * member's concurrent join/leave is preserved. Empty groups are removed, as with ordinary leave.
+ * A failure leaves Auth intact and Retry repeats the query, finding only unfinished memberships.
+ * No message schema exists on main yet (#237); sender anonymisation is a separate dependency of
+ * #241 and is not claimed by this step.
+ */
+async function deleteGroupMemberships(db, uid) {
+  const groups = await db.collectionGroup("groups").where("memberUids", "array-contains", uid).get();
+  for (const group of groups.docs) {
+    if (!/^events\/[^/]+\/groups\/[^/]+$/.test(group.ref.path)) {
+      throw new TypeError("Unexpected group path");
+    }
+    const marker = db.doc(`${group.ref.parent.parent.path}/groupMembers/${uid}`);
+    await db.runTransaction(async (transaction) => {
+      const current = await transaction.get(group.ref);
+      if (current.exists) {
+        const members = current.get("memberUids");
+        if (!Array.isArray(members) || members.some((member) => typeof member !== "string")) {
+          throw new TypeError("Invalid group members");
+        }
+        const remaining = members.filter((member) => member !== uid);
+        if (remaining.length === 0) transaction.delete(group.ref);
+        else if (remaining.length !== members.length) {
+          transaction.update(group.ref, { memberUids: remaining });
+        }
+      }
+      transaction.delete(marker);
+    });
+  }
 }
 
 /** Whether the token's `auth_time` (seconds) is at most MAX_AUTH_AGE_MS before `nowMillis`. */

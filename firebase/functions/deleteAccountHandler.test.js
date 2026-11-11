@@ -2,6 +2,7 @@
 // Contributors: Claude (the public profile deleted with the account, written test-first, #229;
 // the deletion marker, test-first, after review, #229; the user's registrations, #275).
 "use strict";
+// Contributors: OpenAI Codex (group cleanup, partial failure and retry regression tests, #241).
 
 // Unit tests with fakes, no emulator: node firebase/functions/deleteAccountHandler.test.js
 const { test } = require("node:test");
@@ -42,11 +43,15 @@ function fakeBackend({
   profile = { accountType: "student" },
   publicProfile = { displayName: "Student One", section: "IN", year: "BA3", interests: [] },
   authUserExists = true,
+  groups = {},
+  markers = {},
+  beforeGroupRead = () => {},
   registrations = [`events/e1/attendees/${UID}`, `events/e2/attendees/${UID}`, OTHER_REGISTRATION],
 } = {}) {
   const calls = [];
   const fail = {};
   const state = {
+    groups, markers,
     profile,
     publicProfile,
     deletionMarker: null,
@@ -61,6 +66,9 @@ function fakeBackend({
     }
   };
   const db = {
+    doc(path) {
+      return { path, parent: { parent: { path: path.split("/").slice(0, -2).join("/") } } };
+    },
     collection(path) {
       calls.push(`collection:${path}`);
       return {
@@ -71,6 +79,25 @@ function fakeBackend({
     },
     // The collection-group query `attendees where uid == <uid>`, with a limit, and batched deletes.
     collectionGroup(group) {
+      if (group === "groups") {
+      return {
+        where(field, operator, uid) {
+          assert.equal(field, "memberUids");
+          assert.equal(operator, "array-contains");
+          assert.equal(uid, UID);
+          return {
+            async get() {
+              calls.push("query:memberships");
+              failIfAsked("groups-query");
+              return { docs: Object.entries(state.groups)
+                .filter(([, data]) => data.memberUids.includes(uid))
+                .map(([path]) => ({ ref: db.doc(path) })) };
+            },
+          };
+        },
+      };
+
+      }
       calls.push(`collectionGroup:${group}`);
       return {
         where(field, op, value) {
@@ -106,7 +133,8 @@ function fakeBackend({
         async get(ref) {
           calls.push(`get:${ref.path}`);
           failIfAsked("get");
-          const data = state.profile;
+          if (ref.path.includes("/groups/")) beforeGroupRead(state, ref.path);
+          const data = ref.path.startsWith("users/") ? state.profile : state.groups[ref.path] ?? null;
           return {
             exists: data !== null,
             get: (field) => (data === null ? undefined : data[field]),
@@ -118,15 +146,22 @@ function fakeBackend({
         delete(ref) {
           writes.push({ kind: "delete", ref });
         },
+        update(ref, data) {
+          writes.push({ kind: "update", ref, data });
+        },
       });
       for (const write of writes) {
         calls.push(`${write.kind}:${write.ref.path}`);
         failIfAsked(write.kind);
+        if (write.ref.path.startsWith("events/")) failIfAsked("group-write");
       }
       for (const { kind, ref, data } of writes) {
         if (kind === "set" && ref.path.startsWith("deletedAccounts/")) state.deletionMarker = data;
         if (kind === "delete" && ref.path.startsWith("users/")) state.profile = null;
         if (kind === "delete" && ref.path.startsWith("publicProfiles/")) state.publicProfile = null;
+        if (kind === "update") Object.assign(state.groups[ref.path], data);
+        if (kind === "delete" && ref.path.includes("/groups/")) delete state.groups[ref.path];
+        if (kind === "delete" && ref.path.includes("/groupMembers/")) delete state.markers[ref.path];
       }
     },
   };
@@ -243,6 +278,7 @@ test("profiles deleted and marked deleted, then registrations, then the Auth use
     `delete:users/${UID}`,
     `delete:publicProfiles/${UID}`,
     ...REGISTRATION_CALLS,
+    "query:memberships",
     `deleteUser:${UID}`,
   ]);
   assert.equal(backend.state.profile, null);
@@ -344,6 +380,83 @@ test("only the user's profiles, marker and registrations are touched, never even
   // Event paths appear only in the deleted registrations.
   const eventCalls = backend.calls.filter((c) => c.includes("events"));
   assert.deepEqual(eventCalls, [REGISTRATION_CALLS[2]]);
+});
+
+test("account deletion leaves other members and removes empty groups and own markers", async () => {
+  const shared = "events/shared/groups/g1";
+  const solo = "events/solo/groups/g2";
+  const unrelated = "events/other/groups/g3";
+  const backend = fakeBackend({
+    groups: {
+      [shared]: { memberUids: [UID, "other-student"], createdBy: UID, capacity: 4 },
+      [solo]: { memberUids: [UID], createdBy: UID, capacity: 4 },
+      [unrelated]: { memberUids: ["other-student"], capacity: 4 },
+    },
+    markers: {
+      [`events/shared/groupMembers/${UID}`]: { groupId: "g1" },
+      [`events/solo/groupMembers/${UID}`]: { groupId: "g2" },
+      "events/shared/groupMembers/other-student": { groupId: "g1" },
+    },
+  });
+  assert.deepEqual(await call(backend), { deleted: true });
+  assert.deepEqual(backend.state.groups[shared], {
+    memberUids: ["other-student"], createdBy: UID, capacity: 4,
+  });
+  assert.equal(backend.state.groups[solo], undefined);
+  assert.deepEqual(backend.state.groups[unrelated], { memberUids: ["other-student"], capacity: 4 });
+  assert.deepEqual(backend.state.markers, { "events/shared/groupMembers/other-student": { groupId: "g1" } });
+  assert.equal(backend.state.authUserExists, false);
+  assert.deepEqual(await call(backend), { deleted: true });
+});
+
+test("membership query or transaction failure keeps Auth and a retry completes cleanup", async () => {
+  for (const operation of ["groups-query", "group-write"]) {
+    const path = "events/shared/groups/g1";
+    const marker = `events/shared/groupMembers/${UID}`;
+    const backend = fakeBackend({ groups: { [path]: { memberUids: [UID] } }, markers: { [marker]: { groupId: "g1" } } });
+    backend.fail[operation] = { error: backendError(14), once: true };
+    await assertHttpsError(call(backend), "unavailable", undefined);
+    assert.equal(backend.state.authUserExists, true);
+    assert.deepEqual(backend.state.groups[path].memberUids, [UID]);
+    assert.notEqual(backend.state.markers[marker], undefined);
+    assert.deepEqual(backend.logs, [["error", "deleteAccount step failed", { step: "delete-group-memberships", code: 14 }]]);
+    assert.deepEqual(await call(backend), { deleted: true });
+    assert.deepEqual(backend.state.groups, {});
+    assert.deepEqual(backend.state.markers, {});
+    assert.equal(backend.state.authUserExists, false);
+  }
+});
+
+test("cleanup rereads a concurrently changed or removed group and removes its old marker", async () => {
+  const path = "events/shared/groups/g1";
+  const marker = `events/shared/groupMembers/${UID}`;
+  for (const removed of [false, true]) {
+    const backend = fakeBackend({
+      groups: { [path]: { memberUids: [UID, "other-student"] } },
+      markers: { [marker]: { groupId: "g1" } },
+      beforeGroupRead(state, groupPath) {
+        if (removed) delete state.groups[groupPath];
+        else state.groups[groupPath].memberUids = ["other-student", "new-member"];
+      },
+    });
+    assert.deepEqual(await call(backend), { deleted: true });
+    assert.equal(backend.state.markers[marker], undefined);
+    if (removed) assert.equal(backend.state.groups[path], undefined);
+    else assert.deepEqual(backend.state.groups[path].memberUids, ["other-student", "new-member"]);
+  }
+});
+
+test("malformed membership data or an unexpected path fails without deleting Auth", async () => {
+  for (const groups of [
+    { "events/shared/groups/g1": { memberUids: [UID, 42] } },
+    { "groups/legacy": { memberUids: [UID] } },
+  ]) {
+    const backend = fakeBackend({ groups });
+    await assertHttpsError(call(backend), "internal", undefined);
+    assert.equal(backend.state.authUserExists, true);
+    assert.equal(backend.logs[0][2].step, "delete-group-memberships");
+    assert.ok(!JSON.stringify(backend.logs).includes(UID));
+  }
 });
 
 test("a profile read that can't reach Firestore is unavailable and deletes nothing", async () => {
