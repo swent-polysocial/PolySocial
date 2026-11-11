@@ -1,6 +1,7 @@
 // Contributors: OpenAI Codex (adapted retained-map-detail assertions to the real detail route).
 // Contributors: OpenAI Codex (association tab graphs and retained stack isolation, #140).
-// Contributors: Claude (Opus 5.5, Anthropic) replaced the Hilt-backed association header, #322.
+// Contributors: Claude (Opus 5.5, Anthropic) replaced the Hilt-backed association header, #322;
+// checked that logout clears its ViewModels, after review.
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,8 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
@@ -26,9 +29,19 @@ import com.polysocial.ui.theme.PolySocialTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+
+/** Stands for the header's `ProfileViewModel`: says whether its owner cleared it. */
+class HeaderViewModelProbe : ViewModel() {
+  var cleared = false
+
+  override fun onCleared() {
+    cleared = true
+  }
+}
 
 @RunWith(AndroidJUnit4::class)
 class AssociationAppShellTest {
@@ -36,6 +49,8 @@ class AssociationAppShellTest {
   private lateinit var nav: NavHostController
   private lateinit var logout: () -> Unit
   private var completions = 0
+  /** Every ViewModel the header got, as the real header gets its `ProfileViewModel`. */
+  private val headerViewModels = mutableSetOf<HeaderViewModelProbe>()
 
   private fun show(type: AccountType = AccountType.ASSOCIATION) {
     compose.setContent {
@@ -68,7 +83,10 @@ class AssociationAppShellTest {
               logout = done
               Text("Organization fixture")
             },
-            associationHeader = { title -> Text(stringResource(title)) },
+            associationHeader = { title ->
+              headerViewModels += viewModel<HeaderViewModelProbe>()
+              Text(stringResource(title))
+            },
             onLoggedOut = { completions++ },
         )
       }
@@ -140,5 +158,18 @@ class AssociationAppShellTest {
       assertFalse(nav.clearBackStack(Tab.PROFILE.route))
       assertFalse(nav.popBackStack())
     }
+  }
+
+  @Test
+  fun theHeadersViewModel_isSharedByEventsAndMap_andClearedByLogout() {
+    show()
+    compose.onNodeWithTag(C.Tag.nav_item_map).performClick()
+    compose.onNodeWithText("Fixture map").assertIsDisplayed()
+    compose.runOnIdle { assertEquals(1, headerViewModels.size) }
+
+    // Otherwise the next account to sign in would see this one's identity.
+    selectTab(Tab.PROFILE)
+    compose.runOnIdle { logout() }
+    compose.runOnIdle { assertTrue(headerViewModels.single().cleared) }
   }
 }

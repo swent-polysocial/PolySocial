@@ -15,7 +15,7 @@
 // deletion, #207; Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (Opus 5.5, Anthropic) opened Find a group from the detail, #233.
 // Contributors: Claude (Opus 5.5, Anthropic) showed an association's own events on its Map tab,
-// #133; its header on the Events and Map tabs, #322.
+// #133; its header on the Events and Map tabs, #322, scoped to the Events graph after review.
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.layout.Box
@@ -41,6 +41,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -54,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.dropUnlessResumed
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -148,7 +150,8 @@ data class EventDetailNavigation(
  * @param editEventContent the Edit event screen, given what leaves it (back to the detail). Tests
  *   replace it, because the real one needs Hilt.
  * @param associationHeader the verified association's header on its Events and Map tabs, given the
- *   tab's title (#322). Tests replace it, because the real one needs Hilt.
+ *   tab's title (#322). Its ViewModels belong to the Events graph, so logout clears them. Tests
+ *   replace it, because the real one needs Hilt.
  */
 @Composable
 fun AppShell(
@@ -400,7 +403,21 @@ fun AppShell(
           title = stringResource(label),
           action = action,
           onAction = { navController.navigate(currentTab.routeOf(it)) { launchSingleTop = true } },
-          header = if (withHeader) ({ associationHeader(label) }) else null,
+          header =
+              if (withHeader)
+                  ({
+                    // The top bar is outside the NavHost, where ViewModels would belong to the
+                    // Activity and outlive a logout. The Events graph is the start destination, so
+                    // it is under the Map tab too, and logout pops it: the next account reads its
+                    // own identity.
+                    CompositionLocalProvider(
+                        LocalViewModelStoreOwner provides
+                            navController.getBackStackEntry(Tab.EVENTS.route)
+                    ) {
+                      associationHeader(label)
+                    }
+                  })
+              else null,
       )
     }
   }
