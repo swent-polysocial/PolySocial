@@ -1,5 +1,6 @@
 // Contributors: Claude (wrote these tests of the association's manage event, #131).
 // Contributors: Claude (Opus 5.5, Anthropic) passed the detail fake groups and profiles, #233.
+// Contributors: Claude Opus 5.5 (passed the new reminder scheduler fake, second PR of #123).
 package com.polysocial.ui.event.detail
 
 import android.content.Context
@@ -38,6 +39,7 @@ import com.polysocial.model.group.FakeGroupRepository
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.registration.AttendeeCountResult
 import com.polysocial.model.registration.FakeRegistrationRepository
+import com.polysocial.model.reminder.FakeReminderScheduler
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.ui.theme.PolySocialTheme
 import com.polysocial.utils.MainDispatcherRule
@@ -337,6 +339,9 @@ class ManageEventScreenTest {
             registrations,
             FakeGroupRepository(),
             FakePublicProfileRepository(),
+            FakeReminderScheduler(
+                Clock.fixed(Instant.parse("2026-09-30T10:00:00Z"), ZoneId.of("Europe/Zurich"))
+            ),
         )
     composeTestRule.setContent {
       PolySocialTheme {

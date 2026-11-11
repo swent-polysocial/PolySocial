@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) wrote these tests of the student's group on the event
 // detail, #233, and the card shown before its profiles answer, after review.
+// Contributors: Claude Opus 5.5 (passed the new reminder scheduler fake, second PR of #123).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -13,6 +14,7 @@ import com.polysocial.model.group.GroupRepository
 import com.polysocial.model.group.MyGroupResult
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.registration.FakeRegistrationRepository
+import com.polysocial.model.reminder.FakeReminderScheduler
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileRepository
@@ -64,6 +66,9 @@ class EventDetailYourGroupTest {
           FakeRegistrationRepository(),
           groupRepository,
           profileRepository,
+          FakeReminderScheduler(
+              Clock.fixed(Instant.parse("2026-10-01T10:00:00Z"), ZoneId.of("Europe/Zurich"))
+          ),
       )
 
   /** Collects [vm]'s state like the screen does. */

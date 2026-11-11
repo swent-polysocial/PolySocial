@@ -3,6 +3,7 @@
 // #128; the manage event's "Going" count, #131).
 // Contributors: Claude (Opus 5.5, Anthropic) whether the event has ended; passed the detail fake
 // groups and profiles, #233.
+// Contributors: Claude Opus 5.5 (passed the new reminder scheduler fake, second PR of #123).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -20,6 +21,7 @@ import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.registration.AttendeeCountResult
 import com.polysocial.model.registration.FakeRegistrationRepository
 import com.polysocial.model.registration.RegistrationRepository
+import com.polysocial.model.reminder.FakeReminderScheduler
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.utils.MainDispatcherRule
 import java.time.Clock
@@ -97,6 +99,7 @@ class EventDetailViewModelTest {
           registrations,
           FakeGroupRepository(),
           FakePublicProfileRepository(),
+          FakeReminderScheduler(clock),
       )
 
   /** [repository], except that [getEvent][EventRepository.getEvent] returns [results]. */
@@ -596,6 +599,7 @@ class EventDetailViewModelTest {
             slow,
             FakeGroupRepository(),
             FakePublicProfileRepository(),
+            FakeReminderScheduler(clock),
         )
     observe(vm)
     assertEquals(GoingCount.Loading, vm.uiState.value.loaded().going)

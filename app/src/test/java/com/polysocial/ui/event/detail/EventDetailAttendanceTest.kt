@@ -1,4 +1,5 @@
-// Contributors: Claude Opus 5.5 (wrote these tests of "I'm going" on the event detail, #122).
+// Contributors: Claude Opus 5.5 (wrote these tests of "I'm going" on the event detail, #122;
+// passed the new reminder scheduler fake, second PR of #123).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -14,6 +15,7 @@ import com.polysocial.model.registration.FakeRegistrationRepository
 import com.polysocial.model.registration.MyRegistrationsResult
 import com.polysocial.model.registration.RegisterResult
 import com.polysocial.model.registration.RegistrationRepository
+import com.polysocial.model.reminder.FakeReminderScheduler
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.utils.MainDispatcherRule
 import java.time.Clock
@@ -51,6 +53,7 @@ class EventDetailAttendanceTest {
       object : NetworkMonitor {
         override fun isOnline() = true
       }
+  private val reminders = FakeReminderScheduler(clock)
 
   private val event =
       validEvent(
@@ -70,6 +73,7 @@ class EventDetailAttendanceTest {
           registrations,
           FakeGroupRepository(),
           FakePublicProfileRepository(),
+          reminders,
       )
 
   /** Opens the detail of [event] and collects its state like the screen does. */

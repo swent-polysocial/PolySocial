@@ -4,6 +4,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) whether the event has ended, for Find a group, and the
 // student's group card, #233.
 // Contributors: Claude Opus 5.5 ("I'm going" and Cancel registration, #122).
+// Contributors: Claude Opus 5.5 (the "Remind me" toggle, its permission flow and cancel-on-
+// unregister wiring, second PR of #123).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -26,6 +28,9 @@ import com.polysocial.model.registration.CancelRegistrationResult
 import com.polysocial.model.registration.MyRegistrationsResult
 import com.polysocial.model.registration.RegisterResult
 import com.polysocial.model.registration.RegistrationRepository
+import com.polysocial.model.reminder.EventReminder
+import com.polysocial.model.reminder.ReminderScheduler
+import com.polysocial.model.reminder.ScheduleReminderResult
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.PublicProfilesResult
@@ -132,6 +137,16 @@ enum class AttendanceMessage {
  */
 data class AttendanceFeedback(val message: AttendanceMessage, val id: Long)
 
+/**
+ * Internal: the "Remind me 1 h before" toggle's state, combined into [EventDetailUiState.Loaded].
+ */
+private data class ReminderUiState(
+    val on: Boolean = false,
+    val blocked: Boolean = false,
+    val showExplanation: Boolean = false,
+    val requestPermission: Boolean = false,
+)
+
 /** What the event detail screen shows (Figma section 03, "Event detail" and its states). */
 sealed interface EventDetailUiState {
   data object Loading : EventDetailUiState
@@ -156,6 +171,14 @@ sealed interface EventDetailUiState {
    * @property attendance whether the student is going (#122); organizers aren't offered "I'm
    *   going", as in Figma's "Event detail · organizer", so theirs stays [Attendance.NOT_GOING].
    * @property isSavingAttendance true while "I'm going" or "Cancel registration" is saved.
+   * @property reminderOn whether "Remind me 1 h before" is on, shown once going (#123); seeded once
+   *   from [ReminderScheduler.isScheduled] the first time attendance is confirmed.
+   * @property remindersBlocked true once Android's notification permission is known to be denied,
+   *   so the toggle shows "Off: notifications are blocked" instead of the normal subtitle.
+   * @property showReminderExplanation true while the permission explanation sheet shows, before
+   *   Android's own prompt (first time the toggle is turned on without a known granted permission).
+   * @property requestReminderPermission one-shot: true right after "Continue" on the explanation
+   *   sheet, so the screen launches the system permission request; the screen acknowledges it.
    */
   data class Loaded(
       val details: EventDetails,
@@ -168,6 +191,10 @@ sealed interface EventDetailUiState {
       val yourGroup: YourGroup? = null,
       val attendance: Attendance = Attendance.NOT_GOING,
       val isSavingAttendance: Boolean = false,
+      val reminderOn: Boolean = false,
+      val remindersBlocked: Boolean = false,
+      val showReminderExplanation: Boolean = false,
+      val requestReminderPermission: Boolean = false,
   ) : EventDetailUiState {
     /**
      * True when the signed-in association organizes this association event: the screen is then
@@ -254,6 +281,12 @@ sealed interface CancelEventState {
  * saves again; each failure gets its own id, so a Retry that fails the same way is reported again
  * too.
  *
+ * Once going, "Remind me 1 h before" ([EventDetailUiState.Loaded.reminderOn], second PR of #123)
+ * schedules or cancels through [reminders]: its state is seeded once from
+ * [ReminderScheduler.isScheduled], turning it off or cancelling the registration both cancel the
+ * reminder, and the Android 13+ permission explanation and request are driven by one-shot flags the
+ * screen (which owns the actual permission UI) acknowledges.
+ *
  * @param auth tells whether the signed-in user is one of the event's organizers.
  * @param clock gives the device's time zone, in which the times are shown, and the time that tells
  *   whether the event is live or has ended.
@@ -271,6 +304,7 @@ constructor(
     private val registrations: RegistrationRepository,
     private val groups: GroupRepository,
     private val profiles: PublicProfileRepository,
+    private val reminders: ReminderScheduler,
 ) : ViewModel() {
 
   private val eventId = savedStateHandle.get<String>(EVENT_ID_ARG).orEmpty()
@@ -305,6 +339,22 @@ constructor(
 
   private val _attendanceFeedback = MutableStateFlow<AttendanceFeedback?>(null)
   val attendanceFeedback: StateFlow<AttendanceFeedback?> = _attendanceFeedback.asStateFlow()
+
+  /** Whether [initReminderOnce] has already seeded [reminderOn] for this screen. */
+  private var reminderInitialized = false
+  private val reminderOn = MutableStateFlow(false)
+  private val remindersBlocked = MutableStateFlow(false)
+  private val showReminderExplanation = MutableStateFlow(false)
+  private val requestReminderPermission = MutableStateFlow(false)
+
+  private val reminderUi: Flow<ReminderUiState> =
+      combine(reminderOn, remindersBlocked, showReminderExplanation, requestReminderPermission) {
+          on,
+          blocked,
+          showExplanation,
+          requestPermission ->
+        ReminderUiState(on, blocked, showExplanation, requestPermission)
+      }
 
   /**
    * Read alongside the event, so it is usually known when the event shows. An association's read is
@@ -360,6 +410,17 @@ constructor(
           .combine(attendance) { state, (attendance, saving) ->
             if (state is EventDetailUiState.Loaded && !state.isOrganizer)
                 state.copy(attendance = attendance, isSavingAttendance = saving)
+            else state
+          }
+          .onEach(::initReminderOnce)
+          .combine(reminderUi) { state, reminder ->
+            if (state is EventDetailUiState.Loaded && !state.isOrganizer)
+                state.copy(
+                    reminderOn = reminder.on,
+                    remindersBlocked = reminder.blocked,
+                    showReminderExplanation = reminder.showExplanation,
+                    requestReminderPermission = reminder.requestPermission,
+                )
             else state
           }
           .combine(_cancelState) { state, cancel ->
@@ -519,6 +580,86 @@ constructor(
     _attendanceFeedback.compareAndSet(shown, null)
   }
 
+  /**
+   * Seeds [reminderOn] from [ReminderScheduler.isScheduled] the first time the student is confirmed
+   * going, so the toggle shows the reminder's real state instead of always starting off.
+   */
+  private fun initReminderOnce(state: EventDetailUiState) {
+    if (reminderInitialized) return
+    if (state !is EventDetailUiState.Loaded) return
+    if (state.isOrganizer || state.attendance != Attendance.GOING) return
+    reminderInitialized = true
+    viewModelScope.launch { reminderOn.value = reminders.isScheduled(eventId) }
+  }
+
+  /**
+   * Turns the reminder [on] or off directly: used for every Off (no confirmation needed), and for
+   * On once the notification permission is already granted (or isn't needed below API 33), so the
+   * explanation sheet isn't shown again.
+   */
+  fun onReminderToggle(on: Boolean) {
+    if (!on) {
+      remindersBlocked.value = false
+      reminderOn.value = false
+      viewModelScope.launch { reminders.cancel(eventId) }
+      return
+    }
+    scheduleReminder()
+  }
+
+  /** The switch was turned on without a known granted permission: show the explanation first. */
+  fun onReminderExplanationRequested() {
+    showReminderExplanation.value = true
+  }
+
+  /** "Continue" on the explanation sheet: hide it and ask the screen to request the permission. */
+  fun onReminderExplanationContinue() {
+    showReminderExplanation.value = false
+    requestReminderPermission.value = true
+  }
+
+  /** "Not now": hide the sheet, the toggle stays off. */
+  fun onReminderExplanationDismiss() {
+    showReminderExplanation.value = false
+  }
+
+  /** The screen launched the system permission request for [requestReminderPermission]. */
+  fun onReminderPermissionRequested() {
+    requestReminderPermission.value = false
+  }
+
+  /**
+   * The system permission prompt answered, or the screen rechecked on resume after "Open settings".
+   * Granted schedules the reminder; denied blocks the toggle and keeps it off.
+   */
+  fun onReminderPermissionResult(granted: Boolean) {
+    if (granted) {
+      remindersBlocked.value = false
+      scheduleReminder()
+    } else {
+      remindersBlocked.value = true
+      reminderOn.value = false
+    }
+  }
+
+  private fun scheduleReminder() {
+    val event = (uiState.value as? EventDetailUiState.Loaded)?.details?.event ?: return
+    viewModelScope.launch {
+      val result =
+          reminders.schedule(
+              EventReminder(
+                  eventId = eventId,
+                  title = event.title,
+                  startTime = event.startTime,
+                  placeName = event.locationName.ifBlank { null },
+              )
+          )
+      // TooLate or UnexpectedError: the switch simply doesn't turn on, like a save that fails
+      // changes nothing elsewhere on this screen; Figma has no frame for this failure.
+      reminderOn.value = result is ScheduleReminderResult.Scheduled
+    }
+  }
+
   private fun saveAttendance(going: Boolean) {
     if (!savingAttendance.compareAndSet(expect = false, update = true)) return
     _attendanceFeedback.value = null
@@ -541,8 +682,15 @@ constructor(
                 CancelRegistrationResult.UnexpectedError -> AttendanceMessage.CANCEL_FAILED
               }
             }
-        if (failure == null)
-            savedAttendance.value = if (going) Attendance.GOING else Attendance.NOT_GOING
+        if (failure == null) {
+          savedAttendance.value = if (going) Attendance.GOING else Attendance.NOT_GOING
+          // The reminder stops making sense once the registration it was for is gone.
+          if (!going) {
+            reminderOn.value = false
+            remindersBlocked.value = false
+            reminders.cancel(eventId)
+          }
+        }
         _attendanceFeedback.value = failure?.let {
           AttendanceFeedback(it, nextAttendanceFeedbackId++)
         }

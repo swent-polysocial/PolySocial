@@ -1,5 +1,6 @@
 // Contributors: Claude (wrote this test, #128).
 // Contributors: Claude (Opus 5.5, Anthropic) passed the detail fake groups and profiles, #233.
+// Contributors: Claude Opus 5.5 (passed the new reminder scheduler fake, second PR of #123).
 package com.polysocial.ui.event
 
 import androidx.lifecycle.SavedStateHandle
@@ -12,6 +13,7 @@ import com.polysocial.model.map.MapEventResult
 import com.polysocial.model.map.MapEventSource
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.registration.FakeRegistrationRepository
+import com.polysocial.model.reminder.FakeReminderScheduler
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.ui.event.detail.EventDetailUiState
 import com.polysocial.ui.event.detail.EventDetailViewModel
@@ -76,6 +78,7 @@ class AssociationNamesAcrossScreensTest {
             FakeRegistrationRepository(),
             FakeGroupRepository(),
             FakePublicProfileRepository(),
+            FakeReminderScheduler(clock),
         )
     var detailState: EventDetailUiState = EventDetailUiState.Loading
     backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {

@@ -3,6 +3,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) Find a group now opens its screen, and not once the
 // event has ended; the detail gets fake groups and profiles, #233.
 // Contributors: Claude Opus 5.5 ("I'm going" is no longer left out, #122).
+// Contributors: Claude Opus 5.5 (passed the new reminder scheduler fake, second PR of #123).
 package com.polysocial.ui.event.detail
 
 import android.content.Context
@@ -35,6 +36,7 @@ import com.polysocial.model.event.withCreator
 import com.polysocial.model.group.FakeGroupRepository
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.registration.FakeRegistrationRepository
+import com.polysocial.model.reminder.FakeReminderScheduler
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.resources.C
 import com.polysocial.ui.theme.PolySocialTheme
@@ -368,6 +370,7 @@ class EventDetailScreenTest {
             FakeRegistrationRepository(),
             FakeGroupRepository(),
             FakePublicProfileRepository(),
+            FakeReminderScheduler(clock),
         )
     composeTestRule.setContent {
       PolySocialTheme { EventDetailRoute(onBack = { backs++ }, viewModel = viewModel) }
@@ -412,6 +415,7 @@ class EventDetailScreenTest {
             FakeRegistrationRepository(),
             FakeGroupRepository(),
             FakePublicProfileRepository(),
+            FakeReminderScheduler(clock),
         )
     composeTestRule.setContent {
       PolySocialTheme { EventDetailRoute(onBack = { backs++ }, viewModel = viewModel) }
@@ -469,6 +473,9 @@ class EventDetailScreenTest {
             FakeRegistrationRepository(),
             FakeGroupRepository(),
             FakePublicProfileRepository(),
+            FakeReminderScheduler(
+                Clock.fixed(Instant.parse("2026-09-30T10:00:00Z"), ZoneId.of("Europe/Zurich"))
+            ),
         )
     composeTestRule.setContent {
       PolySocialTheme {
