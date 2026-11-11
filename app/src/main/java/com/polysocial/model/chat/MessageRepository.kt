@@ -72,6 +72,9 @@ interface MessageRepository {
    */
   fun observeMessages(eventId: String, groupId: String): Flow<MessagesResult>
 
+  /** Sends a new message using a repository-generated document ID. */
+  suspend fun sendMessage(eventId: String, groupId: String, text: String): SendMessageResult
+
   /**
    * Sends [text] to the group [groupId] of the event [eventId] as the signed-in student.
    *
@@ -88,6 +91,6 @@ interface MessageRepository {
       eventId: String,
       groupId: String,
       text: String,
-      messageId: String? = null,
+      messageId: String?,
   ): SendMessageResult
 }
