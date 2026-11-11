@@ -5,6 +5,8 @@
 // Contributors: OpenAI Codex (map event-detail tags, #50); Claude (removed them once the map opened
 // the event detail, #112).
 // Contributors: OpenAI Codex (Profile privacy navigation and action tags, #103).
+// Contributors: Claude Opus 5.5 (My friend code tags, #339); Konstantinos Perdikeas (directed,
+// reviewed and owns them).
 package com.polysocial.resources
 
 // Like R, but C
@@ -22,6 +24,16 @@ object C {
     const val error_retry = "error_retry"
     const val error_secondary = "error_secondary"
     const val profile_privacy_entry = "profile_privacy_entry"
+    const val profile_friend_code_entry = "profile_friend_code_entry"
+    const val friend_code_screen = "friend_code_screen"
+    const val friend_code_heading = "friend_code_heading"
+    const val friend_code_close = "friend_code_close"
+    const val friend_code_qr = "friend_code_qr"
+    const val friend_code_name = "friend_code_name"
+    const val friend_code_details = "friend_code_details"
+    const val friend_code_info = "friend_code_info"
+    const val friend_code_error = "friend_code_error"
+    const val friend_code_back_to_profile = "friend_code_back_to_profile"
     const val privacy_screen = "privacy_screen"
     const val privacy_heading = "privacy_heading"
     const val privacy_back = "privacy_back"
