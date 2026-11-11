@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -14,6 +15,7 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.filterToOne
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onChildren
 import androidx.compose.ui.test.onNodeWithTag
@@ -66,7 +68,10 @@ class FriendCodeScreenTest {
   fun showsTheTitleTheStudentTheCodeAndWhatSharingItDoes() {
     show(shown)
 
-    compose.onNodeWithTag(C.Tag.friend_code_heading).assertTextEquals("My friend code")
+    compose
+        .onNodeWithTag(C.Tag.friend_code_heading)
+        .assertTextEquals("My friend code")
+        .assert(isHeading())
     compose.onNodeWithTag(C.Tag.friend_code_name).assertTextEquals("Léa Martin")
     compose.onNodeWithTag(C.Tag.friend_code_details).assertTextEquals("IN · BA3")
     compose.onNodeWithText("LM").assertIsDisplayed()

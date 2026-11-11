@@ -50,6 +50,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -372,7 +373,7 @@ internal fun PrivacyHeader(
     Text(
         stringResource(title),
         style = privacyTextStyle(17, 21.4f, FontWeight.Bold),
-        modifier = Modifier.testTag(tag),
+        modifier = Modifier.semantics { heading() }.testTag(tag),
     )
   }
 }
