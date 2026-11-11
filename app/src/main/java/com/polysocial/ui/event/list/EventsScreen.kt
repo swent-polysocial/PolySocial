@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (dismissal-aware location permission handling, #278).
 // Contributors: Claude (Events tab list from the Figma "Discover events" frames, #105; no matching
 // event state, search field, filter chips, Filters sheet and its location permission, #115;
 // opening an event's detail, #112; banner and states shared with the association tab, #132; an
@@ -143,8 +144,8 @@ fun EventsRoute(
   val activity = LocalActivity.current
   val context = LocalContext.current
   val permissionLauncher =
-      rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-        viewModel.onPermissionResult()
+      rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+        viewModel.onPermissionResult(it[Manifest.permission.ACCESS_COARSE_LOCATION])
       }
   LifecycleResumeEffect(viewModel) {
     viewModel.onResume()
@@ -172,7 +173,7 @@ fun EventsRoute(
         when (viewModel.turnOnLocation(rationale)) {
           LocationAction.NONE -> Unit
           LocationAction.REQUEST_PERMISSION ->
-              permissionLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
+              permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION))
           LocationAction.OPEN_SETTINGS ->
               context.startActivity(
                   Intent(

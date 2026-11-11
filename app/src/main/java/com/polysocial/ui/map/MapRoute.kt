@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (dismissal-aware location permission handling, #278).
 // Contributors: OpenAI Codex (permission launcher and foreground location lifecycle for #51).
 // Contributors: Claude (passes the "+" action to the map screen, #110; the search and filters,
 // #116; the Map tab's ViewModel for each account type, #133).
@@ -53,7 +54,7 @@ fun MapRoute(
   val context = LocalContext.current
   val permissionLauncher =
       rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        viewModel.onPermissionResult()
+        viewModel.onPermissionResult(it[Manifest.permission.ACCESS_COARSE_LOCATION])
       }
   DisposableEffect(lifecycleOwner, viewModel) {
     val observer = LifecycleEventObserver { _, event ->

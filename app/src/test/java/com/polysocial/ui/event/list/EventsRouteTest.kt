@@ -1,5 +1,6 @@
 // Contributors: Claude (the distance filter's location permission on the Events tab, and reading it
 // only in the foreground after review, #115; the association names dependency, #128).
+// Contributors: OpenAI Codex (dismissal-aware permission launcher regression, #278).
 package com.polysocial.ui.event.list
 
 import android.Manifest
@@ -170,6 +171,7 @@ class EventsRouteTest {
   @Test
   fun turnOn_afterAPermanentRefusal_opensTheAppSettingsInstead() {
     location.markPermissionRequested()
+    location.recordPermissionResult(false)
     showRationale = false
     show()
 
@@ -192,6 +194,21 @@ class EventsRouteTest {
     composeTestRule.onNodeWithTag(EventsTags.TURN_ON_LOCATION).performClick()
 
     assertEquals(listOf(Manifest.permission.ACCESS_COARSE_LOCATION), registry.launches)
+  }
+
+  @Test
+  fun turnOn_afterDismissal_requestsPermissionAgainWithoutOpeningSettings() {
+    show()
+    composeTestRule.onNodeWithTag(EventsTags.TURN_ON_LOCATION).performClick()
+    composeTestRule.runOnIdle { registry.dismiss() }
+    settle()
+    composeTestRule.onNodeWithTag(EventsTags.TURN_ON_LOCATION).performClick()
+    assertEquals(2, registry.launches.size)
+    sheetChip("DISTANCE_500").assertIsNotEnabled()
+    assertNull(
+        shadowOf(ApplicationProvider.getApplicationContext<android.app.Application>())
+            .nextStartedActivity
+    )
   }
 
   @Test
@@ -249,14 +266,18 @@ class EventsRouteTest {
         input: I,
         options: ActivityOptionsCompat?,
     ) {
-      check(contract is ActivityResultContracts.RequestPermission)
-      launches += input as String
+      check(contract is ActivityResultContracts.RequestMultiplePermissions)
+      launches += (input as Array<*>).map { it as String }
       this.requestCode = requestCode
     }
 
     fun respond(granted: Boolean) {
       val code = checkNotNull(requestCode) { "No permission request was launched." }
-      dispatchResult(code, granted)
+      dispatchResult(code, mapOf(Manifest.permission.ACCESS_COARSE_LOCATION to granted))
+    }
+
+    fun dismiss() {
+      dispatchResult(checkNotNull(requestCode), emptyMap<String, Boolean>())
     }
   }
 }

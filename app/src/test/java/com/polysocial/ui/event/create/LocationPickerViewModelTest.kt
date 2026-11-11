@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (dismissal-aware location permission handling and tests, #278).
 // Contributors: Claude (drafted the location picker ViewModel tests, #111; timings from
 // SETTLE_DELAY after review; your location, confirming, the camera and duplicates, #111).
 package com.polysocial.ui.event.create
@@ -899,6 +900,10 @@ class LocationPickerViewModelTest {
     override fun shouldRequestPermission() = false
 
     override fun markPermissionRequested() = Unit
+
+    override fun wasPermissionDenied() = false
+
+    override fun recordPermissionResult(granted: Boolean) = Unit
 
     override suspend fun currentLocation() = answer.await()
   }
