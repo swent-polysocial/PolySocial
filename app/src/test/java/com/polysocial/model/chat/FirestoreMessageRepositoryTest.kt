@@ -152,6 +152,16 @@ class FirestoreMessageRepositoryTest {
         SendMessageResult.UnexpectedError,
         repository.sendMessage(EVENT, GROUP, "Different message", "retry-id"),
     )
+    every { existing.data } returns stored("another-member", "See you at 6?", timestamp(1L))
+    assertEquals(
+        SendMessageResult.UnexpectedError,
+        repository.sendMessage(EVENT, GROUP, "See you at 6?", "retry-id"),
+    )
+    every { existing.data } returns mapOf("text" to "See you at 6?")
+    assertEquals(
+        SendMessageResult.UnexpectedError,
+        repository.sendMessage(EVENT, GROUP, "See you at 6?", "retry-id"),
+    )
     verify(exactly = 0) { transaction.set(newMessage, any<Map<String, Any>>()) }
   }
 
