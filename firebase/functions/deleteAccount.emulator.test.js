@@ -2,6 +2,7 @@
 // Contributors: Claude (the public profile deleted with the account, #229; profiles can't be saved
 // again once deleted, after review, #229; the user's registrations, #275).
 "use strict";
+// Contributors: OpenAI Codex (account deletion removes real emulator group membership, #241).
 
 // Calls the deployed-to-emulator deleteAccount over HTTP, as the Android client does, against the
 // Auth, Firestore and Functions emulators. Run from the repository root (see the README):
@@ -35,10 +36,19 @@ let auth;
 
 before(async () => {
   try {
-    await fetch(FUNCTIONS_ORIGIN);
+    // A running emulator can still have failed to discover the function. Probe the callable
+    // without an account: its expected 401 proves it loaded, without deleting any data.
+    const probe = await fetch(DELETE_ACCOUNT_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data: {} }),
+    });
+    if (probe.status !== 401) {
+      throw new Error(`deleteAccount is not ready (HTTP ${probe.status}); check function discovery.`);
+    }
   } catch (error) {
     throw new Error(
-      `The Functions emulator does not answer at ${FUNCTIONS_ORIGIN}: add "functions" to --only.`,
+      `deleteAccount is unavailable at ${DELETE_ACCOUNT_URL}: start Functions and check its load log.`,
       { cause: error },
     );
   }
@@ -176,6 +186,28 @@ test("an account without a profile is deleted", async () => {
   assert.equal(status, 200);
   assert.deepEqual(body, { result: { deleted: true } });
   assert.equal(await authUserExists(uid), false);
+});
+
+test("account deletion removes group membership and markers, preserving other students", async () => {
+  const uid = await seedUser("student@epfl.ch", { accountType: "student" });
+  const idToken = await signIn("student@epfl.ch");
+  const shared = "events/shared/groups/g1";
+  const solo = "events/solo/groups/g2";
+  await db.doc(shared).set({ memberUids: [uid, "fictional-other"], createdBy: uid, capacity: 4 });
+  await db.doc(solo).set({ memberUids: [uid], createdBy: uid, capacity: 4 });
+  await db.doc(`events/shared/groupMembers/${uid}`).set({ groupId: "g1" });
+  await db.doc("events/shared/groupMembers/fictional-other").set({ groupId: "g1" });
+  await db.doc(`events/solo/groupMembers/${uid}`).set({ groupId: "g2" });
+  assert.equal((await callDeleteAccount(idToken)).status, 200);
+  assert.deepEqual((await db.doc(shared).get()).data(), {
+    memberUids: ["fictional-other"], createdBy: uid, capacity: 4,
+  });
+  assert.equal(await documentExists(solo), false);
+  assert.equal(await documentExists(`events/shared/groupMembers/${uid}`), false);
+  assert.equal(await documentExists(`events/solo/groupMembers/${uid}`), false);
+  assert.equal(await documentExists("events/shared/groupMembers/fictional-other"), true);
+  assert.equal(await authUserExists(uid), false);
+  assert.equal((await callDeleteAccount(idToken)).status, 200);
 });
 
 // The deleted user's ID token keeps its signature until it expires, and the callable doesn't

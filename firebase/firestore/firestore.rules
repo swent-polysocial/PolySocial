@@ -12,6 +12,7 @@
 // #232, with fixes after review; group chat messages, #237, and no messages from a deleted
 // account, after review).
 rules_version = '2';
+// Contributors: OpenAI Codex (prevent deleted tokens recreating group membership, #241).
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -357,7 +358,8 @@ service cloud.firestore {
       function isJoining() {
         let before = resource.data.memberUids;
         let after = request.resource.data.memberUids;
-        return canReadEvent()
+        return !isDeletedAccount(request.auth.uid)
+            && canReadEvent()
             && !before.hasAny([request.auth.uid])
             && after == before.concat([request.auth.uid])
             && after.size() <= resource.data.capacity
@@ -385,6 +387,7 @@ service cloud.firestore {
       // can't start a group, whatever the marker rules allow.
       allow create: if isStudent()
           && canReadEvent()
+          && !isDeletedAccount(request.auth.uid)
           && request.resource.data.keys().hasOnly(['capacity', 'memberUids', 'createdBy', 'createdAt'])
           && request.resource.data.capacity == 4
           && request.resource.data.memberUids == [request.auth.uid]
@@ -425,6 +428,7 @@ service cloud.firestore {
       allow get: if isSelf();
       allow create: if isSelf()
           && request.resource.data.keys().hasOnly(['groupId'])
+          && !isDeletedAccount(request.auth.uid)
           && request.resource.data.groupId is string
           && request.resource.data.groupId.matches('[^/]+')
           && getAfter(group(request.resource.data.groupId)).data.memberUids.hasAny([uid]);

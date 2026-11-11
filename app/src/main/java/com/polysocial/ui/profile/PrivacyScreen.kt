@@ -1,5 +1,6 @@
 // Contributors: OpenAI Codex (Profile privacy entry, dated offline notice, Figma UI and contact,
 // #103).
+// Contributors: OpenAI Codex (offline group and chat collection/access notice, #241).
 // Contributors: Claude (Opus 5.5, Anthropic) connected Delete account to its flow, #207; Mohamed
 // Khellaf (reviewed and revised).
 // Contributors: Claude Opus 5.5 (shared the header and row with My friend code, #339); Konstantinos
@@ -191,6 +192,20 @@ fun PrivacyScreen(
               R.string.privacy_attendance_body,
               R.drawable.ic_check,
           )
+          HorizontalDivider(color = Border)
+          PrivacyDataRow(
+              R.string.privacy_groups_title,
+              R.string.privacy_groups_body,
+              R.drawable.privacy_person,
+              Modifier.testTag(C.Tag.privacy_groups),
+          )
+          HorizontalDivider(color = Border)
+          PrivacyDataRow(
+              R.string.privacy_chats_title,
+              R.string.privacy_chats_body,
+              R.drawable.privacy_message,
+              Modifier.testTag(C.Tag.privacy_chats),
+          )
         }
         Spacer(Modifier.height(20.dp))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -309,6 +324,16 @@ fun FullPrivacyNoticeScreen(
           )
           NoticeSection(R.string.privacy_notice_device_title, R.string.privacy_notice_device_body)
           NoticeSection(
+              R.string.privacy_groups_title,
+              R.string.privacy_notice_groups_body,
+              Modifier.testTag(C.Tag.privacy_notice_groups),
+          )
+          NoticeSection(
+              R.string.privacy_chats_title,
+              R.string.privacy_notice_chats_body,
+              Modifier.testTag(C.Tag.privacy_notice_chats),
+          )
+          NoticeSection(
               R.string.privacy_notice_deletion_title,
               R.string.privacy_notice_deletion_body,
           )
@@ -379,8 +404,13 @@ internal fun PrivacyHeader(
 }
 
 @Composable
-private fun PrivacyDataRow(@StringRes title: Int, @StringRes body: Int, @DrawableRes icon: Int) {
-  Row(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
+private fun PrivacyDataRow(
+    @StringRes title: Int,
+    @StringRes body: Int,
+    @DrawableRes icon: Int,
+    modifier: Modifier = Modifier,
+) {
+  Row(modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
     Image(
         painterResource(icon),
         null,
@@ -446,11 +476,15 @@ internal fun PrivacyActionRow(
 }
 
 @Composable
-private fun NoticeSection(@StringRes title: Int, @StringRes body: Int) {
+private fun NoticeSection(
+    @StringRes title: Int,
+    @StringRes body: Int,
+    modifier: Modifier = Modifier,
+) {
   Spacer(Modifier.height(20.dp))
   Text(stringResource(title), style = privacyTextStyle(15, 20f, FontWeight.Bold))
   Spacer(Modifier.height(6.dp))
-  Text(stringResource(body), color = Ink2, style = privacyTextStyle(14, 21f))
+  Text(stringResource(body), modifier = modifier, color = Ink2, style = privacyTextStyle(14, 21f))
 }
 
 // Preserve the Figma sizes and line heights while inheriting the app's font family.

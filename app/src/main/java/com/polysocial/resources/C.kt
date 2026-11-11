@@ -7,6 +7,7 @@
 // Contributors: OpenAI Codex (Profile privacy navigation and action tags, #103).
 // Contributors: Claude Opus 5.5 (My friend code tags, #339); Konstantinos Perdikeas (directed,
 // reviewed and owns them).
+// Contributors: OpenAI Codex (group and chat privacy notice tags, #241).
 package com.polysocial.resources
 
 // Like R, but C
@@ -47,6 +48,10 @@ object C {
     const val privacy_notice_heading = "privacy_notice_heading"
     const val privacy_notice_date = "privacy_notice_date"
     const val privacy_contact = "privacy_contact"
+    const val privacy_groups = "privacy_groups"
+    const val privacy_chats = "privacy_chats"
+    const val privacy_notice_groups = "privacy_notice_groups"
+    const val privacy_notice_chats = "privacy_notice_chats"
 
     const val app_bar_action_notifications = "app_bar_action_notifications"
     const val app_bar_action_search_chats = "app_bar_action_search_chats"

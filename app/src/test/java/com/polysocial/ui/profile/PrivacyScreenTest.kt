@@ -1,5 +1,6 @@
 // Contributors: OpenAI Codex (privacy navigation, unavailable actions, font scaling and render QA,
 // #103; privacy and confirmed logout integration after rebase).
+// Contributors: OpenAI Codex (group/chat notice availability and scrolling regressions, #241).
 // Contributors: Claude (Opus 5.5, Anthropic) replaced the unavailable deletion with its sheet,
 // #207;
 // Mohamed Khellaf (reviewed and revised).
@@ -160,10 +161,30 @@ class PrivacyScreenTest {
         .assertTextEquals(text(R.string.privacy_full_notice))
     rule.onNodeWithTag(C.Tag.privacy_notice_date).assertTextEquals(text(R.string.privacy_updated))
     rule.onNodeWithText(text(R.string.privacy_notice_deletion_body)).assertExists()
-    rule.onNodeWithTag(C.Tag.privacy_back).performClick()
+    rule
+        .onNodeWithTag(C.Tag.privacy_notice_groups)
+        .performScrollTo()
+        .assertTextEquals(text(R.string.privacy_notice_groups_body))
+    rule
+        .onNodeWithTag(C.Tag.privacy_notice_chats)
+        .performScrollTo()
+        .assertTextEquals(text(R.string.privacy_notice_chats_body))
+    rule.onNodeWithText(text(R.string.privacy_notice_account_body)).assertExists()
+    rule.onNodeWithTag(C.Tag.privacy_back).performScrollTo().performClick()
     rule.onNodeWithTag(C.Tag.privacy_screen).assertIsDisplayed()
     rule.onNodeWithTag(C.Tag.privacy_back).performClick()
     rule.onNodeWithTag(C.Tag.profile_privacy_entry).assertIsDisplayed()
+  }
+
+  @Test
+  fun summaryExplainsGroupVisibilityAndThatChatIsNotCollectedYet() {
+    openFromProfile()
+    rule.onNodeWithTag(C.Tag.privacy_groups).performScrollTo().assertIsDisplayed()
+    rule.onNodeWithText(text(R.string.privacy_groups_body)).assertIsDisplayed()
+    rule.onNodeWithTag(C.Tag.privacy_chats).performScrollTo().assertIsDisplayed()
+    rule.onNodeWithText(text(R.string.privacy_chats_body)).assertIsDisplayed()
+    rule.onNodeWithTag(C.Tag.privacy_full_notice).performScrollTo().performClick()
+    rule.onNodeWithTag(C.Tag.privacy_notice_date).assertTextEquals("Updated 11 November 2026")
   }
 
   private fun checkUnavailable(tag: String) {
@@ -385,7 +406,7 @@ class PrivacyScreenTest {
     rule.onNodeWithText(text(R.string.privacy_reminders_title)).assertIsDisplayed()
     rule.onNodeWithText(text(R.string.privacy_attendance_title)).assertIsDisplayed()
     rule.onNodeWithTag(C.Tag.privacy_matching).assertIsOff()
-    rule.onNodeWithTag(C.Tag.privacy_full_notice).assertIsDisplayed()
+    rule.onNodeWithTag(C.Tag.privacy_full_notice).performScrollTo().assertIsDisplayed()
     val image = rule.onNodeWithTag(C.Tag.privacy_screen).captureToImage().asAndroidBitmap()
     val output = File("build/reports/privacy/privacy-summary.png")
     output.parentFile?.mkdirs()
