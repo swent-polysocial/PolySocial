@@ -104,9 +104,6 @@ class FakeMessageRepository(var currentUid: String? = "test-student") : MessageR
     }
   }
 
-  override suspend fun sendMessage(eventId: String, groupId: String, text: String): SendMessageResult =
-      sendMessage(eventId, groupId, text, messageId = null)
-
   override suspend fun sendMessage(
       eventId: String,
       groupId: String,

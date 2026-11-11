@@ -31,8 +31,8 @@ import kotlinx.coroutines.tasks.await
  *
  * Like `FirestoreEventRepository.createEvent`, sending checks [NetworkMonitor] first and writes in
  * a transaction tried once: Firestore only runs transactions against the server, so a message fails
- * offline instead of being queued. The transaction only creates a new document, so it can't
- * conflict with another write, and retries would just delay the offline error.
+ * offline instead of being queued. With an explicit ID, the transaction reads the document before
+ * writing. It creates a missing message or checks that a stored message matches the draft.
  */
 class FirestoreMessageRepository(
     private val database: () -> FirebaseFirestore,
@@ -120,12 +120,6 @@ class FirestoreMessageRepository(
    * [SendMessageResult.UnexpectedError]; losing the connection during the write is
    * [SendMessageResult.NetworkError].
    */
-  override suspend fun sendMessage(
-      eventId: String,
-      groupId: String,
-      text: String,
-  ): SendMessageResult = sendMessage(eventId, groupId, text, messageId = null)
-
   override suspend fun sendMessage(
       eventId: String,
       groupId: String,
