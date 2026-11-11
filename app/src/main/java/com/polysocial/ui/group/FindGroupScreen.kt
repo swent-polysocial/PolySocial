@@ -1,4 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted Find a group from #227's Figma frames, #233.
+// Contributors: OpenAI Codex (shared the group header, event summary and member presentation,
+// #234).
 package com.polysocial.ui.group
 
 import androidx.compose.foundation.background
@@ -154,7 +156,7 @@ fun FindGroupScreen(
     }
   }
   Column(modifier.fillMaxSize().background(Bg).testTag(FindGroupTags.SCREEN)) {
-    Header(actions.onBack)
+    GroupHeader(R.string.find_group_title, FindGroupTags.BACK, actions.onBack)
     Box(Modifier.weight(1f)) {
       when (state) {
         FindGroupUiState.Loading ->
@@ -179,7 +181,7 @@ fun FindGroupScreen(
 
 /** Back and the title, as on Edit event. */
 @Composable
-private fun Header(onBack: () -> Unit) {
+internal fun GroupHeader(title: Int, tag: String, onBack: () -> Unit) {
   Row(
       Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(start = 6.dp, end = 20.dp),
       verticalAlignment = Alignment.CenterVertically,
@@ -188,7 +190,7 @@ private fun Header(onBack: () -> Unit) {
         Modifier.size(48.dp)
             .clip(CircleShape)
             .clickable(role = Role.Button, onClick = onBack)
-            .testTag(FindGroupTags.BACK),
+            .testTag(tag),
         contentAlignment = Alignment.Center,
     ) {
       Icon(
@@ -199,7 +201,7 @@ private fun Header(onBack: () -> Unit) {
       )
     }
     Text(
-        stringResource(R.string.find_group_title),
+        stringResource(title),
         style = MaterialTheme.typography.titleMedium,
         fontWeight = FontWeight.Bold,
         color = Ink,
@@ -216,7 +218,7 @@ private fun Groups(state: FindGroupUiState.Loaded, actions: FindGroupActions) {
           .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 16.dp),
       verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
-    state.event?.let { EventCard(it) }
+    state.event?.let { GroupEventCard(it, FindGroupTags.EVENT) }
     if (state.isOffline) {
       OfflineBanner(
           stringResource(R.string.find_group_offline),
@@ -241,14 +243,14 @@ private fun Groups(state: FindGroupUiState.Loaded, actions: FindGroupActions) {
             onJoin = { actions.onJoin(suggestion.groupId) },
         )
       }
-      PrivacyNote()
+      GroupPrivacyNote()
     }
   }
 }
 
 /** The event: its category tile, title, day, times and place. */
 @Composable
-private fun EventCard(details: EventDetails) {
+internal fun GroupEventCard(details: EventDetails, tag: String) {
   val event = details.event
   val style = event.category.style
   val day = details.date.format(DAY_FORMAT)
@@ -257,7 +259,7 @@ private fun EventCard(details: EventDetails) {
       Modifier.fillMaxWidth()
           .background(Surface, RoundedCornerShape(16.dp))
           .padding(12.dp)
-          .testTag(FindGroupTags.EVENT),
+          .testTag(tag),
       horizontalArrangement = Arrangement.spacedBy(12.dp),
       verticalAlignment = Alignment.CenterVertically,
   ) {
@@ -366,12 +368,12 @@ private fun GroupCard(
 private fun Avatar(member: GroupMember, index: Int) =
     MemberAvatar(member.profile?.displayName?.let(::initials) ?: "?", index)
 
-/** A 34 dp round avatar showing [text], in the [index]-th of Figma's avatar colors. */
+/** A round avatar showing [text], in the [index]-th of Figma's avatar colors. */
 @Composable
-internal fun MemberAvatar(text: String, index: Int) {
+internal fun MemberAvatar(text: String, index: Int, modifier: Modifier = Modifier.size(34.dp)) {
   val (fg, bg) = AVATAR_COLORS[index % AVATAR_COLORS.size]
   Box(
-      Modifier.size(34.dp).border(2.dp, Bg, CircleShape).background(bg, CircleShape),
+      modifier.border(2.dp, Bg, CircleShape).background(bg, CircleShape),
       contentAlignment = Alignment.Center,
   ) {
     Text(
@@ -433,7 +435,7 @@ private fun Reason(text: String, color: Color, background: Color) {
 }
 
 @Composable
-private fun PrivacyNote() {
+internal fun GroupPrivacyNote() {
   Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
     Icon(
         painterResource(R.drawable.ic_shield),

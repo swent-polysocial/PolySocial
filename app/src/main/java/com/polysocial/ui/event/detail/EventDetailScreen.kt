@@ -6,6 +6,7 @@
 // the event has ended, and showed the student's group card instead, #233.
 // Contributors: Claude Opus 5.5 ("I'm going" and Cancel registration from the Figma "Event
 // detail", "· registered" and "· in a group" frames, #122).
+// Contributors: OpenAI Codex (connected the group card to the roster route, #234).
 package com.polysocial.ui.event.detail
 
 import androidx.annotation.DrawableRes
@@ -165,6 +166,7 @@ fun EventDetailRoute(
     onCancelled: () -> Unit = {},
     onFindGroup: () -> Unit = {},
     viewModel: EventDetailViewModel = hiltViewModel(),
+    onOpenGroup: () -> Unit = {},
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   val cancelState by viewModel.cancelState.collectAsStateWithLifecycle()
@@ -184,6 +186,7 @@ fun EventDetailRoute(
       ),
       onRetryGoing = viewModel::retryGoingCount,
       onFindGroup = onFindGroup,
+      onOpenGroup = onOpenGroup,
       attendanceFeedback = attendanceFeedback,
       attendance =
           EventAttendanceActions(
@@ -220,11 +223,11 @@ fun EventDetailScreen(
     onFindGroup: () -> Unit = {},
     attendanceFeedback: AttendanceFeedback? = null,
     attendance: EventAttendanceActions = EventAttendanceActions(),
+    onOpenGroup: () -> Unit = {},
 ) {
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
   val manageUnavailable = stringResource(R.string.manage_event_not_available)
-  val groupUnavailable = stringResource(R.string.your_group_not_available)
   /** Shows [message], replacing a message already shown instead of queueing one per tap. */
   fun showSnackbar(message: String) {
     snackbarHostState.currentSnackbarData?.dismiss()
@@ -255,8 +258,7 @@ fun EventDetailScreen(
                 snackbarHostState,
                 organizer,
                 onFindGroup = onFindGroup,
-                // The Group screen comes with #234.
-                onOpenGroup = { showSnackbar(groupUnavailable) },
+                onOpenGroup = onOpenGroup,
                 attendance = attendance,
             )
           }

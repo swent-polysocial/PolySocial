@@ -4,6 +4,7 @@
 // placeholder detail doc after "View event" moved to the event detail, #211; Edit event route,
 // #131; the map's Details open the event detail, #112; Find a group route, #233).
 // Contributors: OpenAI Codex (Profile privacy and full-notice routes, #103).
+// Contributors: OpenAI Codex (added the student group roster route, #234).
 package com.polysocial.ui.navigation
 
 import android.net.Uri
@@ -129,6 +130,12 @@ enum class Tab(
 
   /** The route that opens Find a group for the event [eventId] inside this tab. */
   fun findGroupRoute(eventId: String): String = "${eventDetailRoute(eventId)}/groups"
+
+  /** The student's current group, under the event detail in the same tab. */
+  val yourGroupRoute: String
+    get() = "$eventDetailRoute/my-group"
+
+  fun yourGroupRoute(eventId: String): String = "${eventDetailRoute(eventId)}/my-group"
 }
 
 /** Labels, icons and tags for a tab in the current account's shell. */
