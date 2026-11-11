@@ -1,10 +1,12 @@
 // Contributors: OpenAI Codex (group roster and leave UI, #234); PolySocial Figma #227
 // (design and group_open_place.png).
+// Contributors: OpenAI Codex (connected the roster chat row, #238).
 package com.polysocial.ui.group
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -32,10 +34,12 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
@@ -70,6 +74,7 @@ internal object YourGroupTags {
   const val STAY = "your_group_stay"
   const val RETRY = "your_group_retry"
   const val BACK_TO_EVENT = "your_group_back_to_event"
+  const val CHAT = "your_group_chat"
 }
 
 @Composable
@@ -77,6 +82,7 @@ internal fun YourGroupRoute(
     onBack: () -> Unit,
     onLeft: () -> Unit,
     viewModel: YourGroupViewModel = hiltViewModel(),
+    onOpenChat: (String) -> Unit = {},
 ) {
   val state by viewModel.state.collectAsStateWithLifecycle()
   val left = state.leave?.stage == LeaveGroupRequest.Stage.LEFT
@@ -92,7 +98,7 @@ internal fun YourGroupRoute(
       state.event?.let { GroupEventCard(it, YourGroupTags.EVENT) }
       when (val roster = state.roster) {
         GroupRoster.Loading -> LoadingRoster()
-        is GroupRoster.Members -> MemberRoster(roster, state.offline)
+        is GroupRoster.Members -> MemberRoster(roster, state.offline) { onOpenChat(roster.groupId) }
         is GroupRoster.Unavailable -> UnavailableRoster(roster)
       }
     }
@@ -125,7 +131,7 @@ internal fun YourGroupRoute(
 }
 
 @Composable
-private fun MemberRoster(roster: GroupRoster.Members, offline: Boolean) {
+private fun MemberRoster(roster: GroupRoster.Members, offline: Boolean, onOpenChat: () -> Unit) {
   if (offline) {
     OfflineBanner(
         stringResource(R.string.group_saved_offline),
@@ -157,19 +163,25 @@ private fun MemberRoster(roster: GroupRoster.Members, offline: Boolean) {
     }
   }
   Row(
-      Modifier.fillMaxWidth().background(Surface, RoundedCornerShape(16.dp)).padding(14.dp),
+      Modifier.fillMaxWidth()
+          .clip(RoundedCornerShape(16.dp))
+          .background(Surface)
+          .clickable(role = Role.Button, onClick = onOpenChat)
+          .testTag(YourGroupTags.CHAT)
+          .padding(14.dp),
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     Icon(painterResource(R.drawable.ic_tab_chats), contentDescription = null, Modifier.size(20.dp))
-    Column {
+    Column(Modifier.weight(1f)) {
       Text(stringResource(R.string.group_chat_title), style = MaterialTheme.typography.titleSmall)
       Text(
-          stringResource(R.string.group_chat_unavailable),
+          stringResource(R.string.group_chat_subtitle),
           style = MaterialTheme.typography.bodySmall,
           color = Ink2,
       )
     }
+    Icon(painterResource(R.drawable.ic_chevron_right), null, Modifier.size(20.dp))
   }
   GroupPrivacyNote()
 }

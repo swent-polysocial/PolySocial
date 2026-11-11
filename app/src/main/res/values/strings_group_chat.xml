@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: OpenAI Codex (group chat copy from the provisional #236 design, #238). -->
+<resources>
+    <string name="chat_header_summary">%1$s · %2$s · %3$s</string>
+    <plurals name="chat_members">
+        <item quantity="one">%d member</item>
+        <item quantity="other">%d members</item>
+    </plurals>
+    <string name="chat_loading">Loading messages…</string>
+    <string name="chat_empty">No messages yet</string>
+    <string name="chat_empty_body">Say hi and agree where to meet. Only your group sees these messages.</string>
+    <string name="chat_read_failed">Couldn\'t load messages</string>
+    <string name="chat_read_failed_body">Check your connection and try again. Messages you already loaded stay on this device.</string>
+    <string name="chat_membership_ended">You\'ve left this group</string>
+    <string name="chat_membership_body">Go back to see your group options.</string>
+    <string name="chat_offline">You\'re offline. Messages can\'t be sent until you\'re back online.</string>
+    <string name="chat_send_offline">Not sent · You\'re offline · Try again</string>
+    <string name="chat_send_failed">Not sent · Try again</string>
+    <string name="chat_message">Message</string>
+    <string name="chat_send">Send</string>
+    <string name="chat_sending">Sending…</string>
+</resources>

@@ -1,4 +1,5 @@
 // Contributors: OpenAI Codex (live roster, connectivity recovery and confirmed leave, #234).
+// Contributors: OpenAI Codex (shared group member and event reads with chat, #238).
 package com.polysocial.ui.group
 
 import androidx.lifecycle.SavedStateHandle
@@ -11,7 +12,6 @@ import com.polysocial.model.group.GroupRepository
 import com.polysocial.model.group.GroupWriteResult
 import com.polysocial.model.group.MyGroupResult
 import com.polysocial.model.network.NetworkMonitor
-import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.PublicProfileResult
 import com.polysocial.ui.event.detail.EventDetailViewModel
@@ -19,6 +19,7 @@ import com.polysocial.ui.event.detail.EventDetails
 import com.polysocial.ui.event.detail.eventDetails
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
+import java.time.ZoneId
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -102,16 +103,8 @@ constructor(
   internal val state =
       reads
           .flatMapLatest {
-            val event =
-                events
-                    .getEvent(eventId)
-                    .map {
-                      (it as? EventResult.Found)?.let { found ->
-                        eventDetails(found.event, clock.zone)
-                      }
-                    }
-                    .onStart { emit(null) }
-            combine(event, observeRoster(), leave) { details, roster, request ->
+            combine(events.observeGroupEvent(eventId, clock.zone), observeRoster(), leave) {
+                details, roster, request ->
               YourGroupScreenState(details, roster, request)
             }
           }
@@ -187,9 +180,7 @@ constructor(
             } else {
               val me = auth.currentUser()?.uid
               val ids = group.memberUids.sortedBy { it == me }
-              val members = coroutineScope {
-                ids.map { uid -> async { GroupMember(uid, readProfile(uid)) } }.awaitAll()
-              }
+              val members = profiles.readGroupMembers(ids)
               emit(GroupRoster.Members(group.id, group.capacity, members, me))
             }
           }
@@ -205,13 +196,31 @@ constructor(
     )
   }
 
-  private suspend fun readProfile(uid: String): PublicProfile? =
-      withTimeoutOrNull(PROFILE_TIMEOUT_MILLIS) {
-        (profiles.getPublicProfile(uid) as? PublicProfileResult.Found)?.profile
-      }
-
   private companion object {
     const val ROSTER_TIMEOUT_MILLIS = 10_000L
-    const val PROFILE_TIMEOUT_MILLIS = 10_000L
   }
 }
+
+/** An event summary when the current student can read it. */
+internal fun EventRepository.observeGroupEvent(eventId: String, zone: ZoneId) =
+    getEvent(eventId)
+        .map { (it as? EventResult.Found)?.let { found -> eventDetails(found.event, zone) } }
+        .onStart { emit(null) }
+
+/** Reads members independently so an uncached or slow profile cannot hide the others. */
+internal suspend fun PublicProfileRepository.readGroupMembers(uids: List<String>) = coroutineScope {
+  uids
+      .map { uid ->
+        async {
+          GroupMember(
+              uid,
+              withTimeoutOrNull(PROFILE_TIMEOUT_MILLIS) {
+                (getPublicProfile(uid) as? PublicProfileResult.Found)?.profile
+              },
+          )
+        }
+      }
+      .awaitAll()
+}
+
+private const val PROFILE_TIMEOUT_MILLIS = 10_000L

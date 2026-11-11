@@ -19,6 +19,7 @@
 // Contributors: OpenAI Codex (wired the group roster below the student event detail, #234).
 // Contributors: Claude Opus 5.5 (the My friend code route, students only after review, #339);
 // Konstantinos Perdikeas (directed, reviewed and owns it).
+// Contributors: OpenAI Codex (wired group chat above the roster in the student graph, #238).
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.layout.Box
@@ -78,6 +79,8 @@ import com.polysocial.ui.association.AssociationShell
 import com.polysocial.ui.association.AssociationTab
 import com.polysocial.ui.association.AssociationTabHeader
 import com.polysocial.ui.association.OrganizationRoute
+import com.polysocial.ui.chat.GroupChatRoute
+import com.polysocial.ui.chat.GroupChatViewModel
 import com.polysocial.ui.event.create.CreateEventButton
 import com.polysocial.ui.event.create.CreateEventScreen
 import com.polysocial.ui.event.create.EditEventScreen
@@ -208,10 +211,11 @@ fun AppShell(
               dropUnlessResumed { navController.navigate(Tab.PROFILE.friendCodeRoute) },
       )
     },
-    yourGroupContent: @Composable (onBack: () -> Unit, onLeft: () -> Unit) -> Unit =
-        { onBack, onLeft ->
-          YourGroupRoute(onBack, onLeft)
+    yourGroupContent: @Composable (() -> Unit, () -> Unit, (String) -> Unit) -> Unit =
+        { onBack, onLeft, onOpenChat ->
+          YourGroupRoute(onBack, onLeft, onOpenChat = onOpenChat)
         },
+    groupChatContent: @Composable (() -> Unit) -> Unit = { GroupChatRoute(it) },
 ) {
   val association = accountType == AccountType.ASSOCIATION
   val tabs = if (association) listOf(Tab.EVENTS, Tab.MAP, Tab.PROFILE) else Tab.entries
@@ -232,6 +236,7 @@ fun AppShell(
           destination?.route != currentTab.editEventRoute &&
           destination?.route != currentTab.findGroupRoute &&
           destination?.route != currentTab.yourGroupRoute &&
+          destination?.route != currentTab.groupChatRoute &&
           !profileRowScreen
   // The app bar action (TabAction, set per tab in Tab.action) shows only on the current tab's root
   // screen: it is hidden on the screens opened from there, including the one the action opens.
@@ -405,7 +410,23 @@ fun AppShell(
             yourGroupContent(
                 { if (entry.isResumed) navController.popBackStack() },
                 { if (navController.currentBackStackEntry == entry) navController.popBackStack() },
+                { groupId ->
+                  val eventId = entry.arguments?.getString(EventDetailViewModel.EVENT_ID_ARG)
+                  if (entry.isResumed && eventId != null) {
+                    navController.navigate(tab.groupChatRoute(eventId, groupId))
+                  }
+                },
             )
+          }
+          composable(
+              tab.groupChatRoute,
+              arguments =
+                  listOf(
+                      navArgument(EventDetailViewModel.EVENT_ID_ARG) { type = NavType.StringType },
+                      navArgument(GroupChatViewModel.GROUP_ID_ARG) { type = NavType.StringType },
+                  ),
+          ) { entry ->
+            groupChatContent { if (entry.isResumed) navController.popBackStack() }
           }
         }
         composable(

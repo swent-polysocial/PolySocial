@@ -1,6 +1,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted Find a group from #227's Figma frames, #233.
 // Contributors: OpenAI Codex (shared the group header, event summary and member presentation,
 // #234).
+// Contributors: OpenAI Codex (shared group navigation header and category tile with chat, #238).
 package com.polysocial.ui.group
 
 import androidx.compose.foundation.background
@@ -183,6 +184,20 @@ fun FindGroupScreen(
 /** Back and the title, as on Edit event. */
 @Composable
 internal fun GroupHeader(title: Int, tag: String, onBack: () -> Unit) {
+  GroupHeader(tag, onBack) {
+    Text(
+        stringResource(title),
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold,
+        color = Ink,
+        modifier = Modifier.semantics { heading() },
+    )
+  }
+}
+
+/** The group flow's Back control with screen-specific header content. */
+@Composable
+internal fun GroupHeader(tag: String, onBack: () -> Unit, content: @Composable () -> Unit) {
   Row(
       Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(start = 6.dp, end = 20.dp),
       verticalAlignment = Alignment.CenterVertically,
@@ -201,13 +216,7 @@ internal fun GroupHeader(title: Int, tag: String, onBack: () -> Unit) {
           modifier = Modifier.size(22.dp),
       )
     }
-    Text(
-        stringResource(title),
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.Bold,
-        color = Ink,
-        modifier = Modifier.semantics { heading() },
-    )
+    content()
   }
 }
 
@@ -253,7 +262,6 @@ private fun Groups(state: FindGroupUiState.Loaded, actions: FindGroupActions) {
 @Composable
 internal fun GroupEventCard(details: EventDetails, tag: String) {
   val event = details.event
-  val style = event.category.style
   val day = details.date.format(DAY_FORMAT)
   val time = timeText(details)
   Row(
@@ -264,17 +272,7 @@ internal fun GroupEventCard(details: EventDetails, tag: String) {
       horizontalArrangement = Arrangement.spacedBy(12.dp),
       verticalAlignment = Alignment.CenterVertically,
   ) {
-    Box(
-        Modifier.size(40.dp).background(style.tileColor, RoundedCornerShape(12.dp)),
-        contentAlignment = Alignment.Center,
-    ) {
-      Icon(
-          painterResource(style.icon),
-          contentDescription = stringResource(style.label),
-          tint = style.color,
-          modifier = Modifier.size(20.dp),
-      )
-    }
+    GroupCategoryTile(details)
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
       Text(event.title, style = MaterialTheme.typography.titleSmall, color = Ink)
       Text(
@@ -285,6 +283,23 @@ internal fun GroupEventCard(details: EventDetails, tag: String) {
           color = Ink2,
       )
     }
+  }
+}
+
+/** The category badge used by group event summaries. */
+@Composable
+internal fun GroupCategoryTile(details: EventDetails) {
+  val style = details.event.category.style
+  Box(
+      Modifier.size(40.dp).background(style.tileColor, RoundedCornerShape(12.dp)),
+      contentAlignment = Alignment.Center,
+  ) {
+    Icon(
+        painterResource(style.icon),
+        stringResource(style.label),
+        Modifier.size(20.dp),
+        tint = style.color,
+    )
   }
 }
 
