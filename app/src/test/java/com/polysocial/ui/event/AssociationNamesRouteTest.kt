@@ -1,5 +1,6 @@
 // Contributors: Claude (wrote these tests, #128).
 // Contributors: Claude (Opus 5.5, Anthropic) passed the detail fake groups and profiles, #233.
+// Contributors: Claude Opus 5.5 (passed the new reminder scheduler fake, second PR of #123).
 package com.polysocial.ui.event
 
 import androidx.compose.ui.test.assertIsDisplayed
@@ -19,6 +20,7 @@ import com.polysocial.model.group.FakeGroupRepository
 import com.polysocial.model.location.FakeLocationService
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.registration.FakeRegistrationRepository
+import com.polysocial.model.reminder.FakeReminderScheduler
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.ui.event.detail.EventDetailRoute
 import com.polysocial.ui.event.detail.EventDetailTags
@@ -100,6 +102,7 @@ class AssociationNamesRouteTest {
             FakeRegistrationRepository(),
             FakeGroupRepository(),
             FakePublicProfileRepository(),
+            FakeReminderScheduler(clock),
         )
     composeTestRule.setContent {
       PolySocialTheme { EventDetailRoute(onBack = {}, viewModel = viewModel) }

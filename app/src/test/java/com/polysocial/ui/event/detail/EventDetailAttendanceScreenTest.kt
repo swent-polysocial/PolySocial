@@ -1,5 +1,5 @@
 // Contributors: Claude Opus 5.5 (wrote these tests of "I'm going" on the event detail screen,
-// #122).
+// #122; passed the new reminder scheduler fake, second PR of #123).
 package com.polysocial.ui.event.detail
 
 import android.content.Context
@@ -27,6 +27,7 @@ import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.registration.CancelRegistrationResult
 import com.polysocial.model.registration.FakeRegistrationRepository
 import com.polysocial.model.registration.RegisterResult
+import com.polysocial.model.reminder.FakeReminderScheduler
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.ui.theme.PolySocialTheme
 import com.polysocial.utils.MainDispatcherRule
@@ -306,6 +307,9 @@ class EventDetailAttendanceScreenTest {
             registrations,
             FakeGroupRepository(),
             FakePublicProfileRepository(),
+            FakeReminderScheduler(
+                Clock.fixed(Instant.parse("2026-10-07T10:00:00Z"), ZoneOffset.UTC)
+            ),
         )
     composeTestRule.setContent {
       PolySocialTheme { EventDetailRoute(onBack = {}, viewModel = viewModel) }
@@ -451,6 +455,9 @@ class EventDetailOfflineRetryRegressionTest {
             registrations,
             FakeGroupRepository(),
             FakePublicProfileRepository(),
+            FakeReminderScheduler(
+                Clock.fixed(Instant.parse("2026-10-07T10:00:00Z"), ZoneOffset.UTC)
+            ),
         )
     composeTestRule.setContent {
       PolySocialTheme { EventDetailRoute(onBack = {}, viewModel = viewModel) }

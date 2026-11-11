@@ -9,8 +9,18 @@
 // Contributors: OpenAI Codex (connected the group card to the roster route, #234).
 // Contributors: Claude (Sonnet 5, Anthropic) greyed out Find a group until the student is going,
 // #244.
+// Contributors: Claude Opus 5.5 (the "Remind me" toggle, its permission explanation sheet and
+// denied note, from Figma 558:2, 558:119 and 558:186, second PR of #123).
 package com.polysocial.ui.event.detail
 
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
@@ -45,9 +55,11 @@ import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -57,11 +69,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.SpanStyle
@@ -76,17 +90,26 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
 import com.polysocial.model.event.EventCategory
+import com.polysocial.ui.common.ConfirmationSheet
 import com.polysocial.ui.common.LoadingState
 import com.polysocial.ui.common.OfflineBanner
+import com.polysocial.ui.common.SheetIcon
+import com.polysocial.ui.common.SheetSecondaryButton
+import com.polysocial.ui.common.SheetTitle
 import com.polysocial.ui.common.StateButton
 import com.polysocial.ui.event.VerifiedPill
 import com.polysocial.ui.event.style
 import com.polysocial.ui.group.YourGroupCard
 import com.polysocial.ui.theme.Accent
+import com.polysocial.ui.theme.AccentPale
 import com.polysocial.ui.theme.AccentText
 import com.polysocial.ui.theme.Bg
 import com.polysocial.ui.theme.Border
@@ -132,16 +155,32 @@ object EventDetailTags {
   const val ATTENDANCE_SAVING = "event_detail_attendance_saving"
   const val REGISTERED_NOTE = "event_detail_registered_note"
   const val CANCEL_REGISTRATION = "event_detail_cancel_registration"
+  const val REMINDER_ROW = "event_detail_reminder_row"
+  const val REMINDER_SWITCH = "event_detail_reminder_switch"
+  const val REMINDER_DENIED_NOTE = "event_detail_reminder_denied_note"
+  const val REMINDER_OPEN_SETTINGS = "event_detail_reminder_open_settings"
+  const val REMINDER_EXPLANATION_SHEET = "event_detail_reminder_explanation_sheet"
+  const val REMINDER_EXPLANATION_CONTINUE = "event_detail_reminder_explanation_continue"
+  const val REMINDER_EXPLANATION_NOT_NOW = "event_detail_reminder_explanation_not_now"
 }
 
 /**
  * What a student can do about going to the event (#122): say "I'm going", cancel it, and mark a
  * save failure's Snackbar as shown.
+ *
+ * Reminders (second PR of #123): [onReminderSwitchChange] is called with the switch's new value;
+ * the screen decides itself (it owns the permission UI) whether that needs the explanation sheet
+ * first. [onReminderExplanationContinue] and [onReminderExplanationDismiss] are the sheet's two
+ * buttons, and [onOpenNotificationSettings] is the denied note's link.
  */
 data class EventAttendanceActions(
     val onImGoing: () -> Unit = {},
     val onCancelRegistration: () -> Unit = {},
     val onMessageShown: (AttendanceFeedback) -> Unit = {},
+    val onReminderSwitchChange: (Boolean) -> Unit = {},
+    val onReminderExplanationContinue: () -> Unit = {},
+    val onReminderExplanationDismiss: () -> Unit = {},
+    val onOpenNotificationSettings: () -> Unit = {},
 )
 
 /**
@@ -159,6 +198,13 @@ data class EventOrganizerActions(
  * The event detail screen for the event in the navigation arguments (see [EventDetailViewModel]).
  * An organizer's Edit calls [onEdit], [onCancelled] is called once the event is cancelled, to leave
  * the screen, and Find a group calls [onFindGroup] (#233), until the event has ended.
+ *
+ * Android permission UI boundary for reminders (second PR of #123, like
+ * [com.polysocial.ui.map .MapRoute] for location): device permission reads and the system prompt
+ * live here, not in the ViewModel. Turning the switch on checks the current grant itself to decide
+ * between the fast path and the explanation sheet; "Open settings" opens the app's settings;
+ * resuming the screen while blocked rechecks the grant, so returning from Settings clears it
+ * without reopening the detail.
  */
 @Composable
 fun EventDetailRoute(
@@ -173,7 +219,45 @@ fun EventDetailRoute(
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   val cancelState by viewModel.cancelState.collectAsStateWithLifecycle()
   val attendanceFeedback by viewModel.attendanceFeedback.collectAsStateWithLifecycle()
+  val context = LocalContext.current
+  val lifecycleOwner = LocalLifecycleOwner.current
+  fun hasNotificationPermission() =
+      Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+          ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+              PackageManager.PERMISSION_GRANTED
+  val notificationPermissionLauncher =
+      rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        viewModel.onReminderPermissionResult(granted)
+      }
   LaunchedEffect(cancelState) { if (cancelState == CancelEventState.Cancelled) onCancelled() }
+  LaunchedEffect(state) {
+    val loaded = state as? EventDetailUiState.Loaded ?: return@LaunchedEffect
+    if (loaded.requestReminderPermission) {
+      viewModel.onReminderPermissionRequested()
+      // hasNotificationPermission() already keeps this flag false below API 33 (the permission
+      // doesn't exist there), but the launcher call itself still needs its own guard so lint can
+      // see it is never reached pre-33, like ReminderWorker's canPostNotifications(). Acknowledging
+      // the flag unconditionally above, instead of inside this guard, keeps it from getting stuck.
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+      }
+    }
+  }
+  val currentState by rememberUpdatedState(state)
+  DisposableEffect(lifecycleOwner) {
+    val observer = LifecycleEventObserver { _, event ->
+      val loaded = currentState as? EventDetailUiState.Loaded
+      if (
+          event == Lifecycle.Event.ON_RESUME &&
+              loaded?.remindersBlocked == true &&
+              hasNotificationPermission()
+      ) {
+        viewModel.onReminderPermissionResult(true)
+      }
+    }
+    lifecycleOwner.lifecycle.addObserver(observer)
+    onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+  }
   EventDetailScreen(
       state,
       onBack,
@@ -195,6 +279,24 @@ fun EventDetailRoute(
               onImGoing = viewModel::onImGoing,
               onCancelRegistration = viewModel::onCancelRegistration,
               onMessageShown = viewModel::onAttendanceFeedbackShown,
+              onReminderSwitchChange = { on ->
+                when {
+                  !on -> viewModel.onReminderToggle(false)
+                  hasNotificationPermission() -> viewModel.onReminderToggle(true)
+                  else -> viewModel.onReminderExplanationRequested()
+                }
+              },
+              onReminderExplanationContinue = viewModel::onReminderExplanationContinue,
+              onReminderExplanationDismiss = viewModel::onReminderExplanationDismiss,
+              onOpenNotificationSettings = {
+                context.startActivity(
+                    Intent(
+                            Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            Uri.fromParts("package", context.packageName, null),
+                        )
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                )
+              },
           ),
   )
 }
@@ -431,7 +533,8 @@ private fun EventContent(
         attendance.onCancelRegistration.takeIf { isGoing && state.yourGroup == null }
     if (state.hasEnded || (state.isOrganizer && findGroup == null)) {
       // The privacy notice says a registration can be cancelled at any time, even after the event
-      // (the rules already allow it), so the note stays even once the event has ended.
+      // (the rules already allow it), so the note stays even once the event has ended. A reminder
+      // for an event that's over makes no sense, so the toggle doesn't show here at all.
       if (isGoing) {
         RegisteredNote(
             enabled = !state.isSavingAttendance,
@@ -442,12 +545,31 @@ private fun EventContent(
       Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
     } else {
       if (isGoing) {
+        ReminderRow(
+            on = state.reminderOn,
+            blocked = state.remindersBlocked,
+            enabled = !state.isSavingAttendance,
+            onCheckedChange = attendance.onReminderSwitchChange,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 11.dp),
+        )
+        if (state.remindersBlocked) {
+          ReminderDeniedNote(
+              onOpenSettings = attendance.onOpenNotificationSettings,
+              modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 11.dp),
+          )
+        }
         RegisteredNote(
             enabled = !state.isSavingAttendance,
             onCancelRegistration = onCancelRegistration,
             // Figma leaves 23 dp above the bar; the link's 48 dp touch area takes 16 dp of it.
             modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 7.dp),
         )
+        if (state.showReminderExplanation) {
+          ReminderExplanationSheet(
+              onContinue = attendance.onReminderExplanationContinue,
+              onDismiss = attendance.onReminderExplanationDismiss,
+          )
+        }
       }
       ActionBar(state, attendance.onImGoing, findGroup, findGroupEnabled)
     }
@@ -535,6 +657,131 @@ private fun RegisteredNote(
                   .testTag(EventDetailTags.CANCEL_REGISTRATION),
       )
     }
+  }
+}
+
+/**
+ * Figma "Event detail · registered" (558:2): the bell icon, "Remind me 1 h before", a subtitle that
+ * reads [blocked]'s state, and a [Switch]. [onCheckedChange] gets the switch's new value as-is; the
+ * route decides whether that needs the permission explanation first.
+ */
+@Composable
+private fun ReminderRow(
+    on: Boolean,
+    blocked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+  val title = stringResource(R.string.reminder_toggle_title)
+  Row(
+      modifier.fillMaxWidth().testTag(EventDetailTags.REMINDER_ROW),
+      horizontalArrangement = Arrangement.spacedBy(12.dp),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Icon(painterResource(R.drawable.ic_bell), contentDescription = null, tint = Ink)
+    Column(Modifier.weight(1f)) {
+      Text(title, style = ROW_TITLE_STYLE, color = Ink)
+      Text(
+          stringResource(
+              if (blocked) R.string.reminder_toggle_subtitle_blocked
+              else R.string.reminder_toggle_subtitle
+          ),
+          style = ROW_SUBTITLE_STYLE,
+          color = Ink2,
+      )
+    }
+    Switch(
+        checked = on,
+        onCheckedChange = onCheckedChange,
+        enabled = enabled,
+        modifier =
+            Modifier.testTag(EventDetailTags.REMINDER_SWITCH).semantics {
+              contentDescription = title
+            },
+    )
+  }
+}
+
+/**
+ * Figma "Reminder · notifications denied" (558:186): a pale red note above the action bar, with a
+ * bold underlined "Open settings" link, like [RegisteredNote]'s "Cancel registration".
+ */
+@Composable
+private fun ReminderDeniedNote(onOpenSettings: () -> Unit, modifier: Modifier = Modifier) {
+  Row(
+      modifier
+          .fillMaxWidth()
+          .background(AccentPale, RoundedCornerShape(14.dp))
+          .padding(horizontal = 12.dp, vertical = 10.dp)
+          .testTag(EventDetailTags.REMINDER_DENIED_NOTE),
+      horizontalArrangement = Arrangement.spacedBy(6.dp),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Text(
+        stringResource(R.string.reminder_denied_note),
+        style = NOTE_STYLE,
+        color = AccentText,
+        modifier = Modifier.weight(1f),
+    )
+    Text(
+        stringResource(R.string.reminder_open_settings),
+        style =
+            NOTE_STYLE.copy(
+                fontWeight = FontWeight.Bold,
+                textDecoration = TextDecoration.Underline,
+            ),
+        color = AccentText,
+        modifier =
+            Modifier.minimumInteractiveComponentSize()
+                .clickable(role = Role.Button, onClick = onOpenSettings)
+                .testTag(EventDetailTags.REMINDER_OPEN_SETTINGS),
+    )
+  }
+}
+
+/**
+ * Figma "Reminder · permission explanation" (558:119): the bottom sheet shown before Android's own
+ * prompt, the first time the toggle turns on without a known granted permission.
+ */
+@Composable
+private fun ReminderExplanationSheet(onContinue: () -> Unit, onDismiss: () -> Unit) {
+  ConfirmationSheet(
+      locked = false,
+      onDismissRequest = onDismiss,
+      modifier = Modifier.testTag(EventDetailTags.REMINDER_EXPLANATION_SHEET),
+  ) { dismiss ->
+    SheetIcon(R.drawable.ic_bell, tint = AccentText)
+    SheetTitle(R.string.reminder_explanation_title)
+    Text(
+        text = stringResource(R.string.reminder_explanation_body),
+        style = MaterialTheme.typography.bodyMedium.exact(),
+        color = Ink2,
+    )
+    Row(
+        Modifier.fillMaxWidth()
+            .height(52.dp)
+            .clip(RoundedCornerShape(26.dp))
+            .background(Accent)
+            // Not dismiss(): Continue has its own outcome (requests the system permission), unlike
+            // Back/the scrim/"Not now", which all just close the sheet via onDismissRequest.
+            .clickable(role = Role.Button, onClick = onContinue)
+            .testTag(EventDetailTags.REMINDER_EXPLANATION_CONTINUE),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+      Text(
+          stringResource(R.string.reminder_explanation_continue),
+          style = MaterialTheme.typography.titleSmall,
+          color = Bg,
+      )
+    }
+    SheetSecondaryButton(
+        R.string.reminder_explanation_not_now,
+        enabled = true,
+        tag = EventDetailTags.REMINDER_EXPLANATION_NOT_NOW,
+        onClick = dismiss,
+    )
   }
 }
 
