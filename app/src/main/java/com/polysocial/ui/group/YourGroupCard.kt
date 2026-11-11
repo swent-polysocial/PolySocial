@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drew the group card on the event detail from #227's
 // Figma frame "Event detail · in a group", #233.
+// Contributors: OpenAI Codex (shared the group member colors with the roster, #234).
 package com.polysocial.ui.group
 
 import androidx.compose.foundation.background
@@ -97,4 +98,4 @@ fun YourGroupCard(group: YourGroup, onOpen: () -> Unit, modifier: Modifier = Mod
 }
 
 /** The other members' avatar colors, as in Figma: red, then orange, then green. */
-private val OTHERS_COLORS = listOf(3, 2, 1)
+internal val OTHERS_COLORS = listOf(3, 2, 1)

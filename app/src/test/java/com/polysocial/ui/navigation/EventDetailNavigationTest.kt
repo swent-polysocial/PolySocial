@@ -2,6 +2,7 @@
 // taps during the transition, after review; Edit event above the detail, #131; Edit event closing
 // during its enter transition, #131 review; the detail's Edit and Cancel event, #131).
 // Contributors: Claude (Opus 5.5, Anthropic) tested opening and leaving Find a group, #233.
+// Contributors: OpenAI Codex (tested the group roster route and return after leaving, #234).
 package com.polysocial.ui.navigation
 
 import androidx.activity.ComponentActivity
@@ -122,6 +123,10 @@ class EventDetailNavigationTest {
                     modifier = Modifier.testTag(DETAIL_FIND_GROUP),
                 ) {}
                 Button(
+                    onClick = navigation.onOpenGroup,
+                    modifier = Modifier.testTag("open_group_roster"),
+                ) {}
+                Button(
                     onClick = navigation.onCancelled,
                     modifier = Modifier.testTag(DETAIL_CANCELLED),
                 ) {}
@@ -156,9 +161,31 @@ class EventDetailNavigationTest {
                 ) {}
               }
             },
+            yourGroupContent = { _, onLeft ->
+              Button(onClick = onLeft, modifier = Modifier.testTag("finish_leave_group")) {
+                Text(
+                    navController.currentBackStackEntry
+                        ?.arguments
+                        ?.getString(EventDetailViewModel.EVENT_ID_ARG)
+                        .orEmpty()
+                )
+              }
+            },
         )
       }
     }
+  }
+
+  @Test
+  fun groupRosterOpensFullScreenAndLeavingReturnsToTheSameEvent() {
+    composeTestRule.onNodeWithTag(EventsTags.card(trickyId)).performClick()
+    composeTestRule.onNodeWithTag("open_group_roster").performClick()
+    composeTestRule.onNodeWithTag("finish_leave_group").assertTextEquals(trickyId)
+    assertBarsHidden()
+
+    composeTestRule.onNodeWithTag("finish_leave_group").performClick()
+
+    composeTestRule.onNodeWithTag(DETAIL_ID, useUnmergedTree = true).assertTextEquals(trickyId)
   }
 
   private fun pressBack() {
