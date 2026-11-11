@@ -2,10 +2,12 @@
 package com.polysocial.ui.chat
 
 import android.content.Context
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -17,11 +19,14 @@ import com.polysocial.R
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.chat.FakeMessageRepository
+import com.polysocial.model.chat.MAX_MESSAGE_LENGTH
 import com.polysocial.model.chat.MessageRepository
 import com.polysocial.model.chat.SendMessageResult
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.validEvent
 import com.polysocial.model.group.FakeGroupRepository
+import com.polysocial.model.group.GroupRepository
+import com.polysocial.model.group.MyGroupResult
 import com.polysocial.model.network.FakeNetworkMonitor
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.PublicProfile
@@ -32,8 +37,10 @@ import com.polysocial.utils.MainDispatcherRule
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -55,6 +62,7 @@ class GroupChatScreenTest {
   private val events =
       FakeEventRepository().apply { seed(validEvent(title = "Campus concert").copy(id = EVENT)) }
   private val network = FakeNetworkMonitor()
+  private val auth = FakeAuthRepository(AuthUser(ME, "student@epfl.ch", true))
   private val profiles =
       FakePublicProfileRepository(
           mutableMapOf(
@@ -116,32 +124,38 @@ class GroupChatScreenTest {
   fun lostAcknowledgementCanBeRetriedWithoutADuplicate() {
     val finish = CompletableDeferred<Unit>()
     var attempts = 0
-    show(
-        object : MessageRepository by messages {
-          override suspend fun sendMessage(
-              eventId: String,
-              groupId: String,
-              text: String,
-              messageId: String?,
-          ): SendMessageResult {
-            if (attempts++ != 0) return messages.sendMessage(eventId, groupId, text, messageId)
-            finish.await()
-            assertEquals(
-                SendMessageResult.Sent,
-                messages.sendMessage(eventId, groupId, text, messageId),
-            )
-            return SendMessageResult.UnexpectedError
-          }
-        }
-    )
+    val viewModel =
+        show(
+            object : MessageRepository by messages {
+              override suspend fun sendMessage(
+                  eventId: String,
+                  groupId: String,
+                  text: String,
+                  messageId: String?,
+              ): SendMessageResult {
+                if (attempts++ != 0) return messages.sendMessage(eventId, groupId, text, messageId)
+                assertEquals(
+                    SendMessageResult.Sent,
+                    messages.sendMessage(eventId, groupId, text, messageId),
+                )
+                finish.await()
+                error("Acknowledgement was lost")
+              }
+            }
+        )
     enter("I'll wait outside")
     tap(ChatTags.SEND)
     text(R.string.chat_sending).assertIsDisplayed()
+    compose.onAllNodesWithText("I'll wait outside").assertCountEquals(1)
     compose.onNodeWithTag(ChatTags.SEND).assertIsNotEnabled()
+    viewModel.edit("Edited during send")
+    viewModel.send()
     finish.complete(Unit)
     settle()
     text(R.string.chat_send_failed).assertIsDisplayed()
     compose.onNodeWithTag(ChatTags.INPUT).assertTextContains("I'll wait outside")
+    viewModel.edit("  I'll wait outside  ")
+    settle()
     tap(ChatTags.RETRY_SEND)
     assertEquals(1, messages.messagesOf(EVENT, group.id).size)
     assertEquals(2, attempts)
@@ -149,9 +163,14 @@ class GroupChatScreenTest {
 
   @Test
   fun readFailureCanBeRetriedAndLosingMembershipClearsTheChat() {
-    messages.readFailure = FakeMessageRepository.ReadFailure.UNEXPECTED
+    messages.readFailure = FakeMessageRepository.ReadFailure.NETWORK
     show()
     text(R.string.chat_read_failed).assertIsDisplayed()
+
+    messages.readFailure = FakeMessageRepository.ReadFailure.UNEXPECTED
+    tap(C.Tag.error_retry)
+    text(R.string.chat_read_failed).assertIsDisplayed()
+
     messages.readFailure = null
     messages.seedMessage(EVENT, group.id, "private", PEER, "Group plan", NOW)
     tap(C.Tag.error_retry)
@@ -167,7 +186,116 @@ class GroupChatScreenTest {
     compose.onNodeWithText("Unsent draft").assertDoesNotExist()
   }
 
-  private fun show(repository: MessageRepository = messages) {
+  @Test
+  fun aSlowMembershipReadTimesOutAndOnlyTheOriginalAccountCanSend() {
+    val snapshots = MutableStateFlow<MyGroupResult>(MyGroupResult.Success(null, fromCache = true))
+    val viewModel =
+        show(
+            groupRepository =
+                object : GroupRepository by groups {
+                  override fun observeMyGroup(eventId: String) = snapshots
+                }
+        )
+    text(R.string.chat_loading).assertIsDisplayed()
+    enter("Meet outside")
+    viewModel.send()
+    assertTrue(messages.messagesOf(EVENT, group.id).isEmpty())
+
+    main.dispatcher.scheduler.advanceTimeBy(10_001)
+    settle()
+    text(R.string.chat_read_failed).assertIsDisplayed()
+    snapshots.value = MyGroupResult.Success(group, fromCache = false)
+    settle()
+
+    auth.user = null
+    viewModel.send()
+    settle()
+    assertTrue(messages.messagesOf(EVENT, group.id).isEmpty())
+    assertEquals("Meet outside", viewModel.state.value.draft.text)
+
+    auth.user = AuthUser(ME, "student@epfl.ch", true)
+    tap(ChatTags.SEND)
+    assertEquals("Meet outside", messages.messagesOf(EVENT, group.id).single().text)
+  }
+
+  @Test
+  fun aStaleRouteCannotReadTheChatAfterMembershipChanges() {
+    val membership = MutableStateFlow<MyGroupResult>(MyGroupResult.NetworkError)
+    var historyReads = 0
+    show(
+        repository =
+            object : MessageRepository by messages {
+              override fun observeMessages(eventId: String, groupId: String) =
+                  messages.observeMessages(eventId, groupId).also { historyReads++ }
+            },
+        groupRepository =
+            object : GroupRepository by groups {
+              override fun observeMyGroup(eventId: String) = membership
+            },
+    )
+    text(R.string.chat_read_failed).assertIsDisplayed()
+    membership.value = MyGroupResult.UnexpectedError
+    settle()
+    text(R.string.chat_read_failed).assertIsDisplayed()
+
+    membership.value = MyGroupResult.Success(group.copy(id = "another-group"), fromCache = false)
+    settle()
+    text(R.string.chat_membership_ended).assertIsDisplayed()
+
+    membership.value =
+        MyGroupResult.Success(group.copy(memberUids = listOf(PEER)), fromCache = false)
+    settle()
+    text(R.string.chat_membership_ended).assertIsDisplayed()
+    assertEquals(0, historyReads)
+  }
+
+  @Test
+  fun aCancelledSendKeepsItsDraftAndCanBeSentAfterEditing() {
+    var attempts = 0
+    val viewModel =
+        show(
+            object : MessageRepository by messages {
+              override suspend fun sendMessage(
+                  eventId: String,
+                  groupId: String,
+                  text: String,
+                  messageId: String?,
+              ): SendMessageResult {
+                if (attempts++ == 0) throw CancellationException("Test cancelled send")
+                return messages.sendMessage(eventId, groupId, text, messageId)
+              }
+            }
+        )
+    enter("Meet outside")
+    tap(ChatTags.SEND)
+    assertEquals("Meet outside", viewModel.state.value.draft.text)
+    assertTrue(messages.messagesOf(EVENT, group.id).isEmpty())
+
+    viewModel.edit("a".repeat(MAX_MESSAGE_LENGTH + 1))
+    assertEquals("Meet outside", viewModel.state.value.draft.text)
+    viewModel.edit("Meet inside")
+    settle()
+    tap(ChatTags.SEND)
+    assertEquals("Meet inside", messages.messagesOf(EVENT, group.id).single().text)
+  }
+
+  @Test
+  fun aPrivateEventDoesNotHideChatAndAdjacentMessagesShareTheSenderLabel() {
+    events.deniedIds += EVENT
+    messages.seedMessage(EVENT, group.id, "first", PEER, "First message", NOW)
+    messages.seedMessage(EVENT, group.id, "second", PEER, "Second message", NOW.plusSeconds(1))
+    show()
+
+    text(R.string.group_chat_title).assertIsDisplayed()
+    compose.onNodeWithText("First message").assertIsDisplayed()
+    compose.onNodeWithText("Second message").assertIsDisplayed()
+    compose.onAllNodesWithText("Test Peer").assertCountEquals(1)
+  }
+
+  private fun show(
+      repository: MessageRepository = messages,
+      groupRepository: GroupRepository = groups,
+  ): GroupChatViewModel {
     val viewModel =
         GroupChatViewModel(
             SavedStateHandle(
@@ -176,16 +304,17 @@ class GroupChatScreenTest {
                     GroupChatViewModel.GROUP_ID_ARG to group.id,
                 )
             ),
-            groups,
+            groupRepository,
             repository,
             profiles,
-            FakeAuthRepository(AuthUser(ME, "student@epfl.ch", true)),
+            auth,
             network,
             events,
             Clock.fixed(NOW, ZoneId.of("Europe/Zurich")),
         )
     compose.setContent { PolySocialTheme { GroupChatRoute(onBack = {}, viewModel = viewModel) } }
     settle()
+    return viewModel
   }
 
   private fun text(id: Int) = compose.onNodeWithText(context.getString(id))
