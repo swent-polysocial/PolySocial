@@ -1,4 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #237).
+// Contributors: OpenAI Codex (tested successful retry and conflicting message IDs, #238).
 package com.polysocial.model.chat
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -78,9 +79,11 @@ class FirestoreMessageRepositoryTest {
     every { group.collection(MESSAGES_COLLECTION) } returns messages
     every { messages.document() } returns newMessage
     every { transaction.set(newMessage, capture(written)) } returns transaction
-    every { db.runTransaction(capture(options), any<Transaction.Function<Transaction>>()) } answers
+    every {
+      db.runTransaction(capture(options), any<Transaction.Function<SendMessageResult>>())
+    } answers
         {
-          Tasks.forResult(secondArg<Transaction.Function<Transaction>>().apply(transaction))
+          Tasks.forResult(secondArg<Transaction.Function<SendMessageResult>>().apply(transaction))
         }
   }
 
@@ -89,13 +92,13 @@ class FirestoreMessageRepositoryTest {
 
   private fun failTheWriteWith(code: FirebaseFirestoreException.Code) {
     every {
-      db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Transaction>>())
+      db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<SendMessageResult>>())
     } returns Tasks.forException(failed(code))
   }
 
   private fun verifyNoWrite() {
     verify(exactly = 0) {
-      db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Transaction>>())
+      db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<SendMessageResult>>())
     }
     verify(exactly = 0) { transaction.set(any<DocumentReference>(), any()) }
   }
@@ -110,6 +113,46 @@ class FirestoreMessageRepositoryTest {
     )
 
     assertEquals(newMessageFirestoreMap(STUDENT, "See you at 6?"), written.captured)
+  }
+
+  @Test
+  fun aNewStableIdCreatesAMessageAndAnInvalidIdIsRefused() = runTest {
+    val missing = mockk<DocumentSnapshot>()
+    every { messages.document("draft-id") } returns newMessage
+    every { transaction.get(newMessage) } returns missing
+    every { missing.exists() } returns false
+
+    assertEquals(
+        SendMessageResult.Sent,
+        repository.sendMessage(EVENT, GROUP, "New draft", "draft-id"),
+    )
+    assertEquals(
+        SendMessageResult.UnexpectedError,
+        repository.sendMessage(EVENT, GROUP, "New draft", "not/an/id"),
+    )
+    verify(exactly = 1) {
+      transaction.set(newMessage, match<Map<String, Any>> { it["text"] == "New draft" })
+    }
+  }
+
+  @Test
+  fun aStableIdReturnsSentForTheSameDraftWithoutOverwritingIt() = runTest {
+    val existing = mockk<DocumentSnapshot>()
+    every { messages.document("retry-id") } returns newMessage
+    every { transaction.get(newMessage) } returns existing
+    every { existing.exists() } returns true
+    every { newMessage.id } returns "retry-id"
+    every { existing.data } returns stored(STUDENT, "See you at 6?", timestamp(1L))
+
+    assertEquals(
+        SendMessageResult.Sent,
+        repository.sendMessage(EVENT, GROUP, " See you at 6? ", "retry-id"),
+    )
+    assertEquals(
+        SendMessageResult.UnexpectedError,
+        repository.sendMessage(EVENT, GROUP, "Different message", "retry-id"),
+    )
+    verify(exactly = 0) { transaction.set(newMessage, any<Map<String, Any>>()) }
   }
 
   @Test
@@ -207,7 +250,7 @@ class FirestoreMessageRepositoryTest {
   @Test
   fun sendMessage_aTaskCancelledWhileTheCallerRuns_isAnUnexpectedError() = runTest {
     every {
-      db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Transaction>>())
+      db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<SendMessageResult>>())
     } returns Tasks.forCanceled()
 
     assertEquals(SendMessageResult.UnexpectedError, repository.sendMessage(EVENT, GROUP, "Hi"))
@@ -216,8 +259,8 @@ class FirestoreMessageRepositoryTest {
   @Test
   fun sendMessage_cancellingTheCaller_stillCancelsIt() = runTest {
     every {
-      db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Transaction>>())
-    } returns TaskCompletionSource<Transaction>().task
+      db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<SendMessageResult>>())
+    } returns TaskCompletionSource<SendMessageResult>().task
     var result: SendMessageResult? = null
     val call =
         launch(start = CoroutineStart.UNDISPATCHED) {

@@ -1,4 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote this fake for tests, #237).
+// Contributors: OpenAI Codex (modeled same-ID retries in the chat fake, #238).
 package com.polysocial.model.chat
 
 import com.polysocial.model.event.isReadableEventId
@@ -107,11 +108,12 @@ class FakeMessageRepository(var currentUid: String? = "test-student") : MessageR
       eventId: String,
       groupId: String,
       text: String,
+      messageId: String?,
   ): SendMessageResult {
     validateMessageText(text)?.let {
       return SendMessageResult.Invalid(it)
     }
-    if (!isReadableEventId(eventId) || !isReadableEventId(groupId)) {
+    if (!listOfNotNull(eventId, groupId, messageId).all(::isReadableEventId)) {
       return SendMessageResult.UnexpectedError
     }
     val uid = currentUid ?: return SendMessageResult.UnexpectedError
@@ -121,11 +123,17 @@ class FakeMessageRepository(var currentUid: String? = "test-student") : MessageR
     }
     val key = GroupKey(eventId, groupId)
     if (!isMember(key, uid)) return SendMessageResult.UnexpectedError
+    val trimmed = text.trim()
+    val previous = messagesOf(eventId, groupId).firstOrNull { it.id == messageId }
+    if (previous != null) {
+      return if (previous.senderId == uid && previous.text == trimmed) SendMessageResult.Sent
+      else SendMessageResult.UnexpectedError
+    }
     sent++
     // Like the server's time, after every message already stored in the group.
     val afterLatest = messagesOf(eventId, groupId).lastOrNull()?.createdAt?.plusSeconds(1)
     val createdAt = listOfNotNull(FIRST_SENT_AT.plusSeconds(sent.toLong()), afterLatest).max()
-    store(key, Message("message-$sent", uid, text.trim(), createdAt))
+    store(key, Message(messageId ?: "message-$sent", uid, trimmed, createdAt))
     return SendMessageResult.Sent
   }
 
