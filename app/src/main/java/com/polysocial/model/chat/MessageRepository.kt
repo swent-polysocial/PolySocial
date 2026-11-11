@@ -1,5 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (drafted the group chat repository contract, #237).
-// Contributors: OpenAI Codex (added and documented the retry ID, #238).
+// Contributors: OpenAI Codex (added the retry ID and removed its legacy Kotlin bridge, #238).
 package com.polysocial.model.chat
 
 import kotlinx.coroutines.flow.Flow
@@ -57,7 +57,11 @@ sealed interface SendMessageResult {
  * Only the group's members read and send, each message as themselves, and nobody edits or deletes
  * one; associations never reach messages. The Security Rules enforce it, so a non-member's read or
  * send fails with an `UnexpectedError`.
+ *
+ * All callers compile with the app, so the default argument needs only the interface's JVM
+ * implementation.
  */
+@JvmDefaultWithoutCompatibility
 interface MessageRepository {
   /**
    * Observes the messages of the group [groupId] of the event [eventId], oldest first by the
