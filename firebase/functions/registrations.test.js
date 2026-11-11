@@ -1,5 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the tests of deleting registrations with their
-// event and account, #275.
+// event and account, #275; an event written again keeps its registrations, after review.
 "use strict";
 
 // Unit tests with fakes, no emulator: node firebase/functions/registrations.test.js
@@ -18,10 +18,11 @@ function backendError(code) {
 }
 
 /**
- * A fake Firestore holding registrations `events/{eventId}/attendees/{uid}`, as paths. It answers
- * an event's attendees and the collection-group query on `uid`, with `limit`, and batches whose
- * deletes apply together at commit. `commits` counts the commits; `failCommit` makes the next one
- * throw; `onCommit` runs after each commit, to write in between.
+ * A fake Firestore holding documents as paths: events `events/{eventId}` and registrations
+ * `events/{eventId}/attendees/{uid}`. It answers an event's attendees and the collection-group
+ * query on `uid`, with `limit`, and runs batches and transactions (reading an event or a query)
+ * whose deletes apply together at commit. `commits` counts the commits that deleted something;
+ * `failCommit` makes the next one throw; `onCommit` runs after each commit, to write in between.
  */
 function fakeFirestore(paths) {
   const documents = new Set(paths);
@@ -31,12 +32,24 @@ function fakeFirestore(paths) {
     limit: (n) => query(matches, n),
     async get() {
       const docs = [...documents].filter(matches).slice(0, max).map((path) => ({ ref: { path } }));
-      return { empty: docs.length === 0, docs };
+      return { empty: docs.length === 0, size: docs.length, docs };
     },
   });
+  async function commit(deletes) {
+    assert.ok(deletes.length <= MAX_BATCH_WRITES, "a commit holds at most 500 writes");
+    if (state.failCommit) {
+      const error = state.failCommit;
+      state.failCommit = null;
+      throw error;
+    }
+    for (const path of deletes) documents.delete(path);
+    if (deletes.length > 0) state.commits += 1;
+    if (state.onCommit) state.onCommit(documents);
+  }
   const db = {
     collection: (events) => ({
       doc: (eventId) => ({
+        path: `${events}/${eventId}`,
         collection: (attendees) =>
           query((path) => path.startsWith(`${events}/${eventId}/${attendees}/`)),
       }),
@@ -52,18 +65,19 @@ function fakeFirestore(paths) {
       const deletes = [];
       return {
         delete: (ref) => deletes.push(ref.path),
-        async commit() {
-          assert.ok(deletes.length <= MAX_BATCH_WRITES, "a batch holds at most 500 writes");
-          if (state.failCommit) {
-            const error = state.failCommit;
-            state.failCommit = null;
-            throw error;
-          }
-          for (const path of deletes) documents.delete(path);
-          state.commits += 1;
-          if (state.onCommit) state.onCommit(documents);
-        },
+        commit: () => commit(deletes),
       };
+    },
+    async runTransaction(update) {
+      const deletes = [];
+      const result = await update({
+        // A document reference has a path; a query is read with get().
+        get: async (target) =>
+          target.path === undefined ? target.get() : { exists: documents.has(target.path) },
+        delete: (ref) => deletes.push(ref.path),
+      });
+      await commit(deletes);
+      return result;
     },
   };
   return { db, documents, state };
@@ -151,6 +165,35 @@ test("a failure without a code logs a null code", async () => {
 
   await assert.rejects(deleteRegistrationsOfDeletedEvent({ eventId: "e1", db, logger }), TypeError);
   assert.deepEqual(logs, [["error", "deleteEventRegistrations failed", { code: null }]]);
+});
+
+// The demo seed script deletes its events and writes them back under the same IDs, with new
+// registrations, before this trigger may run.
+test("an event written again before the trigger runs keeps its registrations", async () => {
+  const { db, documents, state } = fakeFirestore(["events/e1", "events/e1/attendees/u1"]);
+
+  await deleteRegistrationsOfDeletedEvent({ eventId: "e1", db, logger: fakeLogger().logger });
+
+  assert.deepEqual([...documents], ["events/e1", "events/e1/attendees/u1"]);
+  assert.equal(state.commits, 0);
+});
+
+test("an event written again while deleting keeps the registrations written with it", async () => {
+  const count = MAX_BATCH_WRITES + 1;
+  const paths = Array.from({ length: count }, (_, i) => `events/e1/attendees/old${i}`);
+  const { db, documents, state } = fakeFirestore(paths);
+  state.onCommit = (stored) => {
+    state.onCommit = null;
+    stored.add("events/e1");
+    stored.add("events/e1/attendees/new");
+  };
+
+  await deleteRegistrationsOfDeletedEvent({ eventId: "e1", db, logger: fakeLogger().logger });
+
+  // The first batch went before the event came back; the rest now belongs to the new event.
+  assert.equal(state.commits, 1);
+  assert.ok(documents.has("events/e1/attendees/new"));
+  assert.equal(documents.size, 3);
 });
 
 test("a user's registrations are deleted across events, other users' are kept", async () => {

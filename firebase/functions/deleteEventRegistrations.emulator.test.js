@@ -1,5 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the emulator test of the trigger deleting a
-// deleted event's registrations, #275.
+// deleted event's registrations, #275; an event written again, after review.
 "use strict";
 
 // Deletes events in the Firestore emulator and waits for the deleteEventRegistrations trigger,
@@ -100,4 +100,26 @@ test("an event with more registrations than one batch holds loses them all", asy
   await seedEvent("crowded", uids);
   await db.doc("events/crowded").delete();
   await waitForRegistrations([]);
+});
+
+// The demo seed script deletes its events and writes them back under the same IDs, with new
+// registrations, in one batch.
+test("an event written again under its ID keeps its new registrations", async () => {
+  await seedEvent("again", ["u1"]);
+  await seedEvent("gone", ["u1"]);
+
+  await db.doc("events/again").delete();
+  await seedEvent("again", ["u2"]);
+  await db.doc("events/gone").delete();
+
+  // Wait for the later deletion's trigger, then give the earlier one a margin to run too. The
+  // old registration may be gone or kept, depending on whether that trigger ran before the event
+  // came back; the new one must stay.
+  const deadline = Date.now() + TIMEOUT_MS;
+  while ((await registrations()).some((path) => path.startsWith("events/gone/"))) {
+    if (Date.now() > deadline) assert.fail("The trigger didn't run in time.");
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+  assert.ok((await registrations()).includes("events/again/attendees/u2"));
 });
