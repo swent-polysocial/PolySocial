@@ -32,11 +32,12 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
 
 internal data class ChatState(
@@ -103,20 +104,23 @@ constructor(
 
   private val history = reads.flatMapLatest {
     val updates =
-        groups.observeMyGroup(eventId).distinctUntilChanged().flatMapLatest { result ->
+        groups.observeMyGroup(eventId).distinctUntilChanged().transformLatest<
+            MyGroupResult,
+            ChatHistory,
+        > { result ->
           when (result) {
-            MyGroupResult.Loading -> flowOf(ChatHistory.Loading)
+            MyGroupResult.Loading -> emit(ChatHistory.Loading)
             MyGroupResult.NetworkError,
-            MyGroupResult.UnexpectedError -> flowOf(ChatHistory.Failed)
+            MyGroupResult.UnexpectedError -> emit(ChatHistory.Failed)
             is MyGroupResult.Success -> {
               val group = result.group
               when {
-                group == null && result.fromCache -> flowOf(ChatHistory.Loading)
+                group == null && result.fromCache -> emit(ChatHistory.Loading)
                 group == null || group.id != groupId || myUid !in group.memberUids -> {
                   draft.value = ChatDraft()
-                  flowOf(ChatHistory.Left)
+                  emit(ChatHistory.Left)
                 }
-                else -> observeMessages(group.memberUids)
+                else -> emitAll(observeMessages(group.memberUids))
               }
             }
           }
