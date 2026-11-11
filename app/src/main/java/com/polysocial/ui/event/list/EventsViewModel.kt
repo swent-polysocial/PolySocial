@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (dismissal-aware location permission handling, #278).
 // Contributors: Claude (state of the Events tab's list, #105; offline only when the device is,
 // after review; search and filters, and the one-off location and its permission for the distance
 // filter, #115; the names of the associations whose events it lists, #128; the selection's saved
@@ -209,9 +210,10 @@ constructor(
 
   /**
    * *Turn on* for the distance filters. With the permission, it reads the location again (it was
-   * unavailable). Without it, the screen asks for it if Android still can, which it can the first
-   * time or when [showRationale] (Android's `shouldShowRequestPermissionRationale`) is true, and
-   * opens the app's settings otherwise.
+   * unavailable). Without it, the screen asks again if no completed denial has been received (a
+   * dismissed dialog is not a refusal), or when [showRationale] (Android's
+   * `shouldShowRequestPermissionRationale`) is true. Only an actual denial with no rationale opens
+   * the app's settings.
    */
   fun turnOnLocation(showRationale: Boolean): LocationAction =
       when {
@@ -219,7 +221,7 @@ constructor(
           readLocation()
           LocationAction.NONE
         }
-        locationService.shouldRequestPermission() || showRationale -> {
+        !locationService.wasPermissionDenied() || showRationale -> {
           locationService.markPermissionRequested()
           LocationAction.REQUEST_PERMISSION
         }
@@ -227,7 +229,10 @@ constructor(
       }
 
   /** After the permission dialog: if granted, the distance filters can be used. */
-  fun onPermissionResult() = onResume()
+  fun onPermissionResult(granted: Boolean? = null) {
+    if (granted != null) locationService.recordPermissionResult(granted)
+    onResume()
+  }
 
   /**
    * When the tab comes back to the foreground, maybe from the settings: a newly granted permission

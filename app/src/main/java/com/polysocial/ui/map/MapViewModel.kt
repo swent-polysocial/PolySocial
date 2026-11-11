@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (dismissal-aware location permission handling, #278).
 // Contributors: OpenAI Codex (map state, selection, day labels and failure handling for #50;
 // one-off location permission and distance state for #51).
 // Contributors: Claude (the names of the associations with events on the map, #128; the search
@@ -202,7 +203,8 @@ open class MapViewModel(
   }
 
   /** Rechecks actual Android grants: approximate permission is enough for a distance badge. */
-  fun onPermissionResult() {
+  fun onPermissionResult(granted: Boolean? = null) {
+    if (granted != null) locationService.recordPermissionResult(granted)
     when {
       !locationService.hasPermission() -> {
         locationRequest?.cancel()
@@ -217,13 +219,16 @@ open class MapViewModel(
   }
 
   /**
-   * An explicit student action can retry; returning to this tab does not repeat a prompt or fix.
+   * An explicit student action can retry; returning to this tab does not repeat a prompt or fix. A
+   * completed denial with no Android [showRationale] opens Settings; a dismissed dialog can ask
+   * again even without a rationale.
    */
-  fun turnOnLocation(canRequestPermission: Boolean = true) {
+  fun turnOnLocation(showRationale: Boolean = false) {
     if (locationService.hasPermission()) readLocation()
     else
         setLocation(
-            if (canRequestPermission) MapLocationState.RequestPermission
+            if (showRationale || !locationService.wasPermissionDenied())
+                MapLocationState.RequestPermission
             else MapLocationState.OpenSettings
         )
   }

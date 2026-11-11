@@ -1,4 +1,5 @@
 // Contributors: OpenAI Codex (permission, one-off fix and cancellation tests for #51).
+// Contributors: OpenAI Codex (denial history and coarse fused-provider regressions, #278).
 package com.polysocial.model.location
 
 import android.Manifest
@@ -32,6 +33,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
 
 @RunWith(AndroidJUnit4::class)
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -107,6 +109,60 @@ class AndroidLocationServiceTest {
     permission(coarse = true, fine = false)
     assertTrue(service.hasPermission())
     assertFalse(service.shouldRequestPermission())
+  }
+
+  @Test
+  fun promptHistory_doesNotTreatDismissalAsDenial_andCompletedResultsSurviveRecreation() {
+    service.markPermissionRequested()
+    assertFalse(AndroidLocationService(context).wasPermissionDenied())
+    service.recordPermissionResult(false)
+    assertTrue(AndroidLocationService(context).wasPermissionDenied())
+    service.recordPermissionResult(true)
+    assertFalse(AndroidLocationService(context).wasPermissionDenied())
+  }
+
+  @Test
+  fun grantObservedInSettings_clearsEarlierDenialBeforeALaterRevocation() {
+    service.recordPermissionResult(false)
+    permission(coarse = true, fine = false)
+    assertTrue(service.hasPermission())
+    permission(coarse = false, fine = false)
+    assertFalse(AndroidLocationService(context).wasPermissionDenied())
+  }
+
+  @Test
+  @Config(sdk = [31])
+  fun coarsePermission_readsFusedFixWhenNetworkProviderIsUnavailable() = runTest {
+    permission(coarse = true, fine = false)
+    every { manager.isProviderEnabled(LocationManager.FUSED_PROVIDER) } returns true
+    val request = async { service.currentLocation() }
+    yield()
+    assertEquals(LocationManager.FUSED_PROVIDER, provider.captured)
+    callback.captured.accept(fix())
+    assertEquals(LocationResult.Available(Coordinates(1.0, 2.0)), request.await())
+    assertTrue(signal.captured.isCanceled)
+    verify(exactly = 0) { manager.isProviderEnabled(LocationManager.GPS_PROVIDER) }
+  }
+
+  @Test
+  fun fusedProvider_isPreferredEvenWhenNetworkProviderIsEnabled() = runTest {
+    permission(coarse = true, fine = false)
+    every { manager.isProviderEnabled(LocationManager.FUSED_PROVIDER) } returns true
+    every { manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) } returns true
+    val request = async { service.currentLocation() }
+    yield()
+    assertEquals(LocationManager.FUSED_PROVIDER, provider.captured)
+    callback.captured.accept(fix())
+    assertEquals(LocationResult.Available(Coordinates(1.0, 2.0)), request.await())
+  }
+
+  @Test
+  @Config(sdk = [30])
+  fun olderAndroid_withoutNetworkDoesNotProbeTheNewFusedProvider() = runTest {
+    permission(coarse = true, fine = false)
+    assertEquals(LocationResult.Unavailable, service.currentLocation())
+    verify(exactly = 0) { manager.isProviderEnabled(LocationManager.FUSED_PROVIDER) }
+    assertFalse(callback.isCaptured)
   }
 
   @Test

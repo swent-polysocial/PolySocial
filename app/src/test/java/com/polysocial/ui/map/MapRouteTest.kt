@@ -1,4 +1,5 @@
 // Contributors: OpenAI Codex (permission launcher and foreground lifecycle integration tests, #51).
+// Contributors: OpenAI Codex (dismissed permission dialog regression, #278).
 // Contributors: Claude (the association names dependency, #128).
 package com.polysocial.ui.map
 
@@ -262,6 +263,23 @@ class MapRouteTest {
     assertEquals(listOf(Manifest.permission.ACCESS_COARSE_LOCATION), registry.launches.last())
   }
 
+  @Test
+  fun dismissedDialog_turnOnAsksAgainEvenWithoutARationale() {
+    showRationale = false
+    show()
+    composeRule.runOnIdle { registry.dismiss() }
+    settle()
+    assertEquals(MapLocationState.Denied, viewModel.uiState.value.locationState)
+    composeRule.onNodeWithTag(MapTags.LOCATION_ACTION).performClick()
+    settle()
+    assertEquals(2, registry.launches.size)
+    assertEquals(0, location.requestCount)
+    assertNull(
+        shadowOf(ApplicationProvider.getApplicationContext<android.app.Application>())
+            .nextStartedActivity
+    )
+  }
+
   private class ControlledLifecycleOwner : LifecycleOwner {
     val registry = LifecycleRegistry.createUnsafe(this)
     override val lifecycle: Lifecycle = registry
@@ -294,6 +312,10 @@ class MapRouteTest {
               Manifest.permission.ACCESS_FINE_LOCATION to false,
           ),
       )
+    }
+
+    fun dismiss() {
+      dispatchResult(checkNotNull(requestCode), emptyMap<String, Boolean>())
     }
   }
 }

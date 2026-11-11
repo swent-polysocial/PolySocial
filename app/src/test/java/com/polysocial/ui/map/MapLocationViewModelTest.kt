@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (dismissal-aware location permission handling and tests, #278).
 // Contributors: OpenAI Codex (optional Map permission and one-off location lifecycle tests for
 // #51).
 // Contributors: Claude (the association names dependency, #128).
@@ -265,9 +266,10 @@ class MapLocationViewModelTest {
   @Test
   fun permanentDenialOffersSettingsAndConsumesTheAction() {
     service.markPermissionRequested()
+    service.recordPermissionResult(false)
     val vm = model()
     vm.onMapEntered()
-    vm.turnOnLocation(canRequestPermission = false)
+    vm.turnOnLocation(showRationale = false)
     assertEquals(MapLocationState.OpenSettings, vm.uiState.value.locationState)
     assertEquals(0, service.requestCount)
     vm.onSettingsOpened()

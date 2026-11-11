@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (dismissal-aware location permission handling and tests, #278).
 // Contributors: Claude (wrote these tests, #105; search, filters and distance, #115; the
 // association names dependency, #128).
 package com.polysocial.ui.event.list
@@ -522,6 +523,10 @@ class EventsViewModelTest {
 
           override fun markPermissionRequested() = Unit
 
+          override fun wasPermissionDenied() = false
+
+          override fun recordPermissionResult(granted: Boolean) = Unit
+
           override suspend fun currentLocation(): LocationResult =
               throw IllegalStateException("No provider")
         }
@@ -605,6 +610,7 @@ class EventsViewModelTest {
   fun turnOn_afterARefusal_asksAgainOnlyIfAndroidStillCan() {
     location.permissionGranted = false
     location.markPermissionRequested()
+    location.recordPermissionResult(false)
     val viewModel = nearAndFarViewModel()
 
     assertEquals(LocationAction.REQUEST_PERMISSION, viewModel.turnOnLocation(showRationale = true))

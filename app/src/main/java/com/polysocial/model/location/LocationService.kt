@@ -1,4 +1,4 @@
-// Contributors: OpenAI Codex (one-off location and permission contract for #51).
+// Contributors: OpenAI Codex (one-off location contract, #51; distinguish dismissed prompts, #278).
 package com.polysocial.model.location
 
 import com.polysocial.model.event.Coordinates
@@ -20,12 +20,15 @@ sealed interface LocationResult {
 }
 
 /**
- * Foreground, one-off device location access for the Map tab. No location history is stored or sent
- * to a server. The Map asks only for approximate permission, which is sufficient for distance
- * badges. The service uses the network provider and never requests precise or background access.
+ * Foreground, one-off device location access for Map and Events. No location history is stored or
+ * sent to a server. The Map asks only for approximate permission, which is sufficient for distance
+ * badges. The service uses coarse-capable providers and never requests precise or background
+ * access.
  */
 interface LocationService {
-  /** Whether the declared approximate-location permission is currently granted. */
+  /**
+   * Whether approximate permission is granted; observing a grant clears previous denial history.
+   */
   fun hasPermission(): Boolean
 
   /** Whether the first Map entry should show the permission prompt. */
@@ -33,6 +36,12 @@ interface LocationService {
 
   /** Records the prompt before launching it, so later Map entries never prompt automatically. */
   fun markPermissionRequested()
+
+  /** Whether Android returned an actual denial, rather than a dismissed/interrupted dialog. */
+  fun wasPermissionDenied(): Boolean
+
+  /** Records a completed Android permission result; a cancelled dialog must not call this. */
+  fun recordPermissionResult(granted: Boolean)
 
   /**
    * Reads one coordinate snapshot, bounded by a timeout. Cancellation stops the platform request
