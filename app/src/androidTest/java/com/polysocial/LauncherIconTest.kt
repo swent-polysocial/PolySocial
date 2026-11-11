@@ -1,4 +1,5 @@
 // Contributors: Claude Opus 5.5 (launcher icon checks and glyph contrast check, #279).
+// Contributors: OpenAI Codex (coral monogram geometry, contrast and safe-zone checks, #335).
 package com.polysocial
 
 import android.graphics.Bitmap
@@ -8,11 +9,9 @@ import android.graphics.drawable.AdaptiveIconDrawable
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.os.Build
-import androidx.compose.ui.graphics.toArgb
 import androidx.core.graphics.ColorUtils
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.polysocial.ui.theme.Accent
 import kotlin.math.hypot
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -21,8 +20,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * The home-screen icon is the team's concept A from Figma (#279): the white people glyph on an
- * Accent tile, as an adaptive icon whose foreground is also the themed (monochrome) icon.
+ * The home-screen icon is Mehdi's selected coral monogram (#335), without the wordmark, on an
+ * opaque cream tile. Its foreground is also Android's themed (monochrome) silhouette.
  */
 @RunWith(AndroidJUnit4::class)
 class LauncherIconTest {
@@ -32,7 +31,7 @@ class LauncherIconTest {
   /**
    * On a device whose framework sets `config_useRoundIcon` (CI's API 34 `google_apis` image does),
    * the package parser stores `android:roundIcon` in [android.content.pm.ApplicationInfo.icon], so
-   * either of the two icons is the manifest's; [launcherAndRoundIconsAreTheGroupTile] checks both.
+   * either of the two icons is the manifest's; [launcherAndRoundIconsUseTheMonogram] checks both.
    */
   @Test
   fun theManifestUsesTheLauncherIcon() {
@@ -46,7 +45,7 @@ class LauncherIconTest {
   }
 
   @Test
-  fun launcherAndRoundIconsAreTheGroupTile() {
+  fun launcherAndRoundIconsUseTheMonogram() {
     for (id in listOf(R.mipmap.ic_launcher, R.mipmap.ic_launcher_round)) {
       val name = context.resources.getResourceEntryName(id)
       val icon = context.getDrawable(id)
@@ -55,9 +54,13 @@ class LauncherIconTest {
 
       val tile = icon.background
       assertTrue("$name's background is not a plain colour", tile is ColorDrawable)
-      assertEquals("$name's tile is not Accent", Accent.toArgb(), (tile as ColorDrawable).color)
+      assertEquals(
+          "$name's tile is not cream",
+          Color.rgb(255, 249, 241),
+          (tile as ColorDrawable).color,
+      )
       // WCAG 1.4.11 asks 3:1 for graphics; an opaque tile keeps it on any wallpaper.
-      val contrast = ColorUtils.calculateContrast(Color.WHITE, tile.color)
+      val contrast = ColorUtils.calculateContrast(CORAL, tile.color)
       assertTrue("$name's glyph contrast $contrast is below 3:1", contrast >= MIN_CONTRAST)
 
       assertGlyph(name, icon.foreground)
@@ -69,19 +72,20 @@ class LauncherIconTest {
   }
 
   /**
-   * Renders a 108 dp layer at 1 px per dp and checks Figma's geometry: the front person's head
-   * stroke is opaque white at its top (48, 38), and the gap between the heads and the shoulders
-   * (54, 56) stays transparent so the tile shows through. The whole glyph must also stay inside the
-   * 66 dp safe zone. A glyph point (x, y) lands at (2x + 32, 2y + 33): the head circle's top (8.25,
-   * 2.75) gives (48.5, 38.5), and (11, 11.5), between the head and the shoulders, gives (54, 56).
+   * Renders at 1 px per dp and checks the distinctive P, speech-bubble opening and two heads of the
+   * supplied monogram. The former people glyph fails these samples. Every painted pixel must also
+   * remain inside the 66 dp safe circle, leaving no wordmark below the symbol.
    */
   private fun assertGlyph(name: String, layer: Drawable) {
     val bitmap = Bitmap.createBitmap(LAYER_SIZE, LAYER_SIZE, Bitmap.Config.ARGB_8888)
     layer.setBounds(0, 0, LAYER_SIZE, LAYER_SIZE)
     layer.draw(Canvas(bitmap))
 
-    assertEquals("$name has no white head stroke", Color.WHITE, bitmap.getPixel(48, 38))
-    assertEquals("$name is not transparent between the strokes", 0, bitmap.getPixel(54, 56))
+    assertEquals("$name has no coral P rim", CORAL, bitmap.getPixel(54, 30))
+    assertEquals("$name has no P stem", CORAL, bitmap.getPixel(38, 72))
+    assertEquals("$name has no first head", CORAL, bitmap.getPixel(52, 54))
+    assertEquals("$name has no second head", CORAL, bitmap.getPixel(60, 52))
+    assertEquals("$name fills the speech-bubble opening", 0, bitmap.getPixel(54, 45))
     assertInsideSafeZone(name, bitmap)
   }
 
@@ -98,6 +102,7 @@ class LauncherIconTest {
   }
 
   private companion object {
+    val CORAL = Color.rgb(255, 77, 77)
     const val LAYER_SIZE = 108
     const val SAFE_ZONE_RADIUS = 33f
     const val MIN_CONTRAST = 3.0
