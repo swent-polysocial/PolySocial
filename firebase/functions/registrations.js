@@ -1,5 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the deletion of registrations with their event
-// and account, #275.
+// and account, #275; kept for an event written again, after review.
 "use strict";
 
 /**
@@ -27,9 +27,26 @@ async function deleteAllMatching(db, query) {
   }
 }
 
-/** Deletes the registrations `events/{eventId}/attendees/*` of an event (#121). */
-function deleteEventRegistrations(db, eventId) {
-  return deleteAllMatching(db, db.collection("events").doc(eventId).collection("attendees"));
+/**
+ * Deletes the registrations `events/{eventId}/attendees/*` of a deleted event (#121),
+ * MAX_BATCH_WRITES at a time, and stops as soon as `events/{eventId}` exists again: its
+ * registrations then belong to the new event. The demo seed script (`scripts/seedDemo.js`) deletes
+ * its events and writes them back under the same IDs, with new registrations, and this trigger
+ * can run after that. Each batch is a transaction that reads the event before deleting, so an
+ * event written in between can't lose the registrations written with it.
+ */
+async function deleteEventRegistrations(db, eventId) {
+  const event = db.collection("events").doc(eventId);
+  const attendees = event.collection("attendees").limit(MAX_BATCH_WRITES);
+  for (;;) {
+    const deleted = await db.runTransaction(async (transaction) => {
+      if ((await transaction.get(event)).exists) return 0;
+      const snapshot = await transaction.get(attendees);
+      for (const document of snapshot.docs) transaction.delete(document.ref);
+      return snapshot.size;
+    });
+    if (deleted === 0) return;
+  }
 }
 
 /**
@@ -43,7 +60,8 @@ function deleteUserRegistrations(db, uid) {
 /**
  * Runs when `events/{eventId}` is deleted: deletes the event's registrations, which nobody can list
  * once the event is gone (the rules check the event's organizers). The rules refuse a new
- * registration for a missing event, so none can appear afterwards. A failure logs only the error's
+ * registration for a missing event, so none can appear afterwards, unless the event is written
+ * again under the same ID; its registrations are then kept. A failure logs only the error's
  * code (never the event or a uid) and is thrown again, so the trigger, deployed with retries, runs
  * again until the registrations are gone.
  *
