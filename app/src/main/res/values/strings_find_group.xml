@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (Find a group texts from #227's Figma section 11,
      and the group card on the detail, #233). -->
-<!-- Contributors: OpenAI Codex (group roster and leave copy, #234). -->
+<!-- Contributors: OpenAI Codex (group roster, leave and chat entry copy, #234/#238). -->
 <resources>
     <string name="find_group_title">Find a group</string>
     <!-- The event under the header, for example "Fri 3 Oct · 20:00 – 01:00 · Satellite". -->
@@ -58,7 +58,7 @@
     <string name="group_profile_unavailable">Profile unavailable</string>
     <string name="group_loading">Loading your group…</string>
     <string name="group_chat_title">Group chat</string>
-    <string name="group_chat_unavailable">Plan the outing together · not available yet</string>
+    <string name="group_chat_subtitle">Plan the outing together</string>
     <string name="group_saved_offline">You\'re offline. Showing the group saved on this phone. Leaving needs a connection.</string>
     <string name="group_not_saved">You\'re offline and your group isn\'t saved on this phone. Try again when you\'re back online.</string>
     <string name="group_error_title">Couldn\'t load your group</string>

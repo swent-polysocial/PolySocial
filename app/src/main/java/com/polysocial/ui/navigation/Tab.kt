@@ -7,6 +7,7 @@
 // Contributors: OpenAI Codex (added the student group roster route, #234).
 // Contributors: Claude Opus 5.5 (the My friend code route, #339); Konstantinos Perdikeas
 // (directed, reviewed and owns it).
+// Contributors: OpenAI Codex (added the chat route beneath the roster, #238).
 package com.polysocial.ui.navigation
 
 import android.net.Uri
@@ -14,6 +15,7 @@ import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import com.polysocial.R
 import com.polysocial.resources.C
+import com.polysocial.ui.chat.GroupChatViewModel
 import com.polysocial.ui.event.detail.EventDetailViewModel
 
 /**
@@ -142,6 +144,13 @@ enum class Tab(
     get() = "$eventDetailRoute/my-group"
 
   fun yourGroupRoute(eventId: String): String = "${eventDetailRoute(eventId)}/my-group"
+
+  /** A specific group's chat, one screen above the student's roster. */
+  val groupChatRoute: String
+    get() = "$yourGroupRoute/chat/{${GroupChatViewModel.GROUP_ID_ARG}}"
+
+  fun groupChatRoute(eventId: String, groupId: String): String =
+      "${yourGroupRoute(eventId)}/chat/${Uri.encode(groupId)}"
 }
 
 /** Labels, icons and tags for a tab in the current account's shell. */

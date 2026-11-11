@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: PolySocial Figma #236 (Send icon); OpenAI Codex (Android vector conversion). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="18dp"
+    android:height="18dp"
+    android:viewportWidth="18"
+    android:viewportHeight="18">
+    <path
+        android:pathData="M16.5,1.5L8.25,9.75M8.25,9.75L1.5,6.75L16.5,1.5L11.25,16.5L8.25,9.75Z"
+        android:strokeWidth="1.65"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeColor="#FFFFFF" />
+</vector>
