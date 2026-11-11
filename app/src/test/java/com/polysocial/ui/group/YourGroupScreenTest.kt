@@ -31,6 +31,7 @@ import com.polysocial.utils.MainDispatcherRule
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -106,14 +107,17 @@ class YourGroupScreenTest {
     groups.seedGroup(EVENT, listOf(ME))
     events.deniedIds += EVENT
     val finish = CompletableDeferred<Unit>()
-    show(
-        object : GroupRepository by groups {
-          override suspend fun leaveGroup(eventId: String, groupId: String): GroupWriteResult {
-            finish.await()
-            return groups.leaveGroup(eventId, groupId)
-          }
-        }
-    )
+    var writes = 0
+    val viewModel =
+        show(
+            object : GroupRepository by groups {
+              override suspend fun leaveGroup(eventId: String, groupId: String): GroupWriteResult {
+                writes++
+                finish.await()
+                return groups.leaveGroup(eventId, groupId)
+              }
+            }
+        )
     compose.onNodeWithTag(YourGroupTags.EVENT).assertDoesNotExist()
     tap(YourGroupTags.LEAVE)
     text(R.string.group_leave_body).assertIsDisplayed()
@@ -121,10 +125,18 @@ class YourGroupScreenTest {
     compose.onNodeWithTag(YourGroupTags.CONFIRM).assertIsNotEnabled()
     compose.onNodeWithTag(YourGroupTags.STAY).assertIsNotEnabled()
     assertEquals(0, left)
+    viewModel.confirmLeave()
+    viewModel.stay()
+    settle()
+    assertEquals(1, writes)
 
     finish.complete(Unit)
     settle()
     assertEquals(1, left)
+    viewModel.confirmLeave()
+    viewModel.stay()
+    settle()
+    assertEquals(1, writes)
     assertTrue(groups.groupsOf(EVENT).isEmpty())
   }
 
@@ -134,8 +146,13 @@ class YourGroupScreenTest {
     network.online = false
     groups.online = false
     groups.readFromCache = true
-    show()
+    val viewModel = show()
 
+    viewModel.askToLeave()
+    viewModel.confirmLeave()
+    viewModel.stay()
+    settle()
+    text(R.string.group_leave_title).assertDoesNotExist()
     compose.onNodeWithTag(YourGroupTags.OFFLINE).assertIsDisplayed()
     compose.onNodeWithText("Test Peer").assertIsDisplayed()
     text(R.string.group_profile_unavailable).assertIsDisplayed()
@@ -193,13 +210,17 @@ class YourGroupScreenTest {
   @Test
   fun aCacheMissLoadsUntilTheServerConfirmsThereIsNoGroup() {
     val snapshots = MutableStateFlow<MyGroupResult>(MyGroupResult.Success(null, fromCache = true))
-    show(
-        object : GroupRepository by groups {
-          override fun observeMyGroup(eventId: String) = snapshots
-        }
-    )
+    val viewModel =
+        show(
+            object : GroupRepository by groups {
+              override fun observeMyGroup(eventId: String) = snapshots
+            }
+        )
     text(R.string.group_loading).assertIsDisplayed()
     compose.onNodeWithTag(YourGroupTags.LEAVE).assertIsNotEnabled()
+    viewModel.askToLeave()
+    settle()
+    text(R.string.group_leave_title).assertDoesNotExist()
 
     main.dispatcher.scheduler.advanceTimeBy(10_001)
     settle()
@@ -224,7 +245,28 @@ class YourGroupScreenTest {
     compose.onNodeWithText("Members · 1 of 4").assertIsDisplayed()
   }
 
-  private fun show(repository: GroupRepository = groups) {
+  @Test
+  fun aCancelledLeaveRestoresTheConfirmationAndCanBeRetried() {
+    groups.seedGroup(EVENT, listOf(ME, "peer"))
+    var attempts = 0
+    show(
+        object : GroupRepository by groups {
+          override suspend fun leaveGroup(eventId: String, groupId: String): GroupWriteResult {
+            if (attempts++ == 0) throw CancellationException("Test cancelled leave")
+            return groups.leaveGroup(eventId, groupId)
+          }
+        }
+    )
+    tap(YourGroupTags.LEAVE)
+    tap(YourGroupTags.CONFIRM)
+    text(R.string.group_leave_title).assertIsDisplayed()
+    assertEquals(listOf(ME, "peer"), groups.groupsOf(EVENT).single().memberUids)
+    tap(YourGroupTags.CONFIRM)
+    assertEquals(listOf("peer"), groups.groupsOf(EVENT).single().memberUids)
+    assertEquals(1, left)
+  }
+
+  private fun show(repository: GroupRepository = groups): YourGroupViewModel {
     val viewModel =
         YourGroupViewModel(
             SavedStateHandle(mapOf(EventDetailViewModel.EVENT_ID_ARG to EVENT)),
@@ -237,6 +279,7 @@ class YourGroupScreenTest {
         )
     compose.setContent { PolySocialTheme { YourGroupRoute({ backs++ }, { left++ }, viewModel) } }
     settle()
+    return viewModel
   }
 
   private fun asStudent(uid: String, write: suspend () -> GroupWriteResult) {

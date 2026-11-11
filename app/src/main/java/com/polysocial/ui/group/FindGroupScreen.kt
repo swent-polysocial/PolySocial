@@ -370,10 +370,10 @@ private fun Avatar(member: GroupMember, index: Int) =
 
 /** A round avatar showing [text], in the [index]-th of Figma's avatar colors. */
 @Composable
-internal fun MemberAvatar(text: String, index: Int, modifier: Modifier = Modifier.size(34.dp)) {
+internal fun MemberAvatar(text: String, index: Int, modifier: Modifier = Modifier) {
   val (fg, bg) = AVATAR_COLORS[index % AVATAR_COLORS.size]
   Box(
-      modifier.border(2.dp, Bg, CircleShape).background(bg, CircleShape),
+      modifier.size(34.dp).border(2.dp, Bg, CircleShape).background(bg, CircleShape),
       contentAlignment = Alignment.Center,
   ) {
     Text(
