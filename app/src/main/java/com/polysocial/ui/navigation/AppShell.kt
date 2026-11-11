@@ -17,6 +17,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) showed an association's own events on its Map tab,
 // #133; its header on the Events and Map tabs, #322, scoped to the Events graph after review.
 // Contributors: OpenAI Codex (wired the group roster below the student event detail, #234).
+// Contributors: Claude Opus 5.5 (the My friend code route, #339); Konstantinos Perdikeas
+// (directed, reviewed and owns it).
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.layout.Box
@@ -87,6 +89,7 @@ import com.polysocial.ui.group.FindGroupRoute
 import com.polysocial.ui.group.YourGroupRoute
 import com.polysocial.ui.map.MapRoute
 import com.polysocial.ui.map.mapViewModel
+import com.polysocial.ui.profile.FriendCodeRoute
 import com.polysocial.ui.profile.FullPrivacyNoticeRoute
 import com.polysocial.ui.profile.PrivacyRoute
 import com.polysocial.ui.profile.ProfileRoute
@@ -201,6 +204,8 @@ fun AppShell(
       ProfileRoute(
           onLoggedOut = done,
           onOpenPrivacy = dropUnlessResumed { navController.navigate(Tab.PROFILE.privacyRoute) },
+          onOpenFriendCode =
+              dropUnlessResumed { navController.navigate(Tab.PROFILE.friendCodeRoute) },
       )
     },
     yourGroupContent: @Composable (onBack: () -> Unit, onLeft: () -> Unit) -> Unit =
@@ -216,15 +221,18 @@ fun AppShell(
       tabs.firstOrNull { tab -> destination?.hierarchy?.any { it.route == tab.route } == true }
           ?: Tab.EVENTS
   // Figma shows Create Event full screen, without the app bar and the bottom bar.
-  val privacyScreen =
+  // The Profile screens opened from its rows (Privacy & data, its notice, My friend code) are full
+  // screen too.
+  val profileRowScreen =
       destination?.route == Tab.PROFILE.privacyRoute ||
-          destination?.route == Tab.PROFILE.privacyNoticeRoute
+          destination?.route == Tab.PROFILE.privacyNoticeRoute ||
+          destination?.route == Tab.PROFILE.friendCodeRoute
   val showBars =
       destination?.route != currentTab.createEventRoute &&
           destination?.route != currentTab.editEventRoute &&
           destination?.route != currentTab.findGroupRoute &&
           destination?.route != currentTab.yourGroupRoute &&
-          !privacyScreen
+          !profileRowScreen
   // The app bar action (TabAction, set per tab in Tab.action) shows only on the current tab's root
   // screen: it is hidden on the screens opened from there, including the one the action opens.
   val action =
@@ -325,6 +333,9 @@ fun AppShell(
           }
           composable(tab.privacyNoticeRoute) {
             FullPrivacyNoticeRoute(onBack = { navController.popBackStack() })
+          }
+          composable(tab.friendCodeRoute) { entry ->
+            FriendCodeRoute(onBack = { if (entry.isResumed) navController.popBackStack() })
           }
         }
         tab.action?.let { action ->

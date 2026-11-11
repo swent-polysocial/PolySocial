@@ -5,6 +5,8 @@
 // #131; the map's Details open the event detail, #112; Find a group route, #233).
 // Contributors: OpenAI Codex (Profile privacy and full-notice routes, #103).
 // Contributors: OpenAI Codex (added the student group roster route, #234).
+// Contributors: Claude Opus 5.5 (the My friend code route, #339); Konstantinos Perdikeas
+// (directed, reviewed and owns it).
 package com.polysocial.ui.navigation
 
 import android.net.Uri
@@ -96,6 +98,10 @@ enum class Tab(
   /** The bundled full notice, reached from the Profile privacy summary (#103). */
   val privacyNoticeRoute: String
     get() = "$route/privacy/notice"
+
+  /** The student's own friend QR code in the Profile graph (#339). */
+  val friendCodeRoute: String
+    get() = "$route/friend-code"
 
   /** Test tag of the tab's placeholder detail screen. */
   val detailTag: String

@@ -3,6 +3,8 @@
 // Contributors: OpenAI Codex (privacy entry alongside confirmed logout after rebase, #103).
 // Contributors: Claude (the logout dialog shared with the association's Organization tab, #127;
 // the activity-scoped logout confirmation shared with the app-start error, #208).
+// Contributors: Claude Opus 5.5 (the My friend code row, #339); Konstantinos Perdikeas (directed,
+// reviewed and owns it).
 package com.polysocial.ui.profile
 
 import androidx.activity.compose.BackHandler
@@ -39,13 +41,21 @@ fun ProfileRoute(
     onLoggedOut: () -> Unit,
     viewModel: ProfileViewModel = hiltViewModel(),
     onOpenPrivacy: (() -> Unit)? = null,
+    onOpenFriendCode: (() -> Unit)? = null,
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   val actions = remember(viewModel) { LogoutActions(viewModel) }
   BackHandler(state != LogoutState.Idle, actions.cancel)
   val callback by rememberUpdatedState(onLoggedOut)
   LaunchedEffect(state) { if (state == LogoutState.LoggedOut) callback() }
-  ProfileScreen(state, actions.request, actions.cancel, actions.confirm, onOpenPrivacy)
+  ProfileScreen(
+      state,
+      actions.request,
+      actions.cancel,
+      actions.confirm,
+      onOpenPrivacy,
+      onOpenFriendCode,
+  )
 }
 
 /** Keeps the screen and Back action bound to the same ViewModel across recomposition. */
@@ -62,8 +72,20 @@ fun ProfileScreen(
     onCancel: () -> Unit,
     onConfirm: () -> Unit,
     onOpenPrivacy: (() -> Unit)? = null,
+    onOpenFriendCode: (() -> Unit)? = null,
 ) {
   Column(Modifier.fillMaxSize().padding(horizontal = 20.dp).testTag(C.Tag.screen_profile)) {
+    // Students only: the association's Organization tab passes no onOpenFriendCode (#339).
+    if (onOpenFriendCode != null) {
+      PrivacyActionRow(
+          R.string.friend_code_title,
+          R.drawable.ic_qr,
+          C.Tag.profile_friend_code_entry,
+          onOpenFriendCode,
+          Modifier.fillMaxWidth(),
+          dividerAtBottom = true,
+      )
+    }
     if (onOpenPrivacy != null) {
       ProfilePrivacyEntry(onOpenPrivacy, Modifier.fillMaxWidth())
     }
