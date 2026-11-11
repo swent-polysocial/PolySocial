@@ -9,6 +9,8 @@
 // Claude Opus 5.5 (WorkManager for event reminders, #123).
 // Contributors: Claude (Opus 5.5, Anthropic) made unit tests rerun when the Cloud Function source
 // changes, #206; Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude Opus 5.5 (ZXing core for drawing the friend QR code, #339); Konstantinos
+// Perdikeas (directed, reviewed and owns it).
 import java.util.Properties
 
 plugins {
@@ -193,6 +195,8 @@ dependencies {
   implementation(libs.compose.viewmodel)
   // Navigation between screens and tabs
   implementation(libs.compose.navigation)
+  // Draws the student's friend QR code (#339); pure Java, no Android or network code
+  implementation(libs.zxing.core)
   // Android Studio Preview support
   implementation(libs.compose.preview)
   debugImplementation(libs.compose.tooling)
