@@ -81,8 +81,8 @@ internal object YourGroupTags {
 internal fun YourGroupRoute(
     onBack: () -> Unit,
     onLeft: () -> Unit,
-    viewModel: YourGroupViewModel = hiltViewModel(),
     onOpenChat: (String) -> Unit = {},
+    viewModel: YourGroupViewModel = hiltViewModel(),
 ) {
   val state by viewModel.state.collectAsStateWithLifecycle()
   val left = state.leave?.stage == LeaveGroupRequest.Stage.LEFT

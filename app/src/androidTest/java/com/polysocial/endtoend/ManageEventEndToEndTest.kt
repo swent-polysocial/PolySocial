@@ -4,6 +4,7 @@
 // which Find a group's ViewModel needs, #233.
 // Contributors: Claude (Opus 5.5, Anthropic) kept the test store's address cooldown, #225.
 // Contributors: Claude (shared fakes and dateDigits instead of private copies, #276).
+// Contributors: OpenAI Codex (scoped the chat fake to this Hilt test, #238).
 package com.polysocial.endtoend
 
 import androidx.compose.ui.test.SemanticsMatcher
@@ -40,6 +41,9 @@ import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.auth.FakeAuthSessionSource
 import com.polysocial.model.auth.VerificationClock
 import com.polysocial.model.auth.VerificationStore
+import com.polysocial.model.chat.FakeMessageRepository
+import com.polysocial.model.chat.MessageModule
+import com.polysocial.model.chat.MessageRepository
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
@@ -123,6 +127,7 @@ import org.junit.runner.RunWith
     ClockModule::class,
     EventModule::class,
     FirebaseModule::class,
+    MessageModule::class,
     GeocodingModule::class,
     GroupModule::class,
     LocationModule::class,
@@ -136,6 +141,7 @@ class ManageEventEndToEndTest {
 
   private val fakeEvents = FakeEventRepository(currentUid = UID, now = NOW).apply { seed(PARTY) }
 
+  @BindValue @JvmField val messages: MessageRepository = FakeMessageRepository()
   @BindValue
   @JvmField
   val auth: AuthRepository =

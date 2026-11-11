@@ -16,6 +16,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) closed the keyboard before signing up, #314.
 // Contributors: Claude Opus 5.5 (the My friend code step, #339); Konstantinos Perdikeas (directed,
 // reviewed and owns it).
+// Contributors: OpenAI Codex (scoped the chat fake to this Hilt test, #238).
 package com.polysocial.endtoend
 
 import androidx.activity.compose.setContent
@@ -69,6 +70,9 @@ import com.polysocial.model.auth.SignUpResult
 import com.polysocial.model.auth.VerificationClock
 import com.polysocial.model.auth.VerificationResult
 import com.polysocial.model.auth.VerificationStore
+import com.polysocial.model.chat.FakeMessageRepository
+import com.polysocial.model.chat.MessageModule
+import com.polysocial.model.chat.MessageRepository
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
@@ -174,6 +178,7 @@ import org.junit.runner.RunWith
     ClockModule::class,
     EventModule::class,
     FirebaseModule::class,
+    MessageModule::class,
     GeocodingModule::class,
     LocationModule::class,
     NetworkModule::class,
@@ -184,6 +189,7 @@ import org.junit.runner.RunWith
 )
 @RunWith(AndroidJUnit4::class)
 class M1EndToEndTest {
+  @BindValue @JvmField val messages: MessageRepository = FakeMessageRepository()
   @BindValue
   @JvmField
   val associationSignupStore: AssociationSignupStore = EmptyAssociationSignupStore

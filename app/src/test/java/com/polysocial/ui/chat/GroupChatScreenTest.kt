@@ -1,9 +1,11 @@
-// Contributors: OpenAI Codex (tested chat behavior with fake repositories, #238).
+// Contributors: OpenAI Codex (tested chat, stable history, connectivity and input with fakes,
+// #238).
 package com.polysocial.ui.chat
 
 import android.content.Context
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -11,6 +13,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.performTextInput
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
@@ -41,6 +44,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -111,6 +115,8 @@ class GroupChatScreenTest {
     network.online = true
     messages.online = true
     settle()
+    compose.onNodeWithTag(ChatTags.OFFLINE).assertDoesNotExist()
+    compose.onNodeWithTag(ChatTags.RETRY_SEND).assertIsEnabled()
     assertEquals(1, messages.messagesOf(EVENT, group.id).size)
     tap(ChatTags.RETRY_SEND)
     assertEquals(
@@ -271,12 +277,88 @@ class GroupChatScreenTest {
     assertEquals("Meet outside", viewModel.state.value.draft.text)
     assertTrue(messages.messagesOf(EVENT, group.id).isEmpty())
 
-    viewModel.edit("a".repeat(MAX_MESSAGE_LENGTH + 1))
-    assertEquals("Meet outside", viewModel.state.value.draft.text)
     viewModel.edit("Meet inside")
     settle()
     tap(ChatTags.SEND)
     assertEquals("Meet inside", messages.messagesOf(EVENT, group.id).single().text)
+  }
+
+  @Test
+  fun aMemberJoiningAfterTheTimeoutKeepsTheTimelineAndItsScrollPosition() {
+    repeat(24) { index ->
+      messages.seedMessage(
+          EVENT,
+          group.id,
+          "m-$index",
+          PEER,
+          "Message $index",
+          NOW.plusSeconds(index.toLong()),
+      )
+    }
+    val membership = MutableStateFlow(MyGroupResult.Success(group, fromCache = false))
+    var historyReads = 0
+    show(
+        object : MessageRepository by messages {
+          override fun observeMessages(eventId: String, groupId: String) =
+              messages.observeMessages(eventId, groupId).onStart { historyReads++ }
+        },
+        object : GroupRepository by groups {
+          override fun observeMyGroup(eventId: String) = membership
+        },
+    )
+    compose.onNodeWithTag(ChatTags.TIMELINE).performScrollToIndex(0)
+    compose.onNodeWithText("Message 0").assertIsDisplayed()
+    enter("Draft while reading")
+    main.dispatcher.scheduler.advanceTimeBy(10_001)
+    membership.value =
+        MyGroupResult.Success(group.copy(memberUids = listOf(ME, PEER, "new")), fromCache = false)
+    settle()
+    compose.onNodeWithText("Message 0").assertIsDisplayed()
+    compose.onNodeWithTag(ChatTags.SEND).assertIsEnabled()
+
+    membership.value = membership.value.copy(fromCache = true)
+    settle()
+    assertEquals(1, historyReads)
+    compose.onNodeWithText("Message 0").assertIsDisplayed()
+    text(R.string.chat_read_failed).assertDoesNotExist()
+  }
+
+  @Test
+  fun overlongPasteKeepsThePrefixWithoutSplittingAnEmoji() {
+    val viewModel = show()
+    val prefix = "a".repeat(MAX_MESSAGE_LENGTH - 1)
+    viewModel.edit(prefix + "😀" + "b")
+    settle()
+    assertEquals(prefix, viewModel.state.value.draft.text)
+
+    val fullLength = prefix + "b"
+    viewModel.edit(fullLength + "c")
+    settle()
+    assertEquals(fullLength, viewModel.state.value.draft.text)
+    compose.onNodeWithTag(ChatTags.SEND).assertIsEnabled()
+  }
+
+  @Test
+  fun dateLabelChangesAtMidnightWithoutANewMessage() {
+    val zone = ZoneId.of("Europe/Zurich")
+    var now = Instant.parse("2030-01-01T22:59:59Z")
+    val clock =
+        object : Clock() {
+          override fun getZone() = zone
+
+          override fun withZone(zone: ZoneId) = Clock.fixed(now, zone)
+
+          override fun instant() = now
+        }
+    messages.seedMessage(EVENT, group.id, "before-midnight", PEER, "Late message", now)
+    show(clock = clock)
+    text(R.string.events_today).assertIsDisplayed()
+
+    now = now.plusSeconds(1)
+    main.dispatcher.scheduler.advanceTimeBy(1_001)
+    settle()
+    text(R.string.events_today).assertDoesNotExist()
+    compose.onNodeWithText("Late message").assertIsDisplayed()
   }
 
   @Test
@@ -295,6 +377,7 @@ class GroupChatScreenTest {
   private fun show(
       repository: MessageRepository = messages,
       groupRepository: GroupRepository = groups,
+      clock: Clock = Clock.fixed(NOW, ZoneId.of("Europe/Zurich")),
   ): GroupChatViewModel {
     val viewModel =
         GroupChatViewModel(
@@ -310,7 +393,7 @@ class GroupChatScreenTest {
             auth,
             network,
             events,
-            Clock.fixed(NOW, ZoneId.of("Europe/Zurich")),
+            clock,
         )
     compose.setContent { PolySocialTheme { GroupChatRoute(onBack = {}, viewModel = viewModel) } }
     settle()

@@ -5,6 +5,7 @@
 // (reviewed and revised).
 // Contributors: Claude (Opus 5.5, Anthropic) bound fake group and public profile repositories,
 // which Find a group's ViewModel needs, #233.
+// Contributors: OpenAI Codex (scoped the chat fake to this Hilt test, #238).
 package com.polysocial.ui.profile
 
 import androidx.compose.ui.test.assertIsDisplayed
@@ -36,6 +37,9 @@ import com.polysocial.model.auth.ReauthResult
 import com.polysocial.model.auth.VerificationClock
 import com.polysocial.model.auth.VerificationStore
 import com.polysocial.model.auth.VerificationTiming
+import com.polysocial.model.chat.FakeMessageRepository
+import com.polysocial.model.chat.MessageModule
+import com.polysocial.model.chat.MessageRepository
 import com.polysocial.model.event.EventModule
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.FakeEventRepository
@@ -89,6 +93,7 @@ import org.robolectric.annotation.Config
     AuthModule::class,
     EventModule::class,
     FirebaseModule::class,
+    MessageModule::class,
     NetworkModule::class,
     RegistrationModule::class,
     GroupModule::class,
@@ -104,6 +109,7 @@ class DeleteAccountInjectionTest {
   private val memory =
       MemoryVerificationStore().apply { timings[student.uid] = VerificationTiming(1, 2) }
   private var clears = 0
+  @BindValue @JvmField val messages: MessageRepository = FakeMessageRepository()
   @BindValue @JvmField val verificationStore: VerificationStore = memory
   @BindValue @JvmField val verificationClock: VerificationClock = VerificationClock { 1000 }
   @BindValue @JvmField val sessionGuard: SessionGuard = FakeSessionGuard()

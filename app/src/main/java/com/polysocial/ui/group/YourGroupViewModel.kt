@@ -104,7 +104,9 @@ constructor(
       reads
           .flatMapLatest {
             combine(events.observeGroupEvent(eventId, clock.zone), observeRoster(), leave) {
-                details, roster, request ->
+                details,
+                roster,
+                request ->
               YourGroupScreenState(details, roster, request)
             }
           }

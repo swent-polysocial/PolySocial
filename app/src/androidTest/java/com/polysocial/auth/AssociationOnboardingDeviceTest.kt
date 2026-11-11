@@ -2,6 +2,7 @@
 // #125, and the device fixture Firestore binding); Claude Opus 5.5 (longer waits for CI, #309).
 // Contributors: Claude (Opus 5.5, Anthropic) bound the deletion and network fakes and expected the
 // prefilled address after Change address, #225; Mohamed Khellaf (reviewed and revised).
+// Contributors: OpenAI Codex (scoped the chat fake to this Hilt test, #238).
 package com.polysocial.auth
 
 import android.graphics.Bitmap
@@ -17,6 +18,9 @@ import com.polysocial.model.account.AccountDeletionRepository
 import com.polysocial.model.account.FakeAccountDeletionRepository
 import com.polysocial.model.association.*
 import com.polysocial.model.auth.*
+import com.polysocial.model.chat.FakeMessageRepository
+import com.polysocial.model.chat.MessageModule
+import com.polysocial.model.chat.MessageRepository
 import com.polysocial.model.event.*
 import com.polysocial.model.firebase.*
 import com.polysocial.model.network.FakeNetworkMonitor
@@ -44,6 +48,7 @@ import org.junit.runner.RunWith
     AssociationModule::class,
     EventModule::class,
     FirebaseModule::class,
+    MessageModule::class,
     NetworkModule::class,
 )
 @RunWith(AndroidJUnit4::class)
@@ -55,6 +60,7 @@ class AssociationOnboardingDeviceTest {
   private val identities = FakeAssociationRepository()
   private val writes = mutableListOf<String>()
   private var clears = 0
+  @BindValue @JvmField val messages: MessageRepository = FakeMessageRepository()
   @BindValue @JvmField val firestore: FirebaseFirestore = mockk()
   @BindValue @JvmField val auth: AuthRepository = fakeAuth
   @BindValue @JvmField val authSessionSource: AuthSessionSource = FakeAuthSessionSource()

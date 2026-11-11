@@ -5,7 +5,7 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (deleteAccount deployed, region note, Blaze question closed, 2026-11-05). -->
 <!-- Contributors: Claude (public profiles marked as built, #229; the deletion marker and the public copy kept in step, after review, #229; the interests step, #230). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the account deletion decision, its deletion/failure matrix and the related open questions (#201); Mohamed Khellaf (reviewed and revised). -->
-<!-- Contributors: OpenAI Codex (verified association shell and remaining map handoff, #140; recorded the manual association review workflow, #210; marked the group roster route as built, #234). -->
+<!-- Contributors: OpenAI Codex (verified association shell and remaining map handoff, #140; recorded the manual association review workflow, #210; marked the group roster and chat routes as built, #234 and #238). -->
 <!-- Contributors: OpenAI Codex (association signup/setup routing and built/planned integration, #125). -->
 <!-- Contributors: OpenAI Codex (Google authentication architecture, Firebase-managed linking clarification and review cleanup for #106; preserved contributor acknowledgments during rebase); Claude (the shared UI parts, #251; the confirmation sheet parts, #296; Find a group's ViewModel states and the detail's group card, #233). -->
 <!-- Contributors: OpenAI Codex (removed obsolete Google collision UI, #107). -->
@@ -124,7 +124,7 @@ flowchart TB
   logout --> welcome["Welcome: empty back stack<br/>#74"]:::s1
   attend -- "going, #244" --> findg["Find a group: ranked groups<br/>Join · Start a new group, #233"]:::pb
   detail -- "Your group card" --> groupS["Group: members · Leave<br/>#234"]:::s1
-  groupS --> chat["Group chat<br/>#238"]:::pb
+  groupS --> chat["Group chat<br/>#238"]:::s1
   profile -.-> friends["Friends · QR · matches"]:::pb
   chats["Chats list"]:::pb -.-> chat
 ```
@@ -238,7 +238,7 @@ flowchart TB
   findVM --> pub["<b>PublicProfileRepository</b><br/>getPublicProfile · getPublicProfiles<br/>by UID only, built, #229"]:::s1
   detailVM["<b>EventDetailViewModel</b><br/>group card: yourGroup, #233"]:::pb --> groups
   detailVM --> pub
-  chat["Group chat<br/>#238"]:::pb --> chatVM["<b>Chat ViewModel</b>"]:::pb --> msgs["<b>MessageRepository</b><br/>observeMessages · sendMessage, built, #237"]:::s1
+  chat["Group chat<br/>#238"]:::s1 --> chatVM["<b>GroupChatViewModel</b>"]:::s1 --> msgs["<b>MessageRepository</b><br/>observeMessages · sendMessage, built, #237"]:::s1
   groups --> fs[("Firestore<br/>events/{e}/groups · groupMembers")]:::ext
   pub --> fs2[("Firestore<br/>publicProfiles")]:::ext
   msgs --> fs3[("Firestore<br/>events/{e}/groups/{g}/messages")]:::ext

@@ -1,5 +1,6 @@
 // Contributors: OpenAI Codex (default association onboarding, session cleanup and session-guard
 // injection integration and offline Firestore binding, #125).
+// Contributors: OpenAI Codex (scoped the chat fake to this Hilt test, #238).
 package com.polysocial.auth
 
 import androidx.compose.ui.test.*
@@ -9,6 +10,9 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.polysocial.MainActivity
 import com.polysocial.model.association.*
 import com.polysocial.model.auth.*
+import com.polysocial.model.chat.FakeMessageRepository
+import com.polysocial.model.chat.MessageModule
+import com.polysocial.model.chat.MessageRepository
 import com.polysocial.model.event.*
 import com.polysocial.model.firebase.*
 import com.polysocial.model.user.*
@@ -32,6 +36,7 @@ import org.robolectric.annotation.Config
     AssociationModule::class,
     EventModule::class,
     FirebaseModule::class,
+    MessageModule::class,
 )
 @Config(application = HiltTestApplication::class)
 @RunWith(AndroidJUnit4::class)
@@ -43,6 +48,7 @@ class AssociationOnboardingInjectionTest {
   private val identities = FakeAssociationRepository()
   private val writes = mutableListOf<String>()
   private var clears = 0
+  @BindValue @JvmField val messages: MessageRepository = FakeMessageRepository()
   @BindValue @JvmField val firestore: FirebaseFirestore = mockk()
   @BindValue @JvmField val auth: AuthRepository = fakeAuth
   @BindValue @JvmField val authSessionSource: AuthSessionSource = FakeAuthSessionSource()

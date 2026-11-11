@@ -1,4 +1,4 @@
-// Contributors: OpenAI Codex (implemented provisional group chat UI from Figma #236, #238).
+// Contributors: OpenAI Codex (group chat UI and Figma avatar colors, #236 and #238).
 package com.polysocial.ui.chat
 
 import androidx.compose.foundation.background
@@ -53,6 +53,7 @@ import com.polysocial.ui.common.OfflineBanner
 import com.polysocial.ui.group.GroupCategoryTile
 import com.polysocial.ui.group.GroupHeader
 import com.polysocial.ui.group.MemberAvatar
+import com.polysocial.ui.group.OTHERS_COLORS
 import com.polysocial.ui.group.initials
 import com.polysocial.ui.theme.Accent
 import com.polysocial.ui.theme.AccentText
@@ -72,11 +73,13 @@ internal object ChatTags {
   const val SEND = "group_chat_send"
   const val RETRY_SEND = "group_chat_retry_send"
   const val OFFLINE = "group_chat_offline"
+  const val TIMELINE = "group_chat_timeline"
 }
 
 @Composable
 internal fun GroupChatRoute(onBack: () -> Unit, viewModel: GroupChatViewModel = hiltViewModel()) {
   val state by viewModel.state.collectAsStateWithLifecycle()
+  val today by viewModel.today.collectAsStateWithLifecycle()
   val ready = state.history as? ChatHistory.Ready
   Column(Modifier.fillMaxSize().background(Surface).imePadding().testTag(ChatTags.SCREEN)) {
     ChatHeader(state, onBack)
@@ -92,7 +95,14 @@ internal fun GroupChatRoute(onBack: () -> Unit, viewModel: GroupChatViewModel = 
         ChatHistory.Left ->
             ChatMessageState(R.string.chat_membership_ended, R.string.chat_membership_body)
         is ChatHistory.Ready ->
-            ChatTimeline(history, state.draft, viewModel.myUid, viewModel.today, viewModel.zone)
+            ChatTimeline(
+                history,
+                state.draft,
+                viewModel.myUid,
+                today,
+                viewModel.zone,
+                state.offline,
+            )
       }
     }
     ChatComposer(state.draft, ready != null, viewModel::edit, viewModel::send)
@@ -142,11 +152,13 @@ private fun ChatTimeline(
     me: String?,
     today: LocalDate,
     zone: ZoneId,
+    offline: Boolean,
 ) {
   val pending = draft.takeIf { it.stage == ChatDraft.Stage.SENDING }
   val messages = history.messages.filterNot { pending?.id == it.id }
+  val peers = history.members.filterNot { it.uid == me }
   Column(Modifier.fillMaxSize()) {
-    if (history.offline || draft.stage == ChatDraft.Stage.OFFLINE) {
+    if (offline) {
       OfflineBanner(
           stringResource(R.string.chat_offline),
           ChatTags.OFFLINE,
@@ -165,6 +177,7 @@ private fun ChatTimeline(
         previousCount = rowCount
       }
       LazyColumn(
+          modifier = Modifier.testTag(ChatTags.TIMELINE),
           state = list,
           contentPadding = PaddingValues(12.dp),
           verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -183,12 +196,14 @@ private fun ChatTimeline(
             )
           }
           val mine = message.senderId == me
+          val peerIndex = peers.indexOfFirst { it.uid == message.senderId }
           val name =
               if (mine || (!newDay && previous.senderId == message.senderId)) null
               else
-                  history.members.firstOrNull { it.uid == message.senderId }?.profile?.displayName
+                  peers.getOrNull(peerIndex)?.profile?.displayName
                       ?: stringResource(R.string.group_unknown_member)
-          ChatBubble(message.text, mine, name)
+          val color = OTHERS_COLORS.getOrElse(peerIndex) { OTHERS_COLORS.first() }
+          ChatBubble(message.text, mine, name, avatarColor = color)
         }
         if (pending != null)
             item { ChatBubble(pending.text.trim(), mine = true, name = null, sending = true) }
@@ -198,7 +213,13 @@ private fun ChatTimeline(
 }
 
 @Composable
-private fun ChatBubble(text: String, mine: Boolean, name: String?, sending: Boolean = false) {
+private fun ChatBubble(
+    text: String,
+    mine: Boolean,
+    name: String?,
+    sending: Boolean = false,
+    avatarColor: Int = OTHERS_COLORS.first(),
+) {
   Column(
       Modifier.fillMaxWidth(),
       horizontalAlignment = if (mine) Alignment.End else Alignment.Start,
@@ -213,7 +234,7 @@ private fun ChatBubble(text: String, mine: Boolean, name: String?, sending: Bool
     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       if (!mine) {
         Box(Modifier.size(28.dp)) {
-          if (name != null) MemberAvatar(initials(name), 2, size = 28.dp)
+          if (name != null) MemberAvatar(initials(name), avatarColor, size = 28.dp)
         }
       }
       val shape =
