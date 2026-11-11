@@ -1,4 +1,4 @@
-// Contributors: OpenAI Codex (live roster, offline state and confirmed leave, #234).
+// Contributors: OpenAI Codex (live roster, connectivity recovery and confirmed leave, #234).
 package com.polysocial.ui.group
 
 import androidx.lifecycle.SavedStateHandle
@@ -43,6 +43,7 @@ internal data class YourGroupScreenState(
     val event: EventDetails? = null,
     val roster: GroupRoster = GroupRoster.Loading,
     val leave: LeaveGroupRequest? = null,
+    val offline: Boolean = false,
 )
 
 internal sealed interface GroupRoster {
@@ -59,7 +60,6 @@ internal sealed interface GroupRoster {
       val capacity: Int,
       val people: List<GroupMember>,
       val myUid: String?,
-      val offline: Boolean,
   ) : GroupRoster
 }
 
@@ -111,8 +111,11 @@ constructor(
                       }
                     }
                     .onStart { emit(null) }
-            combine(event, observeRoster(), leave, ::YourGroupScreenState)
+            combine(event, observeRoster(), leave) { details, roster, request ->
+              YourGroupScreenState(details, roster, request)
+            }
           }
+          .combine(network.observeOnline()) { state, online -> state.copy(offline = !online) }
           .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), YourGroupScreenState())
 
   internal fun retry() {
@@ -122,7 +125,7 @@ constructor(
   internal fun askToLeave() {
     val current = state.value
     val roster = current.roster as? GroupRoster.Members ?: return
-    if (!roster.offline) {
+    if (!current.offline) {
       leave.compareAndSet(null, LeaveGroupRequest(roster.groupId, current.event?.event?.title))
     }
   }
@@ -174,11 +177,10 @@ constructor(
           MyGroupResult.NetworkError -> emit(GroupRoster.Unavailable.OFFLINE)
           MyGroupResult.UnexpectedError -> emit(GroupRoster.Unavailable.FAILED)
           is MyGroupResult.Success -> {
-            val offline = !network.isOnline()
             val group = result.group
             if (group == null) {
               when {
-                offline -> emit(GroupRoster.Unavailable.OFFLINE)
+                !network.isOnline() -> emit(GroupRoster.Unavailable.OFFLINE)
                 result.fromCache -> awaitRoster()
                 else -> emit(GroupRoster.Unavailable.MISSING)
               }
@@ -188,7 +190,7 @@ constructor(
               val members = coroutineScope {
                 ids.map { uid -> async { GroupMember(uid, readProfile(uid)) } }.awaitAll()
               }
-              emit(GroupRoster.Members(group.id, group.capacity, members, me, offline))
+              emit(GroupRoster.Members(group.id, group.capacity, members, me))
             }
           }
         }
