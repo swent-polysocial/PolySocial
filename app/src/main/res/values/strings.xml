@@ -223,7 +223,7 @@
     <string name="friend_code_description">Your friend QR code</string>
     <string name="friend_code_info">Share this code so another student can open your public profile.</string>
     <string name="friend_code_error_title">Can’t show your code</string>
-    <string name="friend_code_error_body">Your friend code couldn’t be drawn. Go back to your profile and open it again.</string>
+    <string name="friend_code_error_body">Your friend code can’t be drawn for this account. Go back to your profile.</string>
     <string name="friend_code_back_to_profile">Back to profile</string>
     <string name="privacy_profile_title">Name, section, year and interests</string>
     <string name="privacy_profile_body">Other students see your name, section, year and the interests you choose. Your email stays private. Your friend code holds only your account identifier.</string>
