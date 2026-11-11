@@ -14,6 +14,8 @@
 // Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (shared fakes and dateDigits instead of private copies, #276).
 // Contributors: Claude (Opus 5.5, Anthropic) closed the keyboard before signing up, #314.
+// Contributors: Claude Opus 5.5 (the My friend code step, #339); Konstantinos Perdikeas (directed,
+// reviewed and owns it).
 package com.polysocial.endtoend
 
 import androidx.activity.compose.setContent
@@ -154,8 +156,9 @@ import org.junit.runner.RunWith
  *    (#111).
  * 7. The new event appears in the Events list and its detail opens (#105, #112).
  * 8. Map tab: both events have a marker, and tapping the new one opens its preview (#50, #94).
- * 9. Profile → Privacy & data → Delete account: confirm, re-enter the password, and the app returns
- *    to Welcome with the cache cleared and the student signed out (#207).
+ * 9. Profile → My friend code: the student's own QR code, then Close back to Profile (#339).
+ * 10. Profile → Privacy & data → Delete account: confirm, re-enter the password, and the app
+ *     returns to Welcome with the cache cleared and the student signed out (#207).
  *
  * Every data source is a fake bound through Hilt (no Firebase, no network, no real user data), the
  * clock is fixed, and the location comes from [FakeLocationService]. Mapbox draws its markers
@@ -246,6 +249,7 @@ class M1EndToEndTest {
     createPublicEvent()
     findTheNewEvent()
     seeEventsOnTheMap()
+    showMyFriendCode()
     deleteTheAccount()
   }
 
@@ -398,6 +402,17 @@ class M1EndToEndTest {
     node(MapTags.marker(created.id)).performClick()
     await(MapTags.PREVIEW)
     node(MapTags.TITLE).assertTextContains(NEW_TITLE)
+  }
+
+  private fun showMyFriendCode() {
+    node(C.Tag.nav_item_profile).performClick()
+    await(C.Tag.profile_friend_code_entry)
+    node(C.Tag.profile_friend_code_entry).performClick()
+    await(C.Tag.friend_code_qr)
+    node(C.Tag.friend_code_heading).assertTextEquals("My friend code")
+    node(C.Tag.friend_code_error).assertDoesNotExist()
+    node(C.Tag.friend_code_close).performClick()
+    await(C.Tag.profile_friend_code_entry)
   }
 
   private fun deleteTheAccount() {
