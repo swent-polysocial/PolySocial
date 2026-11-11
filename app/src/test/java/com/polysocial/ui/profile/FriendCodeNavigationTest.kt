@@ -40,7 +40,10 @@ class FriendCodeNavigationTest {
   @get:Rule(order = 2) val rule = createAndroidComposeRule<MainActivity>()
   private lateinit var navController: NavHostController
 
-  private fun openFromProfile() {
+  // The test app has no signed-in account (FirebaseStartupRule), so the screen shows its "can't
+  // show" state: these tests cover navigation; the code itself is covered by FriendCodeScreenTest
+  // and the end-to-end test.
+  private fun showShell() {
     rule.activity.setContent {
       PolySocialTheme {
         navController = rememberNavController()
@@ -55,11 +58,28 @@ class FriendCodeNavigationTest {
       }
     }
     rule.onNodeWithTag(C.Tag.nav_item_profile).performClick()
+  }
+
+  private fun openFromProfile() {
+    showShell()
     rule.onNodeWithTag(C.Tag.profile_friend_code_entry).performClick()
   }
 
+  /** Taps [tag] twice, the second time 50 ms later, before the first tap's navigation settles. */
+  private fun doubleTap(tag: String) {
+    rule.mainClock.autoAdvance = false
+    try {
+      rule.onNodeWithTag(tag).performClick()
+      rule.mainClock.advanceTimeBy(50)
+      rule.onNodeWithTag(tag).performClick()
+    } finally {
+      rule.mainClock.autoAdvance = true
+    }
+    rule.waitForIdle()
+  }
+
   @Test
-  fun profileOpensMyFriendCodeFullScreenAndCloseReturnsToProfile() {
+  fun profileOpensTheScreenFullScreenAndCloseReturnsToProfile() {
     openFromProfile()
 
     rule.onNodeWithTag(C.Tag.friend_code_screen).assertIsDisplayed()
@@ -76,7 +96,7 @@ class FriendCodeNavigationTest {
   }
 
   @Test
-  fun systemBackFromMyFriendCodeReturnsToProfile() {
+  fun systemBackFromTheScreenReturnsToProfile() {
     openFromProfile()
 
     rule.runOnIdle { rule.activity.onBackPressedDispatcher.onBackPressed() }
@@ -86,11 +106,21 @@ class FriendCodeNavigationTest {
 
   @Test
   fun withoutASignedInStudentTheScreenLeadsBackToProfile() {
-    // The test app has no signed-in account, so no code can be drawn.
     openFromProfile()
 
     rule.onNodeWithTag(C.Tag.friend_code_error).assertIsDisplayed()
     rule.onNodeWithTag(C.Tag.friend_code_back_to_profile).performClick()
     rule.onNodeWithTag(C.Tag.profile_friend_code_entry).assertIsDisplayed()
+  }
+
+  @Test
+  fun aDoubleTapOnCloseReturnsToProfileOnlyOnce() {
+    openFromProfile()
+    rule.onNodeWithTag(C.Tag.friend_code_close).assertIsDisplayed()
+
+    doubleTap(C.Tag.friend_code_close)
+
+    rule.onNodeWithTag(C.Tag.profile_friend_code_entry).assertIsDisplayed()
+    rule.runOnIdle { assertEquals(Tab.PROFILE.rootRoute, navController.currentDestination?.route) }
   }
 }
