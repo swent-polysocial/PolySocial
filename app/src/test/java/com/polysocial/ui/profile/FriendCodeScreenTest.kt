@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
@@ -39,6 +40,7 @@ import com.polysocial.resources.C
 import com.polysocial.ui.association.OrganizationScreen
 import com.polysocial.ui.theme.PolySocialTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -84,8 +86,7 @@ class FriendCodeScreenTest {
   fun scanningIsNotOfferedYet() {
     show(shown)
 
-    compose.onNodeWithText("Scan a friend’s code").assertDoesNotExist()
-    compose.onNodeWithText("Scan a friend's code").assertDoesNotExist()
+    compose.onAllNodes(hasText("Scan", substring = true, ignoreCase = true)).assertCountEquals(0)
   }
 
   @Test
@@ -190,7 +191,10 @@ class FriendCodeScreenTest {
     val friendCode = entry.fetchSemanticsNode().boundsInRoot
     val privacy =
         compose.onNodeWithTag(C.Tag.profile_privacy_entry).fetchSemanticsNode().boundsInRoot
-    assertEquals(true, friendCode.bottom <= privacy.top)
+    assertTrue(
+        "My friend code ($friendCode) must sit above Privacy & data ($privacy)",
+        friendCode.bottom <= privacy.top,
+    )
   }
 
   @Test
