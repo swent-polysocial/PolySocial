@@ -73,7 +73,7 @@ constructor(
           profile.accountType == AccountType.ASSOCIATION -> FriendCodeUiState.CouldNotShow
           else ->
               current.copy(
-                  name = profile.displayName,
+                  name = profile.displayName.ifBlank { current.name },
                   details = profileDetails(profile.section, profile.year),
               )
         }
