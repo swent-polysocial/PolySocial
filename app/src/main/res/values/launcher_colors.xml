@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: OpenAI Codex (coral monogram colours from Mehdi's supplied reference, #335). -->
+<resources>
+    <color name="launcher_coral">#FF4D4D</color>
+    <color name="launcher_background">#FFF9F1</color>
+</resources>
