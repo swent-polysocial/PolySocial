@@ -1,4 +1,5 @@
-// Contributors: Claude Opus 5.5 (reminder scheduling contract, #123; KDoc wording after review).
+// Contributors: Claude Opus 5.5 (reminder scheduling contract, #123; KDoc wording after review;
+// isScheduled, second PR of #123).
 package com.polysocial.model.reminder
 
 import java.time.Instant
@@ -56,4 +57,10 @@ interface ReminderScheduler {
 
   /** Removes every reminder, when the student logs out. */
   suspend fun cancelAll(): CancelReminderResult
+
+  /**
+   * Whether a reminder is currently scheduled for [eventId], so the toggle can restore its state
+   * when the student reopens the event (device-only: nothing is stored in Firestore for this).
+   */
+  suspend fun isScheduled(eventId: String): Boolean
 }

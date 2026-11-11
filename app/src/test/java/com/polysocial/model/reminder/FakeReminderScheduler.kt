@@ -1,4 +1,5 @@
-// Contributors: Claude Opus 5.5 (reminder scheduler fake for tests, #123).
+// Contributors: Claude Opus 5.5 (reminder scheduler fake for tests, #123; isScheduled, second PR
+// of #123).
 package com.polysocial.model.reminder
 
 import java.time.Clock
@@ -32,4 +33,6 @@ class FakeReminderScheduler(private val clock: Clock) : ReminderScheduler {
     scheduled.clear()
     return CancelReminderResult.Cancelled
   }
+
+  override suspend fun isScheduled(eventId: String): Boolean = eventId in scheduled
 }

@@ -1,6 +1,7 @@
 // Contributors: Claude Opus 5.5 (reminder worker and notification, from the Figma frame
 // "Reminder · system notification", #123; time left after review; skipping deleted events, #130;
-// failed reads documented after review).
+// failed reads documented after review; a per-event PendingIntent instead of a shared one, second
+// PR of #123).
 package com.polysocial.model.reminder
 
 import android.Manifest
@@ -166,7 +167,7 @@ constructor(
           .setColor(ContextCompat.getColor(applicationContext, R.color.accent))
           .setContentTitle(title(reminder))
           .setContentText(whenAndWhere(reminder))
-          .setContentIntent(openApp())
+          .setContentIntent(openApp(reminder))
           .setAutoCancel(true)
           .build()
 
@@ -196,10 +197,21 @@ constructor(
     else applicationContext.getString(R.string.reminder_when_where, day, time, place)
   }
 
-  private fun openApp(): PendingIntent? {
+  /**
+   * Opens the app, like the launcher does. The request code is [reminder]'s event ID, not a
+   * constant: extras don't affect [android.content.Intent.filterEquals], so a shared request code
+   * would make Android reuse the first reminder's cached [PendingIntent] for every later one, and
+   * every notification would open the first event that posted one (#180 review).
+   */
+  private fun openApp(reminder: EventReminder): PendingIntent? {
     val intent =
         applicationContext.packageManager.getLaunchIntentForPackage(applicationContext.packageName)
             ?: return null
-    return PendingIntent.getActivity(applicationContext, 0, intent, PendingIntent.FLAG_IMMUTABLE)
+    return PendingIntent.getActivity(
+        applicationContext,
+        reminder.eventId.hashCode(),
+        intent,
+        PendingIntent.FLAG_IMMUTABLE,
+    )
   }
 }
