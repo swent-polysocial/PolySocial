@@ -1,63 +1,71 @@
-<!-- Contributors: OpenAI Codex (drafted the workflow and access matrix, then revised intake, evidence handling and revocation after review, #210). -->
+<!-- Contributors: OpenAI Codex (drafted the review workflow and access matrix, then clarified console operations, pending outcomes and cache behavior, #210). -->
 
 # Association review and rejection
 
 The [manual Firebase console procedure][console] is the Sprint 3 delivery.
-This workflow covers intake, evidence, duplicates, rejection and reapplication.
+This workflow documents the checks a project owner can make today.
 
-## Review setup
+## Who can review
 
-The team assigns a primary reviewer and a backup from the PolySocial admins
-with the Owner role on the app's Firebase project. In the Firebase console,
-open **Project settings → Users and permissions** to see the current Owners.
-The primary checks for completed association setups that are still pending in
-the Firebase console on the team's agreed schedule. The backup covers absences
-and conflicts of interest.
-
-Before reviewing real applications, record the reviewers, check schedule, shared team
-mailbox, private evidence location and deletion deadline in the team's private
-handoff. Use the privacy contact as the shared mailbox only if the team
-confirms it is suitable for association reviews. Keep correspondence and
-evidence in that mailbox or the agreed private location, with access limited
-to the reviewers who need it. Collect only what the decision requires and
-delete the material by the agreed deadline. Keep applicant details out of
-public issues and personal inboxes.
+A PolySocial admin with the Owner role on the app's Firebase project checks
+completed pending setups manually. The Firebase console lists current Owners
+under **Project settings → Users and permissions**. If a reviewer belongs to
+the applicant association, another owner handles that review. Keep applicant
+details and evidence out of public issues. Use only the information needed
+for the decision.
 
 ## Manual review
 
 1. Match the pending `associations/{uid}` setup to the same UID in Firebase
    Authentication and `users/{uid}`. Confirm the email is verified and the
-   account type is `association`. Hand the request to another owner if you
-   belong to the applicant association.
+   account type is `association`.
 2. Check the submitted name and type against an official EPFL directory or the
-   association’s official website. Confirm that the applicant can represent the
-   association through a committee contact found independently of the submission.
-   Both EPFL and non-EPFL addresses can be valid. An email domain or a link
-   supplied by the applicant is insufficient on its own.
+   association’s official website. Look for independent confirmation that the
+   applicant can represent the association. Both EPFL and non-EPFL addresses
+   can be valid. An email domain or a link supplied by the applicant is
+   insufficient on its own.
 3. Check for an existing account for the same association, including variants of
-   its name. If an approved account already exists, keep the duplicate pending
-   and direct the committee to recover the existing account. If two pending
-   accounts claim the same association, pause both until the committee confirms
-   which one should represent it. Refer ownership disputes to another project
-   owner for review.
+   its name. If an approved account already exists, keep its approval and leave
+   the duplicate pending. If two pending accounts claim the same association,
+   leave both pending until there is independent confirmation of which one
+   should represent it.
 4. Approve a confirmed request using the [console procedure][console]. Set
    `users/{uid}.isAssociationVerified` to boolean `true`, then re-check the reviewed
-   identity. If it changed, revoke approval and review again before notifying
-   the applicant. The approved account opens its association tabs at the next
-   start.
-5. When evidence is insufficient or an application is rejected, the owner emails
-   the verified signup address from the shared team mailbox with the reason
-   and any next step. The flag stays absent or `false` and the app shows
-   pending review. There is no stored rejection status.
-   Rejected and duplicate accounts still have verified email addresses, so the
-   planned cleanup for unverified accounts ([#226][unverified-cleanup]) would
-   skip them. Associations cannot delete their own accounts in the app. The
-   [association account deletion procedure][association-deletion] remains open.
-6. To reapply, the applicant edits their permitted setup details if needed and
-   replies to the review email with corrected evidence. A project owner reviews
-   the request again against the same criteria. To revoke approval, use the
-   [console procedure][console] to set the boolean to `false`. The next app start
-   returns to pending review and new verified-only operations are denied.
+   identity. If it changed, revoke approval and review again. The account opens
+   its association tabs once the app reads the updated profile on startup.
+5. If the owner declines approval or needs more evidence, leave the flag absent
+   or `false`. The app still shows pending review. The applicant can edit
+   permitted setup details, and any owner can check them again in the console.
+   Editing those details does not notify an owner or submit a new request.
+   A channel for informing rejected applicants and requesting another review
+   still needs a team decision.
+
+## Revocation and cleanup
+
+To revoke approval, set the boolean to `false` using the
+[console procedure][console]. The server then denies verified-only operations.
+The app routes to pending review once startup reads the updated profile. An
+offline device may still have the previous flag and cached events or identity.
+
+The Firebase console cannot clear copies on Android devices. On a device that
+needs its local Firestore cache cleared, use **Log out** in the app. Logout
+clears that device's Firestore persistence before signing out and offers
+**Retry** if cleanup fails. The app also clears the cache before allowing a
+different account to use it. Revocation alone does not clear either device
+cache or server data.
+
+Existing public events stay visible to students and can still display the
+Verified badge because it comes from the event's stored `isAssociationEvent`
+field. Removing or changing a published event is a separate action.
+
+Rejected and duplicate accounts retain verified email addresses, so
+[#226's planned cleanup][unverified-cleanup] would skip them. Removing a
+Firebase Authentication account alone would leave its Firestore records.
+The [association account deletion procedure][association-deletion] still needs
+to define who removes the Auth account and its Firestore identity and how to
+handle related events and records. It also needs to account for still-valid
+sign-in tokens when removing the profile that identifies the account as an
+association.
 
 ## Access matrix
 
@@ -86,23 +94,20 @@ set to `false`. Client updates to the flag are denied.
 - **Duplicate.** A second account requests approval for an association already
   represented in the app. It remains pending while the committee recovers the
   existing account. The existing approval stays with that account.
-- **Reject and reapply.** The committee cannot confirm the applicant’s authority.
-  The owner sends the decision privately. The applicant can still edit their own
-  setup, then submit corrected evidence for a fresh review.
-- **Revoke.** The owner sets the flag to `false`. On the next start the account sees
-  pending review. The association's own events and identity may remain in the
-  Firestore cache. Existing public events remain visible to students and can
-  still show the Verified badge, which comes from the event's
-  `isAssociationEvent` field. Any later approval requires rechecking the name
-  and type.
+- **Decline and revisit.** The owner cannot confirm the applicant's authority
+  and leaves the account pending. An owner can revisit corrected details in
+  the console using the same checks.
+- **Revoke.** The owner sets the flag to `false`. A connected app that restarts
+  and reads the updated profile shows pending review. Previously published
+  events and device caches follow the cleanup notes above. Any later approval
+  requires rechecking the name and type.
 
 ## Product backlog wording for the board owner
 
-> Sprint 3 delivered manual Firebase-console verification via #135. #210 covers
-> the manual review, rejection and reapplication policy. A future admin
-> interface may list pending applications and support approval and rejection
-> once the team has agreed its scope and server-side authorization. Refine and
-> schedule that implementation after approval.
+> Sprint 3 delivered manual Firebase-console verification via #135. #210
+> documents what owners can review today and tracks how to notify a rejected
+> applicant and receive a renewed request. A future admin interface needs
+> its own agreed scope and server-side authorization.
 
 The board owner applies this wording to the product draft after merge.
 
