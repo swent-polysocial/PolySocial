@@ -15,8 +15,7 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the Seeding demo data section, #243). -->
 <!-- Contributors: Claude (Fable 5.2, Anthropic) (Features table statuses, section order and the move of behavior notes to docs/App-behavior.md, #340; review fixes by Claude (Opus 5.5, Anthropic)). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the deleteEventRegistrations trigger and registrations in deleteAccount, #275). -->
-
-<!-- Contributors: OpenAI Codex (CI signing, direct APK downloads and Firebase setup for #383). -->
+<!-- Contributors: OpenAI Codex (CI signing, direct APK downloads, Firebase setup and review fixes for #383). -->
 
 # PolySocial
 
@@ -127,7 +126,9 @@ base64 < ci-apk.p12 | gh secret set CI_APK_KEYSTORE --repo swent-polysocial/Poly
 gh secret set CI_APK_KEYSTORE_PASSWORD --repo swent-polysocial/PolySocial
 ```
 
-Enter the password at the prompt and remove the temporary keystore after both secrets are set. Keep the same key for future builds so Android accepts them as updates. Only the final publishing step on `main` reads these secrets. It verifies the signed APK and prints its public certificate fingerprint.
+Enter the password at the prompt and remove the temporary keystore after both secrets are set. Keep the same key for future builds so Android accepts them as updates. GitHub hides saved secret values. If the key is lost or replaced, register the new SHA-1 in Firebase and have testers uninstall the previous APK once.
+
+Only the final publishing step on `main` reads these secrets. It verifies the signed APK and prints its public certificate fingerprint.
 
 Register the key's **SHA-1** under Firebase Project settings → Your apps → `com.polysocial`. Download the updated `google-services.json` to the git-ignored `app/google-services.json` and update the existing `GOOGLE_SERVICES` Actions secret with the base64-encoded file:
 
