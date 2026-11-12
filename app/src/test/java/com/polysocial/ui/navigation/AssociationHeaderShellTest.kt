@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) wrote these tests of the verified association's header
 // on its Events and Map tabs, with fake repositories, #322.
+// Contributors: Claude Opus 5.5 (passed the new reminder scheduler fake, #123's second PR review).
 package com.polysocial.ui.navigation
 
 import androidx.compose.material3.Text
@@ -21,6 +22,7 @@ import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.firebase.CacheClearResult
 import com.polysocial.model.firebase.SessionCache
+import com.polysocial.model.reminder.FakeReminderScheduler
 import com.polysocial.model.user.AccountType
 import com.polysocial.resources.C
 import com.polysocial.ui.association.AssociationTabHeader
@@ -50,6 +52,7 @@ class AssociationHeaderShellTest {
             override suspend fun clear() = CacheClearResult.Cleared
           },
           associations,
+          FakeReminderScheduler(java.time.Clock.systemUTC()),
       )
 
   private fun show(type: AccountType = AccountType.ASSOCIATION) {
