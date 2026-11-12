@@ -1,6 +1,8 @@
 // Contributors: Claude Opus 5.5 (wrote these tests of the "Remind me" toggle, second PR of #123).
 // Contributors: Claude Opus 5.5 (tests for a failed cancellation and a stale initial read racing
 // a user action, #123's second PR review).
+// Contributors: Claude Opus 5.5 (fixed GatedReminderScheduler to capture a true stale snapshot,
+// and covered cancelling registration racing the initial read, #123's second PR, Mehdi's review).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -95,14 +97,18 @@ class EventDetailReminderTest {
   private val EventDetailViewModel.loaded
     get() = uiState.value as EventDetailUiState.Loaded
 
-  /** [delegate], except [isScheduled] waits for [gate] before answering: a slow initial read. */
+  /**
+   * [delegate], except [isScheduled] captures its answer right away, then waits for [gate] before
+   * returning it: a slow initial read whose snapshot can go stale while it waits.
+   */
   private class GatedReminderScheduler(
       private val delegate: ReminderScheduler,
       private val gate: CompletableDeferred<Unit>,
   ) : ReminderScheduler by delegate {
     override suspend fun isScheduled(eventId: String): Boolean {
+      val snapshot = delegate.isScheduled(eventId)
       gate.await()
-      return delegate.isScheduled(eventId)
+      return snapshot
     }
   }
 
@@ -115,7 +121,7 @@ class EventDetailReminderTest {
 
   @Test
   fun reopeningTheScreen_restoresTheReminderOnState() = runTest {
-    reminders.scheduled[EVENT_ID] = EventReminder(EVENT_ID, event.title, event.startTime)
+    reminders.scheduled[EVENT_ID] = EventReminder(EVENT_ID, event.title, event.startTime, STUDENT)
     val vm = open()
 
     assertTrue(vm.loaded.reminderOn)
@@ -130,14 +136,14 @@ class EventDetailReminderTest {
 
     assertTrue(vm.loaded.reminderOn)
     assertEquals(
-        EventReminder(EVENT_ID, event.title, event.startTime, event.locationName),
+        EventReminder(EVENT_ID, event.title, event.startTime, STUDENT, event.locationName),
         reminders.scheduled[EVENT_ID],
     )
   }
 
   @Test
   fun turningItOff_cancelsTheReminder() = runTest {
-    reminders.scheduled[EVENT_ID] = EventReminder(EVENT_ID, event.title, event.startTime)
+    reminders.scheduled[EVENT_ID] = EventReminder(EVENT_ID, event.title, event.startTime, STUDENT)
     val vm = open()
 
     vm.onReminderToggle(false)
@@ -149,7 +155,7 @@ class EventDetailReminderTest {
 
   @Test
   fun cancellingTheRegistration_alsoCancelsTheReminder() = runTest {
-    reminders.scheduled[EVENT_ID] = EventReminder(EVENT_ID, event.title, event.startTime)
+    reminders.scheduled[EVENT_ID] = EventReminder(EVENT_ID, event.title, event.startTime, STUDENT)
     val vm = open()
     assertTrue(vm.loaded.reminderOn)
 
@@ -250,7 +256,7 @@ class EventDetailReminderTest {
 
   @Test
   fun turningItOff_whenCancellationFails_keepsItOn() = runTest {
-    reminders.scheduled[EVENT_ID] = EventReminder(EVENT_ID, event.title, event.startTime)
+    reminders.scheduled[EVENT_ID] = EventReminder(EVENT_ID, event.title, event.startTime, STUDENT)
     reminders.fail = true
     val vm = open()
     runCurrent()
@@ -266,7 +272,7 @@ class EventDetailReminderTest {
 
   @Test
   fun cancellingTheRegistration_whenReminderCleanupFails_keepsItOn_andOffersRetry() = runTest {
-    reminders.scheduled[EVENT_ID] = EventReminder(EVENT_ID, event.title, event.startTime)
+    reminders.scheduled[EVENT_ID] = EventReminder(EVENT_ID, event.title, event.startTime, STUDENT)
     reminders.fail = true
     val vm = open()
     runCurrent()
@@ -309,6 +315,28 @@ class EventDetailReminderTest {
     runCurrent()
 
     assertTrue(vm.loaded.reminderOn)
+  }
+
+  @Test
+  fun aStaleInitialRead_neverResurrectsTheReminderAfterCancellingRegistration() = runTest {
+    reminders.scheduled[EVENT_ID] = EventReminder(EVENT_ID, event.title, event.startTime, STUDENT)
+    val gate = CompletableDeferred<Unit>()
+    val gated = GatedReminderScheduler(reminders, gate)
+    val vm = open(scheduler = gated)
+    // initReminderOnce's isScheduled() read already captured "true", but is still gated.
+
+    vm.onCancelRegistration()
+    runCurrent()
+    assertEquals(Attendance.NOT_GOING, vm.loaded.attendance)
+    assertFalse(vm.loaded.reminderOn)
+    assertTrue(EVENT_ID !in reminders.scheduled)
+
+    // The stale "true" snapshot must not resurrect the reminder now that cancelling the
+    // registration already turned it off.
+    gate.complete(Unit)
+    runCurrent()
+
+    assertFalse(vm.loaded.reminderOn)
   }
 
   private companion object {

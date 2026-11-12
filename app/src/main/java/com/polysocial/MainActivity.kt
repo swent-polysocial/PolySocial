@@ -2,6 +2,8 @@
 // OpenAI Codex (GPT-6.1 Sol, medium; connected sign-up and future authentication destinations).
 // Contributors: Claude Opus 5.5 (opened a reminder's event on notification tap, cold and warm,
 // second PR of #123's review).
+// Contributors: Claude Opus 5.5 (cleared the consumed notification's extra from the retained
+// Intent so recreation doesn't replay it, #123's second PR, Mehdi's review).
 package com.polysocial
 
 import android.content.Intent
@@ -31,6 +33,16 @@ class MainActivity : ComponentActivity() {
    */
   internal var pendingReminderEventId by mutableStateOf<String?>(null)
 
+  /**
+   * Clears [pendingReminderEventId] and the extra it came from on [getIntent], so a later
+   * recreation (for example a rotation) reading that same retained [Intent] in [onCreate] doesn't
+   * resurrect an event the student already navigated away from.
+   */
+  internal fun consumePendingReminderEventId() {
+    pendingReminderEventId = null
+    intent.removeExtra(NOTIFICATION_EVENT_ID_EXTRA)
+  }
+
   override fun onCreate(savedInstanceState: Bundle?) {
     super.onCreate(savedInstanceState)
     pendingReminderEventId = intent.getStringExtra(NOTIFICATION_EVENT_ID_EXTRA)
@@ -46,7 +58,7 @@ class MainActivity : ComponentActivity() {
             signUpViewModel,
             onExit = { finish() },
             pendingReminderEventId = pendingReminderEventId,
-            onPendingReminderEventIdConsumed = { pendingReminderEventId = null },
+            onPendingReminderEventIdConsumed = ::consumePendingReminderEventId,
         )
       }
     }

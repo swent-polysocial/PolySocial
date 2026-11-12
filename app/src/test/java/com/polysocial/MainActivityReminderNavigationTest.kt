@@ -1,5 +1,7 @@
 // Contributors: Claude Opus 5.5 (tests for reading a reminder notification's event ID on a cold
 // and a warm launch, #123's second PR review).
+// Contributors: Claude Opus 5.5 (a consumed event isn't replayed after recreation, #123's second
+// PR, Mehdi's review).
 package com.polysocial
 
 import android.content.Intent
@@ -70,6 +72,31 @@ class MainActivityReminderNavigationTest {
 
       scenario.onActivity { it.onNewIntent(intentFor("event-2")) }
       scenario.onActivity { assertEquals("event-2", it.pendingReminderEventId) }
+    }
+  }
+
+  @Test
+  fun aConsumedColdLaunchEvent_isNotReplayedAfterRecreation() {
+    ActivityScenario.launch<MainActivity>(intentFor("event-1")).use { scenario ->
+      scenario.onActivity { it.consumePendingReminderEventId() }
+      scenario.onActivity { assertNull(it.pendingReminderEventId) }
+
+      scenario.recreate()
+
+      scenario.onActivity { assertNull(it.pendingReminderEventId) }
+    }
+  }
+
+  @Test
+  fun aConsumedWarmLaunchEvent_isNotReplayedAfterRecreation() {
+    ActivityScenario.launch<MainActivity>(intentFor(null)).use { scenario ->
+      scenario.onActivity { it.onNewIntent(intentFor("event-2")) }
+      scenario.onActivity { it.consumePendingReminderEventId() }
+      scenario.onActivity { assertNull(it.pendingReminderEventId) }
+
+      scenario.recreate()
+
+      scenario.onActivity { assertNull(it.pendingReminderEventId) }
     }
   }
 }

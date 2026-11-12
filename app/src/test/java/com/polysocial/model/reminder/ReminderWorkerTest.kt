@@ -1,6 +1,8 @@
 // Contributors: Claude Opus 5.5 (wrote these tests, #123; late reminder title after review;
 // deleted events, #130; failed reads after review; distinct PendingIntents per event, second PR
 // of #123; the PendingIntent's event-id extra, #123's second PR review).
+// Contributors: Claude Opus 5.5 (a reminder only fires for the account that scheduled it, #123's
+// second PR, Mehdi's review).
 package com.polysocial.model.reminder
 
 import android.Manifest
@@ -15,6 +17,9 @@ import androidx.work.ListenableWorker
 import androidx.work.WorkerFactory
 import androidx.work.WorkerParameters
 import androidx.work.testing.TestListenableWorkerBuilder
+import com.polysocial.model.auth.AuthRepository
+import com.polysocial.model.auth.AuthUser
+import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
@@ -49,6 +54,10 @@ class ReminderWorkerTest {
   private val context = ApplicationProvider.getApplicationContext<Context>()
   private val zurich = ZoneId.of("Europe/Zurich")
 
+  private companion object {
+    const val STUDENT = "student-1"
+  }
+
   // The Figma frame: at 19:00, an event starting today at 20:00 (Zurich time).
   private val reminderDue = Instant.parse("2026-10-03T17:00:00Z")
   private val balelec =
@@ -56,10 +65,12 @@ class ReminderWorkerTest {
           "e1",
           "Balélec warm-up",
           Instant.parse("2026-10-03T18:00:00Z"),
+          STUDENT,
           "Satellite, EPFL",
       )
 
   private val events = FakeEventRepository()
+  private val auth = FakeAuthRepository(AuthUser(STUDENT, "student@example.com", true))
 
   private fun stored(id: String) =
       Event(
@@ -91,6 +102,7 @@ class ReminderWorkerTest {
       data: Data,
       at: Instant = reminderDue,
       repository: EventRepository = events,
+      signedInAs: AuthRepository = auth,
   ): ListenableWorker.Result {
     val clock = Clock.fixed(at, zurich)
     val worker =
@@ -102,7 +114,7 @@ class ReminderWorkerTest {
                       appContext: Context,
                       workerClassName: String,
                       workerParameters: WorkerParameters,
-                  ) = ReminderWorker(appContext, workerParameters, repository, clock)
+                  ) = ReminderWorker(appContext, workerParameters, repository, signedInAs, clock)
                 }
             )
             .build()
@@ -298,6 +310,28 @@ class ReminderWorkerTest {
   @Test
   fun aReminderMissingAField_fails() = runTest {
     assertEquals(ListenableWorker.Result.failure(), run(Data.EMPTY))
+    assertTrue(notifications.isEmpty())
+  }
+
+  @Test
+  fun aDifferentSignedInAccount_isNotNotified() = runTest {
+    // For example a failed cancelAll() on logout (best-effort) leaves this queued, and a
+    // different account signs in before it fires.
+    val other = FakeAuthRepository(AuthUser("other-student", "other@example.com", true))
+
+    assertEquals(
+        ListenableWorker.Result.success(),
+        run(balelec.toWorkData(), signedInAs = other),
+    )
+    assertTrue(notifications.isEmpty())
+  }
+
+  @Test
+  fun noOneSignedIn_isNotNotified() = runTest {
+    assertEquals(
+        ListenableWorker.Result.success(),
+        run(balelec.toWorkData(), signedInAs = FakeAuthRepository(user = null)),
+    )
     assertTrue(notifications.isEmpty())
   }
 

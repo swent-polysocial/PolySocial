@@ -394,7 +394,7 @@ class DeleteAccountViewModelTest {
   fun deletingTheAccount_alsoCancelsEveryReminder() =
       runTest(main.dispatcher) {
         reminders.scheduled["event-1"] =
-            EventReminder("event-1", "Balélec", java.time.Instant.now())
+            EventReminder("event-1", "Balélec", java.time.Instant.now(), uid = "student-1")
         openReauth()
         vm.onPasswordChange("fictional-password")
         vm.submitPassword()
