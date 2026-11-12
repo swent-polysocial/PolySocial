@@ -1,5 +1,8 @@
 // Contributors: Claude Opus 5.5 (reminder scheduling contract, #123; KDoc wording after review;
 // isScheduled, second PR of #123).
+// Contributors: Claude Opus 5.5 (carry the scheduling account's UID, so a reminder a failed
+// cancelAll() leaves behind never fires for a different signed-in account, #123's second PR,
+// Mehdi's review).
 package com.polysocial.model.reminder
 
 import java.time.Instant
@@ -9,11 +12,15 @@ import java.time.Instant
  * device only, never in Firestore.
  *
  * @property placeName the event's place, or null if it has none to show.
+ * @property uid the account that scheduled it. [ReminderWorker] checks this against whoever is
+ *   signed in when it fires, so a reminder a failed [ReminderScheduler.cancelAll] leaves behind on
+ *   logout never notifies a different account that later signs in on the same device.
  */
 data class EventReminder(
     val eventId: String,
     val title: String,
     val startTime: Instant,
+    val uid: String,
     val placeName: String? = null,
 )
 

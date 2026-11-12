@@ -9,6 +9,10 @@
 // Contributors: Claude Opus 5.5 (reconciled the reminder's real state on a failed cancellation
 // instead of claiming Off, and guarded the initial isScheduled() read against a stale overwrite,
 // second PR's review).
+// Contributors: Claude Opus 5.5 (also guard the initial read against cancelling the registration,
+// not just the toggle and permission result, #123's second PR, Mehdi's review).
+// Contributors: Claude Opus 5.5 (carry the signed-in account's UID when scheduling, so
+// ReminderWorker can refuse to notify a different account, #123's second PR, Mehdi's review).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -680,6 +684,7 @@ constructor(
 
   private fun scheduleReminder() {
     val event = (uiState.value as? EventDetailUiState.Loaded)?.details?.event ?: return
+    val uid = auth.currentUser()?.uid ?: return
     viewModelScope.launch {
       val result =
           reminders.schedule(
@@ -687,6 +692,7 @@ constructor(
                   eventId = eventId,
                   title = event.title,
                   startTime = event.startTime,
+                  uid = uid,
                   placeName = event.locationName.ifBlank { null },
               )
           )
@@ -723,6 +729,9 @@ constructor(
           savedAttendance.value = if (going) Attendance.GOING else Attendance.NOT_GOING
           // The reminder stops making sense once the registration it was for is gone.
           if (!going) {
+            // Otherwise a still-pending initReminderOnce read, seeded before this cancellation,
+            // can finish afterward and resurrect reminderOn from its now-stale snapshot.
+            reminderUserActed = true
             remindersBlocked.value = false
             if (reminders.cancel(eventId) == CancelReminderResult.Cancelled) {
               reminderOn.value = false

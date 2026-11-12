@@ -49,7 +49,13 @@ class WorkManagerReminderSchedulerTest {
   }
 
   private fun reminder(eventId: String, startsInHours: Long) =
-      EventReminder(eventId, "Study session", now.plusSeconds(startsInHours * 3600), "BC 410")
+      EventReminder(
+          eventId,
+          "Study session",
+          now.plusSeconds(startsInHours * 3600),
+          uid = "student-1",
+          placeName = "BC 410",
+      )
 
   /** The reminders of [eventId] that are still waiting to fire. */
   private fun pending(eventId: String) =

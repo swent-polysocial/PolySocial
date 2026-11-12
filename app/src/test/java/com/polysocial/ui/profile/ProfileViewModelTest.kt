@@ -172,9 +172,10 @@ class ProfileViewModelTest {
       runTest(main.dispatcher) {
         reminders.scheduled["event-1"] =
             com.polysocial.model.reminder.EventReminder(
-                "event-1",
-                "Balélec",
-                java.time.Instant.now(),
+                eventId = "event-1",
+                title = "Balélec",
+                startTime = java.time.Instant.now(),
+                uid = "student-one",
             )
         vm.requestLogout()
         vm.confirmLogout()

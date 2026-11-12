@@ -2,6 +2,9 @@
 // "Reminder · system notification", #123; time left after review; skipping deleted events, #130;
 // failed reads documented after review; a per-event PendingIntent instead of a shared one, second
 // PR of #123; carrying the event ID for notification-tap navigation, second PR's review).
+// Contributors: Claude Opus 5.5 (skip a reminder whose scheduling account no longer matches
+// whoever is signed in, so a failed cancelAll() on logout can't notify a different account,
+// #123's second PR, Mehdi's review).
 package com.polysocial.model.reminder
 
 import android.Manifest
@@ -18,6 +21,7 @@ import androidx.work.Data
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.polysocial.R
+import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.EventResult
 import dagger.hilt.EntryPoint
@@ -36,6 +40,7 @@ private const val KEY_EVENT_ID = "eventId"
 private const val KEY_TITLE = "title"
 private const val KEY_START_MILLIS = "startMillis"
 private const val KEY_PLACE = "place"
+private const val KEY_UID = "uid"
 
 /**
  * Extra on the launch [android.content.Intent] a reminder notification opens, carrying its event's
@@ -61,17 +66,20 @@ internal fun EventReminder.toWorkData(): Data =
         KEY_TITLE to title,
         KEY_START_MILLIS to startTime.toEpochMilli(),
         KEY_PLACE to placeName,
+        KEY_UID to uid,
     )
 
 /** The reminder saved in [data], or null if a field is missing. */
 internal fun eventReminderFrom(data: Data): EventReminder? {
   val eventId = data.getString(KEY_EVENT_ID) ?: return null
   val title = data.getString(KEY_TITLE) ?: return null
+  val uid = data.getString(KEY_UID) ?: return null
   if (!data.hasKeyWithValueOfType(KEY_START_MILLIS, Long::class.javaObjectType)) return null
   return EventReminder(
       eventId = eventId,
       title = title,
       startTime = Instant.ofEpochMilli(data.getLong(KEY_START_MILLIS, 0)),
+      uid = uid,
       placeName = data.getString(KEY_PLACE),
   )
 }
@@ -109,11 +117,16 @@ internal suspend fun eventStillExists(events: EventRepository, eventId: String):
   return (confirmed ?: latest) !is EventResult.NotFound
 }
 
-/** Gives [ReminderWorker], which WorkManager creates itself, the app's [EventRepository]. */
+/**
+ * Gives [ReminderWorker], which WorkManager creates itself, the app's [EventRepository] and
+ * [AuthRepository] (to check who is signed in when it fires).
+ */
 @EntryPoint
 @InstallIn(SingletonComponent::class)
 internal interface ReminderWorkerEntryPoint {
   fun eventRepository(): EventRepository
+
+  fun authRepository(): AuthRepository
 }
 
 /**
@@ -134,12 +147,18 @@ constructor(
     private val events: EventRepository =
         EntryPointAccessors.fromApplication(context, ReminderWorkerEntryPoint::class.java)
             .eventRepository(),
+    private val auth: AuthRepository =
+        EntryPointAccessors.fromApplication(context, ReminderWorkerEntryPoint::class.java)
+            .authRepository(),
     private val clock: Clock = Clock.systemDefaultZone(),
 ) : CoroutineWorker(context, params) {
 
   override suspend fun doWork(): Result {
     val reminder = eventReminderFrom(inputData) ?: return Result.failure()
     if (!clock.instant().isBefore(reminder.startTime)) return Result.success()
+    // A failed cancelAll() on logout (best-effort, see ProfileViewModel.confirmLogout) can leave
+    // this reminder queued; without this, it would fire for whichever account signs in next.
+    if (auth.currentUser()?.uid != reminder.uid) return Result.success()
     if (!canPostNotifications()) return Result.success()
     if (!eventStillExists(events, reminder.eventId)) return Result.success()
     val notifications = NotificationManagerCompat.from(applicationContext)
