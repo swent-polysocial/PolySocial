@@ -232,7 +232,8 @@ class EventDetailScreenTest {
 
   @Test
   fun findAGroup_opensFindAGroup() {
-    showLoaded()
+    // Going, since #244 greys the button out otherwise (EventDetailAttendanceScreenTest).
+    show(EventDetailUiState.Loaded(details(), isOffline = false, attendance = Attendance.GOING))
 
     composeTestRule.onNodeWithTag(EventDetailTags.FIND_GROUP).performClick()
 
