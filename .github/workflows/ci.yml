@@ -521,6 +521,12 @@ jobs:
             exit 1
           fi
 
+          apksigner="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          if [[ ! -x "$apksigner" ]]; then
+            echo "::error::Android SDK Build Tools 36.0.0 are required for APK signing. Expected executable: $apksigner"
+            exit 1
+          fi
+
           keystore=$(mktemp "$RUNNER_TEMP/polysocial-ci.XXXXXX.p12")
           trap 'rm -f -- "$keystore"' EXIT
           printf '%s' "$CI_APK_KEYSTORE" | base64 --decode > "$keystore"
@@ -528,7 +534,6 @@ jobs:
 
           apk=app/build/outputs/apk/debug/app-debug.apk
           published_apk=app/build/outputs/apk/debug/polysocial.apk
-          apksigner="$ANDROID_HOME/build-tools/36.0.0/apksigner"
           "$apksigner" sign --ks "$keystore" --ks-key-alias polysocial-ci \
             --ks-pass env:CI_APK_KEYSTORE_PASSWORD --v4-signing-enabled false --out "$published_apk" "$apk"
           "$apksigner" verify --print-certs "$published_apk"
