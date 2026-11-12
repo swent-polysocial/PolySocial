@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (live chat, membership gating, connectivity and retry state, #238).
+// Contributors: OpenAI Codex (live chat, membership gating, stable sender names, connectivity
+// and retry state, #238).
 package com.polysocial.ui.chat
 
 import androidx.lifecycle.SavedStateHandle
@@ -210,14 +211,18 @@ constructor(
                     Access.MEMBER -> emitAll(observeMessages())
                   }
                 }
+        var loadedMembers = emptyMap<String, GroupMember>()
         val memberProfiles =
             membership
                 .map { it.memberUids }
                 .distinctUntilChanged()
                 .transformLatest<List<String>, List<GroupMember>> { uids ->
+                  loadedMembers = loadedMembers.filterKeys { it in uids }
+                  emit(uids.map { loadedMembers[it] ?: GroupMember(it, null) })
                   if (uids.isNotEmpty()) {
-                    emit(uids.map { GroupMember(it, null) })
-                    emit(profiles.readGroupMembers(uids))
+                    val refreshedMembers = profiles.readGroupMembers(uids)
+                    loadedMembers = refreshedMembers.associateBy { it.uid }
+                    emit(refreshedMembers)
                   }
                 }
                 .onStart { emit(emptyList()) }

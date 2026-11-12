@@ -1,5 +1,5 @@
-// Contributors: OpenAI Codex (tested chat, stable history, connectivity and input with fakes,
-// #238).
+// Contributors: OpenAI Codex (tested chat, stable history and sender names, connectivity, and
+// input with fakes, #238).
 package com.polysocial.ui.chat
 
 import android.content.Context
@@ -33,6 +33,7 @@ import com.polysocial.model.group.MyGroupResult
 import com.polysocial.model.network.FakeNetworkMonitor
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.PublicProfile
+import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.resources.C
 import com.polysocial.ui.event.detail.EventDetailViewModel
 import com.polysocial.ui.theme.PolySocialTheme
@@ -324,6 +325,48 @@ class GroupChatScreenTest {
   }
 
   @Test
+  fun aMemberJoiningKeepsLoadedSenderNamesWhileProfilesRefresh() {
+    val newcomer = "new"
+    profiles.profiles[newcomer] = PublicProfile(newcomer, "Test Newcomer", "IN", "BA3")
+    val finishProfileRead = CompletableDeferred<Unit>()
+    val membership = MutableStateFlow(MyGroupResult.Success(group, fromCache = false))
+    messages.seedMessage(EVENT, group.id, "peer-message", PEER, "See you there", NOW)
+    show(
+        groupRepository =
+            object : GroupRepository by groups {
+              override fun observeMyGroup(eventId: String) = membership
+            },
+        profileRepository =
+            object : PublicProfileRepository by profiles {
+              override suspend fun getPublicProfile(uid: String) =
+                  profiles.getPublicProfile(uid).also {
+                    if (uid == newcomer) finishProfileRead.await()
+                  }
+            },
+    )
+    compose.onNodeWithText("Test Peer").assertIsDisplayed()
+
+    membership.value =
+        membership.value.copy(group = group.copy(memberUids = listOf(ME, PEER, newcomer)))
+    messages.setMembers(EVENT, group.id, setOf(ME, PEER, newcomer))
+    messages.seedMessage(
+        EVENT,
+        group.id,
+        "new-message",
+        newcomer,
+        "I'll be there",
+        NOW.plusSeconds(1),
+    )
+    settle()
+    compose.onNodeWithText("Test Peer").assertIsDisplayed()
+    text(R.string.group_unknown_member).assertIsDisplayed()
+
+    finishProfileRead.complete(Unit)
+    settle()
+    compose.onNodeWithText("Test Newcomer").assertIsDisplayed()
+  }
+
+  @Test
   fun overlongPasteKeepsThePrefixWithoutSplittingAnEmoji() {
     val viewModel = show()
     val prefix = "a".repeat(MAX_MESSAGE_LENGTH - 1)
@@ -378,6 +421,7 @@ class GroupChatScreenTest {
       repository: MessageRepository = messages,
       groupRepository: GroupRepository = groups,
       clock: Clock = Clock.fixed(NOW, ZoneId.of("Europe/Zurich")),
+      profileRepository: PublicProfileRepository = profiles,
   ): GroupChatViewModel {
     val viewModel =
         GroupChatViewModel(
@@ -389,7 +433,7 @@ class GroupChatScreenTest {
             ),
             groupRepository,
             repository,
-            profiles,
+            profileRepository,
             auth,
             network,
             events,
