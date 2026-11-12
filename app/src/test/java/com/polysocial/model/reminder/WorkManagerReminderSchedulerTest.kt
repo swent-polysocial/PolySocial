@@ -1,4 +1,6 @@
 // Contributors: Claude Opus 5.5 (wrote these tests, #123; isScheduled tests, second PR of #123).
+// Contributors: Claude Sonnet 5 (isScheduled's CancellationException rethrow, SonarCloud coverage
+// gap on the second PR of #123).
 package com.polysocial.model.reminder
 
 import android.content.Context
@@ -16,9 +18,12 @@ import java.time.Clock
 import java.time.Instant
 import java.time.ZoneOffset
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -133,6 +138,15 @@ class WorkManagerReminderSchedulerTest {
     val failing = WorkManagerReminderScheduler(broken, clock)
 
     assertFalse(failing.isScheduled("e1"))
+  }
+
+  @Test
+  fun isScheduled_cancellation_isRethrownRatherThanReportedAsFalse() = runTest {
+    val broken = mockk<WorkManager>()
+    every { broken.getWorkInfosForUniqueWorkFlow(any()) } throws CancellationException("cancelled")
+    val cancelling = WorkManagerReminderScheduler(broken, clock)
+
+    assertThrows(CancellationException::class.java) { runBlocking { cancelling.isScheduled("e1") } }
   }
 
   @Test
