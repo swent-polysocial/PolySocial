@@ -4,6 +4,8 @@
 // checked that logout clears its ViewModels, after review.
 // Contributors: Claude Opus 5.5 (the student-only friend code destination, #339 review);
 // Konstantinos Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude Opus 5.5 (a pending reminder notification's event never navigates for an
+// association, #123's second PR review).
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.layout.Column
@@ -56,13 +58,14 @@ class AssociationAppShellTest {
   /** Every ViewModel the header got, as the real header gets its `ProfileViewModel`. */
   private val headerViewModels = mutableSetOf<HeaderViewModelProbe>()
 
-  private fun show(type: AccountType = AccountType.ASSOCIATION) {
+  private fun show(type: AccountType = AccountType.ASSOCIATION, pendingEventId: String? = null) {
     compose.setContent {
       nav = rememberNavController()
       PolySocialTheme {
         AppShell(
             accountType = type,
             navController = nav,
+            pendingEventId = pendingEventId,
             eventsContent = { open ->
               TextButton({ open("fixture-event") }, Modifier.testTag("open_event")) {
                 Text("Fixture event")
@@ -126,6 +129,15 @@ class AssociationAppShellTest {
 
   private fun friendCodeDestination() =
       (nav.graph.findNode(Tab.PROFILE.route) as NavGraph).findNode(Tab.PROFILE.friendCodeRoute)
+
+  @Test
+  fun aPendingEventId_neverNavigates_forAnAssociation() {
+    // Reminders, and so the notification tap that carries this id, are student-only.
+    show(pendingEventId = "fixture-event")
+
+    compose.onNodeWithTag(C.Tag.nav_item_events).assertIsSelected()
+    compose.onNodeWithTag("detail_back").assertDoesNotExist()
+  }
 
   @Test
   fun cancelledEventReturnsToEventsAndShowsConfirmation() {

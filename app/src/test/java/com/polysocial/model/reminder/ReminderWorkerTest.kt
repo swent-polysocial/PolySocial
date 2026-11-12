@@ -1,6 +1,6 @@
 // Contributors: Claude Opus 5.5 (wrote these tests, #123; late reminder title after review;
 // deleted events, #130; failed reads after review; distinct PendingIntents per event, second PR
-// of #123).
+// of #123; the PendingIntent's event-id extra, #123's second PR review).
 package com.polysocial.model.reminder
 
 import android.Manifest
@@ -187,6 +187,14 @@ class ReminderWorkerTest {
     assertTrue(first != second)
     assertEquals("e1".hashCode(), shadowOf(first).requestCode)
     assertEquals("e2".hashCode(), shadowOf(second).requestCode)
+  }
+
+  @Test
+  fun thePendingIntent_carriesTheEventIdForNavigation() = runTest {
+    run(balelec.toWorkData())
+
+    val savedIntent = shadowOf(notifications.single().contentIntent).savedIntent
+    assertEquals("e1", savedIntent.getStringExtra(NOTIFICATION_EVENT_ID_EXTRA))
   }
 
   @Test

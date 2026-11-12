@@ -1,3 +1,5 @@
+// Contributors: Claude Opus 5.5 (opened a pending reminder notification's event, #123's second PR
+// review).
 // Contributors: OpenAI Codex (preserved navigation, logout and pending edits on rebase, #140).
 // Contributors: OpenAI Codex (association tabs, Organization and account-specific stack cleanup,
 // #140).
@@ -46,6 +48,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -161,12 +164,18 @@ data class EventDetailNavigation(
  * @param associationHeader the verified association's header on its Events and Map tabs, given the
  *   tab's title (#322). Its ViewModels belong to the Events graph, so logout clears them. Tests
  *   replace it, because the real one needs Hilt.
+ * @param pendingEventId an event to open on top of the start destination, once the graph is ready
+ *   (a reminder notification tap, second PR of #123's review). Consumed once through
+ *   [onPendingEventIdConsumed], so it is not applied again on recomposition or rotation; null for
+ *   an ordinary open.
  */
 @Composable
 fun AppShell(
     modifier: Modifier = Modifier,
     accountType: AccountType = AccountType.STUDENT,
     navController: NavHostController = rememberNavController(),
+    pendingEventId: String? = null,
+    onPendingEventIdConsumed: () -> Unit = {},
     eventsContent: @Composable (onEventClick: (String) -> Unit) -> Unit = { onEventClick ->
       EventsTabRoute(onEventClick = onEventClick)
     },
@@ -246,6 +255,15 @@ fun AppShell(
       }
 
   val onEventDetail = destination?.route == currentTab.eventDetailRoute
+  // A reminder notification's event (second PR of #123's review): reminders are student-only, so
+  // this never opens for an association; it waits for the graph to attach (destination != null)
+  // and fires once per id, since onPendingEventIdConsumed sets it back to null.
+  LaunchedEffect(pendingEventId, destination) {
+    if (pendingEventId != null && destination != null && !association) {
+      navController.navigate(Tab.EVENTS.eventDetailRoute(pendingEventId))
+      onPendingEventIdConsumed()
+    }
+  }
   // Shown on the screen the detail returns to once its event is cancelled (Figma "Cancel event ·
   // cancelled").
   val snackbarHostState = remember { SnackbarHostState() }

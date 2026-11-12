@@ -1,7 +1,7 @@
 // Contributors: Claude Opus 5.5 (reminder worker and notification, from the Figma frame
 // "Reminder · system notification", #123; time left after review; skipping deleted events, #130;
 // failed reads documented after review; a per-event PendingIntent instead of a shared one, second
-// PR of #123).
+// PR of #123; carrying the event ID for notification-tap navigation, second PR's review).
 package com.polysocial.model.reminder
 
 import android.Manifest
@@ -36,6 +36,12 @@ private const val KEY_EVENT_ID = "eventId"
 private const val KEY_TITLE = "title"
 private const val KEY_START_MILLIS = "startMillis"
 private const val KEY_PLACE = "place"
+
+/**
+ * Extra on the launch [android.content.Intent] a reminder notification opens, carrying its event's
+ * ID so [com.polysocial.MainActivity] can open that event's detail instead of just the app.
+ */
+const val NOTIFICATION_EVENT_ID_EXTRA = "com.polysocial.reminder.EVENT_ID"
 
 /** The notification channel of event reminders, which students can turn off in Android settings. */
 internal const val REMINDER_CHANNEL_ID = "event_reminders"
@@ -198,15 +204,18 @@ constructor(
   }
 
   /**
-   * Opens the app, like the launcher does. The request code is [reminder]'s event ID, not a
-   * constant: extras don't affect [android.content.Intent.filterEquals], so a shared request code
-   * would make Android reuse the first reminder's cached [PendingIntent] for every later one, and
-   * every notification would open the first event that posted one (#180 review).
+   * Opens the app on [reminder]'s event, carrying its ID as [NOTIFICATION_EVENT_ID_EXTRA] so
+   * [com.polysocial.MainActivity] can navigate to its detail. The request code is the event's ID,
+   * not a constant: extras don't affect [android.content.Intent.filterEquals], so a shared request
+   * code would make Android reuse the first reminder's cached [PendingIntent] (and its extra) for
+   * every later one, and every notification would open the first event that posted one (#180
+   * review).
    */
   private fun openApp(reminder: EventReminder): PendingIntent? {
     val intent =
-        applicationContext.packageManager.getLaunchIntentForPackage(applicationContext.packageName)
-            ?: return null
+        applicationContext.packageManager
+            .getLaunchIntentForPackage(applicationContext.packageName)
+            ?.putExtra(NOTIFICATION_EVENT_ID_EXTRA, reminder.eventId) ?: return null
     return PendingIntent.getActivity(
         applicationContext,
         reminder.eventId.hashCode(),

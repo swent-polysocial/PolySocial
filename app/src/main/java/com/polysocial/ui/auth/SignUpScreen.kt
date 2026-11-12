@@ -1,3 +1,5 @@
+// Contributors: Claude Opus 5.5 (threaded a reminder notification's pending event ID to the
+// signed-in app, #123's second PR review).
 // Contributors: OpenAI Codex (reconciled the shared logout callback on rebase, #125).
 // Contributors: OpenAI Codex (preserve association entry and offline retry, #125).
 // Contributors: OpenAI Codex (association-specific invalid email feedback, #125).
@@ -232,6 +234,13 @@ fun AuthFlow(
       if (verified) AppShell(accountType = AccountType.ASSOCIATION, onLoggedOut = done)
       else PendingAssociationApp(onLoggedOut = done)
     },
+    /**
+     * The event ID of a reminder notification that opened or resumed [com.polysocial.MainActivity]
+     * (second PR of #123's review), for [signedInContent]'s default [AppShell] to navigate to once
+     * signed in. Null for an ordinary launch, or once [onPendingReminderEventIdConsumed] is called.
+     */
+    pendingReminderEventId: String? = null,
+    onPendingReminderEventIdConsumed: () -> Unit = {},
     signedInContent: @Composable (() -> Unit) -> Unit = { done ->
       AppShell(
           onLoggedOut = done,
@@ -240,6 +249,8 @@ fun AuthFlow(
             done()
             welcomeViewModel.onAccountDeleted()
           },
+          pendingEventId = pendingReminderEventId,
+          onPendingEventIdConsumed = onPendingReminderEventIdConsumed,
       )
     },
 ) {
