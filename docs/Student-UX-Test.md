@@ -1,17 +1,18 @@
-<!-- Contributors: Mehdi (@mehdifddl), human author; OpenAI Codex drafted the test protocol and blank reporting templates for #240. No student sessions or findings are claimed. -->
+<!-- Contributors: Mehdi (@mehdifddl), human author, reported feedback from five external students; OpenAI Codex drafted the protocol and documented his aggregate report for #240. -->
 
-# Student UX test · Sprint 5 · #240
+# Student UX test · #240
 
-**Status: prepared, not conducted.** Recruit 3–5 students outside the team, let them try
-the same CI APK for a few days, then run the script below. The facilitator records the
-tested commit, APK artifact/run link, dates and aggregate results. This document is ready
-to copy to the project wiki; it contains no study results.
+**Status: feedback reported by Mehdi on 12 November 2026.** Five students outside the
+team tried the version from the previous sprint. Mehdi reports that all five liked it
+and raised no issues or suggestions. The aggregate report below records this feedback;
+the protocol remains available for future sessions. Use of the full script and a
+multi-day trial were not confirmed.
 
 ## Preparation
 
 1. Download `polysocial-apk` from a successful `main` run, following the README's
    **Downloading the CI APK** instructions. Record the commit and artifact link below.
-   A different build may need uninstalling the previous one because CI signing keys change.
+   Follow the current README's signing and installation guidance when switching builds.
 2. Check installation, launch, Google/email sign-in and map rendering on the phone before
    distributing that build. Provide another sign-in method if that APK's signing certificate
    is not registered for Google sign-in. Never ask for a password or verification link.
@@ -57,16 +58,23 @@ After each task ask: “What did you expect?” and “Was anything unclear?” 
 After the few-day trial ask what they tried, where they gave up, and which change would
 help most. Paraphrase answers without names, event participation details or direct quotes.
 
-## Aggregate report · fill only after sessions
+## Aggregate report · reported 12 November 2026
 
-- Tested commit and successful CI run/artifact: **not recorded**.
-- Trial dates, session dates and number of students: **not conducted**.
+- Source: Mehdi's report; no participant identities or raw notes are stored here.
+- Participants: **5 students, all outside the team**.
+- Tested version: **the previous sprint's version**, as reported by Mehdi; the exact
+  commit and CI run/artifact were not recorded.
+- Trial/session dates and duration: **not recorded**. The report date is not a session date.
+- Overall feedback: **5/5 positive; no problems or suggestions reported**.
 - Device/Android versions tested (no device identifiers): **not recorded**.
 - Supported features omitted from the script and why: **not recorded**.
 
 | Task | Completed without help / attempted | Needed help | Could not complete | Observation without personal data |
 |---|---|---|---|---|
-| Fill after testing | — | — | — | No findings collected yet. |
+| Individual script tasks | Not recorded | Not recorded | Not recorded | No task-level outcomes were provided. |
+
+This small, qualitative sample records overall feedback. It does not establish that every
+script task succeeded, that every feature was exercised, or that the app has no defects.
 
 ## Findings and backlog decisions
 
@@ -77,15 +85,17 @@ Do not present proposed findings as observed ones, and do not publish raw partic
 
 | Finding | Evidence (aggregate) | Impact | Backlog link or dismissal reason |
 |---|---|---|---|
-| None collected | Not conducted | — | — |
+| No actionable finding reported | Five external students liked the previous sprint's version and raised no issues, according to Mehdi. | No specific usability difficulty reported. | No backlog item created: no concrete change was requested or observed in the supplied feedback. |
 
-## Scrum summary template
+## Scrum summary · ready to copy to Steve
 
-“Build [commit/artifact] was tried by [number] students outside the team between [dates].
-We observed [aggregate outcomes]. [Number] findings became backlog items [links]; the
-remaining findings were dismissed because [reasons]. Limitations: [untested features,
-devices, trial duration].”
+Mehdi reported on 12 November 2026 that five students outside the team tried the previous
+sprint's version of PolySocial. All five gave positive overall feedback and raised no
+issues or suggestions. No actionable finding was reported, so no new backlog item was
+created from this feedback. The exact build, session dates, duration, devices and
+task-level outcomes were not recorded; no claim is made that every feature was tested.
 
-Replace placeholders only with collected evidence. Copy the protocol and completed report
-to the wiki, and put the evidence-based summary into the Sprint 5 Scrum documents.
-Until then, #240 remains incomplete.
+Wiki: [protocol and report](https://github.com/swent-polysocial/PolySocial/wiki/Student-UX-Test).
+Copy this summary into the appropriate Scrum document in Steve.
+Publication in Steve must be confirmed by its human owner before
+claiming that #240's Scrum-document criterion is complete.
