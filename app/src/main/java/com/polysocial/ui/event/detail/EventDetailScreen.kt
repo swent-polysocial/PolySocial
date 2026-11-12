@@ -11,6 +11,8 @@
 // #244.
 // Contributors: Claude Opus 5.5 (the "Remind me" toggle, its permission explanation sheet and
 // denied note, from Figma 558:2, 558:119 and 558:186, second PR of #123).
+// Contributors: Claude Opus 5.5 (a Snackbar and Retry for a failed reminder cleanup after
+// cancelling the registration, second PR's review).
 package com.polysocial.ui.event.detail
 
 import android.Manifest
@@ -608,7 +610,10 @@ private fun AttendanceSnackbar(
         AttendanceMessage.REGISTER_OFFLINE,
         AttendanceMessage.REGISTER_FAILED -> currentActions.onImGoing()
         AttendanceMessage.CANCEL_OFFLINE,
-        AttendanceMessage.CANCEL_FAILED -> currentActions.onCancelRegistration()
+        AttendanceMessage.CANCEL_FAILED,
+        // The registration is already cancelled; retrying it only retries the reminder cleanup,
+        // which is idempotent.
+        AttendanceMessage.REMINDER_CLEANUP_FAILED -> currentActions.onCancelRegistration()
       }
     }
   }
@@ -622,6 +627,7 @@ private val AttendanceMessage.text: Int
         AttendanceMessage.CANCEL_OFFLINE -> R.string.event_detail_cancel_registration_offline
         AttendanceMessage.REGISTER_FAILED,
         AttendanceMessage.CANCEL_FAILED -> R.string.event_detail_attendance_failed
+        AttendanceMessage.REMINDER_CLEANUP_FAILED -> R.string.event_detail_reminder_cleanup_failed
       }
 
 /**

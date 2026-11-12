@@ -6,6 +6,9 @@
 // Contributors: Claude Opus 5.5 ("I'm going" and Cancel registration, #122).
 // Contributors: Claude Opus 5.5 (the "Remind me" toggle, its permission flow and cancel-on-
 // unregister wiring, second PR of #123).
+// Contributors: Claude Opus 5.5 (reconciled the reminder's real state on a failed cancellation
+// instead of claiming Off, and guarded the initial isScheduled() read against a stale overwrite,
+// second PR's review).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -28,6 +31,7 @@ import com.polysocial.model.registration.CancelRegistrationResult
 import com.polysocial.model.registration.MyRegistrationsResult
 import com.polysocial.model.registration.RegisterResult
 import com.polysocial.model.registration.RegistrationRepository
+import com.polysocial.model.reminder.CancelReminderResult
 import com.polysocial.model.reminder.EventReminder
 import com.polysocial.model.reminder.ReminderScheduler
 import com.polysocial.model.reminder.ScheduleReminderResult
@@ -129,6 +133,13 @@ enum class AttendanceMessage {
   REGISTER_FAILED,
   CANCEL_OFFLINE,
   CANCEL_FAILED,
+
+  /**
+   * The registration itself was cancelled, but [ReminderScheduler.cancel] then failed: the reminder
+   * may still fire. Retry re-runs [EventDetailViewModel.onCancelRegistration], whose registration
+   * side is idempotent, so it only retries the reminder cleanup.
+   */
+  REMINDER_CLEANUP_FAILED,
 }
 
 /**
@@ -342,6 +353,14 @@ constructor(
 
   /** Whether [initReminderOnce] has already seeded [reminderOn] for this screen. */
   private var reminderInitialized = false
+
+  /**
+   * Set as soon as the student acts on the toggle or the permission result, so [initReminderOnce]'s
+   * asynchronous [ReminderScheduler.isScheduled] read, if it is still running, never overwrites
+   * that action with its own now-stale snapshot.
+   */
+  private var reminderUserActed = false
+
   private val reminderOn = MutableStateFlow(false)
   private val remindersBlocked = MutableStateFlow(false)
   private val showReminderExplanation = MutableStateFlow(false)
@@ -582,14 +601,19 @@ constructor(
 
   /**
    * Seeds [reminderOn] from [ReminderScheduler.isScheduled] the first time the student is confirmed
-   * going, so the toggle shows the reminder's real state instead of always starting off.
+   * going, so the toggle shows the reminder's real state instead of always starting off. Dropped if
+   * [reminderUserActed] became true while this read was still running, so a toggle or permission
+   * result the student already acted on is never overwritten by this now-stale answer.
    */
   private fun initReminderOnce(state: EventDetailUiState) {
     if (reminderInitialized) return
     if (state !is EventDetailUiState.Loaded) return
     if (state.isOrganizer || state.attendance != Attendance.GOING) return
     reminderInitialized = true
-    viewModelScope.launch { reminderOn.value = reminders.isScheduled(eventId) }
+    viewModelScope.launch {
+      val scheduled = reminders.isScheduled(eventId)
+      if (!reminderUserActed) reminderOn.value = scheduled
+    }
   }
 
   /**
@@ -598,13 +622,24 @@ constructor(
    * explanation sheet isn't shown again.
    */
   fun onReminderToggle(on: Boolean) {
+    reminderUserActed = true
     if (!on) {
-      remindersBlocked.value = false
-      reminderOn.value = false
-      viewModelScope.launch { reminders.cancel(eventId) }
+      cancelReminder()
       return
     }
     scheduleReminder()
+  }
+
+  /**
+   * Cancels the reminder for a direct Off. [reminderOn] only turns false once
+   * [ReminderScheduler.cancel] actually confirms it: a failure leaves it on, since the reminder may
+   * still fire, instead of claiming Off before that is known.
+   */
+  private fun cancelReminder() {
+    remindersBlocked.value = false
+    viewModelScope.launch {
+      if (reminders.cancel(eventId) == CancelReminderResult.Cancelled) reminderOn.value = false
+    }
   }
 
   /** The switch was turned on without a known granted permission: show the explanation first. */
@@ -633,6 +668,7 @@ constructor(
    * Granted schedules the reminder; denied blocks the toggle and keeps it off.
    */
   fun onReminderPermissionResult(granted: Boolean) {
+    reminderUserActed = true
     if (granted) {
       remindersBlocked.value = false
       scheduleReminder()
@@ -682,16 +718,22 @@ constructor(
                 CancelRegistrationResult.UnexpectedError -> AttendanceMessage.CANCEL_FAILED
               }
             }
+        var feedback = failure
         if (failure == null) {
           savedAttendance.value = if (going) Attendance.GOING else Attendance.NOT_GOING
           // The reminder stops making sense once the registration it was for is gone.
           if (!going) {
-            reminderOn.value = false
             remindersBlocked.value = false
-            reminders.cancel(eventId)
+            if (reminders.cancel(eventId) == CancelReminderResult.Cancelled) {
+              reminderOn.value = false
+            } else {
+              // The registration is gone either way; only the local cleanup failed, so [reminderOn]
+              // is left as it was (the reminder may still fire) and Retry offers another try.
+              feedback = AttendanceMessage.REMINDER_CLEANUP_FAILED
+            }
           }
         }
-        _attendanceFeedback.value = failure?.let {
+        _attendanceFeedback.value = feedback?.let {
           AttendanceFeedback(it, nextAttendanceFeedbackId++)
         }
       } finally {
