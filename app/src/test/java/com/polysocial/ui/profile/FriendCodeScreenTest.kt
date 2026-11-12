@@ -1,7 +1,9 @@
-// Contributors: Claude Opus 5.5 (drafted the My friend code screen tests, #339); Konstantinos
-// Perdikeas (directed, reviewed and owns them).
+// Contributors: Claude Opus 5.5 (drafted the My friend code screen tests, #339; the quiet zone,
+// and black-on-white tests after review);
+// Konstantinos Perdikeas (directed, reviewed and owns them).
 package com.polysocial.ui.profile
 
+import android.graphics.Bitmap
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
@@ -41,6 +43,7 @@ import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.resources.C
 import com.polysocial.ui.association.OrganizationScreen
 import com.polysocial.ui.theme.PolySocialTheme
+import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -107,17 +110,60 @@ class FriendCodeScreenTest {
   fun theDrawnCodeScansBackToTheStudent() {
     show(shown)
 
-    val image = compose.onNodeWithTag(C.Tag.friend_code_qr).captureToImage().asAndroidBitmap()
-    // The capture is the code's own square; add the white margin the card gives it on screen.
-    val margin = image.width / 6
-    val side = image.width + 2 * margin
-    val pixels = IntArray(side * side) { WHITE }
-    for (y in 0 until image.height) for (x in 0 until image.width) {
-      pixels[(y + margin) * side + x + margin] = image.getPixel(x, y)
-    }
-    val bitmap = BinaryBitmap(HybridBinarizer(RGBLuminanceSource(side, side, pixels)))
+    assertScansAsIs(uid)
+  }
 
-    assertEquals(QrPayload.Friend(uid), parseQrPayload(QRCodeReader().decode(bitmap).text))
+  // At 3x, ZXing draws a one-character UID as 25 modules: the drawing itself must keep
+  // the 4-module quiet zone, since the card's name sits right above the code (#384 review).
+  @Config(qualifiers = "w360dp-h800dp-xxhdpi")
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  @Test
+  fun aShortCodeAtThreeTimesDensityScansAsDrawn() {
+    show(shown.copy(code = encodeQrCode(friendQrPayload("a")!!)!!))
+
+    assertScansAsIs("a")
+  }
+
+  /**
+   * Decodes the code exactly as the screen draws it, with no margin added, and checks it is pure
+   * black on pure white (whatever the theme) with a quiet zone of at least 4 modules on each side.
+   */
+  private fun assertScansAsIs(expectedUid: String) {
+    val image = compose.onNodeWithTag(C.Tag.friend_code_qr).captureToImage().asAndroidBitmap()
+    val pixels = IntArray(image.width * image.height)
+    image.getPixels(pixels, 0, image.width, 0, 0, image.width, image.height)
+    assertTrue(
+        "the code must be drawn in pure black and white",
+        pixels.all { it == BLACK || it == WHITE },
+    )
+    assertQuietZone(image, encodeQrCode(friendQrPayload(expectedUid)!!)!!.size)
+
+    val source = RGBLuminanceSource(image.width, image.height, pixels)
+    val text = QRCodeReader().decode(BinaryBitmap(HybridBinarizer(source))).text
+    assertEquals(QrPayload.Friend(expectedUid), parseQrPayload(text))
+  }
+
+  private fun assertQuietZone(image: Bitmap, modules: Int) {
+    var left = image.width
+    var top = image.height
+    var right = -1
+    var bottom = -1
+    for (y in 0 until image.height) for (x in 0 until image.width) {
+      if (image.getPixel(x, y) == BLACK) {
+        left = minOf(left, x)
+        top = minOf(top, y)
+        right = maxOf(right, x)
+        bottom = maxOf(bottom, y)
+      }
+    }
+    val quietZone = 4 * (right - left + 1) / modules
+    val margins = listOf(left, top, image.width - 1 - right, image.height - 1 - bottom)
+    assertTrue(
+        "each margin $margins must hold 4 modules ($quietZone px)",
+        margins.all { it >= quietZone },
+    )
+    assertTrue("the code must be centred: $margins", abs(margins[0] - margins[2]) <= 1)
+    assertTrue("the code must be centred: $margins", abs(margins[1] - margins[3]) <= 1)
   }
 
   @Test
@@ -253,5 +299,6 @@ class FriendCodeScreenTest {
 
   private companion object {
     const val WHITE = 0xFFFFFFFF.toInt()
+    const val BLACK = 0xFF000000.toInt()
   }
 }

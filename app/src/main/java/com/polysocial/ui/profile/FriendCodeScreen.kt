@@ -1,5 +1,6 @@
-// Contributors: Claude Opus 5.5 (drafted My friend code from Figma section 15, #339); Konstantinos
-// Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude Opus 5.5 (drafted My friend code from Figma section 15, #339; the quiet
+// zone and black on white after review);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.profile
 
 import androidx.activity.compose.BackHandler
@@ -31,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -164,16 +166,17 @@ private fun FriendCodeOwner(name: String, details: String) {
 }
 
 /**
- * [code]'s dark modules drawn on white, with an 8 dp margin inside [modifier]'s square (Figma's
- * "QR" inside its symbol frame); the card's own padding completes the quiet zone scanners need.
+ * [code]'s dark modules in black on white, inside [modifier]'s square with a margin of
+ * [QUIET_ZONE_MODULES] light modules on each side: the quiet zone scanners need, kept inside the
+ * square since the card's name sits right above it. Always black on white, not theme colors, so a
+ * theme change can't make the code unscannable.
  */
 @Composable
 private fun QrSymbol(code: QrCode, modifier: Modifier) {
   val description = stringResource(R.string.friend_code_description)
   Canvas(
       modifier
-          .background(Bg)
-          .padding(8.dp)
+          .background(Color.White)
           .semantics {
             contentDescription = description
             role = Role.Image
@@ -181,11 +184,11 @@ private fun QrSymbol(code: QrCode, modifier: Modifier) {
           .testTag(C.Tag.friend_code_qr)
   ) {
     // Whole pixels per module, centred: fractional sizes leave light seams between dark modules.
-    val module = floor(size.minDimension / code.size)
+    val module = floor(size.minDimension / (code.size + 2 * QUIET_ZONE_MODULES))
     val start = floor((size.minDimension - module * code.size) / 2)
     for (y in 0 until code.size) for (x in 0 until code.size) {
       if (code.isDark(x, y)) {
-        drawRect(Ink, Offset(start + x * module, start + y * module), Size(module, module))
+        drawRect(Color.Black, Offset(start + x * module, start + y * module), Size(module, module))
       }
     }
   }
@@ -251,3 +254,6 @@ private fun FriendCodeErrorMessage() {
       modifier = Modifier.widthIn(max = 290.dp),
   )
 }
+
+/** The light margin around a QR code that scanners need, in modules (ISO/IEC 18004). */
+private const val QUIET_ZONE_MODULES = 4
