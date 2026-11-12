@@ -5,6 +5,8 @@
 // Contributors: Claude Opus 5.5 (skip a reminder whose scheduling account no longer matches
 // whoever is signed in, so a failed cancelAll() on logout can't notify a different account,
 // #123's second PR, Mehdi's review).
+// Contributors: Claude Opus 5.5 (recheck the owner after the suspending event lookup, #123's second
+// PR, Mehdi's re-review).
 package com.polysocial.model.reminder
 
 import android.Manifest
@@ -158,9 +160,12 @@ constructor(
     if (!clock.instant().isBefore(reminder.startTime)) return Result.success()
     // A failed cancelAll() on logout (best-effort, see ProfileViewModel.confirmLogout) can leave
     // this reminder queued; without this, it would fire for whichever account signs in next.
-    if (auth.currentUser()?.uid != reminder.uid) return Result.success()
+    if (!isScheduledBySignedInAccount(reminder)) return Result.success()
     if (!canPostNotifications()) return Result.success()
     if (!eventStillExists(events, reminder.eventId)) return Result.success()
+    // The lookup above can suspend for up to EVENT_CHECK_TIMEOUT, long enough for the account to
+    // switch, so the owner is checked again right before posting.
+    if (!isScheduledBySignedInAccount(reminder)) return Result.success()
     val notifications = NotificationManagerCompat.from(applicationContext)
     notifications.createNotificationChannel(
         NotificationChannelCompat.Builder(
@@ -178,6 +183,9 @@ constructor(
       Result.success()
     }
   }
+
+  private fun isScheduledBySignedInAccount(reminder: EventReminder): Boolean =
+      auth.currentUser()?.uid == reminder.uid
 
   private fun canPostNotifications(): Boolean =
       Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||

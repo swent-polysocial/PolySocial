@@ -3,6 +3,8 @@
 // of #123; the PendingIntent's event-id extra, #123's second PR review).
 // Contributors: Claude Opus 5.5 (a reminder only fires for the account that scheduled it, #123's
 // second PR, Mehdi's review).
+// Contributors: Claude Opus 5.5 (an account switch during the event lookup, #123's second PR,
+// Mehdi's re-review).
 package com.polysocial.model.reminder
 
 import android.Manifest
@@ -29,6 +31,8 @@ import com.polysocial.model.event.FakeEventRepository
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -323,6 +327,28 @@ class ReminderWorkerTest {
         ListenableWorker.Result.success(),
         run(balelec.toWorkData(), signedInAs = other),
     )
+    assertTrue(notifications.isEmpty())
+  }
+
+  @Test
+  fun anAccountSwitchDuringTheEventLookup_isNotNotified() = runTest {
+    // Passes the first owner check as the student, then the account changes while the (up to 10 s)
+    // lookup is suspended: nothing may be posted for the new account.
+    val release = CompletableDeferred<Unit>()
+    val gated =
+        object : EventRepository by events {
+          override fun getEvent(id: String) = flow {
+            release.await()
+            emit(EventResult.Found(stored(id), fromCache = false))
+          }
+        }
+    val work = async { run(balelec.toWorkData(), repository = gated) }
+    runCurrent()
+
+    auth.user = AuthUser("other-student", "other@example.com", true)
+    release.complete(Unit)
+
+    assertEquals(ListenableWorker.Result.success(), work.await())
     assertTrue(notifications.isEmpty())
   }
 
