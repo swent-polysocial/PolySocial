@@ -5,6 +5,7 @@
 // Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (Opus 5.5, Anthropic) passed the deletion and network fakes, #225;
 // Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude Opus 5.5 (passed the new reminder scheduler fake, #123's second PR review).
 package com.polysocial.ui.profile
 
 import androidx.activity.ComponentActivity
@@ -23,6 +24,7 @@ import com.polysocial.model.auth.*
 import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.firebase.*
 import com.polysocial.model.network.FakeNetworkMonitor
+import com.polysocial.model.reminder.FakeReminderScheduler
 import com.polysocial.model.user.*
 import com.polysocial.resources.C
 import com.polysocial.ui.auth.*
@@ -109,7 +111,12 @@ class LogoutFlowTest {
               onLoggedOut = done,
               profileContent = { callback ->
                 val vm: ProfileViewModel = viewModel {
-                  ProfileViewModel(auth, cache, FakeAssociationRepository())
+                  ProfileViewModel(
+                      auth,
+                      cache,
+                      FakeAssociationRepository(),
+                      FakeReminderScheduler(java.time.Clock.systemUTC()),
+                  )
                 }
                 ProfileRoute(callback, vm)
               },

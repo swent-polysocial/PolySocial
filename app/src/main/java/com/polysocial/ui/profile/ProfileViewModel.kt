@@ -1,3 +1,5 @@
+// Contributors: Claude Opus 5.5 (cancelled every reminder, best-effort, on logout, #123's second
+// PR review).
 // Contributors: OpenAI Codex (preserved navigation, logout and pending edits on rebase, #140).
 // Contributors: OpenAI Codex (session-scoped Organization loading through the shared logout
 // controller, #140).
@@ -13,6 +15,7 @@ import com.polysocial.model.association.AssociationResult
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.firebase.CacheClearResult
 import com.polysocial.model.firebase.SessionCache
+import com.polysocial.model.reminder.ReminderScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -46,6 +49,7 @@ constructor(
     private val auth: AuthRepository,
     private val cache: SessionCache,
     private val associations: AssociationRepository,
+    private val reminders: ReminderScheduler,
 ) : ViewModel() {
   private val state = MutableStateFlow(LogoutState.Idle)
   val uiState = state.asStateFlow()
@@ -135,11 +139,18 @@ constructor(
     if (state.value == LogoutState.LoggedOut) state.value = LogoutState.Idle
   }
 
+  /**
+   * Clears the Firestore cache, then signs out. [reminders] is cancelled first, best-effort: unlike
+   * the cache, a failure there must not strand the student signed in, so it never blocks or fails
+   * this logout. Without it, a reminder scheduled by this account could still fire, and read the
+   * event, under whichever account signs in next (#123, second PR's review).
+   */
   fun confirmLogout() {
     if (state.value != LogoutState.Confirming && state.value != LogoutState.Error) return
     state.value = LogoutState.Clearing
     viewModelScope.launch {
       try {
+        reminders.cancelAll()
         if (cache.clear() == CacheClearResult.Cleared) {
           auth.logOut()
           clearOrganization()

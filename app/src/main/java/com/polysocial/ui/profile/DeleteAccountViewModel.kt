@@ -2,6 +2,8 @@
 // Khellaf (reviewed and revised).
 // Contributors: Claude (Opus 5.5, Anthropic) cleared the cooldowns after a lost session too,
 // from #286's review.
+// Contributors: Claude Opus 5.5 (cancelled every reminder, best-effort, on account deletion,
+// #123's second PR review).
 package com.polysocial.ui.profile
 
 import android.content.Context
@@ -16,6 +18,7 @@ import com.polysocial.model.auth.VerificationStore
 import com.polysocial.model.firebase.CacheClearResult
 import com.polysocial.model.firebase.SessionCache
 import com.polysocial.model.network.NetworkMonitor
+import com.polysocial.model.reminder.ReminderScheduler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -120,6 +123,7 @@ constructor(
     private val network: NetworkMonitor,
     private val cache: SessionCache,
     private val verification: VerificationStore,
+    private val reminders: ReminderScheduler,
 ) : ViewModel() {
   private val state = MutableStateFlow(DeleteAccountUiState())
   val uiState = state.asStateFlow()
@@ -263,9 +267,11 @@ constructor(
   }
 
   /**
-   * Clears the cache first, so nothing this session still writes can reach Firestore, then the
-   * account's resend cooldowns, then signs out. Reports [DeleteAccountStep.Done] only after all
-   * three; [deleted] is whether the server confirmed the deletion.
+   * Cancels this account's reminders, clears the cache so nothing this session still writes can
+   * reach Firestore, then the account's resend cooldowns, then signs out. Reports
+   * [DeleteAccountStep.Done] only after all four; [deleted] is whether the server confirmed the
+   * deletion. [reminders] is cancelled best-effort, like logout's (#123, second PR's review): a
+   * failure there must not block this cleanup, unlike the cache clear below.
    */
   private fun clearSession(deleted: Boolean) {
     // Keeps the methods and email, so the re-authentication step stays on screen, faded.
@@ -274,6 +280,7 @@ constructor(
     }
     viewModelScope.launch {
       try {
+        reminders.cancelAll()
         if (cache.clear() != CacheClearResult.Cleared) {
           cleanupFailed(deleted)
           return@launch

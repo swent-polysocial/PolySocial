@@ -1,14 +1,18 @@
 // Contributors: OpenAI Codex (confirmation, duplicate actions, cancellation and logout failure
 // proof, #109).
 // Contributors: Claude (reset for the next session, #127).
+// Contributors: Claude Opus 5.5 (tests for cancelling every reminder on logout, best-effort,
+// #123's second PR review).
 package com.polysocial.ui.profile
 
 import androidx.lifecycle.viewModelScope
 import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
 import com.polysocial.model.firebase.*
+import com.polysocial.model.reminder.FakeReminderScheduler
 import com.polysocial.utils.MainDispatcherRule
 import io.mockk.*
+import java.time.Clock
 import kotlinx.coroutines.*
 import kotlinx.coroutines.test.*
 import org.junit.Assert.*
@@ -34,7 +38,8 @@ class ProfileViewModelTest {
           return result
         }
       }
-  private val vm = ProfileViewModel(auth, cache, FakeAssociationRepository())
+  private val reminders = FakeReminderScheduler(Clock.systemUTC())
+  private val vm = ProfileViewModel(auth, cache, FakeAssociationRepository(), reminders)
 
   @Test
   fun cancelKeepsTheAccountAndNeverClearsCache() {
@@ -150,7 +155,7 @@ class ProfileViewModelTest {
       runTest(main.dispatcher) {
         val failing = mockk<AuthRepository>()
         every { failing.logOut() } throws IllegalStateException("test failure")
-        val profile = ProfileViewModel(failing, cache, FakeAssociationRepository())
+        val profile = ProfileViewModel(failing, cache, FakeAssociationRepository(), reminders)
         profile.requestLogout()
         profile.confirmLogout()
         runCurrent()
@@ -160,6 +165,38 @@ class ProfileViewModelTest {
         runCurrent()
         assertEquals(LogoutState.LoggedOut, profile.uiState.value)
         verify(exactly = 2) { failing.logOut() }
+      }
+
+  @Test
+  fun confirmLogout_cancelsEveryReminderBeforeSigningOut() =
+      runTest(main.dispatcher) {
+        reminders.scheduled["event-1"] =
+            com.polysocial.model.reminder.EventReminder(
+                "event-1",
+                "Balélec",
+                java.time.Instant.now(),
+            )
+        vm.requestLogout()
+        vm.confirmLogout()
+        runCurrent()
+        assertEquals(LogoutState.LoggedOut, vm.uiState.value)
+        assertTrue(
+            "reminders must be cancelled by the time logout finishes",
+            reminders.scheduled.isEmpty(),
+        )
+      }
+
+  @Test
+  fun aFailedReminderCancellation_stillSignsOut() =
+      runTest(main.dispatcher) {
+        reminders.fail = true
+        vm.requestLogout()
+        vm.confirmLogout()
+        runCurrent()
+        // Best-effort: unlike a failed cache clear, a WorkManager hiccup must not strand the
+        // student signed in.
+        assertEquals(LogoutState.LoggedOut, vm.uiState.value)
+        assertNull(auth.user)
       }
 
   @Test

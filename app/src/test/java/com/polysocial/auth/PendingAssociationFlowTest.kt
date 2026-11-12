@@ -9,6 +9,7 @@
 // Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (Opus 5.5, Anthropic) passed the deletion and network fakes, #225;
 // Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude Opus 5.5 (passed the new reminder scheduler fake, #123's second PR review).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -39,6 +40,7 @@ import com.polysocial.model.firebase.CacheClearResult
 import com.polysocial.model.firebase.FakeSessionGuard
 import com.polysocial.model.firebase.SessionCache
 import com.polysocial.model.network.FakeNetworkMonitor
+import com.polysocial.model.reminder.FakeReminderScheduler
 import com.polysocial.model.user.AccountType
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.ProfileResult
@@ -139,7 +141,13 @@ class PendingAssociationFlowTest {
     val profileStep = ProfileSetupViewModel(auth, profiles)
     val welcome = WelcomeViewModel(auth)
     // One activity-scoped logout ViewModel, shared by the start error and the pending app.
-    val logout = ProfileViewModel(auth, cache, associations)
+    val logout =
+        ProfileViewModel(
+            auth,
+            cache,
+            associations,
+            FakeReminderScheduler(java.time.Clock.systemUTC()),
+        )
     compose.setContent {
       PolySocialTheme {
         AuthFlow(

@@ -4,6 +4,8 @@
 // and a cancelled cleanup, from #286's review.
 // Contributors: Claude (Opus 5.5, Anthropic) tested a Google failure sent as a cancellation on the
 // real repository, #319.
+// Contributors: Claude Opus 5.5 (tests for cancelling every reminder on deletion, best-effort,
+// #123's second PR review).
 package com.polysocial.ui.profile
 
 import android.content.Context
@@ -26,6 +28,8 @@ import com.polysocial.model.auth.VerificationTiming
 import com.polysocial.model.firebase.CacheClearResult
 import com.polysocial.model.firebase.SessionCache
 import com.polysocial.model.network.NetworkMonitor
+import com.polysocial.model.reminder.EventReminder
+import com.polysocial.model.reminder.FakeReminderScheduler
 import com.polysocial.utils.MainDispatcherRule
 import io.mockk.every
 import io.mockk.mockk
@@ -89,7 +93,8 @@ class DeleteAccountViewModelTest {
       }
 
   private val context = mockk<Context>()
-  private val vm = DeleteAccountViewModel(auth, deletion, network, cache, verification)
+  private val reminders = FakeReminderScheduler(java.time.Clock.systemUTC())
+  private val vm = DeleteAccountViewModel(auth, deletion, network, cache, verification, reminders)
 
   private val step
     get() = vm.uiState.value.step
@@ -278,7 +283,8 @@ class DeleteAccountViewModelTest {
                   google.reauthenticateWithGoogle(context)
             }
         fakeAuth.signInMethods = setOf(SignInMethod.GOOGLE)
-        val model = DeleteAccountViewModel(withSheet, deletion, network, cache, verification)
+        val model =
+            DeleteAccountViewModel(withSheet, deletion, network, cache, verification, reminders)
         model.request()
         model.confirm()
         model.continueWithGoogle(context)
@@ -353,7 +359,8 @@ class DeleteAccountViewModelTest {
                 return ReauthResult.NotSignedIn
               }
             }
-        val model = DeleteAccountViewModel(signingOut, deletion, network, cache, verification)
+        val model =
+            DeleteAccountViewModel(signingOut, deletion, network, cache, verification, reminders)
         model.request()
         model.confirm()
         model.onPasswordChange("fictional-password")
@@ -381,6 +388,34 @@ class DeleteAccountViewModelTest {
         assertEquals(DeleteAccountStep.Done, step)
         assertEquals(false, vm.uiState.value.deleted)
         assertEquals(0, deletion.calls)
+      }
+
+  @Test
+  fun deletingTheAccount_alsoCancelsEveryReminder() =
+      runTest(main.dispatcher) {
+        reminders.scheduled["event-1"] =
+            EventReminder("event-1", "Balélec", java.time.Instant.now())
+        openReauth()
+        vm.onPasswordChange("fictional-password")
+        vm.submitPassword()
+        runCurrent()
+        assertEquals(DeleteAccountStep.Done, step)
+        assertTrue(
+            "reminders must be cancelled by the time deletion finishes",
+            reminders.scheduled.isEmpty(),
+        )
+      }
+
+  @Test
+  fun aFailedReminderCancellation_stillCompletesTheDeletion() =
+      runTest(main.dispatcher) {
+        reminders.fail = true
+        openReauth()
+        vm.onPasswordChange("fictional-password")
+        vm.submitPassword()
+        runCurrent()
+        // Best-effort: unlike a failed cache clear, a WorkManager hiccup must not block deletion.
+        assertEquals(DeleteAccountStep.Done, step)
       }
 
   @Test
@@ -526,6 +561,7 @@ class DeleteAccountViewModelTest {
                 network,
                 cache,
                 verification,
+                reminders,
             )
         throwing.request()
         throwing.confirm()
@@ -545,7 +581,8 @@ class DeleteAccountViewModelTest {
               override suspend fun reauthenticateWithPassword(password: String): ReauthResult =
                   throw IllegalStateException("fictional failure")
             }
-        val model = DeleteAccountViewModel(throwingAuth, deletion, network, cache, verification)
+        val model =
+            DeleteAccountViewModel(throwingAuth, deletion, network, cache, verification, reminders)
         model.request()
         model.confirm()
         model.onPasswordChange("fictional-password")

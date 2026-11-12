@@ -1,5 +1,6 @@
 // Contributors: Claude Opus 5.5 (reminder scheduler fake for tests, #123; isScheduled, second PR
-// of #123).
+// of #123; moved to sharedTest so instrumented tests can use it too, like the other fakes here,
+// #123's second PR review).
 package com.polysocial.model.reminder
 
 import java.time.Clock

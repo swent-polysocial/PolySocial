@@ -1,5 +1,6 @@
 // Contributors: OpenAI Codex (logout dismissal, callback replacement, restoration and full-row
 // interaction tests, #109).
+// Contributors: Claude Opus 5.5 (passed the new reminder scheduler fake, #123's second PR review).
 package com.polysocial.ui.profile
 
 import androidx.activity.ComponentActivity
@@ -18,6 +19,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.*
 import com.polysocial.model.firebase.*
+import com.polysocial.model.reminder.FakeReminderScheduler
 import com.polysocial.ui.theme.PolySocialTheme
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.*
@@ -42,6 +44,7 @@ class ProfileRouteTest {
             }
           },
           FakeAssociationRepository(),
+          FakeReminderScheduler(java.time.Clock.systemUTC()),
       )
 
   private fun back() {
@@ -86,6 +89,7 @@ class ProfileRouteTest {
                 }
               },
               FakeAssociationRepository(),
+              FakeReminderScheduler(java.time.Clock.systemUTC()),
           )
         }
         androidx.compose.material3.Text(
@@ -123,6 +127,7 @@ class ProfileRouteTest {
               }
             },
             FakeAssociationRepository(),
+            FakeReminderScheduler(java.time.Clock.systemUTC()),
         )
     val current = mutableStateOf(vm)
     var completed = 0

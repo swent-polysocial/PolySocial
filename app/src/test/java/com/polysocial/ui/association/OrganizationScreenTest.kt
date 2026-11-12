@@ -1,4 +1,5 @@
 // Contributors: OpenAI Codex (Organization loading, identity, retry and shared actions, #140).
+// Contributors: Claude Opus 5.5 (passed the new reminder scheduler fake, #123's second PR review).
 package com.polysocial.ui.association
 
 import androidx.compose.foundation.layout.Box
@@ -27,6 +28,7 @@ import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.firebase.CacheClearResult
 import com.polysocial.model.firebase.SessionCache
+import com.polysocial.model.reminder.FakeReminderScheduler
 import com.polysocial.resources.C
 import com.polysocial.ui.profile.LogoutState
 import com.polysocial.ui.profile.OrganizationUiState
@@ -101,7 +103,13 @@ class OrganizationScreenTest {
         object : SessionCache {
           override suspend fun clear() = cacheResult
         }
-    val model = ProfileViewModel(auth, cache, repository)
+    val model =
+        ProfileViewModel(
+            auth,
+            cache,
+            repository,
+            FakeReminderScheduler(java.time.Clock.systemUTC()),
+        )
     var done = 0
     var privacy = 0
     compose.setContent { PolySocialTheme { OrganizationRoute({ done++ }, { privacy++ }, model) } }

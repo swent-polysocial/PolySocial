@@ -1,6 +1,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the Delete account sheet tests, #207; Mohamed
 // Khellaf (reviewed and revised).
 // Contributors: Claude (Opus 5.5, Anthropic) covered signing out before confirming, #296.
+// Contributors: Claude Opus 5.5 (passed the new reminder scheduler fake, #123's second PR review).
 package com.polysocial.ui.profile
 
 import android.content.Context
@@ -34,6 +35,7 @@ import com.polysocial.model.firebase.CacheClearResult
 import com.polysocial.model.firebase.SessionCache
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.privacy.PrivacyContactLauncher
+import com.polysocial.model.reminder.FakeReminderScheduler
 import com.polysocial.resources.C
 import com.polysocial.ui.theme.PolySocialTheme
 import kotlinx.coroutines.CompletableDeferred
@@ -75,6 +77,7 @@ class DeleteAccountSheetTest {
             }
           },
           MemoryVerificationStore(),
+          FakeReminderScheduler(java.time.Clock.systemUTC()),
       )
 
   private fun text(id: Int) = context.getString(id)
