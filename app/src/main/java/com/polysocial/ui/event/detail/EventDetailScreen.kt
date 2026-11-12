@@ -7,6 +7,8 @@
 // Contributors: Claude Opus 5.5 ("I'm going" and Cancel registration from the Figma "Event
 // detail", "· registered" and "· in a group" frames, #122).
 // Contributors: OpenAI Codex (connected the group card to the roster route, #234).
+// Contributors: Claude (Sonnet 5, Anthropic) greyed out Find a group until the student is going,
+// #244.
 package com.polysocial.ui.event.detail
 
 import androidx.annotation.DrawableRes
@@ -418,8 +420,11 @@ private fun EventContent(
     // An ended event no longer offers Find a group or "I'm going": nobody plans to go anymore. In a
     // group, its card replaces Find a group (#233), and "✓ Going" takes the whole bar (Figma "Event
     // detail · in a group").
-    val findGroup = onFindGroup.takeIf { state.yourGroup == null }
     val isGoing = !state.isOrganizer && state.attendance == Attendance.GOING
+    val findGroup = onFindGroup.takeIf { state.yourGroup == null }
+    // Matching other students for an event nobody confirmed attending doesn't make sense (#244);
+    // an organizer counts as going without needing the attendance flow.
+    val findGroupEnabled = state.isOrganizer || isGoing
     // In a group, cancelling here would leave the student in it without being registered, so the
     // link waits for #244's "you'll also leave your group" sheet (#318).
     val onCancelRegistration =
@@ -444,7 +449,7 @@ private fun EventContent(
             modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 7.dp),
         )
       }
-      ActionBar(state, attendance.onImGoing, findGroup)
+      ActionBar(state, attendance.onImGoing, findGroup, findGroupEnabled)
     }
   }
 }
@@ -791,13 +796,16 @@ internal fun DetailOfflineBanner(
  * The bottom bar, with a top border, above the navigation bar: "I'm going" (or "✓ Going") and "Find
  * a group" in Figma's 137.5 : 172.5 widths. An organizer gets only "Find a group" (Figma "Event
  * detail · organizer"), and without [onFindGroup], for a student in a group, the attendance button
- * takes the whole width (Figma "Event detail · in a group").
+ * takes the whole width (Figma "Event detail · in a group"). While visible but not
+ * [findGroupEnabled] (not yet going), it shows greyed out instead of hidden, so a student knows the
+ * option exists (#244).
  */
 @Composable
 private fun ActionBar(
     state: EventDetailUiState.Loaded,
     onImGoing: () -> Unit,
     onFindGroup: (() -> Unit)?,
+    findGroupEnabled: Boolean,
 ) {
   Column(Modifier.fillMaxWidth().windowInsetsPadding(WindowInsets.navigationBars)) {
     HorizontalDivider(color = Border)
@@ -819,15 +827,19 @@ private fun ActionBar(
                 Modifier.weight(172.5f)
                     .height(52.dp)
                     .clip(ACTION_SHAPE)
-                    .background(Accent)
-                    .clickable(role = Role.Button, onClick = onFindGroup)
+                    .background(if (findGroupEnabled) Accent else Disabled)
+                    .clickable(
+                        enabled = findGroupEnabled,
+                        role = Role.Button,
+                        onClick = onFindGroup,
+                    )
                     .testTag(EventDetailTags.FIND_GROUP),
             contentAlignment = Alignment.Center,
         ) {
           Text(
               stringResource(R.string.event_detail_find_group),
               style = MaterialTheme.typography.titleSmall,
-              color = Bg,
+              color = if (findGroupEnabled) Bg else Ink2,
           )
         }
       }

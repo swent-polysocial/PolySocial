@@ -122,11 +122,33 @@ class EventDetailAttendanceScreenTest {
 
     node(EventDetailTags.IM_GOING).assertIsDisplayed().assertIsEnabled()
     composeTestRule.onNodeWithText(string(R.string.event_detail_im_going)).assertIsDisplayed()
-    node(EventDetailTags.FIND_GROUP).assertIsDisplayed()
     node(EventDetailTags.REGISTERED_NOTE).assertDoesNotExist()
 
     node(EventDetailTags.IM_GOING).performClick()
     assertEquals(listOf("going"), calls)
+  }
+
+  @Test
+  fun notGoing_findAGroupIsGreyedOutAndCantBeTapped() {
+    // Matching students for an event nobody confirmed attending doesn't make sense (#244).
+    show(loaded())
+
+    node(EventDetailTags.FIND_GROUP).assertIsDisplayed().assertIsNotEnabled()
+  }
+
+  @Test
+  fun going_findAGroupIsEnabled() {
+    show(loaded(Attendance.GOING))
+
+    node(EventDetailTags.FIND_GROUP).assertIsDisplayed().assertIsEnabled()
+  }
+
+  @Test
+  fun anOrganizer_findAGroupIsAlwaysEnabled() {
+    // An organizer counts as going without needing the attendance flow (#244).
+    show(loaded(isOrganizer = true))
+
+    node(EventDetailTags.FIND_GROUP).assertIsDisplayed().assertIsEnabled()
   }
 
   @Test

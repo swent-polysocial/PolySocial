@@ -244,6 +244,7 @@ Add new ones here and in the Architecture Diagram's "Design decisions" section.
 
 ## Decision log
 
+- 2026-11-12 · Find a group is greyed out (not hidden) until the student is going; an organizer's copy stays enabled without needing the attendance flow. Cancelling while in a group (Figma `1132:384`, "You'll also leave your group") and the matching rules question stay open for #318. ([#244](https://github.com/swent-polysocial/PolySocial/issues/244))
 - 2026-11-12 · A QR code is drawn black on white (never theme colors), with its 4-module quiet zone inside its own square, which shrinks below 205 dp so the whole code always fits on screen; the friend code screen is a student-only destination. ([#384 review](https://github.com/swent-polysocial/PolySocial/pull/384))
 - 2026-11-12 · The chat retry argument keeps its Kotlin default. `MessageRepository` skips the legacy compatibility bridge because all callers compile with the app. ([#349](https://github.com/swent-polysocial/PolySocial/pull/349))
 - 2026-11-11 · Friend codes are drawn with ZXing `core` (ML Kit only reads codes), encoded on the device from the signed-in UID so they work offline; the Profile row is for students only, and scanning waits for its own task. ([#339](https://github.com/swent-polysocial/PolySocial/issues/339))
