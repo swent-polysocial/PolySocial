@@ -1,6 +1,7 @@
 // Contributors: OpenAI Codex (adapted pending tests to the shared session controller).
 // Contributors: Claude (wrote these tests, #127; testing agent: each "not available" entry, the
 // replaced Snackbar, the logout dialog's states, leaving once saved, #127).
+// Contributors: Claude Opus 5.5 (passed the new reminder scheduler fake, #123's second PR review).
 package com.polysocial.ui.association
 
 import androidx.activity.ComponentActivity
@@ -31,6 +32,7 @@ import com.polysocial.model.association.UpdateAssociationResult
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.firebase.CacheClearResult
 import com.polysocial.model.firebase.SessionCache
+import com.polysocial.model.reminder.FakeReminderScheduler
 import com.polysocial.resources.C
 import com.polysocial.ui.profile.ProfileTags
 import com.polysocial.ui.profile.ProfileViewModel
@@ -64,7 +66,13 @@ class PendingAssociationAppTest {
   private var loggedOut = 0
 
   private fun launch() {
-    val logout = ProfileViewModel(auth, cache, associations)
+    val logout =
+        ProfileViewModel(
+            auth,
+            cache,
+            associations,
+            FakeReminderScheduler(java.time.Clock.systemUTC()),
+        )
     compose.setContent {
       PolySocialTheme {
         PendingAssociationApp(
@@ -485,7 +493,13 @@ class PendingAssociationAppTest {
         object : SessionCache {
           override suspend fun clear(): CacheClearResult = gate.await()
         }
-    val logout = ProfileViewModel(auth, slowCache, associations)
+    val logout =
+        ProfileViewModel(
+            auth,
+            slowCache,
+            associations,
+            FakeReminderScheduler(java.time.Clock.systemUTC()),
+        )
     compose.setContent {
       PolySocialTheme {
         PendingAssociationApp(

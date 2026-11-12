@@ -9,11 +9,17 @@
 // Contributors: Claude (Opus 5.5, Anthropic) bound fake group and public profile repositories,
 // which Find a group's ViewModel needs, #233.
 // Contributors: OpenAI Codex (scoped the chat fake to this Hilt test, #238).
+// Contributors: Claude Opus 5.5 (test WorkManager initialization, needed once ProfileViewModel
+// depends on ReminderScheduler for real DI, #123's second PR review).
 package com.polysocial.ui.profile
 
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.work.Configuration
+import androidx.work.testing.SynchronousExecutor
+import androidx.work.testing.WorkManagerTestInitHelper
 import com.polysocial.MainActivity
 import com.polysocial.auth.MemoryVerificationStore
 import com.polysocial.model.account.AccountDeletionModule
@@ -44,6 +50,7 @@ import com.polysocial.resources.C
 import com.polysocial.ui.auth.WelcomeTags
 import dagger.hilt.android.testing.*
 import org.junit.Assert.*
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -107,6 +114,19 @@ class LogoutInjectionTest {
       }
   @get:Rule(order = 0) val hilt = HiltAndroidRule(this)
   @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
+
+  /**
+   * [ProfileViewModel] now depends on a [com.polysocial.model.reminder.ReminderScheduler], which
+   * Hilt's real `ReminderModule` backs with WorkManager; it needs test initialization, like
+   * [com.polysocial.model.reminder.WorkManagerReminderScheduler]'s own tests already do.
+   */
+  @Before
+  fun initializeTestWorkManager() {
+    WorkManagerTestInitHelper.initializeTestWorkManager(
+        ApplicationProvider.getApplicationContext(),
+        Configuration.Builder().setExecutor(SynchronousExecutor()).build(),
+    )
+  }
 
   @Test
   fun productionRoutesUseInjectedCleanupAndAuthThenExitAfterRetry() {

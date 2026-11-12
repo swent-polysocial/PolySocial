@@ -5,6 +5,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) left the association's map, now a real map, to
 // MapTabAccountTest, #133; checked its header on the Events tab, #322.
 // Contributors: OpenAI Codex (scoped the chat fake to this Hilt test, #238).
+// Contributors: Claude Opus 5.5 (test WorkManager initialization, needed once ProfileViewModel
+// depends on ReminderScheduler for real DI, #123's second PR review).
 package com.polysocial.auth
 
 import androidx.compose.ui.test.assertIsDisplayed
@@ -14,7 +16,11 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.work.Configuration
+import androidx.work.testing.SynchronousExecutor
+import androidx.work.testing.WorkManagerTestInitHelper
 import com.google.firebase.firestore.FirebaseFirestore
 import com.polysocial.MainActivity
 import com.polysocial.model.association.Association
@@ -66,6 +72,7 @@ import io.mockk.mockk
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -136,6 +143,20 @@ class AssociationTabsInjectionTest {
       }
   @get:Rule(order = 0) val hilt = HiltAndroidRule(this)
   @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
+
+  /**
+   * [com.polysocial.ui.profile.ProfileViewModel] now depends on a
+   * [com.polysocial.model.reminder.ReminderScheduler], which Hilt's real `ReminderModule` backs
+   * with WorkManager; it needs test initialization, like
+   * [com.polysocial.model.reminder.WorkManagerReminderScheduler]'s own tests already do.
+   */
+  @Before
+  fun initializeTestWorkManager() {
+    WorkManagerTestInitHelper.initializeTestWorkManager(
+        ApplicationProvider.getApplicationContext(),
+        Configuration.Builder().setExecutor(SynchronousExecutor()).build(),
+    )
+  }
 
   @Test
   fun approvedAssociationUsesRealOrganizationPrivacyAndLogoutWithoutStudentScreens() {

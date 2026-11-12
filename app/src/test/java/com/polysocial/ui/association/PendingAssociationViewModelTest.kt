@@ -1,6 +1,7 @@
 // Contributors: OpenAI Codex (preserved pending identity tests against the shared controller).
 // Contributors: Claude (wrote these tests, #127; one session after another, after a review,
 // #127).
+// Contributors: Claude Opus 5.5 (passed the new reminder scheduler fake, #123's second PR review).
 package com.polysocial.ui.association
 
 import com.polysocial.model.association.Association
@@ -12,6 +13,7 @@ import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.firebase.CacheClearResult
 import com.polysocial.model.firebase.SessionCache
+import com.polysocial.model.reminder.FakeReminderScheduler
 import com.polysocial.ui.profile.OrganizationUiState
 import com.polysocial.ui.profile.ProfileViewModel
 import com.polysocial.utils.MainDispatcherRule
@@ -45,6 +47,7 @@ private class PendingAssociationViewModel(
             override suspend fun clear() = CacheClearResult.Cleared
           },
           associations,
+          FakeReminderScheduler(java.time.Clock.systemUTC()),
       )
   val uiState = State()
 

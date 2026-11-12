@@ -34,6 +34,9 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.work.Configuration
+import androidx.work.testing.SynchronousExecutor
+import androidx.work.testing.WorkManagerTestInitHelper
 import com.polysocial.MainActivity
 import com.polysocial.R
 import com.polysocial.model.privacy.PrivacyContactLauncher
@@ -47,6 +50,7 @@ import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import dagger.hilt.android.testing.HiltTestApplication
 import java.io.File
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -64,6 +68,20 @@ class PrivacyScreenTest {
   private lateinit var navController: NavHostController
 
   private fun text(id: Int) = context.getString(id)
+
+  /**
+   * [ProfileViewModel] and [DeleteAccountViewModel] now depend on a
+   * [com.polysocial.model.reminder.ReminderScheduler], which Hilt's real `ReminderModule` backs
+   * with WorkManager; it needs test initialization, like
+   * [com.polysocial.model.reminder.WorkManagerReminderScheduler]'s own tests already do.
+   */
+  @Before
+  fun initializeTestWorkManager() {
+    WorkManagerTestInitHelper.initializeTestWorkManager(
+        ApplicationProvider.getApplicationContext(),
+        Configuration.Builder().setExecutor(SynchronousExecutor()).build(),
+    )
+  }
 
   private fun openFromProfile() {
     rule.activity.setContent {

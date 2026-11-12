@@ -16,6 +16,7 @@
 // Contributors: Claude (Finish on the interests step, #230).
 // Contributors: Claude (Opus 5.5, Anthropic) passed the deletion and network fakes, #225;
 // Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude Opus 5.5 (passed the new reminder scheduler fake, #123's second PR review).
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -87,6 +88,7 @@ class AuthFlowTest {
           auth,
           cache,
           com.polysocial.model.association.FakeAssociationRepository(),
+          com.polysocial.model.reminder.FakeReminderScheduler(java.time.Clock.systemUTC()),
       )
   private val restoration = StateRestorationTester(compose)
 

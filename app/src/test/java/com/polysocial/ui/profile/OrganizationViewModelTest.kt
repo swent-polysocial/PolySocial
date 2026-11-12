@@ -1,6 +1,7 @@
 // Contributors: OpenAI Codex (regressions for saved pending edits and session isolation on rebase).
 // Contributors: OpenAI Codex (own-identity caching, required dependencies and session-isolation
 // tests, #140).
+// Contributors: Claude Opus 5.5 (passed the new reminder scheduler fake, #123's second PR review).
 package com.polysocial.ui.profile
 
 import com.polysocial.model.association.Association
@@ -12,6 +13,7 @@ import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.firebase.CacheClearResult
 import com.polysocial.model.firebase.SessionCache
+import com.polysocial.model.reminder.FakeReminderScheduler
 import com.polysocial.utils.MainDispatcherRule
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -42,7 +44,13 @@ class OrganizationViewModelTest {
 
   @Test
   fun entryLoadsOnlyItsOwnIdentityAndRetryReplacesAnError() = runTest {
-    val model = ProfileViewModel(auth, cache, repository)
+    val model =
+        ProfileViewModel(
+            auth,
+            cache,
+            repository,
+            FakeReminderScheduler(java.time.Clock.systemUTC()),
+        )
     assertTrue(repository.requestedUids.isEmpty())
     assertEquals(OrganizationUiState.Loading, model.organization.value)
     for (failure in
@@ -65,7 +73,13 @@ class OrganizationViewModelTest {
 
   @Test
   fun absentOrUnverifiedSessionsNeverQuery() = runTest {
-    val model = ProfileViewModel(auth, cache, repository)
+    val model =
+        ProfileViewModel(
+            auth,
+            cache,
+            repository,
+            FakeReminderScheduler(java.time.Clock.systemUTC()),
+        )
     for (session in listOf(null, user.copy(isEmailVerified = false))) {
       auth.user = session
       model.loadOrganization()
@@ -78,7 +92,13 @@ class OrganizationViewModelTest {
   @Test
   fun repeatedEntryDoesNotDuplicateAnInflightRead() = runTest {
     repository.gate = CompletableDeferred()
-    val model = ProfileViewModel(auth, cache, repository)
+    val model =
+        ProfileViewModel(
+            auth,
+            cache,
+            repository,
+            FakeReminderScheduler(java.time.Clock.systemUTC()),
+        )
     model.loadOrganization()
     runCurrent()
     model.loadOrganization()
@@ -91,7 +111,13 @@ class OrganizationViewModelTest {
 
   @Test
   fun repeatedEntryRetainsReadyIdentityWithoutAnotherReadOrLoadingState() = runTest {
-    val model = ProfileViewModel(auth, cache, repository)
+    val model =
+        ProfileViewModel(
+            auth,
+            cache,
+            repository,
+            FakeReminderScheduler(java.time.Clock.systemUTC()),
+        )
     model.loadOrganization()
     advanceUntilIdle()
     assertEquals(OrganizationUiState.Ready(identity), model.organization.value)
@@ -107,7 +133,13 @@ class OrganizationViewModelTest {
   fun cachedIdentityIsDiscardedWhenTheSessionIsAbsentOrLosesVerification() = runTest {
     for (session in listOf(null, user.copy(isEmailVerified = false))) {
       auth.user = user
-      val model = ProfileViewModel(auth, cache, repository)
+      val model =
+          ProfileViewModel(
+              auth,
+              cache,
+              repository,
+              FakeReminderScheduler(java.time.Clock.systemUTC()),
+          )
       model.loadOrganization()
       advanceUntilIdle()
       assertEquals(OrganizationUiState.Ready(identity), model.organization.value)
@@ -125,7 +157,13 @@ class OrganizationViewModelTest {
     for (session in listOf(null, user.copy(uid = "other"), user.copy(isEmailVerified = false))) {
       auth.user = user
       repository.gate = CompletableDeferred()
-      val model = ProfileViewModel(auth, cache, repository)
+      val model =
+          ProfileViewModel(
+              auth,
+              cache,
+              repository,
+              FakeReminderScheduler(java.time.Clock.systemUTC()),
+          )
       model.loadOrganization()
       runCurrent()
       auth.user = session
@@ -138,7 +176,13 @@ class OrganizationViewModelTest {
   @Test
   fun aNewAccountCancelsThePreviousReadAndLoadsItsOwnIdentity() = runTest {
     repository.gate = CompletableDeferred()
-    val model = ProfileViewModel(auth, cache, repository)
+    val model =
+        ProfileViewModel(
+            auth,
+            cache,
+            repository,
+            FakeReminderScheduler(java.time.Clock.systemUTC()),
+        )
     model.loadOrganization()
     runCurrent()
     auth.user = user.copy(uid = "new-club")
@@ -166,7 +210,8 @@ class OrganizationViewModelTest {
           object : AssociationRepository by repository {
             override suspend fun getAssociation(uid: String): AssociationResult = throw failure
           }
-      val model = ProfileViewModel(auth, cache, broken)
+      val model =
+          ProfileViewModel(auth, cache, broken, FakeReminderScheduler(java.time.Clock.systemUTC()))
       model.loadOrganization()
       advanceUntilIdle()
       assertEquals(OrganizationUiState.Error, model.organization.value)
@@ -177,7 +222,13 @@ class OrganizationViewModelTest {
   @Test
   fun savedEditsReplaceAnInflightReadAndRemainCachedOnReentry() = runTest {
     repository.gate = CompletableDeferred()
-    val model = ProfileViewModel(auth, cache, repository)
+    val model =
+        ProfileViewModel(
+            auth,
+            cache,
+            repository,
+            FakeReminderScheduler(java.time.Clock.systemUTC()),
+        )
     model.loadOrganization()
     runCurrent()
     val edited = identity.copy(name = "Renamed Club")
@@ -194,7 +245,13 @@ class OrganizationViewModelTest {
   @Test
   fun savedEditsFromAnAbsentUnverifiedOrDifferentSessionAreIgnored() = runTest {
     for (session in listOf(null, user.copy(isEmailVerified = false), user.copy(uid = "other"))) {
-      val model = ProfileViewModel(auth, cache, repository)
+      val model =
+          ProfileViewModel(
+              auth,
+              cache,
+              repository,
+              FakeReminderScheduler(java.time.Clock.systemUTC()),
+          )
       auth.user = session
       model.onOrganizationSaved(identity)
       assertEquals(OrganizationUiState.Loading, model.organization.value)
@@ -205,7 +262,13 @@ class OrganizationViewModelTest {
   @Test
   fun successfulLogoutCancelsAnInflightFirstReadAndBlocksLateResponses() = runTest {
     repository.gate = CompletableDeferred()
-    val model = ProfileViewModel(auth, cache, repository)
+    val model =
+        ProfileViewModel(
+            auth,
+            cache,
+            repository,
+            FakeReminderScheduler(java.time.Clock.systemUTC()),
+        )
     model.loadOrganization()
     runCurrent()
     assertEquals(OrganizationUiState.Loading, model.organization.value)
@@ -222,7 +285,13 @@ class OrganizationViewModelTest {
 
   @Test
   fun cleanupFailurePreservesTheSessionAndMetadataUntilRetrySucceeds() = runTest {
-    val model = ProfileViewModel(auth, cache, repository)
+    val model =
+        ProfileViewModel(
+            auth,
+            cache,
+            repository,
+            FakeReminderScheduler(java.time.Clock.systemUTC()),
+        )
     model.loadOrganization()
     advanceUntilIdle()
     cacheResult = CacheClearResult.UnexpectedError
