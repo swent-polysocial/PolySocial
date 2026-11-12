@@ -1,5 +1,7 @@
 // Contributors: Claude Opus 5.5 (drafted the My friend code navigation tests, #339); Konstantinos
 // Perdikeas (directed, reviewed and owns them).
+// Contributors: Claude Opus 5.5 (test WorkManager initialization, needed once ProfileViewModel
+// depends on ReminderScheduler for real DI, #123).
 package com.polysocial.ui.profile
 
 import androidx.activity.compose.setContent
@@ -14,7 +16,11 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.work.Configuration
+import androidx.work.testing.SynchronousExecutor
+import androidx.work.testing.WorkManagerTestInitHelper
 import com.polysocial.MainActivity
 import com.polysocial.resources.C
 import com.polysocial.ui.navigation.AppShell
@@ -26,6 +32,7 @@ import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import dagger.hilt.android.testing.HiltTestApplication
 import org.junit.Assert.assertEquals
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -39,6 +46,15 @@ class FriendCodeNavigationTest {
   @get:Rule(order = 1) val firebaseStartupRule = FirebaseStartupRule()
   @get:Rule(order = 2) val rule = createAndroidComposeRule<MainActivity>()
   private lateinit var navController: NavHostController
+
+  /** The real `ProfileViewModel` needs a WorkManager-backed `ReminderScheduler` (#123). */
+  @Before
+  fun initializeTestWorkManager() {
+    WorkManagerTestInitHelper.initializeTestWorkManager(
+        ApplicationProvider.getApplicationContext(),
+        Configuration.Builder().setExecutor(SynchronousExecutor()).build(),
+    )
+  }
 
   // The test app has no signed-in account (FirebaseStartupRule), so the screen shows its "can't
   // show" state: these tests cover navigation; the code itself is covered by FriendCodeScreenTest
