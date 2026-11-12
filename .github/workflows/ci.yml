@@ -4,6 +4,7 @@
 # broadcast wait before the device tests, #192).
 
 # Contributors: OpenAI Codex (publish the main APK after the parallel CI jobs, #137).
+# Contributors: OpenAI Codex (stable signing and direct download for the published APK, #383).
 name: CI - Test Runner
 
 # Run the workflow when commits are pushed on main or when a PR is modified
@@ -190,7 +191,7 @@ jobs:
           if-no-files-found: error
 
       # Hand this job's debug APK to the final CI job. Device-test shards build their own APKs
-      # from the same commit. Coaches use polysocial-apk after all checks.
+      # from the same commit. Coaches use polysocial.apk after all checks.
       - name: Preserve main debug APK for publication
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v7
@@ -507,11 +508,36 @@ jobs:
           name: ci-main-debug-apk
           path: app/build/outputs/apk/debug/
 
+      - name: Sign and verify the published debug APK
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          CI_APK_KEYSTORE: ${{ secrets.CI_APK_KEYSTORE }}
+          CI_APK_KEYSTORE_PASSWORD: ${{ secrets.CI_APK_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$CI_APK_KEYSTORE" || -z "$CI_APK_KEYSTORE_PASSWORD" ]]; then
+            echo "::error::Set CI_APK_KEYSTORE and CI_APK_KEYSTORE_PASSWORD before publishing the APK."
+            exit 1
+          fi
+
+          keystore=$(mktemp "$RUNNER_TEMP/polysocial-ci.XXXXXX.p12")
+          trap 'rm -f -- "$keystore"' EXIT
+          printf '%s' "$CI_APK_KEYSTORE" | base64 --decode > "$keystore"
+          unset CI_APK_KEYSTORE
+
+          apk=app/build/outputs/apk/debug/app-debug.apk
+          published_apk=app/build/outputs/apk/debug/polysocial.apk
+          apksigner="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          "$apksigner" sign --ks "$keystore" --ks-key-alias polysocial-ci \
+            --ks-pass env:CI_APK_KEYSTORE_PASSWORD --v4-signing-enabled false --out "$published_apk" "$apk"
+          "$apksigner" verify --print-certs "$published_apk"
+
       - name: Upload installable APK
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v7
         with:
-          name: polysocial-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: app/build/outputs/apk/debug/polysocial.apk
+          archive: false
           retention-days: 7
           if-no-files-found: error

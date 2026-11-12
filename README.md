@@ -16,6 +16,8 @@
 <!-- Contributors: Claude (Fable 5.2, Anthropic) (Features table statuses, section order and the move of behavior notes to docs/App-behavior.md, #340; review fixes by Claude (Opus 5.5, Anthropic)). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the deleteEventRegistrations trigger and registrations in deleteAccount, #275). -->
 
+<!-- Contributors: OpenAI Codex (CI signing, direct APK downloads and Firebase setup for #383). -->
+
 # PolySocial
 
 [![CI](https://github.com/swent-polysocial/PolySocial/actions/workflows/ci.yml/badge.svg)](https://github.com/swent-polysocial/PolySocial/actions/workflows/ci.yml)
@@ -107,15 +109,43 @@ In Firebase console → Authentication → Sign-in method, enable **Google** and
 
 In Project settings → Your apps → `com.polysocial`, register the **SHA-1 fingerprints** for every teammate's debug keystore, CI, and release/Play signing keystores (`./gradlew signingReport` for local fingerprints). Download a fresh, git-ignored `app/google-services.json` and ask the repository owner to update the CI secret. The config must include the **Web OAuth client ID**, which generates `default_web_client_id`; never hardcode it or commit keystores. If an older config has no Web OAuth client (`client_type: 3`), compilation fails with **unresolved reference `default_web_client_id`** before the runtime configuration check can run. Re-download the config and update the CI secret.
 
-**CI APK limitation:** runners currently generate a fresh debug signing key for every run, so Google sign-in cannot be configured reliably for `polysocial-apk`. The stable CI key and Firebase SHA-1 registration are tracked in [#137](https://github.com/swent-polysocial/PolySocial/issues/137). Resolve that follow-up before relying on Google sign-in in the next deliverable; each teammate must also register their local SHA-1 and download the updated config.
+### CI APK signing setup
+
+A repository maintainer provisions a dedicated CI signing key once. In a private temporary directory, generate a password-protected keystore and read its public SHA-1 fingerprint:
+
+```bash
+umask 077
+keytool -genkeypair -storetype PKCS12 -keystore ci-apk.p12 -alias polysocial-ci \
+  -keyalg RSA -keysize 3072 -validity 9125 -dname 'CN=PolySocial CI'
+keytool -list -v -keystore ci-apk.p12 -alias polysocial-ci
+```
+
+Store the base64-encoded keystore in the GitHub Actions secret `CI_APK_KEYSTORE` and its password in `CI_APK_KEYSTORE_PASSWORD`. With the GitHub CLI, run:
+
+```bash
+base64 < ci-apk.p12 | gh secret set CI_APK_KEYSTORE --repo swent-polysocial/PolySocial
+gh secret set CI_APK_KEYSTORE_PASSWORD --repo swent-polysocial/PolySocial
+```
+
+Enter the password at the prompt and remove the temporary keystore after both secrets are set. Keep the same key for future builds so Android accepts them as updates. Only the final publishing step on `main` reads these secrets. It verifies the signed APK and prints its public certificate fingerprint.
+
+Register the key's **SHA-1** under Firebase Project settings → Your apps → `com.polysocial`. Download the updated `google-services.json` to the git-ignored `app/google-services.json` and update the existing `GOOGLE_SERVICES` Actions secret with the base64-encoded file:
+
+```bash
+base64 < app/google-services.json | gh secret set GOOGLE_SERVICES --repo swent-polysocial/PolySocial
+```
+
+Check the first published APK on an Android phone with both Google and email sign-in. Install a second CI APK over it to verify the update.
 
 ## Downloading the CI APK
 
 Milestone builds are attached to the [Releases](https://github.com/swent-polysocial/PolySocial/releases). For any other commit on `main`, use the CI artifact:
 
-Sign in to GitHub (artifacts cannot be downloaded anonymously). After a successful push to `main`, open [CI - Test Runner](https://github.com/swent-polysocial/PolySocial/actions/workflows/ci.yml), choose the successful run for the desired commit on `main`, and download **polysocial-apk** from its **Artifacts** section. Extract the ZIP to obtain `app-debug.apk`. If an older PolySocial is installed, uninstall it first: each CI run generates a different debug signing key, so Android cannot install the new APK as an update. Uninstalling removes the app's local data. Install on an Android phone running Android 9 (API 28) or newer, allowing installation from that source when Android asks.
+Sign in to GitHub (artifacts cannot be downloaded anonymously). After a successful push to `main`, open [CI - Test Runner](https://github.com/swent-polysocial/PolySocial/actions/workflows/ci.yml), choose the successful run for the desired commit on `main`, and download **polysocial.apk** directly from its **Artifacts** section. Open the downloaded APK on your phone to install it as-is, without unzipping.
 
-The APK is built from the commit whose checks, unit tests, device-test shards, Sonar analysis and release build all succeeded; the device-test shards build their own APKs. Artifacts expire after **7 days**, so use a recent successful `main` run for the Sprint review or M1. PR runs do not publish an APK. The one-day `ci-main-debug-apk` artifact is an internal handoff between jobs; download **polysocial-apk**.
+If you are moving from an APK signed before [#383](https://github.com/swent-polysocial/PolySocial/issues/383) or from a developer's APK signed with a different key, uninstall it once before switching. Uninstalling removes the app's local data. Subsequent CI APKs install as updates. Install on an Android phone running Android 9 (API 28) or newer, allowing installation from that source when Android asks.
+
+The APK is built from the commit whose checks, unit tests, device-test shards, Sonar analysis and release build all succeeded; the device-test shards build their own APKs. Artifacts expire after **7 days**, so use a recent successful `main` run for the Sprint review or M1. PR runs do not publish an APK. The one-day `ci-main-debug-apk` artifact is an internal handoff between jobs; download **polysocial.apk**.
 
 For the CI APK to show the map, a repository maintainer must configure the GitHub Actions `LOCAL_PROPERTIES` secret with base64-encoded properties containing `MAPBOX_ACCESS_TOKEN=your-public-token` (see [Mapbox setup](#mapbox-setup)). A developer's local file is not available to GitHub's runner. An absent secret or token still allows a successful build, but the installed app shows the map setup state. Only use a public `pk.` token; never include a secret `sk.` token or a developer's SDK path in this CI configuration.
 
