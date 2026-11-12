@@ -2,6 +2,8 @@
 // the real Edit event screen, #131; a fake association repository for the association names, #128;
 // which map each account's Map tab reads, #133).
 // Contributors: OpenAI Codex (verified the real Hilt-backed event detail and roster, #234).
+// Contributors: Claude Opus 5.5 (test WorkManager initialization, needed once
+// EventDetailViewModel depends on ReminderScheduler for real DI, #123's second PR review).
 package com.polysocial.ui.navigation
 
 import android.content.res.Resources
@@ -22,7 +24,11 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.work.Configuration
+import androidx.work.testing.SynchronousExecutor
+import androidx.work.testing.WorkManagerTestInitHelper
 import com.polysocial.MainActivity
 import com.polysocial.R
 import com.polysocial.auth.MemoryVerificationStore
@@ -88,6 +94,7 @@ import io.mockk.spyk
 import java.time.Clock
 import kotlinx.coroutines.flow.flowOf
 import org.junit.Assert.assertEquals
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -121,6 +128,20 @@ class AppShellDefaultScreensTest {
   @get:Rule(order = 1) val firebaseStartupRule = FirebaseStartupRule()
 
   @get:Rule(order = 2) val composeTestRule = createAndroidComposeRule<MainActivity>()
+
+  /**
+   * [com.polysocial.ui.event.detail.EventDetailViewModel] depends on a
+   * [com.polysocial.model.reminder.ReminderScheduler], which Hilt's real `ReminderModule` backs
+   * with WorkManager; it needs test initialization, like
+   * [com.polysocial.model.reminder.WorkManagerReminderScheduler]'s own tests already do.
+   */
+  @Before
+  fun initializeTestWorkManager() {
+    WorkManagerTestInitHelper.initializeTestWorkManager(
+        ApplicationProvider.getApplicationContext(),
+        Configuration.Builder().setExecutor(SynchronousExecutor()).build(),
+    )
+  }
 
   private val events = FakeEventRepository(now = FORM_NOW)
 
