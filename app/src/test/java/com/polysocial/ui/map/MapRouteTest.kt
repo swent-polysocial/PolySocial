@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (rationale-aware results and review regressions, #278).
 // Contributors: OpenAI Codex (permission launcher and foreground lifecycle integration tests, #51).
 // Contributors: OpenAI Codex (dismissed permission dialog regression, #278).
 // Contributors: Claude (the association names dependency, #128).
@@ -237,8 +238,13 @@ class MapRouteTest {
 
   @Test
   fun permanentDenialTurnOnOpensThisAppsSettingsWithoutAnotherDialog() {
-    showRationale = null
+    showRationale = true
     show()
+    composeRule.runOnIdle { registry.respond(grantedCoarse = false) }
+    settle()
+    composeRule.onNodeWithTag(MapTags.LOCATION_ACTION).performClick()
+    settle()
+    showRationale = false
     composeRule.runOnIdle { registry.respond(grantedCoarse = false) }
     settle()
     composeRule.onNodeWithTag(MapTags.LOCATION_ACTION).performClick()
@@ -248,7 +254,7 @@ class MapRouteTest {
             .nextStartedActivity
     assertEquals(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, intent.action)
     assertEquals("package:${routeContext.packageName}", intent.data.toString())
-    assertEquals(1, registry.launches.size)
+    assertEquals(2, registry.launches.size)
     assertEquals(MapLocationState.Denied, viewModel.uiState.value.locationState)
   }
 
@@ -265,9 +271,9 @@ class MapRouteTest {
 
   @Test
   fun dismissedDialog_turnOnAsksAgainEvenWithoutARationale() {
-    showRationale = false
+    showRationale = null
     show()
-    composeRule.runOnIdle { registry.dismiss() }
+    composeRule.runOnIdle { registry.respond(grantedCoarse = false) }
     settle()
     assertEquals(MapLocationState.Denied, viewModel.uiState.value.locationState)
     composeRule.onNodeWithTag(MapTags.LOCATION_ACTION).performClick()
@@ -278,6 +284,18 @@ class MapRouteTest {
         shadowOf(ApplicationProvider.getApplicationContext<android.app.Application>())
             .nextStartedActivity
     )
+  }
+
+  @Test
+  fun interruptedRequest_canBeRetriedWithoutOpeningSettings() {
+    showRationale = false
+    show()
+    composeRule.runOnIdle { registry.interrupt() }
+    settle()
+    composeRule.onNodeWithTag(MapTags.LOCATION_ACTION).performClick()
+    settle()
+    assertEquals(2, registry.launches.size)
+    assertTrue(!location.wasPermissionDenied())
   }
 
   private class ControlledLifecycleOwner : LifecycleOwner {
@@ -314,7 +332,7 @@ class MapRouteTest {
       )
     }
 
-    fun dismiss() {
+    fun interrupt() {
       dispatchResult(checkNotNull(requestCode), emptyMap<String, Boolean>())
     }
   }

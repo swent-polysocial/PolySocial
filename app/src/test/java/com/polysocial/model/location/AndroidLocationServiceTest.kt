@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (rationale-aware results and review regressions, #278).
 // Contributors: OpenAI Codex (permission, one-off fix and cancellation tests for #51).
 // Contributors: OpenAI Codex (denial history and coarse fused-provider regressions, #278).
 package com.polysocial.model.location
@@ -115,19 +116,48 @@ class AndroidLocationServiceTest {
   fun promptHistory_doesNotTreatDismissalAsDenial_andCompletedResultsSurviveRecreation() {
     service.markPermissionRequested()
     assertFalse(AndroidLocationService(context).wasPermissionDenied())
-    service.recordPermissionResult(false)
+    service.recordPermissionResult(false, showRationale = true)
     assertTrue(AndroidLocationService(context).wasPermissionDenied())
-    service.recordPermissionResult(true)
+    service.recordPermissionResult(true, showRationale = false)
     assertFalse(AndroidLocationService(context).wasPermissionDenied())
   }
 
   @Test
   fun grantObservedInSettings_clearsEarlierDenialBeforeALaterRevocation() {
-    service.recordPermissionResult(false)
+    service.recordPermissionResult(false, showRationale = true)
     permission(coarse = true, fine = false)
     assertTrue(service.hasPermission())
+    service.recordPermissionResult(true, showRationale = false)
     permission(coarse = false, fine = false)
     assertFalse(AndroidLocationService(context).wasPermissionDenied())
+  }
+
+  @Test
+  fun aFalseResultWithoutRationale_neverEstablishesAFirstDenial() {
+    service.markPermissionRequested()
+    repeat(3) {
+      service.recordPermissionResult(false, showRationale = false)
+      assertFalse(AndroidLocationService(context).wasPermissionDenied())
+    }
+    service.recordPermissionResult(null, showRationale = true)
+    assertFalse(service.wasPermissionDenied())
+  }
+
+  @Test
+  fun aLaterNoRationaleResult_preservesAKnownRefusal() {
+    service.recordPermissionResult(false, showRationale = true)
+    service.recordPermissionResult(false, showRationale = false)
+    assertTrue(AndroidLocationService(context).wasPermissionDenied())
+  }
+
+  @Test
+  fun permissionQueriesDoNotMutatePersistedRefusal() {
+    service.recordPermissionResult(false, showRationale = true)
+    permission(coarse = true, fine = false)
+    assertTrue(service.hasPermission())
+    assertFalse(service.wasPermissionDenied())
+    permission(coarse = false, fine = false)
+    assertTrue(AndroidLocationService(context).wasPermissionDenied())
   }
 
   @Test

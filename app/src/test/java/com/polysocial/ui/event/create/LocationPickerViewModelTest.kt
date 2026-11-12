@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (rationale-aware results and review regressions, #278).
 // Contributors: OpenAI Codex (dismissal-aware location permission handling and tests, #278).
 // Contributors: Claude (drafted the location picker ViewModel tests, #111; timings from
 // SETTLE_DELAY after review; your location, confirming, the camera and duplicates, #111).
@@ -903,7 +904,7 @@ class LocationPickerViewModelTest {
 
     override fun wasPermissionDenied() = false
 
-    override fun recordPermissionResult(granted: Boolean) = Unit
+    override fun recordPermissionResult(granted: Boolean?, showRationale: Boolean) = Unit
 
     override suspend fun currentLocation() = answer.await()
   }

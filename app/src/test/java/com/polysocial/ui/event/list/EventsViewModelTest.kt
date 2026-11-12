@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (rationale-aware results and review regressions, #278).
 // Contributors: OpenAI Codex (dismissal-aware location permission handling and tests, #278).
 // Contributors: Claude (wrote these tests, #105; search, filters and distance, #115; the
 // association names dependency, #128).
@@ -525,7 +526,7 @@ class EventsViewModelTest {
 
           override fun wasPermissionDenied() = false
 
-          override fun recordPermissionResult(granted: Boolean) = Unit
+          override fun recordPermissionResult(granted: Boolean?, showRationale: Boolean) = Unit
 
           override suspend fun currentLocation(): LocationResult =
               throw IllegalStateException("No provider")
@@ -610,7 +611,7 @@ class EventsViewModelTest {
   fun turnOn_afterARefusal_asksAgainOnlyIfAndroidStillCan() {
     location.permissionGranted = false
     location.markPermissionRequested()
-    location.recordPermissionResult(false)
+    location.recordPermissionResult(false, showRationale = true)
     val viewModel = nearAndFarViewModel()
 
     assertEquals(LocationAction.REQUEST_PERMISSION, viewModel.turnOnLocation(showRationale = true))
@@ -622,14 +623,41 @@ class EventsViewModelTest {
   fun aGrantedPermission_turnsTheDistanceFiltersBackOn_withoutReadingYet() {
     location.permissionGranted = false
     val viewModel = nearAndFarViewModel()
-    viewModel.onPermissionResult()
+    viewModel.onPermissionResult(
+        granted = location.permissionGranted,
+        showRationale = !location.permissionGranted,
+    )
     assertEquals(EventsLocationState.Off, viewModel.location())
 
     location.permissionGranted = true
-    viewModel.onPermissionResult()
+    viewModel.onPermissionResult(
+        granted = location.permissionGranted,
+        showRationale = !location.permissionGranted,
+    )
 
     assertEquals(EventsLocationState.NotRead, viewModel.location())
     assertEquals(0, location.requestCount)
+  }
+
+  @Test
+  fun anExistingPlatformRefusal_isRememberedWithoutEarlierLocalHistory() {
+    location.permissionGranted = false
+    val viewModel = nearAndFarViewModel()
+    assertEquals(LocationAction.REQUEST_PERMISSION, viewModel.turnOnLocation(showRationale = true))
+    viewModel.onPermissionResult(granted = false, showRationale = false)
+    assertEquals(LocationAction.OPEN_SETTINGS, viewModel.turnOnLocation(showRationale = false))
+  }
+
+  @Test
+  fun settingsGrantClearsAnEarlierRefusalBeforeRevocation() {
+    location.permissionGranted = false
+    location.recordPermissionResult(false, showRationale = true)
+    val viewModel = nearAndFarViewModel()
+    location.permissionGranted = true
+    viewModel.onResume()
+    location.permissionGranted = false
+    viewModel.onResume()
+    assertEquals(LocationAction.REQUEST_PERMISSION, viewModel.turnOnLocation(showRationale = false))
   }
 
   @Test

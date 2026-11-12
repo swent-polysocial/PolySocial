@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (explicit permission-grant observation after #354 review, #278).
 // Contributors: Claude (drafted the location picker ViewModel, #111; your location, the location
 // button, confirming and duplicate results for the map screen, #111).
 package com.polysocial.ui.event.create
@@ -128,6 +129,15 @@ constructor(
   private var locateJob: Job? = null
 
   /**
+   * Observes a settings grant explicitly and clears any older refusal before a later revocation.
+   */
+  private fun observeLocationPermission(): Boolean {
+    val granted = location.hasPermission()
+    if (granted) location.recordPermissionResult(true, showRationale = false)
+    return granted
+  }
+
+  /**
    * Places the pin where the picker opens: on [initial], the place already on the form, or else on
    * Lausanne. A named [initial] place is shown as it is, without a lookup; an unnamed one
    * (confirmed while its lookup failed) is looked up again. Only the first call counts, so the
@@ -136,7 +146,7 @@ constructor(
   fun open(initial: PickedLocation?) {
     if (opened) return
     opened = true
-    val hasAccess = location.hasPermission()
+    val hasAccess = observeLocationPermission()
     _uiState.update { it.copy(hasLocationAccess = hasAccess) }
     when {
       initial != null && initial.isNamed -> {
@@ -159,7 +169,7 @@ constructor(
    * read (location turned off, timeout), the pin stays where it is.
    */
   fun onMyLocation() {
-    if (!location.hasPermission()) {
+    if (!observeLocationPermission()) {
       _uiState.update { it.copy(hasLocationAccess = false) }
       return
     }
@@ -167,8 +177,9 @@ constructor(
   }
 
   /** Reads the permission again, for example when the student comes back from Settings. */
-  fun onLocationAccessCheck() = _uiState.update {
-    it.copy(hasLocationAccess = location.hasPermission())
+  fun onLocationAccessCheck() {
+    val granted = observeLocationPermission()
+    _uiState.update { it.copy(hasLocationAccess = granted) }
   }
 
   /**

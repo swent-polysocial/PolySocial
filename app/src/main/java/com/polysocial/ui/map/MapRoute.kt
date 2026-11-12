@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (rationale-aware results and review regressions, #278).
 // Contributors: OpenAI Codex (dismissal-aware location permission handling, #278).
 // Contributors: OpenAI Codex (permission launcher and foreground location lifecycle for #51).
 // Contributors: Claude (passes the "+" action to the map screen, #110; the search and filters,
@@ -52,9 +53,19 @@ fun MapRoute(
   val lifecycleOwner = LocalLifecycleOwner.current
   val activity = LocalActivity.current
   val context = LocalContext.current
+  fun currentPermissionRationale(): Boolean =
+      permissionRationale?.invoke()
+          ?: (activity != null &&
+              ActivityCompat.shouldShowRequestPermissionRationale(
+                  activity,
+                  Manifest.permission.ACCESS_COARSE_LOCATION,
+              ))
   val permissionLauncher =
       rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        viewModel.onPermissionResult(it[Manifest.permission.ACCESS_COARSE_LOCATION])
+        viewModel.onPermissionResult(
+            it[Manifest.permission.ACCESS_COARSE_LOCATION],
+            currentPermissionRationale(),
+        )
       }
   DisposableEffect(lifecycleOwner, viewModel) {
     val observer = LifecycleEventObserver { _, event ->
@@ -96,16 +107,7 @@ fun MapRoute(
       onViewDetails = onViewDetails,
       onRetry = viewModel::retry,
       onRenderStatus = viewModel::onRenderStatus,
-      onTurnOnLocation = {
-        viewModel.turnOnLocation(
-            permissionRationale?.invoke()
-                ?: (activity != null &&
-                    ActivityCompat.shouldShowRequestPermissionRationale(
-                        activity,
-                        Manifest.permission.ACCESS_COARSE_LOCATION,
-                    ))
-        )
-      },
+      onTurnOnLocation = { viewModel.turnOnLocation(currentPermissionRationale()) },
       onCreateEvent = onCreateEvent,
       tokenConfigured = tokenConfigured,
       renderer = renderer,

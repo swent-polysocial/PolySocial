@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (rationale-aware results and review regressions, #278).
 // Contributors: Claude (the distance filter's location permission on the Events tab, and reading it
 // only in the foreground after review, #115; the association names dependency, #128).
 // Contributors: OpenAI Codex (dismissal-aware permission launcher regression, #278).
@@ -171,7 +172,7 @@ class EventsRouteTest {
   @Test
   fun turnOn_afterAPermanentRefusal_opensTheAppSettingsInstead() {
     location.markPermissionRequested()
-    location.recordPermissionResult(false)
+    location.recordPermissionResult(false, showRationale = true)
     showRationale = false
     show()
 
@@ -200,7 +201,7 @@ class EventsRouteTest {
   fun turnOn_afterDismissal_requestsPermissionAgainWithoutOpeningSettings() {
     show()
     composeTestRule.onNodeWithTag(EventsTags.TURN_ON_LOCATION).performClick()
-    composeTestRule.runOnIdle { registry.dismiss() }
+    composeTestRule.runOnIdle { registry.respond(granted = false) }
     settle()
     composeTestRule.onNodeWithTag(EventsTags.TURN_ON_LOCATION).performClick()
     assertEquals(2, registry.launches.size)
@@ -250,6 +251,17 @@ class EventsRouteTest {
     composeTestRule.onAllNodesWithTag(EventsTags.card("inTown")).assertCountEquals(0)
   }
 
+  @Test
+  fun interruptedRequest_canBeRetriedWithoutRecordingARefusal() {
+    show()
+    composeTestRule.onNodeWithTag(EventsTags.TURN_ON_LOCATION).performClick()
+    composeTestRule.runOnIdle { registry.interrupt() }
+    settle()
+    composeTestRule.onNodeWithTag(EventsTags.TURN_ON_LOCATION).performClick()
+    assertEquals(2, registry.launches.size)
+    assertTrue(!location.wasPermissionDenied())
+  }
+
   private class ControlledLifecycleOwner : LifecycleOwner {
     val registry = LifecycleRegistry.createUnsafe(this)
     override val lifecycle: Lifecycle = registry
@@ -276,7 +288,7 @@ class EventsRouteTest {
       dispatchResult(code, mapOf(Manifest.permission.ACCESS_COARSE_LOCATION to granted))
     }
 
-    fun dismiss() {
+    fun interrupt() {
       dispatchResult(checkNotNull(requestCode), emptyMap<String, Boolean>())
     }
   }

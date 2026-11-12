@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (rationale-aware results and review regressions, #278).
 // Contributors: OpenAI Codex (dismissal-aware location permission handling, #278).
 // Contributors: Claude (state of the Events tab's list, #105; offline only when the device is,
 // after review; search and filters, and the one-off location and its permission for the distance
@@ -218,10 +219,12 @@ constructor(
   fun turnOnLocation(showRationale: Boolean): LocationAction =
       when {
         locationService.hasPermission() -> {
+          locationService.recordPermissionResult(true, showRationale = false)
           readLocation()
           LocationAction.NONE
         }
         !locationService.wasPermissionDenied() || showRationale -> {
+          if (showRationale) locationService.recordPermissionResult(false, showRationale = true)
           locationService.markPermissionRequested()
           LocationAction.REQUEST_PERMISSION
         }
@@ -229,8 +232,8 @@ constructor(
       }
 
   /** After the permission dialog: if granted, the distance filters can be used. */
-  fun onPermissionResult(granted: Boolean? = null) {
-    if (granted != null) locationService.recordPermissionResult(granted)
+  fun onPermissionResult(granted: Boolean?, showRationale: Boolean) {
+    locationService.recordPermissionResult(granted, showRationale)
     onResume()
   }
 
@@ -241,6 +244,7 @@ constructor(
    */
   fun onResume() {
     val granted = locationService.hasPermission()
+    if (granted) locationService.recordPermissionResult(true, showRationale = false)
     when {
       granted && location() == EventsLocationState.Off ->
           show(selection(), EventsLocationState.NotRead)

@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (rationale-aware results and review regressions, #278).
 // Contributors: OpenAI Codex (deterministic location fake for #51 tests).
 // Contributors: OpenAI Codex (completed denial history for #278).
 package com.polysocial.model.location
@@ -13,10 +14,7 @@ class FakeLocationService(
   var requestCount = 0
     private set
 
-  override fun hasPermission(): Boolean {
-    if (permissionGranted) denied = false
-    return permissionGranted
-  }
+  override fun hasPermission(): Boolean = permissionGranted
 
   override fun shouldRequestPermission(): Boolean = !permissionGranted && !permissionRequested
 
@@ -26,10 +24,13 @@ class FakeLocationService(
 
   private var denied = false
 
-  override fun wasPermissionDenied(): Boolean = denied
+  override fun wasPermissionDenied(): Boolean = denied && !permissionGranted
 
-  override fun recordPermissionResult(granted: Boolean) {
-    denied = !granted
+  override fun recordPermissionResult(granted: Boolean?, showRationale: Boolean) {
+    when {
+      granted == true -> denied = false
+      granted == false && showRationale -> denied = true
+    }
   }
 
   override suspend fun currentLocation(): LocationResult {

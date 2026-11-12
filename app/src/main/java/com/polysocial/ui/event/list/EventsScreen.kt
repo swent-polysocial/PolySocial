@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (rationale-aware results and review regressions, #278).
 // Contributors: OpenAI Codex (dismissal-aware location permission handling, #278).
 // Contributors: Claude (Events tab list from the Figma "Discover events" frames, #105; no matching
 // event state, search field, filter chips, Filters sheet and its location permission, #115;
@@ -143,9 +144,19 @@ fun EventsRoute(
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   val activity = LocalActivity.current
   val context = LocalContext.current
+  fun currentPermissionRationale(): Boolean =
+      showRationale?.invoke()
+          ?: (activity != null &&
+              ActivityCompat.shouldShowRequestPermissionRationale(
+                  activity,
+                  Manifest.permission.ACCESS_COARSE_LOCATION,
+              ))
   val permissionLauncher =
       rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
-        viewModel.onPermissionResult(it[Manifest.permission.ACCESS_COARSE_LOCATION])
+        viewModel.onPermissionResult(
+            it[Manifest.permission.ACCESS_COARSE_LOCATION],
+            currentPermissionRationale(),
+        )
       }
   LifecycleResumeEffect(viewModel) {
     viewModel.onResume()
@@ -163,14 +174,7 @@ fun EventsRoute(
       onClearSheetFilters = viewModel::clearFilters,
       onSelectDistance = viewModel::selectDistance,
       onTurnOnLocation = {
-        val rationale =
-            showRationale?.invoke()
-                ?: (activity != null &&
-                    ActivityCompat.shouldShowRequestPermissionRationale(
-                        activity,
-                        Manifest.permission.ACCESS_COARSE_LOCATION,
-                    ))
-        when (viewModel.turnOnLocation(rationale)) {
+        when (viewModel.turnOnLocation(currentPermissionRationale())) {
           LocationAction.NONE -> Unit
           LocationAction.REQUEST_PERMISSION ->
               permissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION))

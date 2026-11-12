@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (rationale-aware results and review regressions, #278).
 // Contributors: OpenAI Codex (one-off coarse location access and review fixes for #51).
 // Contributors: OpenAI Codex (dismissal-aware permission history and fused fallback, #278).
 package com.polysocial.model.location
@@ -30,15 +31,9 @@ class AndroidLocationService @Inject constructor(@ApplicationContext private val
   private val preferences =
       context.getSharedPreferences("map_location_permission", Context.MODE_PRIVATE)
 
-  override fun hasPermission(): Boolean {
-    val granted =
-        ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
-            PackageManager.PERMISSION_GRANTED
-    // A grant in Settings has no activity-result callback. Forget an earlier refusal when we
-    // observe it, so a later revocation does not inherit that old denial history.
-    if (granted && preferences.getBoolean(PERMISSION_DENIED, false)) recordPermissionResult(true)
-    return granted
-  }
+  override fun hasPermission(): Boolean =
+      ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
+          PackageManager.PERMISSION_GRANTED
 
   override fun shouldRequestPermission(): Boolean =
       !hasPermission() && !preferences.getBoolean(PERMISSION_REQUESTED, false)
@@ -47,10 +42,21 @@ class AndroidLocationService @Inject constructor(@ApplicationContext private val
     preferences.edit { putBoolean(PERMISSION_REQUESTED, true) }
   }
 
-  override fun wasPermissionDenied(): Boolean = preferences.getBoolean(PERMISSION_DENIED, false)
+  override fun wasPermissionDenied(): Boolean =
+      preferences.getBoolean(PERMISSION_DENIED, false) && !hasPermission()
 
-  override fun recordPermissionResult(granted: Boolean) {
-    preferences.edit { putBoolean(PERMISSION_DENIED, !granted) }
+  override fun recordPermissionResult(granted: Boolean?, showRationale: Boolean) {
+    // Back can return false too. Only a rationale establishes a first genuine refusal; a later
+    // no-rationale refusal preserves it, allowing the explicit action to open Settings.
+    val denied =
+        when {
+          granted == true -> false
+          granted == false && showRationale -> true
+          else -> return
+        }
+    if (preferences.getBoolean(PERMISSION_DENIED, false) != denied) {
+      preferences.edit { putBoolean(PERMISSION_DENIED, denied) }
+    }
   }
 
   override suspend fun currentLocation(): LocationResult {

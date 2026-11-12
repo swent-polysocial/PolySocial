@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (rationale-aware results and review regressions, #278).
 // Contributors: OpenAI Codex (dismissal-aware location permission handling and tests, #278).
 // Contributors: OpenAI Codex (optional Map permission and one-off location lifecycle tests for
 // #51).
@@ -51,7 +52,10 @@ class MapLocationViewModelTest {
     val vm = model()
     vm.onMapEntered()
     vm.onPermissionRequested()
-    vm.onPermissionResult()
+    vm.onPermissionResult(
+        granted = service.permissionGranted,
+        showRationale = !service.permissionGranted,
+    )
     settle()
     assertEquals(MapLocationState.Denied, vm.uiState.value.locationState)
     assertEquals(listOf(event), vm.uiState.value.events)
@@ -94,7 +98,10 @@ class MapLocationViewModelTest {
     vm.onPermissionRequested()
     service.permissionGranted = true
     service.result = LocationResult.Available(event.location)
-    vm.onPermissionResult()
+    vm.onPermissionResult(
+        granted = service.permissionGranted,
+        showRationale = !service.permissionGranted,
+    )
     vm.onMapEntered()
     settle()
     assertEquals(MapLocationState.Available(event.location), vm.uiState.value.locationState)
@@ -114,7 +121,7 @@ class MapLocationViewModelTest {
     settle()
     assertEquals(1, service.requestCount)
     service.result = LocationResult.Available(event.location)
-    vm.turnOnLocation()
+    vm.turnOnLocation(showRationale = true)
     settle()
     assertEquals(MapLocationState.Available(event.location), vm.uiState.value.locationState)
     assertEquals(2, service.requestCount)
@@ -123,9 +130,10 @@ class MapLocationViewModelTest {
   @Test
   fun explicitTurnOn_canRequestAgainAfterDenial() {
     service.markPermissionRequested()
+    service.recordPermissionResult(false, showRationale = true)
     val vm = model()
     vm.onMapEntered()
-    vm.turnOnLocation()
+    vm.turnOnLocation(showRationale = true)
     assertEquals(MapLocationState.RequestPermission, vm.uiState.value.locationState)
     assertEquals(0, service.requestCount)
   }
@@ -195,7 +203,10 @@ class MapLocationViewModelTest {
     vm.onPermissionRequested()
     vm.onMapInactive()
     service.permissionGranted = true
-    vm.onPermissionResult()
+    vm.onPermissionResult(
+        granted = service.permissionGranted,
+        showRationale = !service.permissionGranted,
+    )
     settle()
     assertEquals(MapLocationState.Idle, vm.uiState.value.locationState)
     assertEquals(0, service.requestCount)
@@ -241,7 +252,7 @@ class MapLocationViewModelTest {
     assertEquals(MapLocationState.Unavailable, vm.uiState.value.locationState)
     assertEquals(listOf(event), vm.uiState.value.events)
 
-    vm.turnOnLocation()
+    vm.turnOnLocation(showRationale = true)
     settle()
 
     assertEquals(MapLocationState.Available(event.location), vm.uiState.value.locationState)
@@ -266,7 +277,7 @@ class MapLocationViewModelTest {
   @Test
   fun permanentDenialOffersSettingsAndConsumesTheAction() {
     service.markPermissionRequested()
-    service.recordPermissionResult(false)
+    service.recordPermissionResult(false, showRationale = true)
     val vm = model()
     vm.onMapEntered()
     vm.turnOnLocation(showRationale = false)
@@ -281,5 +292,41 @@ class MapLocationViewModelTest {
     settle()
     assertEquals(1, service.requestCount)
     assertEquals(MapLocationState.Available(event.location), vm.uiState.value.locationState)
+  }
+
+  @Test
+  fun anEventsPromptSuppressesAutomaticMapPrompt_butExplicitRetryStillAsks() {
+    service.markPermissionRequested()
+    val vm = model()
+    vm.onMapEntered()
+    assertEquals(MapLocationState.Denied, vm.uiState.value.locationState)
+    vm.turnOnLocation(showRationale = false)
+    assertEquals(MapLocationState.RequestPermission, vm.uiState.value.locationState)
+  }
+
+  @Test
+  fun aSettingsGrantObservedOnMapEntry_clearsRefusalBeforeLaterRevocation() {
+    service.markPermissionRequested()
+    service.recordPermissionResult(false, showRationale = true)
+    service.permissionGranted = true
+    val vm = model()
+    vm.onMapEntered()
+    settle()
+    vm.onMapInactive()
+    service.permissionGranted = false
+    vm.onMapEntered()
+    vm.turnOnLocation(showRationale = false)
+    assertEquals(MapLocationState.RequestPermission, vm.uiState.value.locationState)
+  }
+
+  @Test
+  fun aPlatformRefusalWithoutLocalHistory_isKeptWhenTheNextRefusalHasNoRationale() {
+    service.markPermissionRequested()
+    val vm = model()
+    vm.onMapEntered()
+    vm.turnOnLocation(showRationale = true)
+    vm.onPermissionResult(granted = false, showRationale = false)
+    vm.turnOnLocation(showRationale = false)
+    assertEquals(MapLocationState.OpenSettings, vm.uiState.value.locationState)
   }
 }
