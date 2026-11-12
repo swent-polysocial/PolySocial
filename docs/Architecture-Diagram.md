@@ -16,7 +16,7 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (registrations deleted with their event and account, #275). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the QR payload parser marked as built, #337). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the friends data model, its rules design and open questions, and the review fixes for stale actions and deleted accounts (#338); Konstantinos Perdikeas (decided and reviewed). -->
-<!-- Contributors: Claude (Opus 5.5, Anthropic) (a verified association's map of its own events, #133, carried over from the wiki copy). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (a verified association's map of its own events, #133, carried over from the wiki copy; association routing marked as built, after review). -->
 
 How PolySocial is built, as we currently envision it. The page follows the [Android App Architecture guide](https://developer.android.com/topic/architecture/intro): a **UI layer** (Compose screens and ViewModels), a **domain layer** of pure Kotlin logic, and a **data layer** of repositories in front of Firebase, the map and geocoding services, and the device sensors.
 
@@ -87,7 +87,7 @@ flowchart TB
   gate -- "student ready" --> main(["Student app: 4 tabs"]):::s1
   gate -- "association setup missing" --> associationSetup["Association setup"]:::s1
   associationSetup -- "private account, then identity saved" --> gate
-  gate -- "association pending" --> pending["PendingAssociation handoff: renderer #127 planned"]
+  gate -- "association pending" --> pending["PendingAssociation app (#127): Events · Map · Organization"]
   gate -- "association verified" --> associationMain["AssociationMain: Events · Map · Organization"]
 ```
 
@@ -99,7 +99,7 @@ flowchart TB
 
 **Verified shell (#140, implemented):** verified associations reuse the tab graphs with Events, a Map of their own upcoming events (#133, the students' map with `AssociationMapViewModel` and no Find a group), and Organization. Chats is absent. Organization retains its own identity across Privacy navigation and reuses cache-first logout, which clears installed graphs.
 
-**Integration still planned:** #127 supplies the pending-review renderer and editing; until it is wired, this slice's pending handoff offers logout only and does not complete #125. #133's Map content is implemented with the owner-constrained query; #208 owns existing-association login. The first association shell merged (#247 or #261) stays and the second adapts on rebase. Membership/invite behavior is undecided, so setup keeps review-focused copy; Figma's invitation sentence needs a team update. No new setup/configuration is required.
+**Integration (implemented):** #127's pending app (`PendingAssociationApp`, with Edit details) is wired, so #125's onboarding ends there; #133's Map content uses the owner-constrained query; #208's Log in accepts association accounts; the pending (#247) and verified (#261) apps share one `AssociationShell`. Membership/invite behavior is undecided, so setup keeps review-focused copy; Figma's invitation sentence needs a team update. No new setup/configuration is required.
 
 ### 2.2 Main app (one back stack per tab)
 
@@ -376,7 +376,7 @@ flowchart TD
   create -- "saved" --> main
   create -- "Back: sign out" --> welcome
   q3 -- yes --> q4{"Association an admin<br/>hasn't verified?"}
-  q4 -- "no, association" --> main
+  q4 -- "no, association" --> associationMain["Verified association app, #140<br/>Events · Map · Organization"]:::s1
   q4 -- "no, other account" --> q6{"EPFL email?"}
   q6 -- "yes, and ensurePublicProfile() without waiting, #291" --> main
   q4 -- yes --> pending["Pending association app, #127<br/>Events · Map · Organization"]:::s1
@@ -384,11 +384,11 @@ flowchart TD
   q3 -- "load failed" --> err["Couldn't load your profile<br/>+ Retry, never a blank screen"]:::s1
   err -- "Retry" --> load
   err -- "Log out, #208" --> welcome
-  q5 -- "no, #258" --> setup["Association setup, #125<br/>(pending app until #259)"]:::s1
+  q5 -- "no, #258" --> setup["Association setup, #125<br/>then the pending app, #259"]:::s1
   q6 -- "no, #208" --> err
 ```
 
-- **Association accounts (#127).** The account type decides, never the email. An association an admin hasn't verified yet opens its own app in the pending state (Figma section 02): the review steps on Events, a closed Map and its details on Organization. A verified association opens the main app (with its own Events tab, #132) until #140 gives it its own tabs in the same `AssociationShell`. The admin's verification (#135) takes effect at the next app start.
+- **Association accounts (#127).** The account type decides, never the email. An association an admin hasn't verified yet opens its own app in the pending state (Figma section 02): the review steps on Events, a closed Map and its details on Organization. A verified association opens its own tabs in the same `AssociationShell` (#140): Events (#132), Map (its own events, #133) and Organization. The admin's verification (#135) takes effect at the next app start.
 - **Edit details (#127).** On the pending app's Organization tab, Edit details (`EditAssociationScreen` → `EditAssociationViewModel`) edits the name, type, about and optional website, starting from the details shown there, checks them with association setup's `associationFormErrors` (#256), and saves them with `AssociationRepository.updateAssociation` (#126's owner-only update rule). A failed save keeps the form and offers Try again, with its own offline message.
 - **Association log in (#208).** Log in accepts any email domain, so an association signs in with its own address; its helper line says students use `@epfl.ch` and associations their own email. Routing then decides by account type and fails closed: a session whose email isn't an EPFL one never gets the student profile step or the students' app. Without a profile it resumes association setup (#258); with a student profile it gets the error screen. The Security Rules already deny it student data. Every app-start error offers Retry and a Log out link (Figma 490:26), so such an account, or anyone whose Retry keeps failing, is never stuck. That Log out is the pending association app's: a confirmation, then the cache cleared before the sign-out (#109). A verified association keeps the main app until #140.
 
