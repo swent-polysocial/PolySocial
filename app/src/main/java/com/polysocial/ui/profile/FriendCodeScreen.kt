@@ -1,5 +1,5 @@
 // Contributors: Claude Opus 5.5 (drafted My friend code from Figma section 15, #339; the quiet
-// zone and black on white after review);
+// zone, small windows and black on white after review);
 // Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.profile
 
@@ -44,6 +44,7 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -99,41 +100,58 @@ fun FriendCodeScreen(state: FriendCodeUiState, onBack: () -> Unit) {
 
 @Composable
 private fun FriendCodeContent(state: FriendCodeUiState.Shown) {
-  Column(
-      Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp),
-      horizontalAlignment = Alignment.CenterHorizontally,
-  ) {
-    Spacer(Modifier.height(106.dp))
+  BoxWithConstraints(Modifier.fillMaxSize().testTag(C.Tag.friend_code_content)) {
+    // Figma's 205 dp, smaller when the window can't show the whole code at once (split screen, a
+    // narrow phone at a large display size): the screen scrolls, but only a whole code scans.
+    val qrSide =
+        minOf(QR_SIDE, maxWidth - (SCREEN_PADDING + CARD_PADDING) * 2, maxHeight)
+            .coerceAtLeast(0.dp)
     Column(
-        Modifier.width(253.dp).background(Bg, RoundedCornerShape(28.dp)).padding(24.dp),
+        Modifier.fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = SCREEN_PADDING),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-      FriendCodeOwner(state.name, state.details)
-      Spacer(Modifier.height(14.dp))
-      QrSymbol(state.code, Modifier.size(205.dp))
+      Spacer(Modifier.height(106.dp))
+      Column(
+          Modifier.width(qrSide + CARD_PADDING * 2)
+              .background(Bg, RoundedCornerShape(28.dp))
+              .padding(CARD_PADDING),
+          horizontalAlignment = Alignment.CenterHorizontally,
+      ) {
+        FriendCodeOwner(state.name, state.details)
+        Spacer(Modifier.height(14.dp))
+        QrSymbol(state.code, Modifier.size(qrSide))
+      }
+      FriendCodeInfo()
     }
-    Spacer(Modifier.height(18.dp))
-    Row(
-        Modifier.fillMaxWidth()
-            .background(Bg, RoundedCornerShape(14.dp))
-            .padding(horizontal = 14.dp, vertical = 13.dp)
-            .testTag(C.Tag.friend_code_info),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-      Image(
-          painterResource(R.drawable.ic_info),
-          contentDescription = null,
-          modifier = Modifier.size(18.dp),
-          colorFilter = ColorFilter.tint(Ink2),
-      )
-      Text(
-          stringResource(R.string.friend_code_info),
-          color = Ink2,
-          style = privacyTextStyle(13, 19f),
-      )
-    }
-    Spacer(Modifier.height(24.dp))
   }
+}
+
+/** Figma's note under the card: what sharing the code does. */
+@Composable
+private fun FriendCodeInfo() {
+  Spacer(Modifier.height(18.dp))
+  Row(
+      Modifier.fillMaxWidth()
+          .background(Bg, RoundedCornerShape(14.dp))
+          .padding(horizontal = 14.dp, vertical = 13.dp)
+          .testTag(C.Tag.friend_code_info),
+      horizontalArrangement = Arrangement.spacedBy(10.dp),
+  ) {
+    Image(
+        painterResource(R.drawable.ic_info),
+        contentDescription = null,
+        modifier = Modifier.size(18.dp),
+        colorFilter = ColorFilter.tint(Ink2),
+    )
+    Text(
+        stringResource(R.string.friend_code_info),
+        color = Ink2,
+        style = privacyTextStyle(13, 19f),
+    )
+  }
+  Spacer(Modifier.height(24.dp))
 }
 
 /** The card's header: the student's initials in Figma's green avatar, their name and details. */
@@ -254,6 +272,10 @@ private fun FriendCodeErrorMessage() {
       modifier = Modifier.widthIn(max = 290.dp),
   )
 }
+
+private val QR_SIDE: Dp = 205.dp
+private val SCREEN_PADDING: Dp = 24.dp
+private val CARD_PADDING: Dp = 24.dp
 
 /** The light margin around a QR code that scanners need, in modules (ISO/IEC 18004). */
 private const val QUIET_ZONE_MODULES = 4
