@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Contributors: Claude (registered the Hilt application class, #70; network state permission for the online check; network security config that debug builds override, #117); OpenAI Codex (GPT-6.1 Sol Medium; removed activity labels to inherit the PolySocial app name; enabled keyboard resizing for the auth forms; foreground location permissions, #51); Claude Opus 5.5 (notification permission for event reminders, #123). -->
+<!-- Contributors: Claude (registered the Hilt application class, #70; network state permission for the online check; network security config that debug builds override, #117); OpenAI Codex (GPT-6.1 Sol Medium; removed activity labels to inherit the PolySocial app name; enabled keyboard resizing for the auth forms; foreground location permissions, #51); Claude Opus 5.5 (notification permission for event reminders, #123; singleTop MainActivity so a reminder tap reaches onNewIntent while the app is open, #123's second PR review). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
@@ -28,6 +28,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.PolySocial">
             <intent-filter>

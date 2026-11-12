@@ -4,6 +4,8 @@
 // Contributors: OpenAI Codex (map tab chrome, detail routes and injected tab regression tests,
 // #50).
 // Contributors: Claude (the map's Details open the event detail, #112, after the M1 coach review).
+// Contributors: Claude Opus 5.5 (tests for a pending reminder notification's event, #123's second
+// PR review).
 package com.polysocial.ui.navigation
 
 import android.content.Context
@@ -11,6 +13,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assert
@@ -51,6 +56,8 @@ class AppShellTest {
   private lateinit var logout: () -> Unit
   private var loggedOut = 0
   private lateinit var navController: NavHostController
+  private var pendingEventId by mutableStateOf<String?>(null)
+  private var pendingEventIdConsumed = 0
 
   private fun label(tab: Tab) = context.getString(tab.label)
 
@@ -61,6 +68,11 @@ class AppShellTest {
       PolySocialTheme {
         AppShell(
             navController = navController,
+            pendingEventId = pendingEventId,
+            onPendingEventIdConsumed = {
+              pendingEventIdConsumed++
+              pendingEventId = null
+            },
             profileContent = { done ->
               logout = done
               TabRootScreen(Tab.PROFILE)
@@ -173,6 +185,26 @@ class AppShellTest {
   @Test
   fun startsOnEventsTab() {
     assertOnTab(Tab.EVENTS)
+  }
+
+  @Test
+  fun aPendingEventId_opensItsDetail_onceGraphIsReady_andIsConsumedOnce() {
+    composeTestRule.runOnIdle { pendingEventId = "event/one" }
+
+    composeTestRule.onNodeWithTag(FAKE_DETAIL).assertIsDisplayed()
+    composeTestRule.runOnIdle {
+      assertEquals(
+          Tab.EVENTS.eventDetailRoute,
+          navController.currentBackStackEntry!!.destination.route,
+      )
+      assertEquals(1, pendingEventIdConsumed)
+    }
+  }
+
+  @Test
+  fun aNullPendingEventId_neverNavigatesAway() {
+    assertOnTab(Tab.EVENTS)
+    assertEquals(0, pendingEventIdConsumed)
   }
 
   @Test
