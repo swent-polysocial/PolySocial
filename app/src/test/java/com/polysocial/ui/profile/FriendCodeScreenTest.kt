@@ -1,5 +1,5 @@
 // Contributors: Claude Opus 5.5 (drafted the My friend code screen tests, #339; the quiet zone,
-// and black-on-white tests after review);
+// small window and black-on-white tests after review);
 // Konstantinos Perdikeas (directed, reviewed and owns them).
 package com.polysocial.ui.profile
 
@@ -12,8 +12,10 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.filterToOne
 import androidx.compose.ui.test.hasText
@@ -122,6 +124,54 @@ class FriendCodeScreenTest {
     show(shown.copy(code = encodeQrCode(friendQrPayload("a")!!)!!))
 
     assertScansAsIs("a")
+  }
+
+  @Test
+  fun aPhoneShowsTheCodeAtFigmasSize() {
+    show(shown)
+
+    compose
+        .onNodeWithTag(C.Tag.friend_code_qr)
+        .assertWidthIsEqualTo(205.dp)
+        .assertHeightIsEqualTo(205.dp)
+  }
+
+  // Split screen can leave about 160 dp under the header: the whole code must still fit in it.
+  @Config(qualifiers = "w360dp-h220dp")
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  @Test
+  fun theWholeCodeFitsAShortWindow() {
+    show(shown)
+
+    assertWholeCodeVisible()
+    assertScansAsIs(uid)
+  }
+
+  // A small phone at the largest display size is about 280 dp wide, less than the 301 dp the card
+  // and its margins take at full size.
+  @Config(qualifiers = "w280dp-h800dp")
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  @Test
+  fun theWholeCodeFitsANarrowWindow() {
+    show(shown)
+
+    assertWholeCodeVisible()
+    assertScansAsIs(uid)
+  }
+
+  /** Scrolls to the code and checks it is square and wholly inside the visible content. */
+  private fun assertWholeCodeVisible() {
+    val qr = compose.onNodeWithTag(C.Tag.friend_code_qr).performScrollTo().fetchSemanticsNode()
+    val visible = compose.onNodeWithTag(C.Tag.friend_code_content).fetchSemanticsNode().boundsInRoot
+    val code = qr.boundsInRoot
+    assertEquals("the code must stay square: $code", code.width, code.height, 0.5f)
+    assertTrue(
+        "the code ($code) must fit inside what the screen shows ($visible)",
+        code.left >= visible.left &&
+            code.top >= visible.top &&
+            code.right <= visible.right &&
+            code.bottom <= visible.bottom,
+    )
   }
 
   /**

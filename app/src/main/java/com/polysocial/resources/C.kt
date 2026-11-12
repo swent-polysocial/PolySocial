@@ -28,6 +28,7 @@ object C {
     const val friend_code_screen = "friend_code_screen"
     const val friend_code_heading = "friend_code_heading"
     const val friend_code_close = "friend_code_close"
+    const val friend_code_content = "friend_code_content"
     const val friend_code_qr = "friend_code_qr"
     const val friend_code_name = "friend_code_name"
     const val friend_code_details = "friend_code_details"
