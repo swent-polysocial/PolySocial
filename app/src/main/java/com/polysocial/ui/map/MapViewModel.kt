@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (rationale-aware results and review regressions, #278).
 // Contributors: OpenAI Codex (dismissal-aware location permission handling, #278).
 // Contributors: OpenAI Codex (map state, selection, day labels and failure handling for #50;
 // one-off location permission and distance state for #51).
@@ -171,17 +172,19 @@ open class MapViewModel(
    */
   fun onMapEntered() {
     mapActive = true
+    val granted = locationService.hasPermission()
+    if (granted) locationService.recordPermissionResult(true, showRationale = false)
     if (!enteredMap) {
       enteredMap = true
       when {
-        locationService.hasPermission() -> readLocation()
+        granted -> readLocation()
         locationService.shouldRequestPermission() -> setLocation(MapLocationState.RequestPermission)
         else -> setLocation(MapLocationState.Denied)
       }
       return
     }
     val location = mutableState.value.locationState
-    if (!locationService.hasPermission()) {
+    if (!granted) {
       if (location != MapLocationState.RequestPermission && location != MapLocationState.Waiting) {
         locationRequest?.cancel()
         setLocation(MapLocationState.Denied)
@@ -203,8 +206,8 @@ open class MapViewModel(
   }
 
   /** Rechecks actual Android grants: approximate permission is enough for a distance badge. */
-  fun onPermissionResult(granted: Boolean? = null) {
-    if (granted != null) locationService.recordPermissionResult(granted)
+  fun onPermissionResult(granted: Boolean?, showRationale: Boolean) {
+    locationService.recordPermissionResult(granted, showRationale)
     when {
       !locationService.hasPermission() -> {
         locationRequest?.cancel()
@@ -223,14 +226,19 @@ open class MapViewModel(
    * completed denial with no Android [showRationale] opens Settings; a dismissed dialog can ask
    * again even without a rationale.
    */
-  fun turnOnLocation(showRationale: Boolean = false) {
-    if (locationService.hasPermission()) readLocation()
-    else
-        setLocation(
-            if (showRationale || !locationService.wasPermissionDenied())
-                MapLocationState.RequestPermission
-            else MapLocationState.OpenSettings
-        )
+  fun turnOnLocation(showRationale: Boolean) {
+    if (locationService.hasPermission()) {
+      locationService.recordPermissionResult(true, showRationale = false)
+      readLocation()
+    } else {
+      // Android may already know a refusal from before this app stored denial history.
+      if (showRationale) locationService.recordPermissionResult(false, showRationale = true)
+      setLocation(
+          if (showRationale || !locationService.wasPermissionDenied())
+              MapLocationState.RequestPermission
+          else MapLocationState.OpenSettings
+      )
+    }
   }
 
   /** Consumes the settings action before Android pauses the route. */

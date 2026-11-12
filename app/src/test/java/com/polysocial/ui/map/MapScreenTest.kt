@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (rationale-aware results and review regressions, #278).
 // Contributors: OpenAI Codex (fake-renderer map UI and day-label regression tests for #50;
 // denied and granted location preview tests for #51).
 // Contributors: Claude (the association names dependency, #128; markers moved below the search
@@ -111,7 +112,7 @@ class MapScreenTest {
               vm::onRenderStatus,
               modifier = modifier,
               tokenConfigured = token,
-              onTurnOnLocation = { vm.turnOnLocation() },
+              onTurnOnLocation = { vm.turnOnLocation(showRationale = true) },
               renderer = { events, select, _, inset ->
                 rendererCalled = true
                 renderedEvents = events
@@ -383,6 +384,7 @@ class MapScreenTest {
   @Test
   fun permissionDenied_keepsMarkersPreviewAndDetailsUsableWithoutDistance() {
     location.markPermissionRequested()
+    location.recordPermissionResult(false, showRationale = true)
     vm.onMapEntered()
     show()
     composeRule.onNodeWithTag(MapTags.LOCATION_NOTICE).assertIsDisplayed()
