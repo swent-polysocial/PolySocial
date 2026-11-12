@@ -79,7 +79,7 @@ class EventsRouteTest {
   private var showRationale = false
   private lateinit var viewModel: EventsViewModel
 
-  private fun show() {
+  private fun show(usePlatformRationale: Boolean = false) {
     repository.seed(onCampus, inTown)
     viewModel =
         EventsViewModel(
@@ -103,7 +103,11 @@ class EventsRouteTest {
           LocalLifecycleOwner provides lifecycle,
       ) {
         PolySocialTheme {
-          EventsRoute(onEventClick = {}, viewModel = viewModel, showRationale = { showRationale })
+          EventsRoute(
+              onEventClick = {},
+              viewModel = viewModel,
+              showRationale = if (usePlatformRationale) null else ({ showRationale }),
+          )
         }
       }
     }
@@ -249,6 +253,22 @@ class EventsRouteTest {
     composeTestRule.onNodeWithTag(EventsTags.FILTERS_SHOW).performClick()
     composeTestRule.onNodeWithTag(EventsTags.card("onCampus")).assertIsDisplayed()
     composeTestRule.onAllNodesWithTag(EventsTags.card("inTown")).assertCountEquals(0)
+  }
+
+  @Test
+  fun defaultAndroidRationale_afterDismissal_retriesInsteadOfOpeningSettings() {
+    // No injected rationale: exercise the production ActivityCompat path. A dismissed request
+    // leaves Android's rationale false while still reporting a false grant result.
+    show(usePlatformRationale = true)
+    composeTestRule.onNodeWithTag(EventsTags.TURN_ON_LOCATION).performClick()
+    composeTestRule.runOnIdle { registry.respond(granted = false) }
+    settle()
+    composeTestRule.onNodeWithTag(EventsTags.TURN_ON_LOCATION).performClick()
+    assertEquals(2, registry.launches.size)
+    assertNull(
+        shadowOf(ApplicationProvider.getApplicationContext<android.app.Application>())
+            .nextStartedActivity
+    )
   }
 
   @Test
