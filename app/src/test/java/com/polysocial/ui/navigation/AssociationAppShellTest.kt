@@ -2,6 +2,8 @@
 // Contributors: OpenAI Codex (association tab graphs and retained stack isolation, #140).
 // Contributors: Claude (Opus 5.5, Anthropic) replaced the Hilt-backed association header, #322;
 // checked that logout clears its ViewModels, after review.
+// Contributors: Claude Opus 5.5 (the student-only friend code destination, #339 review);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.layout.Column
@@ -19,6 +21,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavGraph
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
@@ -28,6 +31,7 @@ import com.polysocial.resources.C
 import com.polysocial.ui.theme.PolySocialTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -105,6 +109,23 @@ class AssociationAppShellTest {
     compose.onNodeWithTag(TabAction.EDIT_PROFILE.tag).assertDoesNotExist()
     compose.runOnIdle { assertNull(nav.graph.findNode(Tab.CHATS.route)) }
   }
+
+  // Associations have no friend code, so their graph doesn't even hold the screen: nothing can
+  // reach it and show the association's own code while its profile loads (#384 review).
+  @Test
+  fun onlyStudentsHaveTheFriendCodeDestination() {
+    show()
+    compose.runOnIdle { assertNull(friendCodeDestination()) }
+  }
+
+  @Test
+  fun studentsKeepTheFriendCodeDestination() {
+    show(AccountType.STUDENT)
+    compose.runOnIdle { assertNotNull(friendCodeDestination()) }
+  }
+
+  private fun friendCodeDestination() =
+      (nav.graph.findNode(Tab.PROFILE.route) as NavGraph).findNode(Tab.PROFILE.friendCodeRoute)
 
   @Test
   fun cancelledEventReturnsToEventsAndShowsConfirmation() {

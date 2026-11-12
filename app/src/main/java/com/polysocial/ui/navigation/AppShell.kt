@@ -17,8 +17,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) showed an association's own events on its Map tab,
 // #133; its header on the Events and Map tabs, #322, scoped to the Events graph after review.
 // Contributors: OpenAI Codex (wired the group roster below the student event detail, #234).
-// Contributors: Claude Opus 5.5 (the My friend code route, #339); Konstantinos Perdikeas
-// (directed, reviewed and owns it).
+// Contributors: Claude Opus 5.5 (the My friend code route, students only after review, #339);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.layout.Box
@@ -334,8 +334,11 @@ fun AppShell(
           composable(tab.privacyNoticeRoute) {
             FullPrivacyNoticeRoute(onBack = { navController.popBackStack() })
           }
-          composable(tab.friendCodeRoute) { entry ->
-            FriendCodeRoute(onBack = { if (entry.isResumed) navController.popBackStack() })
+          // Students only: an association has no friend code, so its graph has no such screen.
+          if (!association) {
+            composable(tab.friendCodeRoute) { entry ->
+              FriendCodeRoute(onBack = { if (entry.isResumed) navController.popBackStack() })
+            }
           }
         }
         tab.action?.let { action ->
