@@ -4,6 +4,8 @@
      the association's manage event from the Figma "Association · manage event" frame, #131). -->
 <!-- Contributors: Claude Opus 5.5 ("I'm going" from the Figma "Event detail" and "· registered"
      frames, and its save failures, #122). -->
+<!-- Contributors: Claude Opus 5.5 (a failed reminder cleanup's Snackbar text, #123's second PR
+     review). -->
 <resources>
     <string name="event_detail_navigate_back">Back</string>
     <string name="event_detail_loading">Loading event…</string>
@@ -30,6 +32,8 @@
     <string name="event_detail_register_offline">You\'re offline. Connect to say you\'re going.</string>
     <string name="event_detail_cancel_registration_offline">You\'re offline. Cancelling your registration needs a connection.</string>
     <string name="event_detail_attendance_failed">Something went wrong, so nothing changed. Try again.</string>
+    <!-- "Cancel registration" went through, but cancelling its reminder failed; no Figma frame. -->
+    <string name="event_detail_reminder_cleanup_failed">Registration cancelled, but the reminder may still fire. Try again.</string>
     <string name="event_detail_offline">You\'re offline. Showing the details saved on this phone.</string>
     <string name="event_detail_not_found_title">Event not available</string>
     <string name="event_detail_not_found_body">It may have been cancelled, or it\'s private.</string>

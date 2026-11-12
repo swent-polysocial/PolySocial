@@ -1,5 +1,6 @@
 // Contributors: Claude Opus 5.5 (wrote these tests of "I'm going" on the event detail screen,
-// #122; passed the new reminder scheduler fake, second PR of #123).
+// #122; passed the new reminder scheduler fake, second PR of #123; the reminder-cleanup-failed
+// Snackbar, #123's second PR review).
 package com.polysocial.ui.event.detail
 
 import android.content.Context
@@ -289,6 +290,22 @@ class EventDetailAttendanceScreenTest {
     composeTestRule.waitForIdle()
 
     assertEquals(listOf("shown CANCEL_FAILED", "cancel"), calls)
+  }
+
+  @Test
+  fun aFailedReminderCleanup_showsItsMessage_whoseRetryCancelsRegistrationAgain() {
+    show(
+        loaded(Attendance.GOING),
+        AttendanceFeedback(AttendanceMessage.REMINDER_CLEANUP_FAILED, id = 0),
+    )
+
+    composeTestRule
+        .onNodeWithText(string(R.string.event_detail_reminder_cleanup_failed))
+        .assertIsDisplayed()
+    composeTestRule.onNodeWithText(string(R.string.retry)).performClick()
+    composeTestRule.waitForIdle()
+
+    assertEquals(listOf("shown REMINDER_CLEANUP_FAILED", "cancel"), calls)
   }
 
   /** The screen with its real ViewModel, reading [registrations]. */
