@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (deleted-token chat reads and immutable deleted authors, #241).
 // Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143; publicProfiles/{uid} tests, written test-first, #229; reads by ID only and the fixed section and year lists, after review, #229; private edits keep the public copy, and deleted accounts stay deleted, after review, #229; interests from the fixed list, test-first, #230; any code read in the list check, after review, #230); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121; deleted accounts can't register, #275); Claude (Opus 5.5, Anthropic) (event group and groupMembers marker tests, #232, with more after review; group chat message tests, #237, and a deleted account's messages, after review).
 // Contributors: Claude (Opus 5.5, Anthropic) (a non-EPFL association in allowedUids can't run My events' private query, #320).
 const { after, before, beforeEach, test } = require("node:test");
@@ -3171,4 +3172,30 @@ test("nobody edits or deletes a message, not even its sender", async () => {
   }
   const stored = await storedMessage("e1", "g1", "m1");
   if (stored.text !== "Seeded") throw new Error(`The message changed: ${JSON.stringify(stored)}`);
+});
+
+
+test("deleted tokens lose chat access before membership cleanup; active members keep it", async () => {
+  await seedGroup("e1", "g1", ["u1", "u2"]);
+  await seedMessage("e1", "g1", "m1", "u1");
+  await assertSucceeds(getDocs(chatOf(studentDb("u1"), "e1", "g1")));
+  await seedDeletedAccount("u1");
+  await assertFails(getDoc(doc(studentDb("u1"), messagePath("e1", "g1", "m1"))));
+  await assertFails(getDocs(chatOf(studentDb("u1"), "e1", "g1")));
+  await assertFails(sendAs(studentDb("u1"), "e1", "g1", newMessage("u1")));
+  await assertSucceeds(getDocs(chatOf(studentDb("u2"), "e1", "g1")));
+  await assertSucceeds(sendAs(studentDb("u2"), "e1", "g1", newMessage("u2")));
+});
+
+test("members read retained messages but cannot forge or reverse a deleted author", async () => {
+  await seedGroup("e1", "g1", ["u1", "u2"]);
+  await seedMessage("e1", "g1", "anonymous", "");
+  const db = studentDb("u1");
+  const ref = doc(db, messagePath("e1", "g1", "anonymous"));
+  await assertSucceeds(getDoc(ref));
+  await assertSucceeds(getDocs(chatOf(db, "e1", "g1")));
+  await assertFails(sendAs(db, "e1", "g1", newMessage("")));
+  await assertFails(updateDoc(ref, {senderId: "u1"}));
+  await assertFails(updateDoc(ref, {text: "Changed"}));
+  await assertFails(deleteDoc(ref));
 });

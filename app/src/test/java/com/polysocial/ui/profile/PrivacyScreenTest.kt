@@ -177,14 +177,14 @@ class PrivacyScreenTest {
   }
 
   @Test
-  fun summaryExplainsGroupVisibilityAndThatChatIsNotCollectedYet() {
+  fun summaryExplainsGroupsAndChatRetentionAfterDeletion() {
     openFromProfile()
     rule.onNodeWithTag(C.Tag.privacy_groups).performScrollTo().assertIsDisplayed()
     rule.onNodeWithText(text(R.string.privacy_groups_body)).assertIsDisplayed()
     rule.onNodeWithTag(C.Tag.privacy_chats).performScrollTo().assertIsDisplayed()
     rule.onNodeWithText(text(R.string.privacy_chats_body)).assertIsDisplayed()
     rule.onNodeWithTag(C.Tag.privacy_full_notice).performScrollTo().performClick()
-    rule.onNodeWithTag(C.Tag.privacy_notice_date).assertTextEquals("Updated 11 November 2026")
+    rule.onNodeWithTag(C.Tag.privacy_notice_date).assertTextEquals("Updated 13 November 2026")
   }
 
   private fun checkUnavailable(tag: String) {

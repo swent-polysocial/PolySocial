@@ -2,7 +2,7 @@
 // Contributors: Claude (the public profile deleted with the account, #229; profiles can't be saved
 // again once deleted, after review, #229; the user's registrations, #275).
 "use strict";
-// Contributors: OpenAI Codex (account deletion removes real emulator group membership, #241).
+// Contributors: OpenAI Codex (real membership cleanup and retryable message anonymisation, #241).
 
 // Calls the deployed-to-emulator deleteAccount over HTTP, as the Android client does, against the
 // Auth, Firestore and Functions emulators. Run from the repository root (see the README):
@@ -11,7 +11,7 @@ const { after, before, beforeEach, test } = require("node:test");
 const assert = require("node:assert/strict");
 const { deleteApp, initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
-const { getFirestore } = require("firebase-admin/firestore");
+const { getFirestore, Timestamp } = require("firebase-admin/firestore");
 const { DETAILS, REGION, deleteAccountHandler } = require("./deleteAccountHandler");
 
 // A "demo-" project never reaches a real Firebase project.
@@ -342,4 +342,75 @@ test("without a deletion, the same save succeeds", async () => {
   const uid = (await auth.getUserByEmail("student@epfl.ch")).uid;
   assert.equal(await saveProfilesAs(idToken, uid), 200);
   assert.equal(await documentExists(`publicProfiles/${uid}`), true);
+});
+
+
+test("chat cleanup covers former/orphaned groups and resumes after a partially committed batch", async () => {
+  const uid = await seedUser("student@epfl.ch", {accountType: "student"});
+  const token = await signIn("student@epfl.ch");
+  const createdAt = new Date("2026-11-13T10:00:00Z");
+  const group = db.doc("events/shared/groups/g1");
+  await group.set({memberUids: [uid, "fictional-other"], createdBy: uid, capacity: 4});
+  await db.doc(`events/shared/groupMembers/${uid}`).set({groupId: "g1"});
+  // No parent event/group is needed for these messages: cleanup must find chats left earlier too.
+  for (let offset = 0; offset < 501; offset += 500) {
+    const batch = db.batch();
+    for (let i = offset; i < Math.min(offset + 500, 501); i++) {
+      batch.set(db.doc(`events/former/groups/gone/messages/m${i}`), {
+        senderId: uid, text: "Fictional plan", createdAt,
+      });
+    }
+    await batch.commit();
+  }
+  const other = db.doc("events/shared/groups/g1/messages/other");
+  await other.set({senderId: "fictional-other", text: "Reply", createdAt});
+  let commits = 0;
+  const failingDb = new Proxy(db, {get(target, key) {
+    if (key === "batch") return () => {
+      const batch = target.batch();
+      const commit = batch.commit.bind(batch);
+      batch.commit = async () => {
+        if (++commits === 2) throw Object.assign(new Error("Fictional failure"), {code: 14});
+        return commit();
+      };
+      return batch;
+    };
+    const value = Reflect.get(target, key);
+    return typeof value === "function" ? value.bind(target) : value;
+  }});
+  await assert.rejects(deleteAccountHandler({
+    auth: {uid, token: {auth_time: 1_000_000}}, db: failingDb, adminAuth: auth,
+    now: () => 1_000_000_000, logger: {error() {}},
+  }), error => error.code === "unavailable");
+  assert.equal(await authUserExists(uid), true);
+  assert.equal((await db.collectionGroup("messages").where("senderId", "==", uid).get()).size, 1);
+  assert.equal((await db.collectionGroup("messages").where("senderId", "==", "").get()).size, 500);
+  // The old token still has valid claims, but the marker already denies chat access.
+  const read = await fetch(`http://${FIRESTORE_HOST}/v1/projects/${PROJECT_ID}/databases/(default)/documents/${other.path}`, {
+    headers: {Authorization: `Bearer ${token}`},
+  });
+  assert.equal(read.status, 403);
+  assert.equal((await callDeleteAccount(token)).status, 200);
+  const retained = await db.collectionGroup("messages").where("senderId", "==", "").get();
+  assert.equal(retained.size, 501);
+  for (const message of retained.docs) {
+    assert.deepEqual(message.data(), {senderId: "", text: "Fictional plan", createdAt: Timestamp.fromDate(createdAt)});
+  }
+  assert.deepEqual((await other.get()).data(), {senderId: "fictional-other", text: "Reply", createdAt: Timestamp.fromDate(createdAt)});
+  assert.deepEqual((await group.get()).get("memberUids"), ["fictional-other"]);
+  assert.equal(await documentExists(`events/shared/groupMembers/${uid}`), false);
+  assert.equal(await authUserExists(uid), false);
+  assert.equal((await callDeleteAccount(token)).status, 200);
+});
+
+test("a malformed group list does not block account deletion or expose data in logs", async () => {
+  const uid = await seedUser("student@epfl.ch", {accountType: "student"});
+  const token = await signIn("student@epfl.ch");
+  const group = db.doc("events/shared/groups/malformed");
+  await group.set({memberUids: [uid, 42, "fictional-other"]});
+  await db.doc(`events/shared/groupMembers/${uid}`).set({groupId: "malformed"});
+  assert.equal((await callDeleteAccount(token)).status, 200);
+  assert.deepEqual((await group.get()).get("memberUids"), [42, "fictional-other"]);
+  assert.equal(await authUserExists(uid), false);
+  assert.equal(await documentExists(`events/shared/groupMembers/${uid}`), false);
 });

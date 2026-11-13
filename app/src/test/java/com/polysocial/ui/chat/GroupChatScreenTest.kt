@@ -1,5 +1,6 @@
 // Contributors: OpenAI Codex (tested chat, stable history and sender names, connectivity, and
 // input with fakes, #238).
+// Contributors: OpenAI Codex (explicit deleted-author rendering regression, #241).
 package com.polysocial.ui.chat
 
 import android.content.Context
@@ -74,6 +75,15 @@ class GroupChatScreenTest {
               PEER to PublicProfile(PEER, "Test Peer", "IN", "BA3"),
           )
       )
+
+  @Test
+  fun deletedAuthorsHaveANeutralLabelWithoutLookingUpAProfile() {
+    messages.seedMessage(EVENT, group.id, "anonymous", "", "Original message", NOW)
+    show()
+    text(R.string.chat_deleted_author).assertIsDisplayed()
+    compose.onNodeWithText("Original message").assertIsDisplayed()
+    text(R.string.group_unknown_member).assertDoesNotExist()
+  }
 
   @Test
   fun emptyChatDisablesBlankSendThenShowsSentAndIncomingMessages() {
