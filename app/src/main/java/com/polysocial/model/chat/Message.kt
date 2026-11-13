@@ -1,7 +1,11 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (drafted the chat message model, #237).
+// Contributors: OpenAI Codex (explicit deleted message author, #241).
 package com.polysocial.model.chat
 
 import java.time.Instant
+
+/** Empty senderId written only by account cleanup; it links to no account. */
+const val DELETED_MESSAGE_SENDER = ""
 
 /**
  * The most characters a message's text may have, as the Security Rules check. Counted in UTF-16
@@ -13,7 +17,7 @@ const val MAX_MESSAGE_LENGTH = 1000
  * A message in a group's chat, stored as `events/{eventId}/groups/{groupId}/messages/{id}`. A
  * one-to-one chat is a two-member group, so it uses the same model.
  *
- * @property senderId the UID of the member who sent it.
+ * @property senderId the sender UID, or [DELETED_MESSAGE_SENDER] after account deletion.
  * @property text what they wrote, 1 to [MAX_MESSAGE_LENGTH] characters.
  * @property createdAt when the server stored it, which orders the chat.
  */

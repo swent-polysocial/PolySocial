@@ -1,4 +1,5 @@
 // Contributors: OpenAI Codex (group chat UI and Figma avatar colors, #236 and #238).
+// Contributors: OpenAI Codex (neutral deleted author label, #241).
 package com.polysocial.ui.chat
 
 import androidx.compose.foundation.background
@@ -47,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
+import com.polysocial.model.chat.DELETED_MESSAGE_SENDER
 import com.polysocial.ui.common.ErrorState
 import com.polysocial.ui.common.LoadingState
 import com.polysocial.ui.common.OfflineBanner
@@ -198,7 +200,9 @@ private fun ChatTimeline(
           val mine = message.senderId == me
           val peerIndex = peers.indexOfFirst { it.uid == message.senderId }
           val name =
-              if (mine || (!newDay && previous.senderId == message.senderId)) null
+              if (message.senderId == DELETED_MESSAGE_SENDER)
+                  stringResource(R.string.chat_deleted_author)
+              else if (mine || (!newDay && previous.senderId == message.senderId)) null
               else
                   peers.getOrNull(peerIndex)?.profile?.displayName
                       ?: stringResource(R.string.group_unknown_member)

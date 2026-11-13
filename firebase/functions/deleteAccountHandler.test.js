@@ -45,13 +45,14 @@ function fakeBackend({
   authUserExists = true,
   groups = {},
   markers = {},
+  messages = {},
   beforeGroupRead = () => {},
   registrations = [`events/e1/attendees/${UID}`, `events/e2/attendees/${UID}`, OTHER_REGISTRATION],
 } = {}) {
   const calls = [];
   const fail = {};
   const state = {
-    groups, markers,
+    groups, markers, messages,
     profile,
     publicProfile,
     deletionMarker: null,
@@ -79,6 +80,18 @@ function fakeBackend({
     },
     // The collection-group query `attendees where uid == <uid>`, with a limit, and batched deletes.
     collectionGroup(group) {
+      if (group === "messages") {
+        return { where(field, op, value) {
+          assert.equal(field, "senderId"); assert.equal(op, "=="); assert.equal(value, UID);
+          const query = { limit(size) { assert.equal(size, 500); return query; }, async get() {
+            calls.push("query:messages"); failIfAsked("messages-query");
+            const docs = Object.entries(state.messages).filter(([, data]) => data.senderId === value)
+              .slice(0, 500).map(([path]) => ({ref: db.doc(path)}));
+            return {docs, empty: docs.length === 0};
+          }};
+          return query;
+        }};
+      }
       if (group === "groups") {
       return {
         where(field, operator, uid) {
@@ -118,9 +131,16 @@ function fakeBackend({
     },
     batch() {
       const deletes = [];
+      const updates = [];
       return {
         delete: (ref) => deletes.push(ref.path),
+        update: (ref, data) => updates.push([ref.path, data]),
         async commit() {
+          if (updates.length) {
+            calls.push(`anonymise:${updates.length}`); failIfAsked("messages-write");
+            for (const [path, data] of updates) Object.assign(state.messages[path], data);
+            return;
+          }
           calls.push(`commit:${deletes.join(",")}`);
           failIfAsked("commit");
           for (const path of deletes) state.registrations.delete(path);
@@ -278,6 +298,7 @@ test("profiles deleted and marked deleted, then registrations, then the Auth use
     `delete:users/${UID}`,
     `delete:publicProfiles/${UID}`,
     ...REGISTRATION_CALLS,
+    "query:messages",
     "query:memberships",
     `deleteUser:${UID}`,
   ]);
@@ -446,9 +467,8 @@ test("cleanup rereads a concurrently changed or removed group and removes its ol
   }
 });
 
-test("malformed membership data or an unexpected path fails without deleting Auth", async () => {
+test("an unexpected group path fails without deleting Auth", async () => {
   for (const groups of [
-    { "events/shared/groups/g1": { memberUids: [UID, 42] } },
     { "groups/legacy": { memberUids: [UID] } },
   ]) {
     const backend = fakeBackend({ groups });
@@ -574,4 +594,59 @@ test("a retry after a complete deletion succeeds again", async () => {
   const backend = fakeBackend({ profile: null, authUserExists: false });
   assert.deepEqual(await call(backend), { deleted: true });
   assert.equal(backend.calls.at(-1), `deleteUser:${UID}`);
+});
+
+
+test("messages across current, former and deleted groups lose only their account link", async () => {
+  const paths = ["events/e1/groups/shared/messages/m1", "events/left/groups/old/messages/m2",
+    "events/gone/groups/gone/messages/m3"];
+  const own = {senderId: UID, text: "Meet by the door", createdAt: 123};
+  const other = {senderId: "other-student", text: "Coming", createdAt: 124};
+  const backend = fakeBackend({messages: Object.fromEntries([
+    ...paths.map(path => [path, {...own}]), ["events/e1/groups/shared/messages/other", other],
+  ])});
+  assert.deepEqual(await call(backend), {deleted: true});
+  for (const path of paths) assert.deepEqual(backend.state.messages[path], {...own, senderId: ""});
+  assert.deepEqual(backend.state.messages["events/e1/groups/shared/messages/other"], other);
+  assert.equal(Object.values(backend.state.messages).some(m => m.senderId === UID), false);
+  assert.deepEqual(await call(backend), {deleted: true});
+});
+
+test("anonymisation spans batches without dropping messages", async () => {
+  const messages = Object.fromEntries(Array.from({length: 501}, (_, i) =>
+    [`events/e/groups/g/messages/m${i}`, {senderId: UID, text: "Plan", createdAt: i}]));
+  const backend = fakeBackend({messages});
+  await call(backend);
+  assert.equal(Object.keys(backend.state.messages).length, 501);
+  assert.ok(Object.values(backend.state.messages).every(m => m.senderId === ""));
+  assert.deepEqual(backend.calls.filter(c => c.startsWith("anonymise:")), ["anonymise:500", "anonymise:1"]);
+});
+
+test("a failed message query or write preserves Auth and retry completes anonymisation", async () => {
+  for (const operation of ["messages-query", "messages-write"]) {
+    const path = "events/e/groups/g/messages/m";
+    const backend = fakeBackend({messages: {[path]: {senderId: UID, text: "Plan", createdAt: 1}}});
+    backend.fail[operation] = {error: backendError(14), once: true};
+    await assertHttpsError(call(backend), "unavailable", undefined);
+    assert.equal(backend.state.authUserExists, true);
+    assert.equal(backend.state.messages[path].senderId, UID);
+    assert.deepEqual(backend.logs, [["error", "deleteAccount step failed", {step: "anonymise-messages", code: 14}]]);
+    await call(backend);
+    assert.equal(backend.state.authUserExists, false);
+    assert.equal(backend.state.messages[path].senderId, "");
+  }
+});
+
+test("malformed group lists do not block erasure or erase other entries", async () => {
+  const path = "events/e/groups/g";
+  for (const members of [[UID, 42, "other-student"], null, "malformed"]) {
+    const backend = fakeBackend({groups: {[path]: {memberUids: [UID, "other-student"]}},
+      markers: {[`events/e/groupMembers/${UID}`]: {groupId: "g"}},
+      beforeGroupRead(state) {state.groups[path].memberUids = members;}});
+    assert.deepEqual(await call(backend), {deleted: true});
+    assert.deepEqual(backend.state.groups[path].memberUids, Array.isArray(members) ? [42, "other-student"] : members);
+    assert.deepEqual(backend.state.markers, {});
+    assert.equal(backend.state.authUserExists, false);
+    assert.deepEqual(backend.logs, [["warn", "deleteAccount malformed group members", {code: "invalid-members"}]]);
+  }
 });

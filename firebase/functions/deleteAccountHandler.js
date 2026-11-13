@@ -3,10 +3,10 @@
 // after review, #229; the user's registrations, #275).
 "use strict";
 
-// Contributors: OpenAI Codex (retryable group membership cleanup before Auth deletion, #241).
+// Contributors: OpenAI Codex (retryable membership cleanup and message author removal before Auth deletion, #241).
 
 const { HttpsError } = require("firebase-functions/v2/https");
-const { deleteUserRegistrations } = require("./registrations");
+const { deleteUserRegistrations, MAX_BATCH_WRITES } = require("./registrations");
 
 /**
  * Region of the deleteAccount callable (Zurich). The Android client calls it with
@@ -45,7 +45,8 @@ const TRANSIENT_CODES = new Set([
 /**
  * Deletes the signed-in user's account: first their private profile `users/{uid}` and their public
  * profile `publicProfiles/{uid}` (#229), together, then their registrations for events (#275), then
- * their Firebase Auth user. Returns `{ deleted: true }` only once all are gone. The same
+ * their messages' author links and group memberships (#241), then their Firebase Auth user.
+ * Returns `{ deleted: true }` only once all are gone. The same
  * transaction writes the deletion marker `deletedAccounts/{uid}`: the deleted user's ID token stays
  * valid until it expires (up to an hour), and the Security Rules refuse to recreate either profile
  * under a marked UID, so another of the user's devices can't bring the public profile back after
@@ -66,8 +67,8 @@ const TRANSIENT_CODES = new Set([
  * and the profile deletion run in one transaction, so a profile created in between can't escape the
  * check. Events the user created are never touched (the deletion policy, #201, keeps them).
  * Group membership cleanup mirrors leaveGroup; the deletion marker prevents rejoining while it
- * runs. Message anonymisation still depends on the merged chat schema (#237). Cleanup of further
- * personal data is added here by the issues that store it.
+ * runs. Message text and time are retained, with an empty senderId instead of the account link.
+ * Cleanup of further personal data is added here by the issues that store it.
  *
  * Failures are HttpsErrors with a generic message (never the uid or the original error):
  * `unavailable` when the backend could not be reached and a retry may work, `internal` otherwise.
@@ -80,7 +81,7 @@ const TRANSIENT_CODES = new Set([
  * @param {object} args.db Firestore (Admin SDK): `collection(path).doc(id)` and `runTransaction`.
  * @param {{deleteUser: function(string): Promise<void>}} args.adminAuth Firebase Auth (Admin SDK).
  * @param {function(): number} args.now the current time, in milliseconds since the epoch.
- * @param {{error: function(string, object): void}} args.logger where failed steps are logged
+ * @param {{error: function(string, object): void, warn: function(string, object): void}} args.logger where failed steps are logged
  *   (`firebase-functions/logger` in production).
  * @returns {Promise<{deleted: true}>}
  */
@@ -99,7 +100,8 @@ async function deleteAccountHandler({ auth, db, adminAuth, now, logger }) {
 
   await callBackend("delete-profile", logger, () => deleteStudentProfile(db, uid));
   await callBackend("delete-registrations", logger, () => deleteUserRegistrations(db, uid));
-  await callBackend("delete-group-memberships", logger, () => deleteGroupMemberships(db, uid));
+  await callBackend("anonymise-messages", logger, () => anonymiseMessages(db, uid));
+  await callBackend("delete-group-memberships", logger, () => deleteGroupMemberships(db, uid, logger));
   await callBackend("delete-auth-user", logger, () => deleteAuthUser(adminAuth, uid));
   return { deleted: true };
 }
@@ -110,10 +112,10 @@ async function deleteAccountHandler({ auth, db, adminAuth, now, logger }) {
  * group with its still-valid token while cleanup runs. Transactions reread each group so another
  * member's concurrent join/leave is preserved. Empty groups are removed, as with ordinary leave.
  * A failure leaves Auth intact and Retry repeats the query, finding only unfinished memberships.
- * No message schema exists on main yet (#237); sender anonymisation is a separate dependency of
- * #241 and is not claimed by this step.
+ * A malformed membership list is reported without data; remove the UID from arrays while
+ * preserving all other entries. A scalar/missing list no longer contains a membership to remove.
  */
-async function deleteGroupMemberships(db, uid) {
+async function deleteGroupMemberships(db, uid, logger) {
   const groups = await db.collectionGroup("groups").where("memberUids", "array-contains", uid).get();
   for (const group of groups.docs) {
     if (!/^events\/[^/]+\/groups\/[^/]+$/.test(group.ref.path)) {
@@ -125,16 +127,34 @@ async function deleteGroupMemberships(db, uid) {
       if (current.exists) {
         const members = current.get("memberUids");
         if (!Array.isArray(members) || members.some((member) => typeof member !== "string")) {
-          throw new TypeError("Invalid group members");
+          logger.warn("deleteAccount malformed group members", { code: "invalid-members" });
         }
-        const remaining = members.filter((member) => member !== uid);
-        if (remaining.length === 0) transaction.delete(group.ref);
-        else if (remaining.length !== members.length) {
+        const remaining = Array.isArray(members) ? members.filter((member) => member !== uid) : null;
+        if (remaining?.length === 0) transaction.delete(group.ref);
+        else if (remaining && remaining.length !== members.length) {
           transaction.update(group.ref, { memberUids: remaining });
         }
       }
       transaction.delete(marker);
     });
+  }
+}
+
+/**
+ * Remove the account link from every message sent by this UID, including chats the user already
+ * left and messages below deleted groups/events. The merged schema stores only senderId, text and
+ * createdAt; an empty senderId is the explicit deleted-author marker and cannot be a Firebase UID.
+ * Client rules cannot create it, alter messages, or send after the deletion marker was written.
+ * Repeating the bounded query finds only unfinished work after a failed batch or lost answer.
+ */
+async function anonymiseMessages(db, uid) {
+  const query = db.collectionGroup("messages").where("senderId", "==", uid).limit(MAX_BATCH_WRITES);
+  for (;;) {
+    const snapshot = await query.get();
+    if (snapshot.empty) return;
+    const batch = db.batch();
+    for (const message of snapshot.docs) batch.update(message.ref, { senderId: "" });
+    await batch.commit();
   }
 }
 
