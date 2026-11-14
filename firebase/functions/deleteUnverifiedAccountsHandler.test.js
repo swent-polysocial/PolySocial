@@ -6,6 +6,7 @@
 // node firebase/functions/deleteUnverifiedAccountsHandler.test.js
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const { inspect } = require("node:util");
 const { REGION } = require("./deleteAccountHandler");
 const {
   UNVERIFIED_ACCOUNT_RETENTION_DAYS,
@@ -291,6 +292,22 @@ test("a page that can't be listed ends the listing, earlier accounts are deleted
   assert.deepEqual(backend.uids(), []);
 });
 
+// Auth down or refusing the function: no account is found, which must not read as "none to delete".
+test("when no page can be listed, nothing is deleted and the run fails", async () => {
+  const backend = fakeBackend({ users: abandonedAccounts(2), profiles: ["users/a0000"] });
+  backend.fail.listUsers[1] = backendError("auth/insufficient-permission");
+
+  await assertFailedRun(
+    backend,
+    [{ step: "list-users", codes: ["auth/insufficient-permission"] }],
+    { deleted: 0, failed: 0 },
+  );
+
+  assert.deepEqual(backend.calls, ["listUsers:"]);
+  assert.deepEqual(backend.uids(), ["a0000", "a0001"]);
+  assert.deepEqual([...backend.state.profiles], ["users/a0000"]);
+});
+
 test("a batch whose accounts can't be deleted doesn't stop the next batch", async () => {
   const backend = fakeBackend({ users: abandonedAccounts(MAX_BATCH_WRITES + 2) });
   backend.fail.deleteUsers[1] = backendError("auth/quota-exceeded");
@@ -342,6 +359,83 @@ test("accounts deleteUsers reports as failed are counted, the others are deleted
   );
 
   assert.deepEqual(backend.uids(), ["a0001", "a0003", "a0004"]);
+});
+
+test("a run that fails touches no verified or recent account, nor their documents", async () => {
+  const keptAccounts = ["verified", "recent", "association-in-review"];
+  // An association whose email is verified waits for its review with both its documents: only
+  // the email counts, and the cleanup can't read a profile from this fake Firestore.
+  const keptDocuments = [
+    "users/verified",
+    "users/recent",
+    "users/association-in-review",
+    "associations/association-in-review",
+  ];
+  const failures = {
+    "a page that can't be listed": (backend) => {
+      backend.fail.listUsers[2] = backendError("auth/internal-error");
+    },
+    "profiles that can't be deleted": (backend) => {
+      backend.fail.commit[1] = backendError(14);
+    },
+    "accounts that can't be deleted": (backend) => {
+      backend.fail.deleteUsers[1] = backendError("auth/quota-exceeded");
+    },
+    "one account that can't be deleted": (backend) => {
+      backend.undeletable.set("a0001", "auth/internal-error");
+    },
+  };
+
+  for (const [failure, inject] of Object.entries(failures)) {
+    const [abandoned1, abandoned2, abandoned3] = abandonedAccounts(3);
+    const backend = fakeBackend({
+      pageSize: 2,
+      users: [
+        account("verified", OLD, true),
+        abandoned1,
+        account("recent", DAY_MS),
+        abandoned2,
+        account("association-in-review", OLD, true),
+        abandoned3,
+      ],
+      profiles: [...keptDocuments, "users/a0000"],
+    });
+    inject(backend);
+
+    await assert.rejects(run(backend), Error, failure);
+
+    assert.deepEqual(
+      backend.uids().filter((uid) => keptAccounts.includes(uid)),
+      keptAccounts,
+      failure,
+    );
+    assert.deepEqual(
+      [...backend.state.profiles].filter((path) => path !== "users/a0000"),
+      keptDocuments,
+      failure,
+    );
+  }
+});
+
+test("the error of a failed run holds no uid, email or backend error message", async () => {
+  const backend = fakeBackend({
+    pageSize: 1,
+    users: [account("abandoned-uid", OLD), account("unlisted-uid", OLD)],
+  });
+  // Both kinds of error the run meets: one thrown, one reported for an account.
+  backend.fail.listUsers[2] = backendError("auth/internal-error");
+  backend.undeletable.set("abandoned-uid", "auth/internal-error");
+
+  const error = await run(backend).then(
+    () => assert.fail("the run should have failed"),
+    (thrown) => thrown,
+  );
+
+  // Everything a log of the error would print: its message, stack, cause and any other field.
+  const printed = inspect(error, { depth: null, showHidden: true });
+  for (const secret of ["abandoned-uid", "example.com", "raw backend failure"]) {
+    assert.ok(!printed.includes(secret), `the error thrown holds "${secret}"`);
+  }
 });
 
 // The manifest the Firebase CLI deploys from: a wrong option here deploys the function elsewhere
