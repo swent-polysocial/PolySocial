@@ -1,9 +1,12 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (drafted the Firestore group repository, #232, and
 // revised it after review).
+// Contributors: Claude (Fable 5.2, Anthropic) (the collection-group read of the student's groups,
+// #363); Claude (Opus 5.5, Anthropic) (corrected its KDoc after review).
 package com.polysocial.model.group
 
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.MetadataChanges
@@ -112,6 +115,42 @@ class FirestoreGroupRepository(
       )
     }
   }
+
+  /**
+   * Listens to every `groups` collection for the groups whose `memberUids` contain the signed-in
+   * student. The rules accept a query across events only when it is constrained to the caller's own
+   * membership, as this one is, and the `groups.memberUids` collection-group index serves it. Each
+   * group's event is read from its path.
+   */
+  override fun observeMyGroups(): Flow<MyGroupsResult> =
+      listen(
+          loading = MyGroupsResult.Loading,
+          failed = { offline ->
+            if (offline) MyGroupsResult.NetworkError else MyGroupsResult.UnexpectedError
+          },
+          query = {
+            auth.currentUser()?.let {
+              db.collectionGroup(GROUPS_COLLECTION).whereArrayContains(MEMBER_UIDS, it.uid)
+            }
+          },
+      ) { snapshot ->
+        MyGroupsResult.Success(
+            snapshot.documents
+                .mapNotNull { document ->
+                  document.eventId()?.let { groupFromFirestore(document.id, it, document.data) }
+                }
+                .sortedWith(OLDEST_FIRST),
+            snapshot.metadata.isFromCache,
+        )
+      }
+
+  /**
+   * The event of a group found across events, or null when its path isn't
+   * `events/{eventId}/groups/{id}`: a collection-group query matches a `groups` collection
+   * anywhere, and only an event's groups are groups.
+   */
+  private fun DocumentSnapshot.eventId(): String? =
+      reference.path.split('/').takeIf { it.size == 4 && it[0] == EVENTS_COLLECTION }?.get(1)
 
   /**
    * Reads the event (a missing one is [GroupWriteResult.NotFound]) and the student's marker (one is

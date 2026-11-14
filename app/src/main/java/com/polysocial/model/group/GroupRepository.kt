@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (drafted the group repository contract, #232, and
 // revised it after review).
+// Contributors: Claude (Fable 5.2, Anthropic) (the student's groups across events, #363).
 package com.polysocial.model.group
 
 import kotlinx.coroutines.flow.Flow
@@ -78,6 +79,30 @@ sealed interface MyGroupResult {
   data object UnexpectedError : MyGroupResult
 }
 
+/** What [GroupRepository.observeMyGroups] emits. */
+sealed interface MyGroupsResult {
+  /** Nothing has been read yet. Emitted first, unless a newer result already replaced it. */
+  data object Loading : MyGroupsResult
+
+  /**
+   * Every group the signed-in student is in, across events, oldest first; empty when they are in
+   * none. A stored group that can't be read (a missing or wrong-typed field) is skipped.
+   *
+   * @property fromCache true when they come from Firestore's offline cache, like
+   *   [GroupsResult.Success.fromCache].
+   */
+  data class Success(val groups: List<Group>, val fromCache: Boolean) : MyGroupsResult
+
+  /** The groups couldn't be read because the server can't be reached. The flow then ends. */
+  data object NetworkError : MyGroupsResult
+
+  /**
+   * Any other failure, for example nobody signed in, or an association, whose read the Security
+   * Rules deny. The flow then ends.
+   */
+  data object UnexpectedError : MyGroupsResult
+}
+
 /**
  * Stores the groups students form to go to an event together (Find a group, #228), in
  * `events/{eventId}/groups/{groupId}`, and keeps each student in at most one group per event with
@@ -110,6 +135,17 @@ interface GroupRepository {
    * starts.
    */
   fun observeMyGroup(eventId: String): Flow<MyGroupResult>
+
+  /**
+   * Observes every group the signed-in student is in, across events (#363); each [Group.eventId]
+   * names its event. A member lists their own groups without reading the events, so the groups of a
+   * private event they were removed from, or of a deleted event, are listed too. It emits like
+   * [observeGroups]; the user is read when collection starts.
+   *
+   * The Chats tab reads them with each group's latest message through
+   * `ChatsRepository.observeMyChats`.
+   */
+  fun observeMyGroups(): Flow<MyGroupsResult>
 
   /**
    * Starts a new group for the event [eventId], with the signed-in student as its only member.
