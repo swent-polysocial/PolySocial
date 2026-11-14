@@ -393,23 +393,26 @@ Decided on 2026-11-14 (#365), replacing "a one-to-one chat is a two-member group
 - **Rejected:** messages under `friendships/{pairId}` (the friendship document is deleted on unfriending and on account deletion, so the conversation couldn't stay listed or readable); a two-member group (groups live under an event, and their join, leave and capacity rules don't fit two friends); also letting group-mates chat privately (a second membership check in the rules, and an unclear lifetime when one leaves the group). For unsend: deleting the message document (the other student would see no placeholder, and the conversation would have a gap); a `deleted` flag or a `deletedAt` time beside an emptied text (a second field saying the same thing, and the time of the deletion stored for nothing). For delete for me: a field on the chat document (both students read it, and the chat document would no longer be create-only); a marker under `chats/{pairId}` (a listener per chat, or a collection-group query and its index); the server's time of the deletion as the marker (see "Stored" above).
 - **Proposals, not decided** (section 7, open questions): unsending needs the two to be friends, so a read-only chat can't change; a chat that comes back after delete for me shows its earlier messages again.
 
-**Security Rules for the chat.** These conditions were run against the Firestore emulator before being written down, together with a prototype of #338's `friendships` rules: 85 allow/deny cases on 2026-11-14, with the existing rules tests still passing. The prototype isn't committed: the storage task writes the rules and turns the two lists below into rules tests, one by one. `isStudent()` and `isDeletedAccount()` are the functions already in `firestore.rules`.
+**Security Rules for the chat.** These conditions were run against the Firestore emulator before being written down, together with a prototype of #338's `friendships` rules, on 2026-11-14: 85 cases for the chat and 34 for unsend and delete for me, with the repo's 513 rules tests still passing on the combined rules. Each condition of the unsend and marker rules, weakened in turn, made one of the 34 cases fail; each condition of `isPairIdOf()` but `pair.size() == 2` (see below) made one of the 119 fail. The prototype isn't committed: the storage tasks write the rules and turn the two lists below into rules tests, one by one. `isStudent()` and `isDeletedAccount()` are the functions already in `firestore.rules`; `isPairIdOf()` is new, shared by the chat and the markers.
 
 ```
-match /chats/{pairId} {
-  // The two UIDs the document ID names.
-  function pair() {
-    return pairId.split('~');
-  }
+// The pair ID of #338 for member: exactly two different, non-empty UIDs, sorted, joined by one
+// '~', one of them member's. split('~') drops trailing empty parts, so the ID is also compared
+// with its two parts joined again.
+function isPairIdOf(id, member) {
+  let pair = id.split('~');
+  return pair.size() == 2
+      && pair[0] != ''
+      && pair[0] < pair[1]
+      && id == pair[0] + '~' + pair[1]
+      && pair.hasAny([member]);
+}
 
+match /chats/{pairId} {
   function isOfThePair() {
     return isStudent()
         && !isDeletedAccount(request.auth.uid)
-        && pair().size() == 2
-        && pair()[0] != ''
-        && pair()[0] < pair()[1]
-        && pairId == pair()[0] + '~' + pair()[1]
-        && pair().hasAny([request.auth.uid]);
+        && isPairIdOf(pairId, request.auth.uid);
   }
 
   function areFriends() {
@@ -424,7 +427,7 @@ match /chats/{pairId} {
   allow create: if isOfThePair()
       && areFriends()
       && request.resource.data.keys().hasOnly(['uids'])
-      && request.resource.data.uids == pair();
+      && request.resource.data.uids == pairId.split('~');
 
   match /messages/{messageId} {
     allow get, list: if isOfThePair();
@@ -438,16 +441,39 @@ match /chats/{pairId} {
         && request.resource.data.text.size() >= 1
         && request.resource.data.text.size() <= 1000
         && request.resource.data.createdAt == request.time;
+    // Unsend: the sender empties the text of their own message, and nothing else changes.
+    allow update: if isOfThePair()
+        && areFriends()
+        && resource.data.senderId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text'])
+        && request.resource.data.text == '';
   }
+}
+
+// Delete for me: a student's own marker on one of their chats. Nobody else reads or writes it.
+match /users/{uid}/hiddenChats/{pairId} {
+  function isOwner() {
+    return isStudent()
+        && request.auth.uid == uid
+        && !isDeletedAccount(uid);
+  }
+
+  allow get, list: if isOwner();
+  allow create, update: if isOwner()
+      && isPairIdOf(pairId, uid)
+      && exists(/databases/$(database)/documents/chats/$(pairId))
+      && request.resource.data.keys().hasOnly(['hiddenUpTo'])
+      && request.resource.data.hiddenUpTo <= request.time;
 }
 ```
 
 - **The pair comes from the document ID for a single chat and its messages,** not from the document. A chat that doesn't exist yet must read as missing for the two students (the first-message transaction reads it), and `resource.data.uids` on a missing document is a rule error, so a denial (`CONTEXT.md`, Traps). It also saves a `get()` on every read. `create` forces `uids` to be exactly the ID's two UIDs, so both always name the same students. A query has no single document ID to check, so `list` checks `uids`: that is what the field is for.
-- **The ID must be exactly its two UIDs joined by `~`.** In the rules, `split('~')` drops trailing empty parts, so `u1~u2~` and `u1~u2~~~` split into the same two UIDs as `u1~u2`. Without the comparison of `pairId` with `pair()[0] + '~' + pair()[1]`, such an ID would be a second chat of the same pair (reachable with a friendship stored under it), which both students' Chats tab would list. The comparison refuses it whatever #357's rules accept.
+- **The ID must be exactly its two UIDs joined by `~`** (`isPairIdOf`). In the rules, `split('~')` drops trailing empty parts, so `u1~u2~` and `u1~u2~~~` split into the same two UIDs as `u1~u2`. Without the comparison of the ID with `pair[0] + '~' + pair[1]`, such an ID would be a second chat of the same pair (reachable with a friendship stored under it), which both students' Chats tab would list. The comparison refuses it whatever #357's rules accept. It also refuses an ID of three or more parts, so `pair.size() == 2` is there for a one-part ID, which would otherwise be refused only by the error of reading `pair[1]`.
 - **A student can read, as missing or empty, a chat with any other UID** (`chats/{ownUid}~{anything}`, in sorted order). That shows nothing, whether that UID exists or not: nothing can be stored there without an accepted friendship under the same ID.
 - **`areFriends()` uses `exists()` and `data.get('status', null)`,** so a missing friendship, or one without a status, is "not friends" rather than a rule error, and the function stays safe to combine with other conditions later.
-- **No rule allows an update or a delete,** of a chat or of a message.
-- **Room for report/block (#376) and rate limiting:** each operation has its own rule, and no read depends on the friendship. A block check or a per-sender limit is one more condition on the two `create` rules, which use at most 6 of the 10 document lookups a rule may make, on 4 documents (the caller's profile and deletion marker, the friendship, the chat). A message's path and content never change, so a report can point to `chats/{pairId}/messages/{id}`. A block that deletes the friendship already stops the chat through `areFriends()`. #376 decides.
+- **Unsend is the only update, and only one change:** `affectedKeys().hasOnly(['text'])` keeps `senderId` and `createdAt` as they are and adds no field, and the text can only become `''`, so it can't be edited into something else or restored. Writing `''` again over an unsent message changes nothing and is allowed (a blind retry). No rule deletes a chat, a message or a marker, and nobody updates a chat.
+- **A marker's `hiddenUpTo <= request.time`** refuses a future time, which would hide the chat until then, and anything that isn't a timestamp (comparing other types is an error, so a denial).
+- **Room for report/block (#376) and rate limiting:** each operation has its own rule, and no read depends on the friendship. A block check or a per-sender limit is one more condition on a `create` or `update` rule, which use at most 6 of the 10 document lookups a rule may make, on 4 documents (the caller's profile and deletion marker, the friendship, the chat). A message's path never changes, so a report can point to `chats/{pairId}/messages/{id}`, but an unsend erases its text: a report must keep what it needs when it is made. A block that deletes the friendship already stops the chat, and unsending, through `areFriends()`. #376 decides.
 
 **Allowed:**
 1. Either student of an accepted friendship creates `chats/{pairId}` with `uids` = the ID's two UIDs in its order, together with their first message, in one transaction; also in one batch, and the chat document alone (the rules can't require a message; the app always writes both).
@@ -456,29 +482,37 @@ match /chats/{pairId} {
 4. Either student gets a message, lists the messages ordered by `createdAt`, and reads the latest one (`createdAt` descending, `limit(1)`).
 5. A friend sends in an existing chat: exactly `senderId` = their UID, `text` of 1 to 1000 units (1, 1000 and 500 emoji pass) and `createdAt` = the server's time. A retry under the same message ID reads the stored message and writes nothing.
 6. After the friendship is deleted, both students still get the chat, list it and read its messages.
-7. After a new request is accepted, both send again in the same chat, and its earlier messages are still there.
+7. After a new request is accepted, both send and unsend again in the same chat, and its earlier messages are still there.
 8. After the other account's deletion (`uids` holds only the remaining UID, the deleted account's messages have an empty `senderId`), the remaining student still lists and gets the chat and reads its messages.
 9. Another student's deletion marker changes nothing for two friends. Between the marker and `deleteAccount`'s friendships step, the other student of a deleted account can still send (the friendship is still stored); the deleted account reads none of it.
+10. While friends, the sender unsends their own message in a transaction that reads it first: only `text` becomes `""`, with `senderId` and `createdAt` unchanged. Both students then read it in place with its empty text, also as the latest message. A retry reads it already empty and writes nothing; writing `""` again is allowed and changes nothing.
+11. A student writes their own marker `users/{uid}/hiddenChats/{pairId}` for an existing chat of theirs, read-only ones and one with a deleted account included: exactly `hiddenUpTo`, a timestamp no later than the server's time (the server's time itself passes). They overwrite it later, get it and list their own markers.
+12. While a student's marker hides a chat, the other student's chat, messages and list are unchanged and they still send; a message from either student is then newer than `hiddenUpTo`, while an unsend keeps its message's time.
 
 **Denied:**
 1. A third student, even a friend of both: getting the chat (existing or not), listing it, reading its messages, creating it, sending to it as themselves or as a participant.
 2. A UID that only resembles a participant's (a prefix, another letter case, the whole pair ID).
-3. Creating a chat under an ID that isn't `{lowerUid}~{higherUid}`: the two UIDs unsorted, one UID, three, the same UID twice, an empty UID, another separator, a trailing or doubled separator (`u1~u2~`, `u1~u2~~~`, `u1~~u2`), even with a friendship document stored at that ID. Nothing is readable under such an ID either, and sending in a chat stored there without the rules is denied.
+3. Creating a chat under an ID that isn't `{lowerUid}~{higherUid}`: the two UIDs unsorted, one UID, three, the same UID twice, an empty UID, another separator, a trailing or doubled separator (`u1~u2~`, `u1~u2~~~`, `u1~~u2`), even with a friendship document stored at that ID. Nothing is readable under such an ID either, and sending or unsending in a chat stored there without the rules is denied.
 4. Creating a chat whose `uids` isn't exactly the ID's two UIDs in order: the other order, only the caller, another pair, a third UID, a map, a string, no `uids`, or any other field (a `createdAt`, a summary).
 5. Creating a chat or sending without a friendship document; with a `pending` one, for the sender and the recipient alike; with a friendship whose `status` is missing, null or anything but `"accepted"`; with a friendship with someone else.
-6. Sending after unfriending, for both students; sending while a new request is still pending.
+6. Sending or unsending after unfriending, for both students; while a new request is still pending.
 7. Sending as the other student (`senderId` isn't the caller), or with the deleted-author marker (an empty `senderId`).
 8. A message with an empty text, 1001 units, 501 emoji, a text that isn't a string, a null or missing text, no `senderId`, a `createdAt` the client chose or none, or another field.
 9. A message whose chat document doesn't exist and isn't created in the same write.
-10. Updating or deleting a message, by anyone, its sender included; writing an existing message ID again.
+10. Deleting a message, by anyone, its sender included; any other update than the sender's unsend; writing an existing message ID again.
 11. Updating or deleting a chat document, by anyone, even rewriting the same content; a batch that does so with a message is denied as a whole.
 12. Listing chats without the filter on the caller's own UID: the whole collection (even when every stored chat is the caller's), with a `limit`, `array-contains` another UID, `array-contains-any`, `uids ==` another pair, another chat's document ID, a range or `in` on document IDs, an `orderBy`.
-13. Collection-group queries on `messages` or `chats`.
-14. A caller under a `deletedAccounts/{uid}` marker: getting or listing chats, reading messages, sending, creating a chat with a friend whose friendship is still stored. The other student keeps reading.
-15. An association, unverified or verified, with or without an `@epfl.ch` email, even named in a chat and a friendship stored without the rules: nothing.
-16. An unverified `@epfl.ch` account, a token without `email_verified`, a verified non-EPFL account with a student's profile, a signed-out user: nothing.
+13. Collection-group queries on `messages`, `chats` or `hiddenChats`.
+14. A caller under a `deletedAccounts/{uid}` marker: getting or listing chats, reading messages, sending, unsending, creating a chat with a friend whose friendship is still stored, reading or writing their own markers. The other student keeps reading.
+15. An association, unverified or verified, with or without an `@epfl.ch` email, even named in a chat and a friendship stored without the rules: nothing, no unsend and no marker either.
+16. An unverified `@epfl.ch` account, a token without `email_verified`, a verified non-EPFL account with a student's profile, a signed-out user: nothing, no unsend and no marker either.
 17. Any other subcollection of a chat.
 18. The loser of a first-message race: its transaction fails as a whole (`ALREADY_EXISTS` on the emulator) and stores nothing; run again, it adds only its message.
+19. Unsending another student's message (by the other participant or a third student), or a message whose `senderId` is empty (its author's account was deleted), by anyone.
+20. An unsend that changes more than the text, or the text into anything but `""`: another text, a blank one (`" "`, a line break), `null`, a number, a boolean, a list, the field removed; the text of an unsent message restored or replaced; `senderId` emptied or changed, `createdAt` changed, removed or set to the server's time again; a field added (`deletedAt`, a flag).
+21. A group chat message changed or deleted by anyone, its sender included: group chat keeps its rules.
+22. Reading another student's markers, by `get` or list, whether or not they exist; writing, overwriting or deleting them; deleting one's own marker.
+23. A marker for a chat that doesn't exist, for another pair's chat, or under an ID that isn't the exact pair ID (unsorted, a trailing `~`, one UID), even with a chat stored there; a marker with another field, no `hiddenUpTo`, a future time, or a value that isn't a timestamp (a string, a number, `null`).
 
 ## 4. Key flows
 
@@ -712,7 +746,8 @@ Rules live in `firebase/firestore/firestore.rules` and are tested against the Fi
 | `matchRequests` | sender and recipient | sender | recipient responds | #26, #27 | 🟦 PB |
 | `friendships/{pairId}` | the two students only (`isStudent()`, own UID in `uids`, not under a `deletedAccounts/{uid}` marker); a list only with `uids array-contains` the caller's UID, so no listing of other students | the sender only (`requestedBy` = own UID, in `uids`, not under a `deletedAccounts/{uid}` marker): two different UIDs, sorted, the document ID built from them, `status == "pending"`, server `createdAt`, only these fields; the other UID has a `publicProfiles/{uid}`, so associations and deleted accounts can't be added. Per operation, so a rate limit and a blocks check fit later | update: the recipient only (in `uids`, not `requestedBy`), `pending` → `accepted` with server `acceptedAt`, nothing else changes, and neither student under a `deletedAccounts/{uid}` marker; delete: either student (decline, cancel, remove), not under a marker. A deleted account's still-valid token (up to 1 h) can't read or change its friendships while `deleteAccount` cleans them up; the cleanup uses the Admin SDK. No association access | #338 | 🟦 PB |
 | `chats/{pairId}` | the two students the document ID names, an ID that is exactly `{lowerUid}~{higherUid}` (`isStudent()`, not under a `deletedAccounts/{uid}` marker), also before it exists (read as missing); a list only with `uids array-contains` the caller's UID, so no listing of other students' chats | one of the two, while `friendships/{pairId}` exists with `status == "accepted"`: the ID is exactly two different, non-empty UIDs in sorted order joined by one `~` (no other spelling of the pair, such as a trailing `~`), and `uids` is exactly those two in that order. Per operation, so a blocks check and a rate limit fit later | none by a client, not even rewriting the same content; `deleteAccount` (Admin SDK) takes a deleted account's UID out of `uids` while the other student still has an account, and otherwise deletes the messages, then the chat, with `uids` unchanged until then. No association access | #365 | 🟦 PB |
-| `chats/{pairId}/messages/{id}` | the two students the document ID names, friends or not (the conversation stays readable after unfriending), not under a deletion marker; no query across chats | one of the two, while friends (`accepted`), with the chat document existing after the write: exactly `senderId` = own UID, `text` 1–1000, server `createdAt`. Per operation, so rate limiting fits later. No association access | no client edits/deletes; account cleanup replaces `senderId` with an empty string, preserving text/time (#241's collection-group query already covers it) | #365 | 🟦 PB |
+| `chats/{pairId}/messages/{id}` | the two students the document ID names, friends or not (the conversation stays readable after unfriending), not under a deletion marker; no query across chats | one of the two, while friends (`accepted`), with the chat document existing after the write: exactly `senderId` = own UID, `text` 1–1000, server `createdAt`. Per operation, so rate limiting fits later. No association access | update: only unsend, by the sender of their own message, while friends (a proposal), not under a deletion marker: `text` becomes `''` and nothing else changes; no other edit and no delete. Account cleanup replaces `senderId` with an empty string, preserving text/time (#241's collection-group query already covers it) | #365 | 🟦 PB |
+| `users/{uid}/hiddenChats/{pairId}` | its owner only (`isStudent()`, own UID, not under a `deletedAccounts/{uid}` marker), one marker or a list of their own; nobody else, whether a marker exists or not; no collection-group query | its owner, for an existing chat whose ID is exactly the pair ID with their UID (`isPairIdOf`): exactly `hiddenUpTo`, a timestamp no later than the server's time | update: as create (deleting the chat again); no client delete; `deleteAccount` (Admin SDK) deletes the account's markers. No association access | #365 | 🟦 PB |
 | Storage `events/{id}/album/**` | event group members | checked-in members, size and type limits | uploader | album | 🟦 PB |
 
 **Event capacity rule** (decision 21, #372; built by #373). The sketch below replaces the `allow create` and `allow update` of `match /events/{eventId}` and the `allow create` and `allow delete` of its `match /attendees/{uid}`; nothing else in the rules changes. The two documents are tied in both directions: the event accepts a counter change only with the caller's own registration (`exists` / `existsAfter`), and a registration is accepted only with the counter change (`getAfter`), as groups tie `memberUids` to the `groupMembers` marker (#232). A student therefore changes the counter only by their own one place, and no client can skip or fake the count. The rule checks the capacity itself, against the counter as it is stored when the write commits, so the app's write doesn't have to read the event first: it sends `FieldValue.increment(±1)` (decision 21, "The app's transactions").
