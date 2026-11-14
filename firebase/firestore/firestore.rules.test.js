@@ -1,7 +1,7 @@
 // Contributors: OpenAI Codex (deleted-token chat reads and immutable deleted authors, #241).
 // Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143; publicProfiles/{uid} tests, written test-first, #229; reads by ID only and the fixed section and year lists, after review, #229; private edits keep the public copy, and deleted accounts stay deleted, after review, #229; interests from the fixed list, test-first, #230; any code read in the list check, after review, #230); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121; deleted accounts can't register, #275); Claude (Opus 5.5, Anthropic) (event group and groupMembers marker tests, #232, with more after review; group chat message tests, #237, and a deleted account's messages, after review).
 // Contributors: Claude (Opus 5.5, Anthropic) (a non-EPFL association in allowedUids can't run My events' private query, #320).
-// Contributors: Claude (Fable 5.2, Anthropic) (other shapes and accounts denied the own-groups query, and the latest-message query of the chat list, #363).
+// Contributors: Claude (Fable 5.2, Anthropic) (other shapes and accounts denied the own-groups query, and the latest-message query of the chat list, #363; groups documents outside an event, and more accounts and membership changes on the latest-message query, from a test audit).
 const { after, before, beforeEach, test } = require("node:test");
 // Contributors: OpenAI Codex (deleted-token membership creation/join regression, #241).
 const { readFileSync } = require("node:fs");
@@ -2626,6 +2626,30 @@ for (const [name, listing] of [
   });
 }
 
+// The cross-event rule matches a `groups` collection anywhere, but grants only that query. Only
+// an admin could store a `groups` document outside an event; the own-groups query would then
+// return it, which is why FirestoreGroupRepository.observeMyGroups skips such a document.
+test("outside an event, a groups document is only listed by its member's own query, never fetched or written", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "clubs/c1/groups/stray"), {
+      capacity: 4,
+      memberUids: ["u1"],
+      createdBy: "u1",
+      createdAt: Timestamp.fromMillis(1_790_000_000_000),
+    });
+  });
+  const db = studentDb("u1");
+  const mine = await assertSucceeds(getDocs(query(
+    collectionGroup(db, "groups"), where("memberUids", "array-contains", "u1"),
+  )));
+  expectIds(mine.docs.map((group) => group.ref.path), ["clubs/c1/groups/stray"]);
+  await assertFails(getDoc(doc(db, "clubs/c1/groups/stray")));
+  await assertFails(getDocs(collection(db, "clubs/c1/groups")));
+  await assertFails(setDoc(doc(db, "clubs/c1/groups/new"), newGroup("u1")));
+  await assertFails(updateDoc(doc(db, "clubs/c1/groups/stray"), { memberUids: ["u1", "u2"] }));
+  await assertFails(deleteDoc(doc(db, "clubs/c1/groups/stray")));
+});
+
 for (const [name, uid, db] of [
   ["a verified association", "verifiedClub", () => associationDb("verifiedClub")],
   ["an unverified association", "club", () => associationDb("club")],
@@ -3043,6 +3067,50 @@ test("the latest message is denied to whoever can't read the chat", async () => 
   await assertSucceeds(getDocs(latestMessageOf(studentDb("u4"), "e1", "g1")));
   await seedDeletedAccount("u4");
   await assertFails(getDocs(latestMessageOf(studentDb("u4"), "e1", "g1")));
+});
+
+// The accounts that can't read a chat can't read its latest message either, even listed in the
+// group. Each time another member reads it, so the denial comes from the account alone.
+for (const [name, uid, db, seed] of [
+  ["an unverified association", "club", () => associationDb("club"), async () => {}],
+  ["a verified @epfl.ch association", "epflClub", () => epflAssociationDb("epflClub"),
+    () => seedEpflAssociation("epflClub", true)],
+  ["an unverified @epfl.ch student", "u1", () => firestoreAs("student@epfl.ch", false, "u1"),
+    async () => {}],
+  ["a student without an email_verified claim", "u1",
+    () => env.authenticatedContext("u1", { email: "student@epfl.ch" }).firestore(),
+    async () => {}],
+  ["a verified non-EPFL user who isn't an association", "u1",
+    () => firestoreAs("student@gmail.com", true, "u1"), async () => {}],
+  ["a signed-out user", "u1", () => env.unauthenticatedContext().firestore(), async () => {}],
+]) {
+  test(`${name} listed in a group can't read its latest message`, async () => {
+    await seed();
+    await seedGroup("e1", "g1", [uid, "u2"]);
+    await seedMessage("e1", "g1", "m1", "u2");
+    await assertFails(getDocs(latestMessageOf(db(), "e1", "g1")));
+    await assertSucceeds(getDocs(latestMessageOf(studentDb("u2"), "e1", "g1")));
+  });
+}
+
+test("a member reads the latest message without the event, and no longer once they left", async () => {
+  // A private event the member was removed from, and an event that was deleted.
+  await seedGroup("private", "g1", ["u2", "u3"]);
+  await seedGroup("gone", "old", ["u3"]);
+  await seedMessage("private", "g1", "m1", "u2");
+  await seedMessage("gone", "old", "m2", "u3");
+  await removeU3FromPrivateEvent();
+  const db = studentDb("u3");
+  const kept = await assertSucceeds(getDocs(latestMessageOf(db, "private", "g1")));
+  expectIds(kept.docs.map((message) => message.id), ["m1"]);
+  const orphaned = await assertSucceeds(getDocs(latestMessageOf(db, "gone", "old")));
+  expectIds(orphaned.docs.map((message) => message.id), ["m2"]);
+
+  await assertSucceeds(leaveAs(db, "u3", "private", "g1"));
+  await assertFails(getDocs(latestMessageOf(db, "private", "g1")));
+  // The last member leaving deletes the group; its messages stay, unreadable.
+  await assertSucceeds(leaveAs(db, "u3", "gone", "old"));
+  await assertFails(getDocs(latestMessageOf(db, "gone", "old")));
 });
 
 test("a student who isn't in the group can't read its chat, even if they can read the event", async () => {
