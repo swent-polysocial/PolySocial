@@ -1,5 +1,6 @@
 // Contributors: Claude (Fable 5.2, Anthropic) wrote this end-to-end test of going to an event,
-// joining a group and sending a chat message, #380.
+// joining a group and sending a chat message, #380; Claude (Opus 5.5, Anthropic) reordered its
+// group fixtures.
 package com.polysocial.endtoend
 
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -146,10 +147,13 @@ class FindGroupAndChatEndToEndTest {
       FakeRegistrationRepository(currentUid = UID).apply { readableEventIds += PARTY.id }
   private val fakeGroups =
       FakeGroupRepository(currentUid = UID).apply { readableEventIds += PARTY.id }
-  // Stored oldest first, which is neither the ranked order nor its reverse.
-  private val sameSectionGroup = fakeGroups.seedGroup(PARTY.id, listOf(NOAH.uid))
+  // Stored oldest first, which is neither the ranked order nor its reverse. The fake numbers the
+  // groups in this order and equal scores rank by ID, so the stranger's group gets the lowest ID:
+  // if the shared section stopped counting, it would tie with the same-section group and come
+  // before it.
   private val strangerGroup = fakeGroups.seedGroup(PARTY.id, listOf(LINA.uid))
   private val bestGroup = fakeGroups.seedGroup(PARTY.id, listOf(JULIA.uid, MARC.uid))
+  private val sameSectionGroup = fakeGroups.seedGroup(PARTY.id, listOf(NOAH.uid))
   private val fullGroup = fakeGroups.seedGroup(PARTY.id, FULL_GROUP.map { it.uid })
   private val fakeMessages =
       FakeMessageRepository(currentUid = UID).apply {
@@ -258,7 +262,7 @@ class FindGroupAndChatEndToEndTest {
     // Best match first, whatever order the groups were formed in.
     assertEquals(
         listOf(bestGroup.id, sameSectionGroup.id, strangerGroup.id),
-        listOf(sameSectionGroup.id, strangerGroup.id, bestGroup.id).sortedBy {
+        listOf(strangerGroup.id, bestGroup.id, sameSectionGroup.id).sortedBy {
           node(FindGroupTags.card(it)).fetchSemanticsNode().positionInRoot.y
         },
     )
