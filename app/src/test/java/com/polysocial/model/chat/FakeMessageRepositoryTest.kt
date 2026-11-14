@@ -1,4 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #237).
+// Contributors: Claude (Fable 5.2, Anthropic) (tests of a group's latest message, #363).
 package com.polysocial.model.chat
 
 import java.time.Instant
@@ -200,6 +201,63 @@ class FakeMessageRepositoryTest {
     repository.readFromCache = true
 
     assertEquals(MessagesResult.Success(emptyList(), fromCache = true), messages())
+  }
+
+  @Test
+  fun observeLatestMessage_emitsTheGroupsNewestMessage_onlyWhenItChanges() = runTest {
+    repository.setMembers(EVENT, OTHER_GROUP, setOf("student"))
+    val time = Instant.parse("2030-01-01T10:00:00Z")
+    val results = mutableListOf<LatestMessageResult>()
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) {
+          repository.observeLatestMessage(EVENT, GROUP).toList(results)
+        }
+
+    val first = repository.seedMessage(EVENT, GROUP, "b", "other", "First", time)
+    // Neither an older message nor another group's changes the newest one.
+    repository.seedMessage(EVENT, GROUP, "a", "other", "Older", time.minusSeconds(60))
+    repository.sendMessage(EVENT, OTHER_GROUP, "Elsewhere")
+    repository.sendMessage(EVENT, GROUP, "Newest")
+    collecting.cancel()
+
+    assertEquals(
+        listOf(
+            LatestMessageResult.Loading,
+            LatestMessageResult.Success(null, fromCache = false),
+            LatestMessageResult.Success(first, fromCache = false),
+            LatestMessageResult.Success(repository.messagesOf(EVENT, GROUP).last(), false),
+        ),
+        results,
+    )
+    assertEquals("Newest", (results.last() as LatestMessageResult.Success).message?.text)
+  }
+
+  @Test
+  fun observeLatestMessage_failsLikeTheChat() = runTest {
+    suspend fun latest(groupId: String = GROUP) =
+        repository.observeLatestMessage(EVENT, groupId).toList()
+    val unexpected = listOf(LatestMessageResult.Loading, LatestMessageResult.UnexpectedError)
+
+    assertEquals(unexpected, latest(groupId = "unknown"))
+    assertEquals(unexpected, latest(groupId = "groups/other"))
+    repository.readFailure = FakeMessageRepository.ReadFailure.NETWORK
+    assertEquals(listOf(LatestMessageResult.Loading, LatestMessageResult.NetworkError), latest())
+    repository.readFailure = FakeMessageRepository.ReadFailure.UNEXPECTED
+    assertEquals(unexpected, latest())
+    repository.readFailure = null
+    repository.currentUid = null
+    assertEquals(unexpected, latest())
+  }
+
+  @Test
+  fun observeLatestMessage_reportsTheCacheFlag() = runTest {
+    repository.readFromCache = true
+    val sent = repository.seedMessage(EVENT, GROUP, "a", "other", "Hi", Instant.EPOCH)
+
+    assertEquals(
+        LatestMessageResult.Success(sent, fromCache = true),
+        repository.observeLatestMessage(EVENT, GROUP).drop(1).first(),
+    )
   }
 
   private companion object {

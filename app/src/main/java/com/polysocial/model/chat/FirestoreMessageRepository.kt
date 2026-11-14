@@ -1,6 +1,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (drafted the Firestore group chat repository, #237).
 // Contributors: OpenAI Codex (made explicit message IDs safe to retry, #238).
-// Contributors: Claude (Fable 5.2, Anthropic) (shared the message listener, #363).
+// Contributors: Claude (Fable 5.2, Anthropic) (shared the message listener and read a group's
+// latest message with limit(1), #363).
 package com.polysocial.model.chat
 
 import com.google.firebase.firestore.CollectionReference
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -74,6 +76,17 @@ class FirestoreMessageRepository(
    */
   override fun observeMessages(eventId: String, groupId: String): Flow<MessagesResult> =
       listen(eventId, groupId) { it.orderBy(MESSAGE_CREATED_AT) }
+
+  /**
+   * The same listener as [observeMessages] on the newest message only: `createdAt` descending with
+   * `limit(1)`, so a chat list reads one document per group. No message, or a newest message that
+   * can't be read, is a null [LatestMessageResult.Success.message].
+   */
+  override fun observeLatestMessage(eventId: String, groupId: String): Flow<LatestMessageResult> =
+      listen(eventId, groupId) {
+            it.orderBy(MESSAGE_CREATED_AT, Query.Direction.DESCENDING).limit(1)
+          }
+          .map { it.toLatestMessage() }
 
   /**
    * A snapshot listener on [query] of the group's messages as a flow, as [observeMessages]
