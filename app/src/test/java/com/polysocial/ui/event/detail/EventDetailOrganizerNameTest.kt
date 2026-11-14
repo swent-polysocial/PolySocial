@@ -2,8 +2,8 @@
 // Contributors: Claude Fable 5.2 (testing pass: viewers whose registration isn't known, reads that
 // overlap or outlive the event's change, and no state naming the organizer to a student who isn't
 // going, #281).
-// Contributors: Claude (Opus 5.5, Anthropic) (returns to the detail after its screen stopped, #281's
-// review).
+// Contributors: Claude (Opus 5.5, Anthropic) (returns to the detail after its screen stopped, and
+// no read again once back online unless the last one failed for the network, #281's review).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -380,7 +380,7 @@ class EventDetailOrganizerNameTest {
   }
 
   @Test
-  fun aNameReadFromTheCacheOffline_staysWhileItIsReadAgainOnline() = runTest {
+  fun aNameReadFromTheCacheOffline_staysOnceBackOnline_withoutBeingReadAgain() = runTest {
     registrations.seedRegistration(EVENT, ME)
     network.online = false
     events.readFromCache = true
@@ -388,7 +388,7 @@ class EventDetailOrganizerNameTest {
     val vm = open(profileRepository = slow)
     assertEquals(CREATOR_NAME, vm.loaded.organizerName)
 
-    // Back online, the name is read again: the one already shown isn't taken away meanwhile.
+    // Back online, the name already read stays, with no server read (billed) to get it again.
     slow.answer = CompletableDeferred()
     network.online = true
     events.readFromCache = false
@@ -396,12 +396,38 @@ class EventDetailOrganizerNameTest {
     runCurrent()
 
     assertFalse(vm.loaded.isOffline)
-    assertEquals(2, slow.reads)
+    assertEquals(1, slow.reads)
     assertEquals(CREATOR_NAME, vm.loaded.organizerName)
 
-    slow.answer.complete(Unit)
+    // Nor when the connection is lost again.
+    network.online = false
+    events.readFromCache = true
+    events.seed()
     runCurrent()
+
+    assertTrue(vm.loaded.isOffline)
+    assertEquals(1, slow.reads)
     assertEquals(CREATOR_NAME, vm.loaded.organizerName)
+  }
+
+  @Test
+  fun aProfileThatFailedForAnotherReason_isntReadAgainOnceBackOnline() = runTest {
+    // A malformed profile, say: unlike the network, coming back online doesn't change it.
+    registrations.seedRegistration(EVENT, ME)
+    network.online = false
+    events.readFromCache = true
+    profiles.failure = FakePublicProfileRepository.Failure.Unexpected
+    val vm = open()
+    assertNull(vm.loaded.organizerName)
+
+    network.online = true
+    events.readFromCache = false
+    events.seed()
+    runCurrent()
+
+    assertFalse(vm.loaded.isOffline)
+    assertNull(vm.loaded.organizerName)
+    assertEquals(listOf(CREATOR), readUids)
   }
 
   @Test
