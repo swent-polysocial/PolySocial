@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (drafted the Firestore group chat repository, #237).
 // Contributors: OpenAI Codex (made explicit message IDs safe to retry, #238).
+// Contributors: Claude (Fable 5.2, Anthropic) (shared the message listener, #363).
 package com.polysocial.model.chat
 
 import com.google.firebase.firestore.CollectionReference
@@ -7,6 +8,7 @@ import com.google.firebase.firestore.DocumentSnapshot.ServerTimestampBehavior
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.MetadataChanges
+import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
 import com.google.firebase.firestore.TransactionOptions
 import com.polysocial.model.auth.AuthRepository
@@ -70,7 +72,18 @@ class FirestoreMessageRepository(
    * snapshot that can't be read end the flow instead of throwing. The flow is conflated, like the
    * other repositories' listeners.
    */
-  override fun observeMessages(eventId: String, groupId: String): Flow<MessagesResult> {
+  override fun observeMessages(eventId: String, groupId: String): Flow<MessagesResult> =
+      listen(eventId, groupId) { it.orderBy(MESSAGE_CREATED_AT) }
+
+  /**
+   * A snapshot listener on [query] of the group's messages as a flow, as [observeMessages]
+   * describes: its results keep the query's order.
+   */
+  private fun listen(
+      eventId: String,
+      groupId: String,
+      query: (CollectionReference) -> Query,
+  ): Flow<MessagesResult> {
     if (!isReadableEventId(eventId) || !isReadableEventId(groupId)) {
       return flowOf(MessagesResult.Loading, MessagesResult.UnexpectedError)
     }
@@ -91,9 +104,9 @@ class FirestoreMessageRepository(
                 val user = auth.currentUser()
                 if (user == null) fail(null)
                 user?.let {
-                  messages(eventId, groupId).orderBy(MESSAGE_CREATED_AT).addSnapshotListener(
-                      MetadataChanges.INCLUDE
-                  ) { snapshot, error ->
+                  query(messages(eventId, groupId)).addSnapshotListener(MetadataChanges.INCLUDE) {
+                      snapshot,
+                      error ->
                     if (error != null || snapshot == null) fail(error)
                     else
                         try {
