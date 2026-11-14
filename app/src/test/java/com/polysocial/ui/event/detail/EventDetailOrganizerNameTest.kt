@@ -135,7 +135,7 @@ class EventDetailOrganizerNameTest {
     assertEquals(CREATOR_NAME, vm.loaded.organizerName)
 
     screen.cancel()
-    advanceTimeBy(LONGER_THAN_THE_DETAIL_LISTENS_MILLIS)
+    advanceTimeBy(EventDetailViewModel.STOP_TIMEOUT_MILLIS + 1_000)
     runCurrent()
     away()
     runCurrent()
@@ -665,7 +665,5 @@ class EventDetailOrganizerNameTest {
     const val CREATOR_NAME = "Olivia Organizer"
     /** The name the organizer changed to, which only a newer read answers. */
     const val NEW_NAME = "Olivia Renamed"
-    /** Longer than the 5 s the detail keeps listening once its screen is gone. */
-    const val LONGER_THAN_THE_DETAIL_LISTENS_MILLIS = 6_000L
   }
 }

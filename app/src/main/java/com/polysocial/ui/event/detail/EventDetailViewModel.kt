@@ -65,11 +65,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
@@ -266,11 +266,15 @@ private fun EventDetailUiState.Loaded.namedOrganizer(): String? {
 }
 
 /**
- * The organizer whose name is read for the viewer ([namedOrganizer]). [offline] isn't used by the
- * read: it only makes going back online a new request, so a name whose read failed for the network
- * is read again.
+ * The organizer whose name is read for the viewer ([namedOrganizer]). [offline] isn't sent with the
+ * read: it makes going back online a new request, so a read that failed for the network is tried
+ * again then ([OrganizerRead.answers]).
  */
 private data class OrganizerRequest(val uid: String, val offline: Boolean)
+
+/** The organizer whose name this state's viewer may see ([namedOrganizer]), if any. */
+private fun EventDetailUiState.Loaded.organizerRequest() =
+    namedOrganizer()?.let { OrganizerRequest(it, isOffline) }
 
 /**
  * The answer to a read of the name of the organizer [uid]: [name], null when the profile is
@@ -279,14 +283,14 @@ private data class OrganizerRequest(val uid: String, val offline: Boolean)
 private data class OrganizerRead(
     val uid: String,
     val name: String?,
-    val failedForNetwork: Boolean,
+    val failedForNetwork: Boolean = false,
 ) {
   /**
-   * Whether this answer still holds for [request]: the same organizer, unless the read failed for
-   * the network and the event no longer comes from the offline cache, so it may work now.
+   * Whether this answer still holds for [request]: the same organizer, and a read that didn't fail
+   * for the network, or did while the event still comes from the offline cache.
    */
   fun answers(request: OrganizerRequest) =
-      uid == request.uid && !(failedForNetwork && !request.offline)
+      uid == request.uid && (request.offline || !failedForNetwork)
 }
 
 /** The organizer's name for the viewer: [name] once read, and [reading] while it is read. */
@@ -414,37 +418,10 @@ constructor(
   private val watchesGroup = MutableStateFlow(false)
 
   /**
-   * Whose name the event that shows needs, null when the viewer may see nobody's. It is cleared
-   * whenever [uiState] stops, so when the screen comes back nothing is read before the event and
-   * the registrations say again who may see it.
+   * The last answered read of the organizer's name, kept while this ViewModel lives, also while the
+   * screen is stopped.
    */
-  private val organizerRequest = MutableStateFlow<OrganizerRequest?>(null)
-
-  /** The last answered read of the organizer's name, kept while the screen is stopped. */
   private var organizerRead: OrganizerRead? = null
-
-  /**
-   * The name of the organizer in [organizerRequest], from their public profile; null when there is
-   * nobody to name, while it is read ([OrganizerName.reading]), and when the profile is missing,
-   * unreadable or has no name. It is read once and kept, so the screen coming back, the
-   * registration cancelled and made again or the connection changing costs no read
-   * ([OrganizerRead.answers]).
-   */
-  @OptIn(ExperimentalCoroutinesApi::class)
-  private val organizerName: Flow<OrganizerName> =
-      organizerRequest
-          .transformLatest { request ->
-            val known = organizerRead?.takeIf { request != null && it.answers(request) }
-            when {
-              request == null -> emit(OrganizerName())
-              known != null -> emit(OrganizerName(known.name))
-              else -> {
-                emit(OrganizerName(reading = true))
-                emit(OrganizerName(readOrganizer(request.uid).also { organizerRead = it }.name))
-              }
-            }
-          }
-          .onCompletion { organizerRequest.value = null }
 
   /** The attendance this screen saved, until the registrations' next answer replaces it. */
   private val savedAttendance = MutableStateFlow<Attendance?>(null)
@@ -537,20 +514,7 @@ constructor(
                 state.copy(attendance = attendance, isSavingAttendance = saving)
             else state
           }
-          .onEach { state ->
-            val loaded = state as? EventDetailUiState.Loaded
-            organizerRequest.value =
-                loaded?.namedOrganizer()?.let { OrganizerRequest(it, loaded.isOffline) }
-          }
-          .combine(organizerName) { state, organizer ->
-            // Checked again here, so the name goes at once when the registration is cancelled.
-            if (state is EventDetailUiState.Loaded && state.namedOrganizer() != null)
-                state.copy(
-                    organizerName = organizer.name,
-                    isReadingOrganizerName = organizer.reading,
-                )
-            else state
-          }
+          .withOrganizerName()
           .onEach(::initReminderOnce)
           .combine(reminderUi) { state, reminder ->
             if (state is EventDetailUiState.Loaded && !state.isOrganizer)
@@ -573,6 +537,52 @@ constructor(
               SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
               EventDetailUiState.Loading,
           )
+
+  /**
+   * These states with the organizer's name, for the viewers [namedOrganizer] allows (#281). Whose
+   * name they need is worked out again on each run of [uiState], so when the screen comes back
+   * nothing is read before the event and the registrations say again who may see it.
+   */
+  private fun Flow<EventDetailUiState>.withOrganizerName(): Flow<EventDetailUiState> = flow {
+    val requests = MutableStateFlow<OrganizerRequest?>(null)
+    emitAll(
+        this@withOrganizerName.onEach {
+              requests.value = (it as? EventDetailUiState.Loaded)?.organizerRequest()
+            }
+            .combine(organizerNames(requests)) { state, organizer ->
+              // Checked again here, so the name goes at once when the registration is cancelled.
+              if (state is EventDetailUiState.Loaded && state.namedOrganizer() != null)
+                  state.copy(
+                      organizerName = organizer.name,
+                      isReadingOrganizerName = organizer.reading,
+                  )
+              else state
+            }
+    )
+  }
+
+  /**
+   * The name of the organizer in each of [requests], from their public profile: none when there is
+   * nobody to name, [OrganizerName.reading] while it is read, and none when the profile is missing,
+   * unreadable or has no name. It is read once and kept, so the screen coming back, the
+   * registration cancelled and made again or the connection changing costs no read
+   * ([OrganizerRead.answers]).
+   */
+  @OptIn(ExperimentalCoroutinesApi::class)
+  private fun organizerNames(requests: Flow<OrganizerRequest?>): Flow<OrganizerName> =
+      requests.transformLatest { request ->
+        if (request == null) {
+          emit(OrganizerName())
+          return@transformLatest
+        }
+        val known = organizerRead?.takeIf { it.answers(request) }
+        if (known != null) {
+          emit(OrganizerName(known.name))
+        } else {
+          emit(OrganizerName(reading = true))
+          emit(OrganizerName(readOrganizer(request.uid).also { organizerRead = it }.name))
+        }
+      }
 
   /** Asks once for the name of the association that publishes the event in [state], if any. */
   private fun loadAssociationName(state: EventDetailUiState) {
@@ -665,10 +675,10 @@ constructor(
   private suspend fun readOrganizer(uid: String): OrganizerRead =
       when (val result = profiles.getPublicProfile(uid)) {
         is PublicProfileResult.Found ->
-            OrganizerRead(uid, result.profile.displayName.ifBlank { null }, false)
+            OrganizerRead(uid, result.profile.displayName.ifBlank { null })
         PublicProfileResult.NetworkError -> OrganizerRead(uid, null, failedForNetwork = true)
         PublicProfileResult.NotFound,
-        PublicProfileResult.UnexpectedError -> OrganizerRead(uid, null, failedForNetwork = false)
+        PublicProfileResult.UnexpectedError -> OrganizerRead(uid, null)
       }
 
   /** Counts the attendees again after the count failed (tapping the unavailable count). */
@@ -924,7 +934,7 @@ constructor(
     const val EVENT_ID_ARG = "eventId"
 
     /** Keeps listening this long after the screen stops, so a rotation doesn't restart the read. */
-    private const val STOP_TIMEOUT_MILLIS = 5_000L
+    internal const val STOP_TIMEOUT_MILLIS = 5_000L
 
     /**
      * How long a read waits for the server while online, from its start, before the screen gives up
