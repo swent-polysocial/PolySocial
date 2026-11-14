@@ -1,5 +1,5 @@
 // Contributors: Claude (wrote these tests, #128; large font sizes after a test audit, #128; the
-// badge clear of the title's letters, #250).
+// badge clear of an unaccented title's letters, #250).
 package com.polysocial.ui.map
 
 import android.graphics.Color
@@ -153,11 +153,13 @@ class MapAssociationNamesScreenTest {
   }
 
   // Like Figma's, the 22 dp badge is taller than the category line it is centered on, so it reaches
-  // into the empty top of the title's line (#128). It must stay clear of the title's letters.
+  // into the top of the title's line (#128). It stays clear of an unaccented title's letters; an
+  // accent on a capital right under it (the É of "École") can touch its bottom by about 1 dp, as
+  // in Figma (#250).
   @Config(qualifiers = "w360dp-h800dp-xxhdpi")
   @GraphicsMode(GraphicsMode.Mode.NATIVE)
   @Test
-  fun theBadge_staysClearOfTheTitlesLetters() {
+  fun theBadge_staysClearOfAnUnaccentedTitle() {
     showPreviewOf(party, mapOf(CLUB_UID to CLUB_NAME), isTonight = true)
 
     assertBadgeAboveTheTitlesLetters()
@@ -168,7 +170,7 @@ class MapAssociationNamesScreenTest {
   @Config(qualifiers = "w480dp-h900dp-xxhdpi", fontScale = 2.0f)
   @GraphicsMode(GraphicsMode.Mode.NATIVE)
   @Test
-  fun atTheLargestFontSize_theBadgeStaysClearOfTheTitlesLetters() {
+  fun atTheLargestFontSize_theBadgeStaysClearOfAnUnaccentedTitle() {
     showPreviewOf(party, mapOf(CLUB_UID to CLUB_NAME), isTonight = true)
 
     assertEquals(1, categoryLayout().lineCount)
