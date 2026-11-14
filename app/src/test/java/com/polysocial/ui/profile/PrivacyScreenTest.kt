@@ -7,6 +7,8 @@
 // Contributors: Claude (Fable 5.2, Anthropic) (the notice's date for the 7-day cleanup text, #226).
 // Contributors: Claude (Opus 5.5, Anthropic) (the 7-day cleanup text in the deletion section, after
 // review, #226).
+// Contributors: Claude Fable 5.2 (the notice's new date and its sentence on who sees a student
+// organizer's name, #281).
 package com.polysocial.ui.profile
 
 import android.content.Context
@@ -25,6 +27,7 @@ import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
@@ -205,6 +208,21 @@ class PrivacyScreenTest {
     rule.onNodeWithText(text(R.string.privacy_chats_body)).assertIsDisplayed()
     rule.onNodeWithTag(C.Tag.privacy_full_notice).performScrollTo().performClick()
     rule.onNodeWithTag(C.Tag.privacy_notice_date).assertTextEquals("Updated 14 November 2026")
+  }
+
+  @Test
+  fun fullNoticeSaysWhoSeesAStudentOrganizersName_andThatItIsOnlyADisplayLimit() {
+    openFromProfile()
+    rule.onNodeWithTag(C.Tag.privacy_full_notice).performScrollTo().performClick()
+    val events = rule.onNodeWithText(text(R.string.privacy_notice_events_body))
+    events.assertTextContains(
+        "only to the event's organizers and to students who are going",
+        substring = true,
+    )
+    events.assertTextContains(
+        "any verified EPFL student can read a public profile by its identifier",
+        substring = true,
+    )
   }
 
   private fun checkUnavailable(tag: String) {
