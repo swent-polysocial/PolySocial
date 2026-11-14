@@ -1,5 +1,6 @@
 // Contributors: Claude Fable 5.2 (wrote these tests of who gets a student organizer's name, #281).
-// Contributors: Claude Fable 5.2 (testing pass: viewers whose registration isn't known, #281).
+// Contributors: Claude Fable 5.2 (testing pass: viewers whose registration isn't known, and reads
+// that overlap, #281).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -20,6 +21,7 @@ import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.PublicProfileResult
+import com.polysocial.model.user.PublicProfilesResult
 import com.polysocial.ui.event.CLUB_NAME
 import com.polysocial.ui.event.STUDENT_UID
 import com.polysocial.ui.event.associationEvent
@@ -121,6 +123,17 @@ class EventDetailOrganizerNameTest {
     }
   }
 
+  /** Profiles whose reads each wait for their own answer, in [reads], in the order asked. */
+  private class QueuedProfiles : PublicProfileRepository {
+    val reads = mutableListOf<CompletableDeferred<PublicProfileResult>>()
+
+    override suspend fun getPublicProfile(uid: String): PublicProfileResult =
+        CompletableDeferred<PublicProfileResult>().also { reads += it }.await()
+
+    override suspend fun getPublicProfiles(uids: Collection<String>) =
+        PublicProfilesResult.Found(emptyMap())
+  }
+
   /** Registrations that are only read once [answer] completes, like a slow connection. */
   private inner class SlowRegistrations : RegistrationRepository by registrations {
     val answer = CompletableDeferred<Unit>()
@@ -130,6 +143,10 @@ class EventDetailOrganizerNameTest {
       emitAll(registrations.observeMyRegistrations())
     }
   }
+
+  /** The creator's profile as a read's answer, under [name]. */
+  private fun named(name: String) =
+      PublicProfileResult.Found(PublicProfile(CREATOR, name, "IN", "BA3"))
 
   @Test
   fun aStudentRegisteredForTheEvent_getsItsOrganizersName() = runTest {
@@ -402,11 +419,62 @@ class EventDetailOrganizerNameTest {
     assertEquals(listOf(CREATOR), readUids)
   }
 
+  @Test
+  fun registeringAgainWhileTheFirstReadRuns_keepsOnlyTheLatestReadsName() = runTest {
+    val queued = QueuedProfiles()
+    val vm = open(profileRepository = queued)
+
+    vm.onImGoing()
+    runCurrent()
+    vm.onCancelRegistration()
+    runCurrent()
+    vm.onImGoing()
+    runCurrent()
+    assertEquals(2, queued.reads.size)
+    assertNull(vm.loaded.organizerName)
+
+    queued.reads[1].complete(named(NEW_NAME))
+    runCurrent()
+    assertEquals(NEW_NAME, vm.loaded.organizerName)
+
+    // The first read's late answer, an older copy of the profile, changes nothing.
+    queued.reads[0].complete(named(CREATOR_NAME))
+    runCurrent()
+    assertEquals(NEW_NAME, vm.loaded.organizerName)
+  }
+
+  @Test
+  fun aReadReplacedWhenBackOnline_cantOverwriteTheNewOnesName() = runTest {
+    registrations.seedRegistration(EVENT, ME)
+    network.online = false
+    events.readFromCache = true
+    val queued = QueuedProfiles()
+    val vm = open(profileRepository = queued)
+    assertEquals(1, queued.reads.size)
+
+    // Back online, the name is read again while the offline read still waits.
+    network.online = true
+    events.readFromCache = false
+    events.seed()
+    runCurrent()
+    assertEquals(2, queued.reads.size)
+    queued.reads[1].complete(named(NEW_NAME))
+    runCurrent()
+    assertEquals(NEW_NAME, vm.loaded.organizerName)
+
+    // The offline read answers last, with the copy it had: it was replaced, so it changes nothing.
+    queued.reads[0].complete(named(CREATOR_NAME))
+    runCurrent()
+    assertEquals(NEW_NAME, vm.loaded.organizerName)
+  }
+
   private companion object {
     const val EVENT = "study"
     const val ME = "me"
     const val MY_NAME = "Sam Student"
     const val CREATOR = STUDENT_UID
     const val CREATOR_NAME = "Olivia Organizer"
+    /** The name the organizer changed to, which only a newer read answers. */
+    const val NEW_NAME = "Olivia Renamed"
   }
 }
