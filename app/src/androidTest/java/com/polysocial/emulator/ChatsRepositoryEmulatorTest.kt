@@ -1,5 +1,7 @@
 // Contributors: Claude (Fable 5.2, Anthropic) (the chat list against the rules, #363; the open
 // list's live changes, an account change and a deleted account, from a test audit).
+// Contributors: Claude (Opus 5.5, Anthropic) (a denied chat left out until the server still lists
+// its group, after review, #363).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -191,7 +193,32 @@ class ChatsRepositoryEmulatorTest {
     // token stays valid for up to an hour (#241).
     emulator.createAsAdmin("deletedAccounts", uid, emptyMap())
 
-    assertEquals(MyChatsResult.UnexpectedError, chats())
+    val shown = MutableStateFlow<MyChatsResult>(MyChatsResult.Loading)
+    val seen = mutableListOf<MyChatsResult>()
+    val open = launch {
+      repository.observeMyChats().collect {
+        seen += it
+        shown.value = it
+      }
+    }
+    try {
+      // The chat is denied, so the list leaves it out...
+      withTimeout(TIMEOUT_MS) { shown.first { it !is MyChatsResult.Loading } }
+      // ...and fails once the server still lists the account in that group after the denial: here
+      // when the account is added to another group.
+      if (open.isActive) {
+        seedGroup("party", "new", listOf(uid), createdAt = MORNING.plusSeconds(7200))
+      }
+      val ended = withTimeoutOrNull(TIMEOUT_MS) { open.join() } != null
+      assertTrue("The list should have ended, but shows ${shown.value}", ended)
+      assertEquals(MyChatsResult.UnexpectedError, shown.value)
+      assertTrue(
+          "The server let a deleted account read a chat: $seen",
+          seen.none { it is MyChatsResult.Success && !it.fromCache && it.chats.isNotEmpty() },
+      )
+    } finally {
+      open.cancel()
+    }
   }
 
   @Test
