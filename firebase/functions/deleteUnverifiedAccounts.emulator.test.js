@@ -1,14 +1,16 @@
 // Contributors: Claude (Fable 5.2, Anthropic) drafted the emulator test of the scheduled cleanup of unverified accounts, #226.
+// Contributors: Claude (Fable 5.2, Anthropic) (the exported function called as Cloud Scheduler does, after a mutation check, #226).
 "use strict";
 
 // Runs the cleanup of unverified accounts on the Auth and Firestore emulators, through the Admin
 // SDK's real listUsers, deleteUsers and batches. It calls the handler directly: the Functions
-// emulator only runs a scheduled function through the Pub/Sub emulator, which isn't started. Run
-// from the repository root (see the README):
+// emulator only runs a scheduled function through the Pub/Sub emulator, which isn't started. One
+// test calls the function index.js exports instead, in this process, the way Cloud Scheduler calls
+// it over HTTP. Run from the repository root (see the README):
 // firebase emulators:exec --project demo-polysocial --only firestore,auth,functions "node --test --test-concurrency=1 firebase/functions/*.emulator.test.js"
 const { after, before, beforeEach, test } = require("node:test");
 const assert = require("node:assert/strict");
-const { deleteApp, initializeApp } = require("firebase-admin/app");
+const { deleteApp, getApps, initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const { getFirestore } = require("firebase-admin/firestore");
 const {
@@ -42,7 +44,8 @@ before(() => {
 });
 
 after(async () => {
-  if (app) await deleteApp(app);
+  // The app of these tests and the default one index.js creates.
+  await Promise.all(getApps().map((created) => deleteApp(created)));
 });
 
 beforeEach(async () => {
@@ -113,6 +116,32 @@ async function documentExists(path) {
   return (await db.doc(path).get()).exists;
 }
 
+/**
+ * Calls the function index.js exports with a request and a response, the way Cloud Scheduler's
+ * HTTP call reaches it, and returns the status it answers: 200 once the cleanup is done, 500 when
+ * it failed. index.js creates the Admin SDK's default app, which takes its project from
+ * GCLOUD_PROJECT and reaches the emulators through the hosts checked above.
+ */
+async function callAsCloudScheduler() {
+  if (process.env.GCLOUD_PROJECT !== PROJECT_ID) {
+    throw new Error(
+      `GCLOUD_PROJECT is not ${PROJECT_ID}: run this test inside ` +
+        "`firebase emulators:exec --project demo-polysocial ...`, as the README says.",
+    );
+  }
+  const { deleteUnverifiedAccounts } = require("./index");
+  let status;
+  const response = {
+    status(code) {
+      status = code;
+      return response;
+    },
+    send() {},
+  };
+  await deleteUnverifiedAccounts({ headers: {}, header: () => undefined }, response);
+  return status;
+}
+
 test("an abandoned account and its profile are deleted, other accounts are kept", async () => {
   await importAccounts([
     account("abandoned", UNVERIFIED_ACCOUNT_RETENTION_DAYS + 1),
@@ -165,4 +194,23 @@ test("a second run, on a project left without accounts, deletes nothing", async 
   assert.equal((await runCleanup()).deleted, 1);
 
   assert.equal((await runCleanup()).deleted, 0);
+});
+
+// The only test that runs index.js's own code for this function: the Functions emulator ignores a
+// scheduled function (see above), and every other test gives the handler its own arguments.
+test("the scheduled function, called as Cloud Scheduler calls it, runs the cleanup", async () => {
+  await importAccounts([
+    account("abandoned", UNVERIFIED_ACCOUNT_RETENTION_DAYS + 1),
+    account("verified", UNVERIFIED_ACCOUNT_RETENTION_DAYS + 1, true),
+    account("recent", UNVERIFIED_ACCOUNT_RETENTION_DAYS - 1),
+  ]);
+  for (const uid of ["abandoned", "verified"]) {
+    await db.doc(`users/${uid}`).set({ uid, email: `${uid}@example.com` });
+  }
+
+  assert.equal(await callAsCloudScheduler(), 200);
+
+  assert.deepEqual(await accountsLeft(), ["recent", "verified"]);
+  assert.equal(await documentExists("users/abandoned"), false);
+  assert.equal(await documentExists("users/verified"), true);
 });
