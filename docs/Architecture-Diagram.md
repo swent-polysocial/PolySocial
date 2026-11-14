@@ -709,7 +709,7 @@ Cancelling:
 |---|---|---|
 | X1 | a counted cancellation as the app sends it: a transaction with no read, the delete and `increment(-1)`; also one that writes the stored count minus one | allowed; the place can be taken again |
 | X2 | a counted cancellation once the event has ended | allowed |
-| X3 | the registration deleted without lowering the counter, on a readable event whose counter is above 0 | denied |
+| X3 | the registration deleted without lowering the counter, on a readable event whose counter is above 0, also at 1 with the caller's registration the only one | denied |
 | X4 | a cancellation with the counter lowered by 2 (also `increment(-2)`), raised or removed, or with another field changed | denied |
 | X5 | the counter lowered without deleting the caller's registration: a registered student keeping it; a student who isn't registered | denied |
 | X6 | counter 0 or absent, a registration from before the counter: a counted cancellation; the registration deleted with the counter set to any other value; the registration deleted alone | denied (never below 0); denied; allowed |
