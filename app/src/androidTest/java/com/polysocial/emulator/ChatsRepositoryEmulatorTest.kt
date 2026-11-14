@@ -1,4 +1,5 @@
-// Contributors: Claude (Fable 5.2, Anthropic) (the chat list against the rules, #363).
+// Contributors: Claude (Fable 5.2, Anthropic) (the chat list against the rules, #363; the open
+// list's live changes, an account change and a deleted account, from a test audit).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -11,12 +12,16 @@ import com.polysocial.model.event.EVENTS_COLLECTION
 import com.polysocial.model.group.FirestoreGroupRepository
 import com.polysocial.model.group.GROUPS_COLLECTION
 import com.polysocial.model.group.GROUP_CAPACITY
+import com.polysocial.model.group.GroupWriteResult
 import com.polysocial.model.user.USERS_COLLECTION
 import java.time.Instant
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -42,12 +47,11 @@ class ChatsRepositoryEmulatorTest {
     FirestoreMessageRepository(db = emulator.firestore, auth = auth, network = AlwaysOnline)
   }
 
-  private val repository by lazy {
-    ChatsRepository(
-        FirestoreGroupRepository(db = emulator.firestore, auth = auth, network = AlwaysOnline),
-        messages,
-    )
+  private val groups by lazy {
+    FirestoreGroupRepository(db = emulator.firestore, auth = auth, network = AlwaysOnline)
   }
+
+  private val repository by lazy { ChatsRepository(groups, messages) }
 
   private suspend fun seedGroup(
       eventId: String,
@@ -89,6 +93,21 @@ class ChatsRepositoryEmulatorTest {
     }
   }
 
+  /**
+   * Waits until an open list shows exactly [expected], in order. A list that failed, or one that
+   * never gets there, fails with what it shows instead.
+   */
+  private suspend fun StateFlow<MyChatsResult>.awaitList(vararg expected: String) {
+    val result =
+        withTimeoutOrNull(TIMEOUT_MS) {
+          first {
+            it !is MyChatsResult.Loading &&
+                (it !is MyChatsResult.Success || it.listed() == expected.toList())
+          }
+        }
+    assertEquals(expected.toList(), (result ?: value).listed())
+  }
+
   @Test
   fun theStudentsChatsAcrossEvents_newestActivityFirst_withTheirLatestMessage() = runBlocking {
     val uid = emulator.signInVerifiedUser(STUDENT_EMAIL).uid
@@ -107,6 +126,72 @@ class ChatsRepositoryEmulatorTest {
         withTimeout(TIMEOUT_MS) { messages.sendMessage("party", "quiet", "Anyone there?") },
     )
     assertEquals(listOf("party/quiet: Anyone there?", "hike/busy: Latest"), chats().listed())
+  }
+
+  @Test
+  fun theOpenList_followsNewMessages_andTheGroupsJoinedAndLeft() = runBlocking {
+    val uid = emulator.signInVerifiedUser(STUDENT_EMAIL).uid
+    seedGroup("hike", "busy", listOf(OTHER_UID, uid), createdAt = MORNING)
+    seedMessage("hike", "busy", "First", MORNING.plusSeconds(3600))
+    // As the Chats tab does: one collection, kept open while the chats change.
+    val shown = MutableStateFlow<MyChatsResult>(MyChatsResult.Loading)
+    val open = launch { repository.observeMyChats().collect { shown.value = it } }
+    try {
+      shown.awaitList("hike/busy: First")
+
+      seedMessage("hike", "busy", "Second", MORNING.plusSeconds(7200))
+      shown.awaitList("hike/busy: Second")
+
+      seedGroup("party", "new", listOf(uid), createdAt = MORNING.plusSeconds(10_800))
+      shown.awaitList("party/new: null", "hike/busy: Second")
+
+      // Its last member leaving deletes the group.
+      assertEquals(
+          GroupWriteResult.Success("new"),
+          withTimeout(TIMEOUT_MS) { groups.leaveGroup("party", "new") },
+      )
+      shown.awaitList("hike/busy: Second")
+    } finally {
+      open.cancel()
+    }
+  }
+
+  @Test
+  fun anotherAccountSigningIn_endsTheOpenList_andANewOneListsItsOwnChats() = runBlocking {
+    val first = emulator.signInVerifiedUser(STUDENT_EMAIL).uid
+    seedGroup("hike", "busy", listOf(OTHER_UID, first), createdAt = MORNING)
+    seedMessage("hike", "busy", "For the first student", MORNING.plusSeconds(3600))
+    val shown = MutableStateFlow<MyChatsResult>(MyChatsResult.Loading)
+    val open = launch { repository.observeMyChats().collect { shown.value = it } }
+    try {
+      shown.awaitList("hike/busy: For the first student")
+
+      val second = emulator.signInVerifiedUser(SECOND_STUDENT_EMAIL).uid
+
+      // The rules deny the first student's listeners to anyone else, so their chats stop there.
+      val ended = withTimeoutOrNull(TIMEOUT_MS) { open.join() } != null
+      assertTrue("The list should have ended, but shows ${shown.value}", ended)
+      assertEquals(MyChatsResult.UnexpectedError, shown.value)
+
+      seedGroup("party", "theirs", listOf(second), createdAt = MORNING)
+      assertEquals(listOf("party/theirs: null"), chats().listed())
+    } finally {
+      open.cancel()
+    }
+  }
+
+  @Test
+  fun aDeletedAccountStillListedInAGroup_cannotReadItsChats() = runBlocking {
+    val uid = emulator.signInVerifiedUser(STUDENT_EMAIL).uid
+    seedGroup("hike", "busy", listOf(OTHER_UID, uid), createdAt = MORNING)
+    seedMessage("hike", "busy", "Latest", MORNING.plusSeconds(3600))
+    assertEquals(listOf("hike/busy: Latest"), chats().listed())
+
+    // deleteAccount writes this marker before it removes the memberships, and the account's ID
+    // token stays valid for up to an hour (#241).
+    emulator.createAsAdmin("deletedAccounts", uid, emptyMap())
+
+    assertEquals(MyChatsResult.UnexpectedError, chats())
   }
 
   @Test
@@ -162,6 +247,7 @@ class ChatsRepositoryEmulatorTest {
   private companion object {
     /** Fictional accounts: no real user data in tests. */
     const val STUDENT_EMAIL = "test.student@epfl.ch"
+    const val SECOND_STUDENT_EMAIL = "other.student@epfl.ch"
     const val ASSOCIATION_EMAIL = "test.association@example.com"
     const val OTHER_UID = "fictional-student-1"
     const val TIMEOUT_MS = 15_000L
