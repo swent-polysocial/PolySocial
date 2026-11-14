@@ -1,5 +1,6 @@
 // Contributors: Claude Fable 5.2 (wrote these tests of a student organizer's name on the event
 // detail screen, #281).
+// Contributors: Claude Fable 5.2 (testing pass: the long name's lines, #281).
 package com.polysocial.ui.event.detail
 
 import androidx.compose.runtime.getValue
@@ -11,6 +12,7 @@ import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.height
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.association.FakeAssociationNames
@@ -160,6 +162,24 @@ class EventDetailOrganizerNameScreenTest {
     assertTrue("The name ends past the screen", name.right <= screen.right)
     val date = node(EventDetailTags.DATE).getBoundsInRoot()
     assertTrue("The name runs into the date", name.bottom <= date.top)
+  }
+
+  // Wrapping, not one line cut short: the whole name stays readable.
+  @Config(qualifiers = "w360dp-h800dp-xxhdpi", fontScale = 2.0f)
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  @Test
+  fun atTheLargestFontSize_theLongestNameTakesSeveralLines_insteadOfBeingCut() {
+    var state by mutableStateOf(loaded(study, "Olivia"))
+    composeTestRule.setContent {
+      PolySocialTheme { EventDetailScreen(state, onBack = {}, onRetry = {}) }
+    }
+    val oneLine = node(EventDetailTags.ORGANIZER_NAME).getBoundsInRoot()
+
+    state = loaded(study, "Organizer " + "x".repeat(40))
+    composeTestRule.waitForIdle()
+
+    val wrapped = node(EventDetailTags.ORGANIZER_NAME).getBoundsInRoot()
+    assertTrue("The longest name is cut to one line", wrapped.height >= oneLine.height * 2)
   }
 
   /** The screen with its real ViewModel, for the student [VIEWER], who isn't an organizer. */
