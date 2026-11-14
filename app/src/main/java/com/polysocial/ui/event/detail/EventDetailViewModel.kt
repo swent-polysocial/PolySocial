@@ -13,6 +13,8 @@
 // not just the toggle and permission result, #123's second PR, Mehdi's review).
 // Contributors: Claude Opus 5.5 (carry the signed-in account's UID when scheduling, so
 // ReminderWorker can refuse to notify a different account, #123's second PR, Mehdi's review).
+// Contributors: Claude Fable 5.2 (a student organizer's name, read only for the students going
+// and the organizers, #281).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -41,6 +43,7 @@ import com.polysocial.model.reminder.ReminderScheduler
 import com.polysocial.model.reminder.ScheduleReminderResult
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileRepository
+import com.polysocial.model.user.PublicProfileResult
 import com.polysocial.model.user.PublicProfilesResult
 import com.polysocial.ui.group.GroupMember
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -63,6 +66,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
@@ -175,6 +179,9 @@ sealed interface EventDetailUiState {
    *   Edit and Cancel event (#131).
    * @property associationName the name of the association that publishes the event, once read
    *   (#128); null for a student's event, and while or when it can't be read.
+   * @property organizerName the name of the student who created the event, shown as "by <name>"
+   *   (#281); null unless the viewer may see it ([namedOrganizer]), and while or when it can't be
+   *   read.
    * @property going the "Going" count, only on [isManaged] events; null otherwise.
    * @property isLive true while the event runs, when it was read (Figma's "Live now" on the manage
    *   screen); it is updated with the event's next change.
@@ -200,6 +207,7 @@ sealed interface EventDetailUiState {
       val isOffline: Boolean,
       val isOrganizer: Boolean = false,
       val associationName: String? = null,
+      val organizerName: String? = null,
       val going: GoingCount? = null,
       val isLive: Boolean = false,
       val hasEnded: Boolean = false,
@@ -229,6 +237,34 @@ sealed interface EventDetailUiState {
    */
   data object OfflineNotSaved : EventDetailUiState
 }
+
+/**
+ * The UID of the organizer whose name this viewer may see on the event (#281), or null when they
+ * may see none: the creator of a student's public event, for the event's organizers and the
+ * students registered for it ("I'm going"). Everyone else gets no name, so a public event doesn't
+ * show its organizer to every student. An association's event shows the association instead (#128),
+ * and a private event names nobody until its own decision.
+ *
+ * The name is only hidden on screen (decided on #281, see CONTEXT.md): the creator's UID stays in
+ * the event every student can read.
+ *
+ * Today the creator is the only organizer; co-organizers (#371) extend this.
+ */
+private fun EventDetailUiState.Loaded.namedOrganizer(): String? {
+  val event = details.event
+  val maySee =
+      (isOrganizer || attendance == Attendance.GOING) &&
+          !event.isAssociationEvent &&
+          !event.isPrivate
+  return event.createdBy.takeIf { maySee && it.isNotBlank() }
+}
+
+/**
+ * The organizer whose name is read for the viewer ([namedOrganizer]). [offline] isn't used by the
+ * read: it only makes going back online a new request, so a name that couldn't be read offline is
+ * read again.
+ */
+private data class OrganizerRequest(val uid: String, val offline: Boolean)
 
 /** Where "Cancel event" is (Figma section 10, "Cancel event · …"). */
 sealed interface CancelEventState {
@@ -296,6 +332,11 @@ sealed interface CancelEventState {
  * saves again; each failure gets its own id, so a Retry that fails the same way is reported again
  * too.
  *
+ * A student's public event names its organizer to the viewers [namedOrganizer] allows (#281), from
+ * the creator's public profile, read through [profiles] only for them. The event never waits for
+ * it, and a profile that is missing or can't be read just leaves the name out: a missing profile
+ * doesn't mean a deleted account (#291).
+ *
  * Once going, "Remind me 1 h before" ([EventDetailUiState.Loaded.reminderOn], second PR of #123)
  * schedules or cancels through [reminders]: its state is seeded once from
  * [ReminderScheduler.isScheduled], turning it off or cancelling the registration both cancel the
@@ -344,6 +385,23 @@ constructor(
 
   /** True once a student's view of the event shows, so the student's group is observed. */
   private val watchesGroup = MutableStateFlow(false)
+
+  /** Whose name the event that shows needs, null when the viewer may see nobody's. */
+  private val organizerRequest = MutableStateFlow<OrganizerRequest?>(null)
+
+  /**
+   * The name of the organizer in [organizerRequest], from their public profile; null when there is
+   * nobody to name, until the first read answers, and when the profile is missing, unreadable or
+   * has no name. While a later read runs, the name already read stays.
+   */
+  @OptIn(ExperimentalCoroutinesApi::class)
+  private val organizerName: Flow<String?> = organizerRequest.mapLatest { request ->
+    val uid = request?.uid ?: return@mapLatest null
+    (profiles.getPublicProfile(uid) as? PublicProfileResult.Found)?.profile?.displayName?.takeIf {
+      it.isNotBlank()
+    }
+  }
+
   /** The attendance this screen saved, until the registrations' next answer replaces it. */
   private val savedAttendance = MutableStateFlow<Attendance?>(null)
 
@@ -433,6 +491,17 @@ constructor(
           .combine(attendance) { state, (attendance, saving) ->
             if (state is EventDetailUiState.Loaded && !state.isOrganizer)
                 state.copy(attendance = attendance, isSavingAttendance = saving)
+            else state
+          }
+          .onEach { state ->
+            val loaded = state as? EventDetailUiState.Loaded
+            organizerRequest.value =
+                loaded?.namedOrganizer()?.let { OrganizerRequest(it, loaded.isOffline) }
+          }
+          .combine(organizerName) { state, name ->
+            // Checked again here, so the name goes at once when the registration is cancelled.
+            if (state is EventDetailUiState.Loaded && state.namedOrganizer() != null)
+                state.copy(organizerName = name)
             else state
           }
           .onEach(::initReminderOnce)
