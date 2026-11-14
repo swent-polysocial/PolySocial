@@ -4,7 +4,8 @@
 // going, #281).
 // Contributors: Claude (Opus 5.5, Anthropic) (returns to the detail after its screen stopped, and
 // no read again once back online unless the last one failed for the network; whether a read runs,
-// and from the first state of a student going, #281's review).
+// and from the first state of a student going; a return while the name was still read, #281's
+// review).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -120,19 +121,21 @@ class EventDetailOrganizerNameTest {
       }
 
   /**
-   * Opens the detail, shows the organizer's name, then puts another screen on top of it for longer
-   * than the detail keeps listening ([away] runs meanwhile) and comes back to it, with the profile
-   * reads made before forgotten.
+   * Opens the detail for a student going, with [nameBeforeLeaving] shown, then puts another screen
+   * on top of it for longer than the detail keeps listening ([away] runs meanwhile) and comes back
+   * to it, with the profile reads made before forgotten.
    */
   private suspend fun TestScope.returnToTheDetail(
-      away: suspend () -> Unit = {}
+      profileRepository: PublicProfileRepository = profiles,
+      nameBeforeLeaving: String? = CREATOR_NAME,
+      away: suspend () -> Unit = {},
   ): EventDetailViewModel {
     registrations.seedRegistration(EVENT, ME)
     events.seed(event)
-    val vm = viewModel()
+    val vm = viewModel(profileRepository)
     val screen = show(vm)
     runCurrent()
-    assertEquals(CREATOR_NAME, vm.loaded.organizerName)
+    assertEquals(nameBeforeLeaving, vm.loaded.organizerName)
 
     screen.cancel()
     advanceTimeBy(EventDetailViewModel.STOP_TIMEOUT_MILLIS + 1_000)
@@ -483,6 +486,24 @@ class EventDetailOrganizerNameTest {
     assertEquals(Attendance.NOT_GOING, vm.loaded.attendance)
     assertNull(vm.loaded.organizerName)
     assertEquals(emptyList<String>(), readUids)
+  }
+
+  @Test
+  fun aReturnAfterACancellationElsewhere_whileTheNameWasRead_readsNothing() = runTest {
+    // The read was still running when the screen stopped, so there is no answer to fall back on:
+    // only the restarted reads can say that this student may no longer see the name.
+    val slow = SlowProfiles()
+    val vm =
+        returnToTheDetail(slow, nameBeforeLeaving = null) {
+          registrations.cancel(EVENT)
+          slow.answer.complete(Unit)
+        }
+
+    assertEquals(Attendance.NOT_GOING, vm.loaded.attendance)
+    assertNull(vm.loaded.organizerName)
+    assertFalse(vm.loaded.isReadingOrganizerName)
+    // The read stopped with the screen, and none after the return.
+    assertEquals(1, slow.reads)
   }
 
   @Test
