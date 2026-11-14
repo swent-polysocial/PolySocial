@@ -1,13 +1,25 @@
-// Contributors: Claude (wrote these tests, #128).
+// Contributors: Claude (wrote these tests, #128; the badge's position on the title, #250).
 package com.polysocial.ui.event.list
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.validEvent
 import com.polysocial.ui.event.CLUB_NAME
@@ -20,9 +32,14 @@ import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
+import kotlin.math.abs
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 /**
  * The Events tab's cards (#128, Figma "Events · association event"): an association's event shows
@@ -61,32 +78,37 @@ class EventsAssociationNamesScreenTest {
           )
           .copy(id = "study", category = EventCategory.STUDY)
 
-  private fun show(names: Map<String, String>) {
-    val events = listOf(study, party)
+  private fun show(
+      names: Map<String, String>,
+      events: List<Event> = listOf(study, party),
+      direction: LayoutDirection = LayoutDirection.Ltr,
+  ) {
     composeTestRule.setContent {
-      PolySocialTheme {
-        EventsScreen(
-            EventsUiState(
-                list =
-                    EventsListState.Events(
-                        groupEventsByDay(events, clock),
-                        today,
-                        isOffline = false,
-                    ),
-                associationNames = names,
-            ),
-            zone = lausanne,
-            today = today,
-            onRetry = {},
-            onClearFilters = {},
-            onSearchChange = {},
-            onSelectDate = {},
-            onToggleCategory = {},
-            onClearSheetFilters = {},
-            onSelectDistance = {},
-            onTurnOnLocation = {},
-            onEventClick = {},
-        )
+      CompositionLocalProvider(LocalLayoutDirection provides direction) {
+        PolySocialTheme {
+          EventsScreen(
+              EventsUiState(
+                  list =
+                      EventsListState.Events(
+                          groupEventsByDay(events, clock),
+                          today,
+                          isOffline = false,
+                      ),
+                  associationNames = names,
+              ),
+              zone = lausanne,
+              today = today,
+              onRetry = {},
+              onClearFilters = {},
+              onSearchChange = {},
+              onSelectDate = {},
+              onToggleCategory = {},
+              onClearSheetFilters = {},
+              onSelectDistance = {},
+              onTurnOnLocation = {},
+              onEventClick = {},
+          )
+        }
       }
     }
   }
@@ -129,5 +151,88 @@ class EventsAssociationNamesScreenTest {
 
     pill(EventsTags.verified("study")).assertDoesNotExist()
     node(EventsTags.details("study")).assertTextEquals("Study · 18:00")
+  }
+
+  // Native graphics measure text like a phone; 360 dp is the Figma frame's width.
+  @Config(qualifiers = "w360dp-h800dp-xxhdpi")
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  @Test
+  fun theBadge_isCenteredOnTheTitlesLine() {
+    show(mapOf(CLUB_UID to CLUB_NAME))
+    scrollTo("party")
+
+    assertBadgeCenteredOnFirstLine("party", party.title, expectedLines = 1)
+  }
+
+  @Config(qualifiers = "w360dp-h800dp-xxhdpi", fontScale = 2.0f)
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  @Test
+  fun atTheLargestFontSize_theBadgeIsCenteredOnTheTitlesFirstLine() {
+    // At this size the title wraps: the badge belongs to its first line, not to the whole title.
+    show(mapOf(CLUB_UID to CLUB_NAME))
+    scrollTo("party")
+
+    assertBadgeCenteredOnFirstLine("party", party.title, expectedLines = 2)
+  }
+
+  @Config(qualifiers = "w360dp-h800dp-xxhdpi")
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  @Test
+  fun theBadge_doesntMoveTheDetailsDown() {
+    // The same title on a student's card and an association's: the taller badge sticks out of
+    // the title's line instead of pushing the details further from the title.
+    val twin = study.copy(id = "twin", title = party.title)
+    show(mapOf(CLUB_UID to CLUB_NAME), listOf(twin, party))
+
+    scrollTo("twin")
+    val student = detailsBelowTitle("twin")
+    scrollTo("party")
+    assertEquals(student.value, detailsBelowTitle("party").value, 0.01f)
+  }
+
+  @Test
+  fun inARightToLeftLanguage_theBadgeIsBeforeTheTitle() {
+    // Like the Row it replaced, the title and its badge mirror: the badge sits on the title's left.
+    show(mapOf(CLUB_UID to CLUB_NAME), listOf(party), LayoutDirection.Rtl)
+    scrollTo("party")
+
+    val badge = pill(EventsTags.verified("party")).getBoundsInRoot()
+    val title = titleOf("party", party.title).getBoundsInRoot()
+    assertTrue("The badge ends at ${badge.right}, past ${title.left}", badge.right <= title.left)
+  }
+
+  /**
+   * The badge's center is within 0.5 dp of the center of the title's first line, like in Figma
+   * "Events · association event", where both centers are at the same height.
+   */
+  private fun assertBadgeCenteredOnFirstLine(eventId: String, title: String, expectedLines: Int) {
+    val titleNode = titleOf(eventId, title)
+    val layout = textLayout(titleNode)
+    assertEquals(expectedLines, layout.lineCount)
+    val firstLine =
+        with(composeTestRule.density) {
+          titleNode.getBoundsInRoot().top +
+              (layout.getLineTop(0) + layout.getLineBottom(0)).toDp() / 2
+        }
+    val badge = pill(EventsTags.verified(eventId)).getBoundsInRoot()
+    val offset = (badge.top + badge.bottom) / 2 - firstLine
+    assertTrue("The badge is $offset off the title's first line", abs(offset.value) <= 0.5f)
+  }
+
+  /** How far the details line of [eventId]'s card starts below the top of its title. */
+  private fun detailsBelowTitle(eventId: String): Dp =
+      node(EventsTags.details(eventId)).getBoundsInRoot().top -
+          titleOf(eventId, party.title).getBoundsInRoot().top
+
+  private fun titleOf(eventId: String, title: String) =
+      composeTestRule.onNode(
+          hasText(title) and hasAnyAncestor(hasTestTag(EventsTags.card(eventId))),
+          useUnmergedTree = true,
+      )
+
+  private fun textLayout(node: SemanticsNodeInteraction): TextLayoutResult {
+    val layouts = mutableListOf<TextLayoutResult>()
+    node.performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(layouts) }
+    return layouts.single()
   }
 }

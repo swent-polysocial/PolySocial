@@ -1,9 +1,12 @@
-// Contributors: Claude (wrote these tests, #128; large font sizes after a test audit, #128).
+// Contributors: Claude (wrote these tests, #128; large font sizes after a test audit, #128; the
+// badge clear of an unaccented title's letters, #250).
 package com.polysocial.ui.map
 
+import android.graphics.Color
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
@@ -11,6 +14,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertWidthIsAtLeast
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasParent
 import androidx.compose.ui.test.hasTestTag
@@ -19,6 +23,7 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.event.Event
@@ -51,7 +56,7 @@ class MapAssociationNamesScreenTest {
   private val party = associationEvent(validEvent(title = "Party")).copy(id = "party")
   private val study = studentEvent(validEvent(title = "Study")).copy(id = "study")
 
-  private fun showPreviewOf(event: Event, names: Map<String, String>) {
+  private fun showPreviewOf(event: Event, names: Map<String, String>, isTonight: Boolean = false) {
     composeTestRule.setContent {
       PolySocialTheme {
         MapScreen(
@@ -61,6 +66,7 @@ class MapAssociationNamesScreenTest {
                 selectedEvent = event,
                 renderStatus = MapRenderStatus.READY,
                 associationNames = names,
+                selectedEventIsTonight = isTonight,
             ),
             onSelectEvent = {},
             onClosePreview = {},
@@ -144,6 +150,56 @@ class MapAssociationNamesScreenTest {
     assertEquals(studentTitle, composeTestRule.onNodeWithTag(MapTags.TITLE).getBoundsInRoot())
     val preview = composeTestRule.onNodeWithTag(MapTags.PREVIEW).getBoundsInRoot()
     assertEquals(studentPreview.bottom - studentPreview.top, preview.bottom - preview.top)
+  }
+
+  // Like Figma's, the 22 dp badge is taller than the category line it is centered on, so it reaches
+  // into the top of the title's line (#128). It stays clear of an unaccented title's letters; an
+  // accent on a capital right under it (the É of "École") can touch its bottom by about 1 dp, as
+  // in Figma (#250).
+  @Config(qualifiers = "w360dp-h800dp-xxhdpi")
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  @Test
+  fun theBadge_staysClearOfAnUnaccentedTitle() {
+    showPreviewOf(party, mapOf(CLUB_UID to CLUB_NAME), isTonight = true)
+
+    assertBadgeAboveTheTitlesLetters()
+  }
+
+  // At font scale 2.0, a 360 dp screen wraps "Party · Tonight" and the badge moves away from the
+  // title; a wider screen keeps it on one line, the closest the badge gets to the title (#250).
+  @Config(qualifiers = "w480dp-h900dp-xxhdpi", fontScale = 2.0f)
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  @Test
+  fun atTheLargestFontSize_theBadgeStaysClearOfAnUnaccentedTitle() {
+    showPreviewOf(party, mapOf(CLUB_UID to CLUB_NAME), isTonight = true)
+
+    assertEquals(1, categoryLayout().lineCount)
+    assertBadgeAboveTheTitlesLetters()
+  }
+
+  private fun assertBadgeAboveTheTitlesLetters() {
+    val badge = pill(MapTags.VERIFIED).getBoundsInRoot()
+    val letters = titleLettersTop()
+    assertTrue("The badge ends at ${badge.bottom}, below $letters", badge.bottom < letters)
+  }
+
+  private fun categoryLayout(): TextLayoutResult {
+    val layouts = mutableListOf<TextLayoutResult>()
+    node(MapTags.CATEGORY).performSemanticsAction(SemanticsActions.GetTextLayoutResult) {
+      it(layouts)
+    }
+    return layouts.single()
+  }
+
+  /** Where the title's letters start: its first row of dark pixels, as drawn. */
+  private fun titleLettersTop(): Dp {
+    val title = node(MapTags.TITLE)
+    val image = title.captureToImage().asAndroidBitmap()
+    val row =
+        (0 until image.height).first { y ->
+          (0 until image.width).any { x -> Color.red(image.getPixel(x, y)) < 128 }
+        }
+    return title.getBoundsInRoot().top + with(composeTestRule.density) { row.toDp() }
   }
 
   /** The layout of the text inside the node [tag], as drawn. */

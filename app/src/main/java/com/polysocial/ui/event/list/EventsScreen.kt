@@ -3,7 +3,8 @@
 // Contributors: Claude (Events tab list from the Figma "Discover events" frames, #105; no matching
 // event state, search field, filter chips, Filters sheet and its location permission, #115;
 // opening an event's detail, #112; banner and states shared with the association tab, #132; an
-// association's badge and name on its cards, #128).
+// association's badge and name on its cards, #128; the badge centered on the title's first line,
+// #250).
 // Contributors: Claude (the shared offline banner, #251).
 package com.polysocial.ui.event.list
 
@@ -47,6 +48,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.FirstBaseline
+import androidx.compose.ui.layout.LastBaseline
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -398,22 +402,25 @@ private fun EventCard(
       // An association's event (#128, Figma "Events · association event"): the Verified badge
       // 8 dp after the title, on its first line, and its name, once read, at the end of the
       // details.
-      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = event.title,
-            style = MaterialTheme.typography.titleSmall.copy(fontSize = 16.sp),
-            color = Ink,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f, fill = false),
-        )
-        if (event.isAssociationEvent) {
-          VerifiedPill(
-              stringResource(R.string.event_verified_badge),
-              Modifier.testTag(EventsTags.verified(event.id)),
-          )
-        }
-      }
+      TitleWithBadge(
+          title = {
+            Text(
+                text = event.title,
+                style = MaterialTheme.typography.titleSmall.copy(fontSize = 16.sp),
+                color = Ink,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+          },
+          badge = {
+            if (event.isAssociationEvent) {
+              VerifiedPill(
+                  stringResource(R.string.event_verified_badge),
+                  Modifier.testTag(EventsTags.verified(event.id)),
+              )
+            }
+          },
+      )
       val label = stringResource(category.label)
       val name = associationName?.takeIf { event.isAssociationEvent }
       Text(
@@ -424,6 +431,31 @@ private fun EventCard(
           color = Ink2,
           modifier = Modifier.testTag(EventsTags.details(event.id)),
       )
+    }
+  }
+}
+
+/**
+ * A card's [title] and, 8 dp after it, an optional [badge] centered on the title's first line, as
+ * in Figma "Events · association event" (#250). The badge is measured first, so a long title wraps
+ * or shortens before the badge does. Its height doesn't count: like Figma's 22 dp pill, which is
+ * taller than the title's line, it sticks out above and below the line instead of moving the
+ * details down.
+ */
+@Composable
+private fun TitleWithBadge(title: @Composable () -> Unit, badge: @Composable () -> Unit) {
+  Layout(contents = listOf(title, badge)) { (titleMeasurables, badgeMeasurables), constraints ->
+    val loose = constraints.copy(minWidth = 0, minHeight = 0)
+    val pill = badgeMeasurables.firstOrNull()?.measure(loose)
+    val gap = if (pill == null) 0 else 8.dp.roundToPx()
+    val titleWidth = (loose.maxWidth - gap - (pill?.width ?: 0)).coerceAtLeast(0)
+    val text = titleMeasurables.single().measure(loose.copy(maxWidth = titleWidth))
+    // The title's lines are equally tall, so its first line is its height less the distance
+    // between its first and last baselines.
+    val firstLineHeight = text.height - (text[LastBaseline] - text[FirstBaseline])
+    layout(text.width + gap + (pill?.width ?: 0), text.height) {
+      text.placeRelative(0, 0)
+      pill?.placeRelative(text.width + gap, (firstLineHeight - pill.height) / 2)
     }
   }
 }
