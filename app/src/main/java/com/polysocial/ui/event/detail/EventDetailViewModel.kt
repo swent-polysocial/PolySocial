@@ -16,7 +16,7 @@
 // Contributors: Claude Fable 5.2 (a student organizer's name, read only for the students going
 // and the organizers, #281).
 // Contributors: Claude (Opus 5.5, Anthropic) (no organizer name read from a stale request when the
-// screen comes back, and an answered read kept, #281's review).
+// screen comes back, and an answered read kept, also when the connection changes, #281's review).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -264,20 +264,27 @@ private fun EventDetailUiState.Loaded.namedOrganizer(): String? {
 
 /**
  * The organizer whose name is read for the viewer ([namedOrganizer]). [offline] isn't used by the
- * read: it only makes going back online a new request, so a name that couldn't be read offline is
- * read again.
+ * read: it only makes going back online a new request, so a name whose read failed for the network
+ * is read again.
  */
 private data class OrganizerRequest(val uid: String, val offline: Boolean)
 
 /**
- * The answer to [request]: the organizer's [name], null when the profile is missing, unreadable or
- * has no name; [failedForNetwork] when the read failed for the network, so it is tried again.
+ * The answer to a read of the name of the organizer [uid]: [name], null when the profile is
+ * missing, unreadable or has no name; [failedForNetwork] when the read failed for the network.
  */
 private data class OrganizerRead(
-    val request: OrganizerRequest,
+    val uid: String,
     val name: String?,
     val failedForNetwork: Boolean,
-)
+) {
+  /**
+   * Whether this answer still holds for [request]: the same organizer, unless the read failed for
+   * the network and the event no longer comes from the offline cache, so it may work now.
+   */
+  fun answers(request: OrganizerRequest) =
+      uid == request.uid && !(failedForNetwork && !request.offline)
+}
 
 /** Where "Cancel event" is (Figma section 10, "Cancel event · …"). */
 sealed interface CancelEventState {
@@ -346,9 +353,10 @@ sealed interface CancelEventState {
  * too.
  *
  * A student's public event names its organizer to the viewers [namedOrganizer] allows (#281), from
- * the creator's public profile, read through [profiles] only for them. The event never waits for
- * it, and a profile that is missing or can't be read just leaves the name out: a missing profile
- * doesn't mean a deleted account (#291).
+ * the creator's public profile, read through [profiles] only for them, then kept while this
+ * ViewModel lives; only a read that failed for the network is tried again, once back online. The
+ * event never waits for it, and a profile that is missing or can't be read just leaves the name
+ * out: a missing profile doesn't mean a deleted account (#291).
  *
  * Once going, "Remind me 1 h before" ([EventDetailUiState.Loaded.reminderOn], second PR of #123)
  * schedules or cancels through [reminders]: its state is seeded once from
@@ -411,18 +419,17 @@ constructor(
 
   /**
    * The name of the organizer in [organizerRequest], from their public profile; null when there is
-   * nobody to name, until the first read answers, and when the profile is missing, unreadable or
-   * has no name. A request already answered isn't read again (the screen coming back, or the
-   * registration cancelled and made again), unless that read failed for the network. While a later
-   * read runs, the name already read stays.
+   * nobody to name, until the read answers, and when the profile is missing, unreadable or has no
+   * name. It is read once and kept, so the screen coming back, the registration cancelled and made
+   * again or the connection changing costs no read ([OrganizerRead.answers]).
    */
   @OptIn(ExperimentalCoroutinesApi::class)
   private val organizerName: Flow<String?> =
       organizerRequest
           .mapLatest { request ->
             if (request == null) return@mapLatest null
-            val known = organizerRead?.takeIf { it.request == request && !it.failedForNetwork }
-            (known ?: readOrganizer(request).also { organizerRead = it }).name
+            val known = organizerRead?.takeIf { it.answers(request) }
+            (known ?: readOrganizer(request.uid).also { organizerRead = it }).name
           }
           .onCompletion { organizerRequest.value = null }
 
@@ -638,14 +645,14 @@ constructor(
         PublicProfilesResult.UnexpectedError -> null
       }
 
-  /** Reads the name of the organizer in [request] from their public profile. */
-  private suspend fun readOrganizer(request: OrganizerRequest): OrganizerRead =
-      when (val result = profiles.getPublicProfile(request.uid)) {
+  /** Reads the name of the organizer [uid] from their public profile. */
+  private suspend fun readOrganizer(uid: String): OrganizerRead =
+      when (val result = profiles.getPublicProfile(uid)) {
         is PublicProfileResult.Found ->
-            OrganizerRead(request, result.profile.displayName.ifBlank { null }, false)
-        PublicProfileResult.NetworkError -> OrganizerRead(request, null, failedForNetwork = true)
+            OrganizerRead(uid, result.profile.displayName.ifBlank { null }, false)
+        PublicProfileResult.NetworkError -> OrganizerRead(uid, null, failedForNetwork = true)
         PublicProfileResult.NotFound,
-        PublicProfileResult.UnexpectedError -> OrganizerRead(request, null, failedForNetwork = false)
+        PublicProfileResult.UnexpectedError -> OrganizerRead(uid, null, failedForNetwork = false)
       }
 
   /** Counts the attendees again after the count failed (tapping the unavailable count). */
