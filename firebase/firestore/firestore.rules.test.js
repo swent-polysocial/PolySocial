@@ -1,3 +1,4 @@
+// Contributors: Claude (Fable 5.2 and Opus 5.5, Anthropic) (attendeeCount prototype on this branch only, #372; never merged).
 // Contributors: OpenAI Codex (deleted-token chat reads and immutable deleted authors, #241).
 // Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143; publicProfiles/{uid} tests, written test-first, #229; reads by ID only and the fixed section and year lists, after review, #229; private edits keep the public copy, and deleted accounts stay deleted, after review, #229; interests from the fixed list, test-first, #230; any code read in the list check, after review, #230); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121; deleted accounts can't register, #275); Claude (Opus 5.5, Anthropic) (event group and groupMembers marker tests, #232, with more after review; group chat message tests, #237, and a deleted account's messages, after review).
 // Contributors: Claude (Opus 5.5, Anthropic) (a non-EPFL association in allowedUids can't run My events' private query, #320).
@@ -20,6 +21,7 @@ const {
   documentId,
   getDoc,
   getDocs,
+  increment,
   limit,
   orderBy,
   query,
@@ -41,7 +43,8 @@ let env;
 before(async () => {
   env = await initializeTestEnvironment({
     projectId: PROJECT_ID,
-    firestore: { rules: readFileSync(path.join(__dirname, "firestore.rules"), "utf8") },
+    // PROTOTYPE (#372): RULES_FILE points the suite at a mutant of the rules.
+    firestore: { rules: readFileSync(process.env.RULES_FILE || path.join(__dirname, "firestore.rules"), "utf8") },
   });
 });
 
@@ -1686,13 +1689,39 @@ function registration(uid) {
   return { uid, registeredAt: serverTimestamp() };
 }
 
-/** Stores [uid]'s registration for events/[eventId], bypassing the rules. */
+/**
+ * Stores [uid]'s registration for events/[eventId], bypassing the rules, and counts it in the
+ * event's attendeeCount when the event exists, as every registration is (#372).
+ */
 async function seedAttendee(eventId, uid) {
   await env.withSecurityRulesDisabled(async (context) => {
-    await setDoc(doc(context.firestore(), `events/${eventId}/attendees/${uid}`), {
+    const db = context.firestore();
+    await setDoc(doc(db, `events/${eventId}/attendees/${uid}`), {
       uid, registeredAt: Timestamp.fromMillis(1_790_000_000_000),
     });
+    if ((await getDoc(doc(db, `events/${eventId}`))).exists()) {
+      await updateDoc(doc(db, `events/${eventId}`), { attendeeCount: increment(1) });
+    }
   });
+}
+
+/**
+ * The counted registration (#372): [uid]'s registration, holding [data], and the event's
+ * attendeeCount raised by one, in one write, as the app sends it.
+ */
+function registerCounted(db, eventId, uid, data = registration(uid)) {
+  const batch = writeBatch(db);
+  batch.set(doc(db, `events/${eventId}/attendees/${uid}`), data);
+  batch.update(doc(db, `events/${eventId}`), { attendeeCount: increment(1) });
+  return batch.commit();
+}
+
+/** The counted cancellation (#372): [uid]'s registration deleted and the counter lowered by one. */
+function cancelCounted(db, eventId, uid) {
+  const batch = writeBatch(db);
+  batch.delete(doc(db, `events/${eventId}/attendees/${uid}`));
+  batch.update(doc(db, `events/${eventId}`), { attendeeCount: increment(-1) });
+  return batch.commit();
 }
 
 /** u2 created "managed", u5 co-organizes it, u3 may only read it; u1 and u3 are registered. */
@@ -1713,43 +1742,48 @@ function expectIds(ids, expected) {
 test("a student registers for a public event in a transaction, as the app does", async () => {
   const db = studentDb("u1");
   const attendee = doc(db, "events/e1/attendees/u1");
+  // Write-only: no read of the event, so registrations don't contend on it (#372).
   await assertSucceeds(runTransaction(db, async (transaction) => {
-    await transaction.get(doc(db, "events/e1"));
-    await transaction.get(attendee);
     transaction.set(attendee, registration("u1"));
+    transaction.update(doc(db, "events/e1"), { attendeeCount: increment(1) });
   }));
   await assertSucceeds(getDoc(attendee));
 });
 
 for (const uid of ["u2", "u3"]) {
   test(`a student allowed in a private event (${uid}) can register for it`, async () => {
-    await assertSucceeds(
-      setDoc(doc(studentDb(uid), `events/private/attendees/${uid}`), registration(uid)),
-    );
+    await assertSucceeds(registerCounted(studentDb(uid), "private", uid));
   });
 }
 
 test("a student can't register for a private event they aren't allowed in", async () => {
-  await assertFails(setDoc(doc(studentDb("u1"), "events/private/attendees/u1"), registration("u1")));
+  await assertFails(registerCounted(studentDb("u1"), "private", "u1"));
 });
 
 test("a student can't register for an event that doesn't exist", async () => {
-  await assertFails(setDoc(doc(studentDb("u1"), "events/missing/attendees/u1"), registration("u1")));
+  await assertFails(registerCounted(studentDb("u1"), "missing", "u1"));
 });
 
 // deleteAccount writes the marker, then deletes the student's registrations, then their Auth user
 // (#275). Their ID token stays valid meanwhile, so the rules must refuse a new registration.
 test("a deleted account can't register again with its still-valid token", async () => {
   await seedDeletedAccount("u1");
-  await assertFails(setDoc(doc(studentDb("u1"), "events/e1/attendees/u1"), registration("u1")));
-  await assertSucceeds(setDoc(doc(studentDb("u3"), "events/e1/attendees/u3"), registration("u3")));
+  await assertFails(registerCounted(studentDb("u1"), "e1", "u1"));
+  await assertSucceeds(registerCounted(studentDb("u3"), "e1", "u3"));
 });
 
 test("a student can't register another student", async () => {
   const db = studentDb("u1");
-  await assertFails(setDoc(doc(db, "events/e1/attendees/u3"), registration("u3")));
-  await assertFails(setDoc(doc(db, "events/e1/attendees/u3"), registration("u1")));
-  await assertFails(setDoc(doc(db, "events/e1/attendees/u1"), registration("u3")));
+  await assertFails(registerCounted(db, "e1", "u3"));
+  await assertFails(registerCounted(db, "e1", "u3", registration("u1")));
+  await assertFails(registerCounted(db, "e1", "u1", registration("u3")));
+  // Not even beside their own registration, on its one counted place.
+  const batch = writeBatch(db);
+  batch.set(doc(db, "events/e1/attendees/u1"), registration("u1"));
+  batch.set(doc(db, "events/e1/attendees/u3"), registration("u3"));
+  batch.update(doc(db, "events/e1"), { attendeeCount: increment(1) });
+  await assertFails(batch.commit());
+  await assertSucceeds(registerCounted(db, "e1", "u1"));
 });
 
 for (const [name, data] of [
@@ -1759,7 +1793,8 @@ for (const [name, data] of [
   ["another field", { ...registration("u1"), displayName: "Student One" }],
 ]) {
   test(`a registration with ${name} is denied`, async () => {
-    await assertFails(setDoc(doc(studentDb("u1"), "events/e1/attendees/u1"), data));
+    await assertFails(registerCounted(studentDb("u1"), "e1", "u1", data));
+    await assertSucceeds(registerCounted(studentDb("u1"), "e1", "u1"));
   });
 }
 
@@ -1769,7 +1804,7 @@ test("nobody can change a registration, not even its student", async () => {
   await assertFails(updateDoc(doc(db, "events/e1/attendees/u1"), {
     registeredAt: serverTimestamp(),
   }));
-  await assertFails(setDoc(doc(db, "events/e1/attendees/u1"), registration("u1")));
+  await assertFails(registerCounted(db, "e1", "u1"));
 });
 
 for (const [name, uid, db] of [
@@ -1779,9 +1814,10 @@ for (const [name, uid, db] of [
   ["a signed-out user", "u1", () => env.unauthenticatedContext().firestore()],
 ]) {
   test(`${name} can't register or read registrations`, async () => {
+    // Before any registration exists under their UID, so only the account is wrong.
+    await assertFails(registerCounted(db(), "e1", uid));
+    await assertFails(registerCounted(db(), "clubPublic", uid));
     await seedAttendee("e1", "u1");
-    await assertFails(setDoc(doc(db(), `events/e1/attendees/${uid}`), registration(uid)));
-    await assertFails(setDoc(doc(db(), `events/clubPublic/attendees/${uid}`), registration(uid)));
     await assertFails(getDoc(doc(db(), "events/e1/attendees/u1")));
     await assertFails(getDocs(query(collectionGroup(db(), "attendees"), where("uid", "==", uid))));
   });
@@ -1789,15 +1825,15 @@ for (const [name, uid, db] of [
 
 test("an @epfl.ch association can't register as a student", async () => {
   await seedEpflAssociation("epflClub", true);
-  await assertFails(setDoc(
-    doc(epflAssociationDb("epflClub"), "events/e1/attendees/epflClub"), registration("epflClub"),
-  ));
+  await assertFails(registerCounted(epflAssociationDb("epflClub"), "e1", "epflClub"));
 });
 
 test("a student can cancel their own registration, and cancel again", async () => {
   await seedAttendee("e1", "u1");
   const db = studentDb("u1");
-  await assertSucceeds(deleteDoc(doc(db, "events/e1/attendees/u1")));
+  await assertSucceeds(cancelCounted(db, "e1", "u1"));
+  // Nothing is left to count: the counted cancellation is refused, the delete alone accepted.
+  await assertFails(cancelCounted(db, "e1", "u1"));
   await assertSucceeds(deleteDoc(doc(db, "events/e1/attendees/u1")));
 });
 
@@ -1814,9 +1850,7 @@ for (const [name, times] of [
 ]) {
   test(`a student can't register for an event ${name}`, async () => {
     await seedEvent("ended", eventBy("u2", times));
-    await assertFails(
-      setDoc(doc(studentDb("u1"), "events/ended/attendees/u1"), registration("u1")),
-    );
+    await assertFails(registerCounted(studentDb("u1"), "ended", "u1"));
   });
 }
 
@@ -1826,16 +1860,14 @@ for (const [name, times] of [
 ]) {
   test(`a student can register for an event ${name}`, async () => {
     await seedEvent("running", eventBy("u2", times));
-    await assertSucceeds(
-      setDoc(doc(studentDb("u1"), "events/running/attendees/u1"), registration("u1")),
-    );
+    await assertSucceeds(registerCounted(studentDb("u1"), "running", "u1"));
   });
 }
 
 test("a student can still cancel once the event has ended", async () => {
   await seedEvent("ended", eventBy("u2", { startTime: minutesFromNow(-120), endTime: minutesFromNow(-1) }));
   await seedAttendee("ended", "u1");
-  await assertSucceeds(deleteDoc(doc(studentDb("u1"), "events/ended/attendees/u1")));
+  await assertSucceeds(cancelCounted(studentDb("u1"), "ended", "u1"));
 });
 
 test("a student can cancel in a transaction, as the app does", async () => {
@@ -1843,6 +1875,7 @@ test("a student can cancel in a transaction, as the app does", async () => {
   const db = studentDb("u1");
   await assertSucceeds(runTransaction(db, async (transaction) => {
     transaction.delete(doc(db, "events/e1/attendees/u1"));
+    transaction.update(doc(db, "events/e1"), { attendeeCount: increment(-1) });
   }));
 });
 
@@ -1851,14 +1884,23 @@ test("a student can still cancel once the event is deleted or no longer readable
   await seedEvent("closed", eventBy("u2", { isPrivate: true }));
   await seedAttendee("closed", "u1");
   const db = studentDb("u1");
+  // No counter to lower (the event is gone) or none they may lower (they can't read the event).
+  await assertFails(cancelCounted(db, "gone", "u1"));
+  await assertFails(cancelCounted(db, "closed", "u1"));
   await assertSucceeds(deleteDoc(doc(db, "events/gone/attendees/u1")));
   await assertSucceeds(deleteDoc(doc(db, "events/closed/attendees/u1")));
 });
 
 test("a student can't cancel another student's registration, even as an organizer", async () => {
   await seedManagedEventWithAttendees();
-  await assertFails(deleteDoc(doc(studentDb("u3"), "events/managed/attendees/u1")));
-  await assertFails(deleteDoc(doc(studentDb("u2"), "events/managed/attendees/u1")));
+  for (const uid of ["u3", "u2"]) {
+    const db = studentDb(uid);
+    await assertFails(deleteDoc(doc(db, "events/managed/attendees/u1")));
+    const batch = writeBatch(db);
+    batch.delete(doc(db, "events/managed/attendees/u1"));
+    batch.update(doc(db, "events/managed"), { attendeeCount: increment(-1) });
+    await assertFails(batch.commit());
+  }
 });
 
 test("a student reads their own registration, before and after it exists", async () => {

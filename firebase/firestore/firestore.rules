@@ -1,3 +1,4 @@
+// Contributors: Claude (Fable 5.2 and Opus 5.5, Anthropic) (attendeeCount prototype on this branch only, #372; never merged).
 // Contributors: OpenAI Codex (deleted-token chat access, #241).
 // Contributors: Claude (isEpflUser helper, #33; own users/{uid} rule and no catch-all, #35;
 // fixed uid and accountType after review, #35; @epfl.ch associations aren't students and
@@ -246,17 +247,74 @@ service cloud.firestore {
       // Only a verified association may publish under its name (the verified badge), and it
       // always does: it can read only its own association events, so an event without the
       // badge would be unreadable to its own creator.
-      allow create: if canWriteEvents()
-          && request.resource.data.createdBy == request.auth.uid
-          && isValidEvent(request.resource.data)
-          && request.resource.data.isAssociationEvent == isVerifiedAssociation();
+// A new event has no registration yet: attendeeCount is the whole number 0, or absent (an
+// event written before the counter existed counts as 0 everywhere). Numbers compare by
+// value, so `is int` is what refuses 0.0.
+allow create: if canWriteEvents()
+    && request.resource.data.createdBy == request.auth.uid
+    && isValidEvent(request.resource.data)
+    && request.resource.data.isAssociationEvent == isVerifiedAssociation()
+    && request.resource.data.get('attendeeCount', 0) is int
+    && request.resource.data.get('attendeeCount', 0) == 0;
 
-      // Any organizer manages the event. The creator and the badge are fixed once created.
-      allow update: if canWriteEvents()
-          && isOrganizer()
-          && isValidEvent(request.resource.data)
-          && !request.resource.data.diff(resource.data).affectedKeys()
-              .hasAny(['createdBy', 'isAssociationEvent']);
+// The caller's own registration for this event.
+function ownRegistration() {
+  return /databases/$(database)/documents/events/$(eventId)/attendees/$(request.auth.uid);
+}
+
+// The student branch of the event's read rule, on the stored event.
+function studentCanReadThisEvent() {
+  return resource.data.isPrivate == false
+      || (resource.data.isPrivate == true
+          && resource.data.allowedUids.hasAny([request.auth.uid]));
+}
+
+// Registering: the counter goes up by exactly one, stays within the capacity when it is a
+// number (null, missing or anything else is no limit), and the caller's registration,
+// missing before, exists after the same write. That document's own create rule checks the
+// rest (own UID, readable event that hasn't ended, account not deleted).
+function isRegistering() {
+  let capacity = resource.data.get('capacity', null);
+  let before = resource.data.get('attendeeCount', 0);
+  let after = request.resource.data.attendeeCount;
+  return after is int
+      && after == before + 1
+      && (!(capacity is number) || after <= capacity)
+      && !exists(ownRegistration())
+      && existsAfter(ownRegistration());
+}
+
+// Cancelling: the counter goes down by exactly one, never below 0, and the caller's
+// registration, there before, is deleted by the same write.
+function isCancelling() {
+  let before = resource.data.get('attendeeCount', 0);
+  let after = request.resource.data.attendeeCount;
+  return after is int
+      && after >= 0
+      && after == before - 1
+      && exists(ownRegistration())
+      && !existsAfter(ownRegistration());
+}
+
+// The only change a non-organizer may make to an event (#372): a student who can read it
+// changes attendeeCount, and nothing else, with their own registration.
+function countsOwnRegistration() {
+  return isStudent()
+      && studentCanReadThisEvent()
+      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attendeeCount'])
+      && (isRegistering() || isCancelling());
+}
+
+// Any organizer manages the event. The creator, the badge and the counter are fixed for
+// them: attendeeCount only changes through countsOwnRegistration. An equal number of another
+// type (3.0 for 3) isn't a change for affectedKeys, so `is int` keeps the counter whole.
+allow update: if (canWriteEvents()
+        && isOrganizer()
+        && isValidEvent(request.resource.data)
+        && !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['createdBy', 'isAssociationEvent', 'attendeeCount'])
+        && request.resource.data.get('attendeeCount', 0) is int)
+    || countsOwnRegistration();
 
       allow delete: if canWriteEvents() && isOrganizer();
 
@@ -306,14 +364,35 @@ service cloud.firestore {
 
         allow get: if isSelf() || isEventOrganizer();
         allow list: if isEventOrganizer();
-        allow create: if isSelf()
-            && !isDeletedAccount(uid)
-            && canReadEvent()
-            && hasNotEnded()
-            && request.resource.data.keys().hasOnly(['uid', 'registeredAt'])
-            && request.resource.data.uid == uid
-            && request.resource.data.registeredAt == request.time;
-        allow delete: if isSelf();
+// The event's attendeeCount before this write, and once the whole write (batch or
+// transaction) is applied. Missing counts as 0.
+function countBefore() {
+  return get(event()).data.get('attendeeCount', 0);
+}
+
+function countAfter() {
+  return getAfter(event()).data.get('attendeeCount', 0);
+}
+
+// A registration is counted: the same write raises the event's attendeeCount by one,
+// which the event's update rule accepts only within the capacity.
+allow create: if isSelf()
+    && !isDeletedAccount(uid)
+    && canReadEvent()
+    && hasNotEnded()
+    && request.resource.data.keys().hasOnly(['uid', 'registeredAt'])
+    && request.resource.data.uid == uid
+    && request.resource.data.registeredAt == request.time
+    && countAfter() == countBefore() + 1;
+
+// Cancelling lowers the counter in the same write, so nobody frees or keeps a place they
+// don't hold. It is still always possible: nothing is counted for a registration that
+// doesn't exist, an event that is gone or no longer readable, or a counter already at 0.
+allow delete: if isSelf()
+    && (resource == null
+        || !canReadEvent()
+        || countBefore() == 0
+        || countAfter() == countBefore() - 1);
       }
     }
 
