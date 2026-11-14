@@ -65,7 +65,12 @@ sealed interface MyChatsResult {
  *
  * It reads nothing a member couldn't already read: the groups come from the student's own
  * collection-group query, and each latest message is read under its group's chat rule. The event's
- * name and the members' names aren't here: read them from their own repositories, by ID.
+ * name and the members' names aren't here: read them from their own repositories, by ID. A listed
+ * chat's event may be gone, deleted or a private event the student was removed from: `getEvent`
+ * then answers `EventResult.NotFound`, so the tab needs a label for a chat without its event.
+ *
+ * If every chat is denied, the list is a [MyChatsResult.Success] with no chats, shown as "no chats"
+ * rather than as an error, until the groups next change on the server (see [observeMyChats]).
  */
 class ChatsRepository
 @Inject
