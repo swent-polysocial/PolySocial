@@ -17,7 +17,7 @@
 // and the organizers, #281).
 // Contributors: Claude (Opus 5.5, Anthropic) (no organizer name read from a stale request when the
 // screen comes back, and an answered read kept, also when the connection changes; whether a read
-// runs, so the screen holds the name's place, #281's review).
+// runs, so the screen holds the name's place from the first state, #281's review).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -70,6 +70,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
@@ -293,8 +294,24 @@ private data class OrganizerRead(
       uid == request.uid && (request.offline || !failedForNetwork)
 }
 
-/** The organizer's name for the viewer: [name] once read, and [reading] while it is read. */
-private data class OrganizerName(val name: String? = null, val reading: Boolean = false)
+/** The answer to [request]: the organizer's [name], null without one or without a request. */
+private data class OrganizerAnswer(val request: OrganizerRequest?, val name: String? = null)
+
+/**
+ * This state with the organizer's name from [answer], for a viewer who may see it: checked again
+ * here, so the name goes at once when the registration is cancelled. Until the answer to this
+ * state's own request comes, a name already read for the same organizer stays, and without one the
+ * row holds its place ([EventDetailUiState.Loaded.isReadingOrganizerName]).
+ */
+private fun EventDetailUiState.withOrganizer(answer: OrganizerAnswer): EventDetailUiState {
+  if (this !is EventDetailUiState.Loaded) return this
+  val request = organizerRequest() ?: return this
+  val name = answer.name.takeIf { answer.request?.uid == request.uid }
+  return copy(
+      organizerName = name,
+      isReadingOrganizerName = name == null && answer.request != request,
+  )
+}
 
 /** Where "Cancel event" is (Figma section 10, "Cancel event · …"). */
 sealed interface CancelEventState {
@@ -549,39 +566,25 @@ constructor(
         this@withOrganizerName.onEach {
               requests.value = (it as? EventDetailUiState.Loaded)?.organizerRequest()
             }
-            .combine(organizerNames(requests)) { state, organizer ->
-              // Checked again here, so the name goes at once when the registration is cancelled.
-              if (state is EventDetailUiState.Loaded && state.namedOrganizer() != null)
-                  state.copy(
-                      organizerName = organizer.name,
-                      isReadingOrganizerName = organizer.reading,
-                  )
-              else state
-            }
+            .combine(organizerAnswers(requests), EventDetailUiState::withOrganizer)
     )
   }
 
   /**
-   * The name of the organizer in each of [requests], from their public profile: none when there is
-   * nobody to name, [OrganizerName.reading] while it is read, and none when the profile is missing,
-   * unreadable or has no name. It is read once and kept, so the screen coming back, the
-   * registration cancelled and made again or the connection changing costs no read
-   * ([OrganizerRead.answers]).
+   * The answer to each of [requests], once there is one: the organizer's name from their public
+   * profile, none when the profile is missing, unreadable or has no name. It is read once and kept,
+   * so the screen coming back, the registration cancelled and made again or the connection changing
+   * costs no read ([OrganizerRead.answers]).
    */
   @OptIn(ExperimentalCoroutinesApi::class)
-  private fun organizerNames(requests: Flow<OrganizerRequest?>): Flow<OrganizerName> =
-      requests.transformLatest { request ->
-        if (request == null) {
-          emit(OrganizerName())
-          return@transformLatest
-        }
+  private fun organizerAnswers(requests: Flow<OrganizerRequest?>): Flow<OrganizerAnswer> =
+      requests.mapLatest { request ->
+        if (request == null) return@mapLatest OrganizerAnswer(null)
         val known = organizerRead?.takeIf { it.answers(request) }
-        if (known != null) {
-          emit(OrganizerName(known.name))
-        } else {
-          emit(OrganizerName(reading = true))
-          emit(OrganizerName(readOrganizer(request.uid).also { organizerRead = it }.name))
-        }
+        OrganizerAnswer(
+            request,
+            (known ?: readOrganizer(request.uid).also { organizerRead = it }).name,
+        )
       }
 
   /** Asks once for the name of the association that publishes the event in [state], if any. */
