@@ -1,4 +1,5 @@
 // Contributors: Claude (Fable 5.2, Anthropic) drafted the tests of the scheduled cleanup of unverified accounts, #226.
+// Contributors: Claude (Fable 5.2, Anthropic) (the tests a mutation check of the handler found missing, #226).
 "use strict";
 
 // Unit tests with fakes, no emulator:
@@ -189,6 +190,19 @@ test("an account whose verification or creation time can't be read is kept", asy
   assert.equal(await run(backend), 0);
 
   assert.equal(backend.uids().length, 5);
+  assert.deepEqual(backend.calls, ["listUsers:"]);
+});
+
+// What the Admin SDK reports for a creation time it couldn't read. `new Date(null)` is 1970, so
+// reading the time that way would delete the account as the oldest of all.
+test("an account whose creation time the Admin SDK reports as null is kept", async () => {
+  const backend = fakeBackend({
+    users: [{ ...account("null-creation-time", OLD), metadata: { creationTime: null } }],
+  });
+
+  assert.equal(await run(backend), 0);
+
+  assert.deepEqual(backend.uids(), ["null-creation-time"]);
   assert.deepEqual(backend.calls, ["listUsers:"]);
 });
 
