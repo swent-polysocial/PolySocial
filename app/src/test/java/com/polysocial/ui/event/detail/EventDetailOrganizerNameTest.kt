@@ -2,6 +2,8 @@
 // Contributors: Claude Fable 5.2 (testing pass: viewers whose registration isn't known, reads that
 // overlap or outlive the event's change, and no state naming the organizer to a student who isn't
 // going, #281).
+// Contributors: Claude (Opus 5.5, Anthropic) (returns to the detail after its screen stopped, #281's
+// review).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -32,12 +34,14 @@ import java.time.Clock
 import java.time.ZoneId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -103,11 +107,42 @@ class EventDetailOrganizerNameTest {
   ): EventDetailViewModel {
     events.seed(opened)
     return viewModel(profileRepository, registrationRepository).also { vm ->
+      show(vm)
+      runCurrent()
+    }
+  }
+
+  /** Collects [vm]'s state like the screen does, into [shown], until the returned job ends. */
+  private fun TestScope.show(vm: EventDetailViewModel): Job =
       backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
         vm.uiState.collect { shown += it }
       }
-      runCurrent()
-    }
+
+  /**
+   * Opens the detail, shows the organizer's name, then puts another screen on top of it for longer
+   * than the detail keeps listening ([away] runs meanwhile) and comes back to it, with the profile
+   * reads made before forgotten.
+   */
+  private suspend fun TestScope.returnToTheDetail(
+      away: suspend () -> Unit = {}
+  ): EventDetailViewModel {
+    registrations.seedRegistration(EVENT, ME)
+    events.seed(event)
+    val vm = viewModel()
+    val screen = show(vm)
+    runCurrent()
+    assertEquals(CREATOR_NAME, vm.loaded.organizerName)
+
+    screen.cancel()
+    advanceTimeBy(LONGER_THAN_THE_DETAIL_LISTENS_MILLIS)
+    runCurrent()
+    away()
+    runCurrent()
+    profiles.requestedUids.clear()
+
+    show(vm)
+    runCurrent()
+    return vm
   }
 
   private val EventDetailViewModel.loaded
@@ -370,6 +405,25 @@ class EventDetailOrganizerNameTest {
   }
 
   @Test
+  fun aReturnAfterTheRegistrationWasCancelledElsewhere_readsNoProfile_andShowsNoName() = runTest {
+    // Cancelled from My events, for example, while the detail was in the background.
+    val vm = returnToTheDetail(away = { registrations.cancel(EVENT) })
+
+    assertEquals(Attendance.NOT_GOING, vm.loaded.attendance)
+    assertNull(vm.loaded.organizerName)
+    assertEquals(emptyList<String>(), readUids)
+  }
+
+  @Test
+  fun aReturnWithNothingChanged_showsTheNameAlreadyRead_withoutReadingIt() = runTest {
+    val vm = returnToTheDetail()
+
+    assertEquals(Attendance.GOING, vm.loaded.attendance)
+    assertEquals(CREATOR_NAME, vm.loaded.organizerName)
+    assertEquals(emptyList<String>(), readUids)
+  }
+
+  @Test
   fun everyOtherChangeOfTheEvent_keepsTheName_withoutReadingItAgain() = runTest {
     registrations.seedRegistration(EVENT, ME)
     val vm = open()
@@ -540,5 +594,7 @@ class EventDetailOrganizerNameTest {
     const val CREATOR_NAME = "Olivia Organizer"
     /** The name the organizer changed to, which only a newer read answers. */
     const val NEW_NAME = "Olivia Renamed"
+    /** Longer than the 5 s the detail keeps listening once its screen is gone. */
+    const val LONGER_THAN_THE_DETAIL_LISTENS_MILLIS = 6_000L
   }
 }

@@ -15,6 +15,8 @@
 // ReminderWorker can refuse to notify a different account, #123's second PR, Mehdi's review).
 // Contributors: Claude Fable 5.2 (a student organizer's name, read only for the students going
 // and the organizers, #281).
+// Contributors: Claude (Opus 5.5, Anthropic) (no organizer name read from a stale request when the
+// screen comes back, and an answered read kept, #281's review).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -67,6 +69,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
@@ -266,6 +269,16 @@ private fun EventDetailUiState.Loaded.namedOrganizer(): String? {
  */
 private data class OrganizerRequest(val uid: String, val offline: Boolean)
 
+/**
+ * The answer to [request]: the organizer's [name], null when the profile is missing, unreadable or
+ * has no name; [failedForNetwork] when the read failed for the network, so it is tried again.
+ */
+private data class OrganizerRead(
+    val request: OrganizerRequest,
+    val name: String?,
+    val failedForNetwork: Boolean,
+)
+
 /** Where "Cancel event" is (Figma section 10, "Cancel event · …"). */
 sealed interface CancelEventState {
   /** The confirmation isn't shown. */
@@ -386,21 +399,32 @@ constructor(
   /** True once a student's view of the event shows, so the student's group is observed. */
   private val watchesGroup = MutableStateFlow(false)
 
-  /** Whose name the event that shows needs, null when the viewer may see nobody's. */
+  /**
+   * Whose name the event that shows needs, null when the viewer may see nobody's. It is cleared
+   * whenever [uiState] stops, so when the screen comes back nothing is read before the event and
+   * the registrations say again who may see it.
+   */
   private val organizerRequest = MutableStateFlow<OrganizerRequest?>(null)
+
+  /** The last answered read of the organizer's name, kept while the screen is stopped. */
+  private var organizerRead: OrganizerRead? = null
 
   /**
    * The name of the organizer in [organizerRequest], from their public profile; null when there is
    * nobody to name, until the first read answers, and when the profile is missing, unreadable or
-   * has no name. While a later read runs, the name already read stays.
+   * has no name. A request already answered isn't read again (the screen coming back, or the
+   * registration cancelled and made again), unless that read failed for the network. While a later
+   * read runs, the name already read stays.
    */
   @OptIn(ExperimentalCoroutinesApi::class)
-  private val organizerName: Flow<String?> = organizerRequest.mapLatest { request ->
-    val uid = request?.uid ?: return@mapLatest null
-    (profiles.getPublicProfile(uid) as? PublicProfileResult.Found)?.profile?.displayName?.takeIf {
-      it.isNotBlank()
-    }
-  }
+  private val organizerName: Flow<String?> =
+      organizerRequest
+          .mapLatest { request ->
+            if (request == null) return@mapLatest null
+            val known = organizerRead?.takeIf { it.request == request && !it.failedForNetwork }
+            (known ?: readOrganizer(request).also { organizerRead = it }).name
+          }
+          .onCompletion { organizerRequest.value = null }
 
   /** The attendance this screen saved, until the registrations' next answer replaces it. */
   private val savedAttendance = MutableStateFlow<Attendance?>(null)
@@ -612,6 +636,16 @@ constructor(
         is PublicProfilesResult.Found -> result.profiles
         PublicProfilesResult.NetworkError,
         PublicProfilesResult.UnexpectedError -> null
+      }
+
+  /** Reads the name of the organizer in [request] from their public profile. */
+  private suspend fun readOrganizer(request: OrganizerRequest): OrganizerRead =
+      when (val result = profiles.getPublicProfile(request.uid)) {
+        is PublicProfileResult.Found ->
+            OrganizerRead(request, result.profile.displayName.ifBlank { null }, false)
+        PublicProfileResult.NetworkError -> OrganizerRead(request, null, failedForNetwork = true)
+        PublicProfileResult.NotFound,
+        PublicProfileResult.UnexpectedError -> OrganizerRead(request, null, failedForNetwork = false)
       }
 
   /** Counts the attendees again after the count failed (tapping the unavailable count). */
