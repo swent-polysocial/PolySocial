@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #232, and more after review).
 // Contributors: Claude (Fable 5.2, Anthropic) (tests of the student's groups across events, #363).
+// Contributors: Claude (Opus 5.5, Anthropic) (a test of memberUidsOf, after review, #363).
 package com.polysocial.model.group
 
 import kotlinx.coroutines.flow.drop
@@ -354,6 +355,17 @@ class FakeGroupRepositoryTest {
     repository.seedGroup(EVENT, listOf("other"))
 
     assertNull((myGroup() as MyGroupResult.Success).group)
+  }
+
+  @Test
+  fun memberUidsOf_followsTheStoredGroup_andIsNullWithoutOne() = runTest {
+    val group = repository.seedGroup(EVENT, listOf("other"))
+    assertEquals(listOf("other"), repository.memberUidsOf(EVENT, group.id))
+
+    repository.joinGroup(EVENT, group.id)
+    assertEquals(listOf("other", "student"), repository.memberUidsOf(EVENT, group.id))
+    assertNull(repository.memberUidsOf(OTHER, group.id))
+    assertNull(repository.memberUidsOf(EVENT, "missing"))
   }
 
   @Test

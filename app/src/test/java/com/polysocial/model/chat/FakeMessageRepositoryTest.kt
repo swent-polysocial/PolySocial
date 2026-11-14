@@ -1,7 +1,11 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #237).
 // Contributors: Claude (Fable 5.2, Anthropic) (tests of a group's latest message, #363).
+// Contributors: Claude (Opus 5.5, Anthropic) (tests of the members read from the groups, after
+// review, #363).
 package com.polysocial.model.chat
 
+import com.polysocial.model.group.FakeGroupRepository
+import com.polysocial.model.group.GroupWriteResult
 import java.time.Instant
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
@@ -258,6 +262,43 @@ class FakeMessageRepositoryTest {
         LatestMessageResult.Success(sent, fromCache = true),
         repository.observeLatestMessage(EVENT, GROUP).drop(1).first(),
     )
+  }
+
+  @Test
+  fun membersOf_givesTheChatOfAGroupItsMembers_whileTheyStayInIt() = runTest {
+    val groups = FakeGroupRepository(currentUid = "student").apply { readableEventIds += EVENT }
+    val chats =
+        FakeMessageRepository(currentUid = "student").apply { membersOf = groups::memberUidsOf }
+    val created = groups.createGroup(EVENT) as GroupWriteResult.Success
+
+    assertEquals(SendMessageResult.Sent, chats.sendMessage(EVENT, created.groupId, "Hi"))
+    assertEquals(
+        LatestMessageResult.Success(chats.messagesOf(EVENT, created.groupId).single(), false),
+        chats.observeLatestMessage(EVENT, created.groupId).drop(1).first(),
+    )
+
+    groups.leaveGroup(EVENT, created.groupId)
+    assertEquals(SendMessageResult.UnexpectedError, chats.sendMessage(EVENT, created.groupId, "Hi"))
+    assertEquals(
+        LatestMessageResult.UnexpectedError,
+        chats.observeLatestMessage(EVENT, created.groupId).drop(1).first(),
+    )
+  }
+
+  @Test
+  fun setMembers_winsOverMembersOf_evenToDenyTheGroupsMembers() = runTest {
+    repository.membersOf = { _, _ -> listOf("student") }
+    repository.setMembers(EVENT, OTHER_GROUP, emptySet())
+
+    assertEquals(MessagesResult.UnexpectedError, messages(groupId = OTHER_GROUP))
+    assertEquals(
+        MessagesResult.Success(emptyList(), fromCache = false),
+        messages(groupId = "group-3"),
+    )
+    // GROUP's members, set by setMembers, don't include the outsider membersOf would give.
+    repository.membersOf = { _, _ -> listOf("outsider") }
+    repository.currentUid = "outsider"
+    assertEquals(MessagesResult.UnexpectedError, messages())
   }
 
   private companion object {

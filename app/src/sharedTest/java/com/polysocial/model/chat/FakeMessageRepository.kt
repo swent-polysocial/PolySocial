@@ -1,6 +1,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote this fake for tests, #237).
 // Contributors: OpenAI Codex (modeled same-ID retries in the chat fake, #238).
 // Contributors: Claude (Fable 5.2, Anthropic) (a group's latest message, #363).
+// Contributors: Claude (Opus 5.5, Anthropic) (members read from the groups, after review, #363).
 package com.polysocial.model.chat
 
 import com.polysocial.model.event.isReadableEventId
@@ -17,12 +18,14 @@ import kotlinx.coroutines.flow.map
  * in the same order as `FirestoreMessageRepository`: the text, the IDs, the signed-in user, then
  * [online], then [sendFailure], then membership.
  *
- * Like the Security Rules, only a group's members (see [setMembers]) read and send its messages:
- * anyone else's [observeMessages] ends with [MessagesResult.UnexpectedError], and their
- * [sendMessage] returns [SendMessageResult.UnexpectedError]. [observeMessages] reads [currentUid],
- * [readFailure] and the members when its collection starts, as the real listener reads the user
- * and is checked by the rules then. [observeLatestMessage] follows the same checks and emits the
- * last of those messages, with its own results.
+ * Like the Security Rules, only a group's members (see [setMembers] and [membersOf]) read and send
+ * its messages: anyone else's [observeMessages] ends with [MessagesResult.UnexpectedError], and
+ * their [sendMessage] returns [SendMessageResult.UnexpectedError]. [observeMessages] reads
+ * [currentUid], [readFailure] and the members when its collection starts, as the real listener
+ * reads the user and is checked by the rules then, and keeps emitting for that user: changing
+ * [currentUid] later doesn't affect a running collection, so a ViewModel test can't simulate an
+ * account change with it. [observeLatestMessage] follows the same checks and emits the last of
+ * those messages, with its own results.
  *
  * Messages are listed oldest first, then by ID for equal times, as Firestore orders them. Sent
  * messages get the IDs `message-1`, `message-2`… and deterministic server times that put them
@@ -60,7 +63,19 @@ class FakeMessageRepository(var currentUid: String? = "test-student") : MessageR
 
   private var sent = 0
 
-  /** Makes [memberUids] the members of the group [groupId] of [eventId], replacing any others. */
+  /**
+   * Where the members of a group that [setMembers] never named come from, or null (the default) for
+   * nobody. The rules read a chat's members from its group, so a test that also uses a
+   * `FakeGroupRepository` can wire it to that group: `membersOf = groups::memberUidsOf`. Without
+   * it, a group created, joined or seeded there has no members here until [setMembers] names them,
+   * so its chat is denied.
+   */
+  var membersOf: ((eventId: String, groupId: String) -> Collection<String>?)? = null
+
+  /**
+   * Makes [memberUids] the members of the group [groupId] of [eventId], replacing any others, also
+   * those [membersOf] gives: an empty set denies the chat even to the group's members.
+   */
   fun setMembers(eventId: String, groupId: String, memberUids: Set<String>) {
     members[GroupKey(eventId, groupId)] = memberUids
   }
@@ -146,7 +161,7 @@ class FakeMessageRepository(var currentUid: String? = "test-student") : MessageR
       uid != null &&
           isReadableEventId(key.eventId) &&
           isReadableEventId(key.groupId) &&
-          uid in members[key].orEmpty()
+          uid in (members[key] ?: membersOf?.invoke(key.eventId, key.groupId)).orEmpty()
 
   private fun store(key: GroupKey, message: Message) {
     val stored = messagesOf(key.eventId, key.groupId) + message
