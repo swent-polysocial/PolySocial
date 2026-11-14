@@ -268,8 +268,10 @@ private fun EventDetailUiState.Loaded.namedOrganizer(): String? {
 
 /**
  * The organizer whose name is read for the viewer ([namedOrganizer]). [offline] isn't sent with the
- * read: it makes going back online a new request, so a read that failed for the network is tried
- * again then ([OrganizerRead.answers]).
+ * read: it makes the event no longer showing as offline a new request, so a read that failed for
+ * the network is tried again then ([OrganizerRead.answers]). A network that Android reports but
+ * Firestore can't reach doesn't change it, so the name then waits for the next request (the screen
+ * coming back, or the registration changing).
  */
 private data class OrganizerRequest(val uid: String, val offline: Boolean)
 
@@ -288,7 +290,7 @@ private data class OrganizerRead(
 ) {
   /**
    * Whether this answer still holds for [request]: the same organizer, and a read that didn't fail
-   * for the network, or did while the event still comes from the offline cache.
+   * for the network, or did while the event still shows as offline.
    */
   fun answers(request: OrganizerRequest) =
       uid == request.uid && (request.offline || !failedForNetwork)
@@ -381,9 +383,10 @@ sealed interface CancelEventState {
  *
  * A student's public event names its organizer to the viewers [namedOrganizer] allows (#281), from
  * the creator's public profile, read through [profiles] only for them, then kept while this
- * ViewModel lives; only a read that failed for the network is tried again, once back online. The
- * event never waits for it, and a profile that is missing or can't be read just leaves the name
- * out: a missing profile doesn't mean a deleted account (#291).
+ * ViewModel lives; only a read that failed for the network is tried again, once the event no longer
+ * shows as offline or when the screen comes back ([OrganizerRequest]). The event never waits for
+ * it, and a profile that is missing or can't be read just leaves the name out: a missing profile
+ * doesn't mean a deleted account (#291).
  *
  * Once going, "Remind me 1 h before" ([EventDetailUiState.Loaded.reminderOn], second PR of #123)
  * schedules or cancels through [reminders]: its state is seeded once from
