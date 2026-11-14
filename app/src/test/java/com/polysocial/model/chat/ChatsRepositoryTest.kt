@@ -1,5 +1,7 @@
 // Contributors: Claude (Fable 5.2, Anthropic) (wrote these tests, #363, with more from a test
 // audit).
+// Contributors: Claude (Opus 5.5, Anthropic) (chats read their members from the groups, after
+// review, #363).
 package com.polysocial.model.chat
 
 import com.polysocial.model.group.FakeGroupRepository
@@ -32,7 +34,9 @@ import org.junit.Test
 /** [ChatsRepository] on the fake group and message repositories, as the Chats tab will use it. */
 class ChatsRepositoryTest {
   private val groups = FakeGroupRepository(currentUid = STUDENT)
-  private val messages = FakeMessageRepository(currentUid = STUDENT)
+  // A chat's members are its group's, as the chat rules read them from the group.
+  private val messages =
+      FakeMessageRepository(currentUid = STUDENT).apply { membersOf = groups::memberUidsOf }
 
   /** How many latest-message listeners are open, to check that none outlives the collection. */
   private var listening = 0
@@ -53,11 +57,12 @@ class ChatsRepositoryTest {
   private val repository = ChatsRepository(groups, countedMessages)
 
   /** Seeds a group of [eventId] with [STUDENT] and [others], who can all read its chat. */
-  private fun chat(eventId: String, vararg others: String): Group {
-    val group = groups.seedGroup(eventId, listOf(STUDENT) + others)
-    messages.setMembers(eventId, group.id, group.memberUids.toSet())
-    return group
-  }
+  private fun chat(eventId: String, vararg others: String): Group =
+      groups.seedGroup(eventId, listOf(STUDENT) + others)
+
+  /** Denies everyone the chat of the group [groupId] of [eventId], even its members. */
+  private fun deny(eventId: String, groupId: String) =
+      messages.setMembers(eventId, groupId, emptySet())
 
   private fun message(group: Group, id: String, text: String, at: Instant, sender: String = OTHER) =
       messages.seedMessage(group.eventId, group.id, id, sender, text, at)
@@ -213,8 +218,6 @@ class ChatsRepositoryTest {
     val results = startCollecting()
     assertEquals(1, listening)
 
-    // The chat's members come first: the list reads the latest message once the group shows.
-    messages.setMembers(HIKE, "group-2", setOf(STUDENT))
     val joined = groups.seedGroup(HIKE, listOf(STUDENT))
     assertEquals(listOf(joined, kept), results.latest.chats.map { it.group })
     assertEquals(2, listening)
@@ -392,6 +395,7 @@ class ChatsRepositoryTest {
   fun aChatTheStudentCannotRead_failsTheListInsteadOfShowingItEmpty() = runTest {
     chat(PARTY)
     // Like a deleted account still listed in a group: the group shows, its chat is denied.
+    deny(HIKE, "group-2")
     val denied = groups.seedGroup(HIKE, listOf(STUDENT))
     messages.seedMessage(HIKE, denied.id, "a", OTHER, "Unreadable", NOON)
 
@@ -457,6 +461,7 @@ class ChatsRepositoryTest {
 
     repeat(20) { message(group, "m$it", "Message $it", NOON.plusSeconds(60L + it)) }
     // A group whose chat the student can't read fails the list.
+    deny(HIKE, "group-2")
     groups.seedGroup(HIKE, listOf(STUDENT))
     release.complete(Unit)
     runCurrent()

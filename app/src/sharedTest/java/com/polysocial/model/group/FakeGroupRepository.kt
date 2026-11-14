@@ -1,6 +1,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote this fake for tests, #232; aligned it with
 // FirestoreGroupRepository and the rules after review).
 // Contributors: Claude (Fable 5.2, Anthropic) (the student's groups across events, #363).
+// Contributors: Claude (Opus 5.5, Anthropic) (the members a chat fake reads, after review, #363).
 package com.polysocial.model.group
 
 import com.polysocial.model.event.isReadableEventId
@@ -29,7 +30,12 @@ import kotlinx.coroutines.flow.map
  *
  * The observe flows read [currentUid], [readFailure] and, for [observeGroups], [readableEventIds]
  * when their collection starts, as the real listeners read the user and are checked by the rules.
- * With nobody signed in, they end with their `UnexpectedError`, like the real ones.
+ * With nobody signed in, they end with their `UnexpectedError`, like the real ones. They keep
+ * emitting for the user read then: changing [currentUid] later changes only the writes and the
+ * next collections, so a ViewModel test can't simulate an account change with a running one.
+ *
+ * A `FakeMessageRepository` doesn't know these groups' members unless its `membersOf` reads them
+ * from [memberUidsOf].
  *
  * @property currentUid the signed-in student, or null when nobody is signed in.
  */
@@ -77,6 +83,10 @@ class FakeGroupRepository(var currentUid: String? = "test-student") : GroupRepos
 
   /** The stored groups of [eventId], oldest first. */
   fun groupsOf(eventId: String): List<Group> = groups.value[eventId].orEmpty()
+
+  /** The members of the stored group [groupId] of [eventId], or null when there is no such group. */
+  fun memberUidsOf(eventId: String, groupId: String): List<String>? =
+      groupsOf(eventId).firstOrNull { it.id == groupId }?.memberUids
 
   override fun observeGroups(eventId: String): Flow<GroupsResult> = flow {
     emit(GroupsResult.Loading)
