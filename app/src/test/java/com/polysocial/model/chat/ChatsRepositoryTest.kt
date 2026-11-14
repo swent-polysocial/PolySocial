@@ -1,13 +1,14 @@
 // Contributors: Claude (Fable 5.2, Anthropic) (wrote these tests, #363, with more from a test
 // audit).
-// Contributors: Claude (Opus 5.5, Anthropic) (chats read their members from the groups, and one
-// listener per chat, after review, #363).
+// Contributors: Claude (Opus 5.5, Anthropic) (chats read their members from the groups, one
+// listener per chat, and a chat denied before its group leaves the list, after review, #363).
 package com.polysocial.model.chat
 
 import com.polysocial.model.group.FakeGroupRepository
 import com.polysocial.model.group.GROUP_CAPACITY
 import com.polysocial.model.group.Group
 import com.polysocial.model.group.GroupRepository
+import com.polysocial.model.group.GroupWriteResult
 import com.polysocial.model.group.MyGroupsResult
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
@@ -72,6 +73,14 @@ class ChatsRepositoryTest {
   private fun message(group: Group, id: String, text: String, at: Instant, sender: String = OTHER) =
       messages.seedMessage(group.eventId, group.id, id, sender, text, at)
 
+  /** Another student joins [group]: the student's groups answer again from the server, with it. */
+  private suspend fun anotherStudentJoins(group: Group) {
+    groups.readableEventIds += group.eventId
+    groups.currentUid = JOINER
+    assertEquals(GroupWriteResult.Success(group.id), groups.joinGroup(group.eventId, group.id))
+    groups.currentUid = STUDENT
+  }
+
   /** Messages whose read of the group [slowGroupId] answers only once [answered] completes. */
   private fun messagesAnsweringLate(slowGroupId: String, answered: CompletableDeferred<Unit>) =
       object : MessageRepository by messages {
@@ -113,12 +122,13 @@ class ChatsRepositoryTest {
       }
 
   /** Collects the chats in the background; the list holds every result so far. */
-  private fun TestScope.startCollecting(
-      chats: ChatsRepository = repository
-  ): MutableList<MyChatsResult> {
+  private fun TestScope.startCollecting(chats: ChatsRepository = repository) =
+      startCollecting(chats.observeMyChats())
+
+  private fun TestScope.startCollecting(chats: Flow<MyChatsResult>): MutableList<MyChatsResult> {
     val results = mutableListOf<MyChatsResult>()
     backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
-      chats.observeMyChats().collect { results += it }
+      chats.collect { results += it }
     }
     runCurrent()
     return results
@@ -485,13 +495,16 @@ class ChatsRepositoryTest {
 
   @Test
   fun aLatestMessageThatCannotBeRead_endsTheFlowWithItsError_andStopsTheOtherListeners() = runTest {
-    chat(PARTY)
+    val party = chat(PARTY)
     chat(HIKE)
 
     messages.readFailure = FakeMessageRepository.ReadFailure.NETWORK
     assertEquals(MyChatsResult.NetworkError, repository.observeMyChats().toList().last())
+    // Denied chats are left out until a later result from the server still lists them.
     messages.readFailure = FakeMessageRepository.ReadFailure.UNEXPECTED
-    assertEquals(MyChatsResult.UnexpectedError, repository.observeMyChats().toList().last())
+    val denied = startCollecting()
+    anotherStudentJoins(party)
+    assertEquals(MyChatsResult.UnexpectedError, denied.last())
     assertEquals(0, listening)
   }
 
@@ -511,14 +524,141 @@ class ChatsRepositoryTest {
   }
 
   @Test
-  fun aChatTheStudentCannotRead_failsTheListInsteadOfShowingItEmpty() = runTest {
-    chat(PARTY)
+  fun aChatTheStudentCannotRead_isLeftOut_untilTheServerStillListsItsGroup() = runTest {
+    val readable = chat(PARTY)
     // Like a deleted account still listed in a group: the group shows, its chat is denied.
     deny(HIKE, "group-2")
     val denied = groups.seedGroup(HIKE, listOf(STUDENT))
     messages.seedMessage(HIKE, denied.id, "a", OTHER, "Unreadable", NOON)
+    val results = startCollecting()
+    assertEquals(
+        MyChatsResult.Success(listOf(ChatPreview(readable, null)), fromCache = false),
+        results.last(),
+    )
 
-    assertEquals(MyChatsResult.UnexpectedError, repository.observeMyChats().toList().last())
+    anotherStudentJoins(denied)
+
+    assertEquals(MyChatsResult.UnexpectedError, results.last())
+    assertEquals(0, listening)
+  }
+
+  @Test
+  fun aChatLeftWhileDisconnected_deniedBeforeTheGroupsDropIt_leavesTheOthersListed() = runTest {
+    // Left on another device while this one was disconnected: on reconnection, Firestore reports
+    // the chat's listener as denied at once, and the groups without it only in a later snapshot.
+    val left = chat(PARTY)
+    val kept = chat(HIKE)
+    val myGroups =
+        MutableStateFlow<MyGroupsResult>(
+            MyGroupsResult.Success(listOf(left, kept), fromCache = false)
+        )
+    val leftLatest =
+        MutableStateFlow<LatestMessageResult>(LatestMessageResult.Success(null, fromCache = false))
+    val results =
+        startCollecting(
+            ChatsRepository(groupsFrom(myGroups), messagesWithLatest(left to leftLatest))
+        )
+
+    leftLatest.value = LatestMessageResult.UnexpectedError
+    myGroups.value = MyGroupsResult.Success(listOf(kept), fromCache = false)
+    val sent = message(kept, "a", "Still on?", NOON.plusSeconds(60))
+    runCurrent()
+
+    assertEquals(
+        listOf(
+            MyChatsResult.Loading,
+            MyChatsResult.Success(
+                listOf(ChatPreview(kept, null), ChatPreview(left, null)),
+                fromCache = false,
+            ),
+            MyChatsResult.Success(listOf(ChatPreview(kept, null)), fromCache = false),
+            MyChatsResult.Success(listOf(ChatPreview(kept, sent)), fromCache = false),
+        ),
+        results,
+    )
+    assertEquals(1, listening)
+  }
+
+  @Test
+  fun aDeniedChat_isNoFailure_whileTheGroupsAfterItComeOnlyFromTheCache() = runTest {
+    val left = chat(PARTY)
+    val kept = chat(HIKE)
+    val myGroups =
+        MutableStateFlow<MyGroupsResult>(
+            MyGroupsResult.Success(listOf(left, kept), fromCache = false)
+        )
+    val leftLatest =
+        MutableStateFlow<LatestMessageResult>(LatestMessageResult.Success(null, fromCache = false))
+    val results =
+        startCollecting(
+            ChatsRepository(groupsFrom(myGroups), messagesWithLatest(left to leftLatest))
+        )
+    // Offline, the groups come from the cache.
+    myGroups.value = MyGroupsResult.Success(listOf(left, kept), fromCache = true)
+
+    leftLatest.value = LatestMessageResult.UnexpectedError
+    // A member joins, but from the cache: it says nothing about the server yet.
+    val joinedByOther = kept.copy(memberUids = kept.memberUids + OTHER)
+    myGroups.value = MyGroupsResult.Success(listOf(left, joinedByOther), fromCache = true)
+    runCurrent()
+    assertEquals(
+        MyChatsResult.Success(listOf(ChatPreview(joinedByOther, null)), fromCache = true),
+        results.last(),
+    )
+
+    myGroups.value = MyGroupsResult.Success(listOf(joinedByOther), fromCache = false)
+    runCurrent()
+
+    assertEquals(
+        MyChatsResult.Success(listOf(ChatPreview(joinedByOther, null)), fromCache = false),
+        results.last(),
+    )
+    assertTrue(MyChatsResult.UnexpectedError !in results)
+  }
+
+  @Test
+  fun aDeniedChat_whoseGroupTheServerStillListsAfterwards_failsTheList() = runTest {
+    val denied = chat(PARTY)
+    val kept = chat(HIKE)
+    val myGroups =
+        MutableStateFlow<MyGroupsResult>(
+            MyGroupsResult.Success(listOf(denied, kept), fromCache = false)
+        )
+    val deniedLatest =
+        MutableStateFlow<LatestMessageResult>(LatestMessageResult.Success(null, fromCache = false))
+    val results =
+        startCollecting(
+            ChatsRepository(groupsFrom(myGroups), messagesWithLatest(denied to deniedLatest))
+        )
+
+    deniedLatest.value = LatestMessageResult.UnexpectedError
+    // From the cache, the groups say nothing about the server yet.
+    myGroups.value = MyGroupsResult.Success(listOf(denied, kept), fromCache = true)
+    runCurrent()
+    assertEquals(
+        MyChatsResult.Success(listOf(ChatPreview(kept, null)), fromCache = true),
+        results.last(),
+    )
+
+    // The server still lists the student in the group whose chat denied them.
+    myGroups.value = MyGroupsResult.Success(listOf(denied, kept), fromCache = false)
+    runCurrent()
+
+    assertEquals(MyChatsResult.UnexpectedError, results.last())
+    assertEquals(0, listening)
+  }
+
+  @Test
+  fun aDeniedChat_isNotHiddenBehindAChatThatHasNotAnswered() = runTest {
+    val silent = chat(PARTY)
+    deny(HIKE, "group-2")
+    val denied = groups.seedGroup(HIKE, listOf(STUDENT))
+    val results = startCollecting(ChatsRepository(groups, messagesWithLatest(silent to SILENT)))
+    assertEquals(listOf<MyChatsResult>(MyChatsResult.Loading), results)
+
+    anotherStudentJoins(denied)
+
+    assertEquals(listOf(MyChatsResult.Loading, MyChatsResult.UnexpectedError), results)
     assertEquals(0, listening)
   }
 
@@ -531,11 +671,16 @@ class ChatsRepositoryTest {
     assertEquals(MyChatsResult.NetworkError, chats.toList().last())
     groups.readFailure = null
     messages.readFailure = FakeMessageRepository.ReadFailure.UNEXPECTED
-    assertEquals(MyChatsResult.UnexpectedError, chats.toList().last())
+    val denied = startCollecting(chats)
+    anotherStudentJoins(group)
+    assertEquals(MyChatsResult.UnexpectedError, denied.last())
 
     messages.readFailure = null
     assertEquals(
-        MyChatsResult.Success(listOf(ChatPreview(group, null)), fromCache = false),
+        MyChatsResult.Success(
+            listOf(ChatPreview(groups.groupsOf(PARTY).single(), null)),
+            fromCache = false,
+        ),
         chats.first { it is MyChatsResult.Success },
     )
     assertEquals(0, listening)
@@ -561,6 +706,8 @@ class ChatsRepositoryTest {
 
     failed.complete(Unit)
     runCurrent()
+    // Denied, the chat is left out until the server still lists the student in its group.
+    anotherStudentJoins(group)
 
     assertEquals(MyChatsResult.UnexpectedError, results.last())
   }
@@ -579,9 +726,10 @@ class ChatsRepositoryTest {
     }
 
     repeat(20) { message(group, "m$it", "Message $it", NOON.plusSeconds(60L + it)) }
-    // A group whose chat the student can't read fails the list.
+    // A group whose chat the student can't read fails the list once the server still lists it.
     deny(HIKE, "group-2")
-    groups.seedGroup(HIKE, listOf(STUDENT))
+    val denied = groups.seedGroup(HIKE, listOf(STUDENT))
+    anotherStudentJoins(denied)
     release.complete(Unit)
     runCurrent()
 
@@ -607,6 +755,7 @@ class ChatsRepositoryTest {
   private companion object {
     const val STUDENT = "student"
     const val OTHER = "other"
+    const val JOINER = "joiner"
     const val PARTY = "party"
     const val HIKE = "hike"
     const val STUDY = "study"

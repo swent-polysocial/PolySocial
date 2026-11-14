@@ -1,5 +1,6 @@
 // Contributors: Claude (Fable 5.2, Anthropic) (drafted the chat list read, #363).
-// Contributors: Claude (Opus 5.5, Anthropic) (one listener per chat, after review, #363).
+// Contributors: Claude (Opus 5.5, Anthropic) (one listener per chat, and a chat left while
+// disconnected no longer fails the list, after review, #363).
 package com.polysocial.model.chat
 
 import com.polysocial.model.group.Group
@@ -37,9 +38,9 @@ sealed interface MyChatsResult {
   /**
    * The signed-in student's chats, one per group they are in, across events; empty when they are in
    * none. Newest activity first: by the latest message's time, or by the group's creation time
-   * while it has no message, then by event and group ID so the order is stable. A group joined
-   * after the first list is left out until its latest message has answered (see
-   * [ChatsRepository.observeMyChats]).
+   * while it has no message, then by event and group ID so the order is stable. A chat whose latest
+   * message is denied is left out, and so is a group joined after the first list until its latest
+   * message has answered (see [ChatsRepository.observeMyChats]).
    *
    * @property fromCache true when the groups or any listed latest message come from Firestore's
    *   offline cache, for example while the device is offline. They may then be out of date.
@@ -50,8 +51,9 @@ sealed interface MyChatsResult {
   data object NetworkError : MyChatsResult
 
   /**
-   * Any other failure, for example nobody signed in, or an association, whose reads the Security
-   * Rules deny. The flow then ends.
+   * Any other failure, for example nobody signed in or an association, whose reads the Security
+   * Rules deny, or a chat the student can't read although the server still lists them in its group.
+   * The flow then ends.
    */
   data object UnexpectedError : MyChatsResult
 }
@@ -59,8 +61,7 @@ sealed interface MyChatsResult {
 /**
  * The signed-in student's chats, for the Chats tab (#364): every group they are in, across events
  * ([GroupRepository.observeMyGroups]), each with its latest message
- * ([MessageRepository.observeLatestMessage], one document per group). A one-to-one chat is a
- * two-member group, so it is listed the same way.
+ * ([MessageRepository.observeLatestMessage], one document per group).
  *
  * It reads nothing a member couldn't already read: the groups come from the student's own
  * collection-group query, and each latest message is read under its group's chat rule. The event's
@@ -85,11 +86,18 @@ constructor(
    * needs its own timeout. A slow collector gets only the latest result.
    *
    * It ends after a [MyChatsResult.NetworkError] or [MyChatsResult.UnexpectedError], which is
-   * always delivered last: when the groups can't be read, or the latest message of any of them,
-   * without waiting for the others. A member can always read their group's chat, so a message that
-   * can't be read fails the list instead of showing that chat as empty. Cancelling the collection
-   * stops every listener. The student is the one signed in when collection starts, so a new account
-   * needs a new collection.
+   * always delivered last: when the groups can't be read, or when a latest message can't be read
+   * because the server can't be reached. A latest message that is denied
+   * ([LatestMessageResult.UnexpectedError]) only leaves its chat out of the list: after a
+   * reconnection, Firestore reports the chat of a group the student left on another device as
+   * denied before it delivers the groups without that group. If the groups then drop it, the list
+   * goes on without it. If a later groups result from the server still lists it, the student is a
+   * member who can't read their chat, and the list ends with [MyChatsResult.UnexpectedError]. That
+   * result comes with the groups' next change from the server (a member joining or leaving, a group
+   * joined, the device reconnecting), so until then the chat is only missing.
+   *
+   * Cancelling the collection stops every listener. The student is the one signed in when
+   * collection starts, so a new account needs a new collection.
    */
   fun observeMyChats(): Flow<MyChatsResult> = channelFlow {
     send(MyChatsResult.Loading)
@@ -157,6 +165,9 @@ private class MyChats {
   /** The last latest message of each listed chat that has answered. */
   private val answers = mutableMapOf<ChatId, LatestMessageResult.Success>()
 
+  /** Listed chats whose latest message was denied, until the groups drop or confirm them. */
+  private val denied = mutableSetOf<ChatId>()
+
   /** The failure that ends the list, once there is one. */
   private var failure: MyChatsResult? = null
 
@@ -177,6 +188,9 @@ private class MyChats {
         myGroups = result
         val listed = result.groups.mapTo(HashSet()) { it.chat }
         answers.keys.retainAll(listed)
+        denied.retainAll(listed)
+        // The server still lists the student in a group whose chat denied them after that.
+        if (!result.fromCache && denied.isNotEmpty()) failure = MyChatsResult.UnexpectedError
       }
     }
   }
@@ -186,7 +200,7 @@ private class MyChats {
       LatestMessageResult.Loading -> Unit
       is LatestMessageResult.Success -> answers[chat] = result
       LatestMessageResult.NetworkError -> failure = MyChatsResult.NetworkError
-      LatestMessageResult.UnexpectedError -> failure = MyChatsResult.UnexpectedError
+      LatestMessageResult.UnexpectedError -> denied += chat
     }
   }
 
@@ -196,9 +210,10 @@ private class MyChats {
       return it
     }
     val current = myGroups ?: return null
-    if (!shown && current.groups.any { it.chat !in answers }) return null
+    val readable = current.groups.filter { it.chat !in denied }
+    if (!shown && readable.any { it.chat !in answers }) return null
     shown = true
-    val chats = current.groups.mapNotNull { group -> answers[group.chat]?.let { group to it } }
+    val chats = readable.mapNotNull { group -> answers[group.chat]?.let { group to it } }
     return MyChatsResult.Success(
         chats =
             chats
