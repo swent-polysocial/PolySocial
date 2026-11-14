@@ -13,7 +13,8 @@
 // denied note, from Figma 558:2, 558:119 and 558:186, second PR of #123).
 // Contributors: Claude Opus 5.5 (a Snackbar and Retry for a failed reminder cleanup after
 // cancelling the registration, second PR's review).
-// Contributors: Claude Fable 5.2 (the "by <name>" text on its own, to share it, #281).
+// Contributors: Claude Fable 5.2 (the "by <name>" text on its own, shared with a student
+// organizer's name, shown to the students going and the organizers, #281).
 package com.polysocial.ui.event.detail
 
 import android.Manifest
@@ -38,6 +39,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -108,6 +110,7 @@ import com.polysocial.ui.common.SheetIcon
 import com.polysocial.ui.common.SheetSecondaryButton
 import com.polysocial.ui.common.SheetTitle
 import com.polysocial.ui.common.StateButton
+import com.polysocial.ui.event.VERIFIED_PILL_HEIGHT
 import com.polysocial.ui.event.VerifiedPill
 import com.polysocial.ui.event.style
 import com.polysocial.ui.group.YourGroupCard
@@ -134,6 +137,7 @@ object EventDetailTags {
   const val TITLE = "event_detail_title"
   const val VERIFIED_BADGE = "event_detail_verified_badge"
   const val ASSOCIATION_NAME = "event_detail_association_name"
+  const val ORGANIZER_NAME = "event_detail_organizer_name"
   const val DATE = "event_detail_date"
   const val TIME = "event_detail_time"
   const val LOCATION = "event_detail_location"
@@ -317,6 +321,8 @@ fun EventDetailRoute(
  * A student who doesn't organize the event sees "I'm going" next to Find a group, and once going,
  * "✓ Going" with "You're going. Cancel registration" above it (Figma "Event detail" and "·
  * registered", #122). [attendanceFeedback] is shown once in a Snackbar whose Retry saves again.
+ *
+ * A student's event shows "by <name>" under its title when [state] has the organizer's name (#281).
  */
 @Composable
 fun EventDetailScreen(
@@ -470,6 +476,9 @@ private fun EventContent(
           if (event.isAssociationEvent) {
             Spacer(Modifier.height(6.dp))
             AssociationRow(state.associationName)
+          } else if (state.organizerName != null) {
+            Spacer(Modifier.height(6.dp))
+            OrganizerRow(state.organizerName)
           }
           Spacer(Modifier.height(14.dp))
           InfoRow(
@@ -949,6 +958,19 @@ private fun AssociationRow(name: String?) {
         stringResource(R.string.event_verified_badge),
         Modifier.testTag(EventDetailTags.VERIFIED_BADGE),
     )
+  }
+}
+
+/**
+ * Who organizes a student's event (#281), for the students going and its organizers: the
+ * association row's "by <name>" without the Verified badge, in the same place. Figma has no frame
+ * for it, so it keeps that row's height (the badge's), which leaves the rows below where they are
+ * on an association's event.
+ */
+@Composable
+private fun OrganizerRow(name: String) {
+  Box(Modifier.heightIn(min = VERIFIED_PILL_HEIGHT), contentAlignment = Alignment.CenterStart) {
+    ByName(name, Modifier.testTag(EventDetailTags.ORGANIZER_NAME))
   }
 }
 

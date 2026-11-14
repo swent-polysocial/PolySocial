@@ -6,11 +6,12 @@
      frames, and its save failures, #122). -->
 <!-- Contributors: Claude Opus 5.5 (a failed reminder cleanup's Snackbar text, #123's second PR
      review). -->
-<!-- Contributors: Claude Fable 5.2 ("by <name>" no longer named after associations, #281). -->
+<!-- Contributors: Claude Fable 5.2 ("by <name>" for a student organizer's name too, #281). -->
 <resources>
     <string name="event_detail_navigate_back">Back</string>
     <string name="event_detail_loading">Loading event…</string>
     <string name="event_detail_verified">Verified association</string>
+    <!-- %1$s is the association's name, or the student organizer's (#281). -->
     <string name="event_detail_by">by %1$s</string>
     <!-- The end time when the event ends on a later day, for example "01:00 (+1 day)". -->
     <plurals name="event_detail_end_later">
