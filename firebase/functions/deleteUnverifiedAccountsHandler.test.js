@@ -6,6 +6,8 @@
 // node firebase/functions/deleteUnverifiedAccountsHandler.test.js
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const { readFileSync } = require("node:fs");
+const path = require("node:path");
 const { inspect } = require("node:util");
 const { REGION } = require("./deleteAccountHandler");
 const {
@@ -410,7 +412,7 @@ test("a run that fails touches no verified or recent account, nor their document
       failure,
     );
     assert.deepEqual(
-      [...backend.state.profiles].filter((path) => path !== "users/a0000"),
+      [...backend.state.profiles].filter((document) => document !== "users/a0000"),
       keptDocuments,
       failure,
     );
@@ -447,4 +449,19 @@ test("the function runs daily, on Zurich time, in deleteAccount's region", () =>
   assert.equal(endpoint.scheduleTrigger.schedule, "every day 03:00");
   assert.equal(endpoint.scheduleTrigger.timeZone, "Europe/Zurich");
   assert.deepEqual(endpoint.region, [REGION]);
+});
+
+// The period is a promise to users, stated in words in the privacy notice and in the README:
+// nothing else keeps those equal to the constant.
+test("the privacy notice and the README state the retention period", () => {
+  const read = (file) => readFileSync(path.join(__dirname, "../..", file), "utf8");
+  const notice = read("app/src/main/res/values/strings.xml").match(
+    /<string name="privacy_notice_device_body">.*still unverified after (\d+) days.*<\/string>/,
+  );
+  const readme = read("README.md").match(/still unverified more than \*\*(\d+) days\*\* after/);
+  if (!notice) throw new Error("The privacy notice words the period differently: update this test");
+  if (!readme) throw new Error("The README words the period differently: update this test");
+
+  assert.equal(Number(notice[1]), UNVERIFIED_ACCOUNT_RETENTION_DAYS, "the privacy notice");
+  assert.equal(Number(readme[1]), UNVERIFIED_ACCOUNT_RETENTION_DAYS, "the README");
 });
