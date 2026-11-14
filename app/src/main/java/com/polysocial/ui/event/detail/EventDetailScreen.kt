@@ -15,6 +15,8 @@
 // cancelling the registration, second PR's review).
 // Contributors: Claude Fable 5.2 (the "by <name>" text on its own, shared with a student
 // organizer's name, shown to the students going and the organizers, #281).
+// Contributors: Claude (Opus 5.5, Anthropic) (the organizer's row holds its place while the name is
+// read, #281's review).
 package com.polysocial.ui.event.detail
 
 import android.Manifest
@@ -322,7 +324,8 @@ fun EventDetailRoute(
  * "✓ Going" with "You're going. Cancel registration" above it (Figma "Event detail" and "·
  * registered", #122). [attendanceFeedback] is shown once in a Snackbar whose Retry saves again.
  *
- * A student's event shows "by <name>" under its title when [state] has the organizer's name (#281).
+ * A student's event shows "by <name>" under its title when [state] has the organizer's name (#281),
+ * and holds its place while it is read.
  */
 @Composable
 fun EventDetailScreen(
@@ -476,7 +479,7 @@ private fun EventContent(
           if (event.isAssociationEvent) {
             Spacer(Modifier.height(6.dp))
             AssociationRow(state.associationName)
-          } else if (state.organizerName != null) {
+          } else if (state.organizerName != null || state.isReadingOrganizerName) {
             Spacer(Modifier.height(6.dp))
             OrganizerRow(state.organizerName)
           }
@@ -965,12 +968,13 @@ private fun AssociationRow(name: String?) {
  * Who organizes a student's event (#281), for the students going and its organizers: the
  * association row's "by <name>" without the Verified badge, in the same place. Figma has no frame
  * for it, so it keeps that row's height (the badge's), which leaves the rows below where they are
- * on an association's event.
+ * on an association's event. While the [name] is read (null), the row holds that height and draws
+ * nothing, so the rows below don't move when it arrives.
  */
 @Composable
-private fun OrganizerRow(name: String) {
+private fun OrganizerRow(name: String?) {
   Box(Modifier.heightIn(min = VERIFIED_PILL_HEIGHT), contentAlignment = Alignment.CenterStart) {
-    ByName(name, Modifier.testTag(EventDetailTags.ORGANIZER_NAME))
+    if (name != null) ByName(name, Modifier.testTag(EventDetailTags.ORGANIZER_NAME))
   }
 }
 

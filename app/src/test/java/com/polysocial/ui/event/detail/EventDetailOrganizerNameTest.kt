@@ -3,7 +3,8 @@
 // overlap or outlive the event's change, and no state naming the organizer to a student who isn't
 // going, #281).
 // Contributors: Claude (Opus 5.5, Anthropic) (returns to the detail after its screen stopped, and
-// no read again once back online unless the last one failed for the network, #281's review).
+// no read again once back online unless the last one failed for the network; whether a read runs,
+// #281's review).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -310,6 +311,50 @@ class EventDetailOrganizerNameTest {
     runCurrent()
 
     assertEquals(CREATOR_NAME, vm.loaded.organizerName)
+  }
+
+  @Test
+  fun whileTheNameIsRead_theDetailSaysSo_untilItArrives() = runTest {
+    registrations.seedRegistration(EVENT, ME)
+    val slow = SlowProfiles()
+
+    val vm = open(profileRepository = slow)
+    assertTrue(vm.loaded.isReadingOrganizerName)
+    assertNull(vm.loaded.organizerName)
+
+    slow.answer.complete(Unit)
+    runCurrent()
+
+    assertFalse(vm.loaded.isReadingOrganizerName)
+    assertEquals(CREATOR_NAME, vm.loaded.organizerName)
+  }
+
+  @Test
+  fun aReadThatFindsNoName_stopsSayingItIsRead() = runTest {
+    registrations.seedRegistration(EVENT, ME)
+    profiles.failure = FakePublicProfileRepository.Failure.Unexpected
+    val slow = SlowProfiles()
+    val vm = open(profileRepository = slow)
+    assertTrue(vm.loaded.isReadingOrganizerName)
+
+    slow.answer.complete(Unit)
+    runCurrent()
+
+    assertFalse(vm.loaded.isReadingOrganizerName)
+    assertNull(vm.loaded.organizerName)
+  }
+
+  @Test
+  fun cancellingWhileTheNameIsRead_stopsSayingItIsRead() = runTest {
+    registrations.seedRegistration(EVENT, ME)
+    val vm = open(profileRepository = SlowProfiles())
+    assertTrue(vm.loaded.isReadingOrganizerName)
+
+    vm.onCancelRegistration()
+    runCurrent()
+
+    assertEquals(Attendance.NOT_GOING, vm.loaded.attendance)
+    assertFalse(vm.loaded.isReadingOrganizerName)
   }
 
   @Test

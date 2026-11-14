@@ -16,7 +16,8 @@
 // Contributors: Claude Fable 5.2 (a student organizer's name, read only for the students going
 // and the organizers, #281).
 // Contributors: Claude (Opus 5.5, Anthropic) (no organizer name read from a stale request when the
-// screen comes back, and an answered read kept, also when the connection changes, #281's review).
+// screen comes back, and an answered read kept, also when the connection changes; whether a read
+// runs, so the screen holds the name's place, #281's review).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -68,7 +69,6 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.onStart
@@ -185,6 +185,8 @@ sealed interface EventDetailUiState {
    * @property organizerName the name of the student who created the event, shown as "by <name>"
    *   (#281); null unless the viewer may see it ([namedOrganizer]), and while or when it can't be
    *   read.
+   * @property isReadingOrganizerName true while [organizerName] is read for a viewer who may see
+   *   it, so the screen holds its row's place instead of moving what is below when it arrives.
    * @property going the "Going" count, only on [isManaged] events; null otherwise.
    * @property isLive true while the event runs, when it was read (Figma's "Live now" on the manage
    *   screen); it is updated with the event's next change.
@@ -211,6 +213,7 @@ sealed interface EventDetailUiState {
       val isOrganizer: Boolean = false,
       val associationName: String? = null,
       val organizerName: String? = null,
+      val isReadingOrganizerName: Boolean = false,
       val going: GoingCount? = null,
       val isLive: Boolean = false,
       val hasEnded: Boolean = false,
@@ -285,6 +288,9 @@ private data class OrganizerRead(
   fun answers(request: OrganizerRequest) =
       uid == request.uid && !(failedForNetwork && !request.offline)
 }
+
+/** The organizer's name for the viewer: [name] once read, and [reading] while it is read. */
+private data class OrganizerName(val name: String? = null, val reading: Boolean = false)
 
 /** Where "Cancel event" is (Figma section 10, "Cancel event · …"). */
 sealed interface CancelEventState {
@@ -419,17 +425,24 @@ constructor(
 
   /**
    * The name of the organizer in [organizerRequest], from their public profile; null when there is
-   * nobody to name, until the read answers, and when the profile is missing, unreadable or has no
-   * name. It is read once and kept, so the screen coming back, the registration cancelled and made
-   * again or the connection changing costs no read ([OrganizerRead.answers]).
+   * nobody to name, while it is read ([OrganizerName.reading]), and when the profile is missing,
+   * unreadable or has no name. It is read once and kept, so the screen coming back, the
+   * registration cancelled and made again or the connection changing costs no read
+   * ([OrganizerRead.answers]).
    */
   @OptIn(ExperimentalCoroutinesApi::class)
-  private val organizerName: Flow<String?> =
+  private val organizerName: Flow<OrganizerName> =
       organizerRequest
-          .mapLatest { request ->
-            if (request == null) return@mapLatest null
-            val known = organizerRead?.takeIf { it.answers(request) }
-            (known ?: readOrganizer(request.uid).also { organizerRead = it }).name
+          .transformLatest { request ->
+            val known = organizerRead?.takeIf { request != null && it.answers(request) }
+            when {
+              request == null -> emit(OrganizerName())
+              known != null -> emit(OrganizerName(known.name))
+              else -> {
+                emit(OrganizerName(reading = true))
+                emit(OrganizerName(readOrganizer(request.uid).also { organizerRead = it }.name))
+              }
+            }
           }
           .onCompletion { organizerRequest.value = null }
 
@@ -529,10 +542,13 @@ constructor(
             organizerRequest.value =
                 loaded?.namedOrganizer()?.let { OrganizerRequest(it, loaded.isOffline) }
           }
-          .combine(organizerName) { state, name ->
+          .combine(organizerName) { state, organizer ->
             // Checked again here, so the name goes at once when the registration is cancelled.
             if (state is EventDetailUiState.Loaded && state.namedOrganizer() != null)
-                state.copy(organizerName = name)
+                state.copy(
+                    organizerName = organizer.name,
+                    isReadingOrganizerName = organizer.reading,
+                )
             else state
           }
           .onEach(::initReminderOnce)
