@@ -1,6 +1,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #237).
 // Contributors: OpenAI Codex (tested successful retry and conflicting message IDs, #238).
-// Contributors: Claude (Fable 5.2, Anthropic) (tests of a group's latest message, #363).
+// Contributors: Claude (Fable 5.2, Anthropic) (tests of a group's latest message, #363, with one
+// more from a test audit).
 package com.polysocial.model.chat
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -559,6 +560,41 @@ class FirestoreMessageRepositoryTest {
         listOf(
             LatestMessageResult.Loading,
             LatestMessageResult.Success(null, fromCache = false),
+            LatestMessageResult.NetworkError,
+        ),
+        results.await(),
+    )
+  }
+
+  @Test
+  fun observeLatestMessage_aDeletedAccountsMessage_isStillTheLatest_withoutASender() = runTest {
+    stubLatestMessageListener()
+    val results = collect(repository.observeLatestMessage(EVENT, GROUP))
+
+    // Account cleanup keeps a message's text and time and empties its senderId (#241).
+    listener.captured.onEvent(
+        messagesSnapshot(
+            document(
+                "kept",
+                stored(DELETED_MESSAGE_SENDER, "See you at 6?", timestamp(1_900_000_100L)),
+            )
+        ),
+        null,
+    )
+    listener.captured.onEvent(null, failed(FirebaseFirestoreException.Code.UNAVAILABLE))
+
+    assertEquals(
+        listOf(
+            LatestMessageResult.Loading,
+            LatestMessageResult.Success(
+                Message(
+                    "kept",
+                    DELETED_MESSAGE_SENDER,
+                    "See you at 6?",
+                    Instant.ofEpochSecond(1_900_000_100L),
+                ),
+                fromCache = false,
+            ),
             LatestMessageResult.NetworkError,
         ),
         results.await(),
