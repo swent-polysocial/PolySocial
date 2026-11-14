@@ -1,6 +1,7 @@
 // Contributors: Claude Fable 5.2 (wrote these tests of who gets a student organizer's name, #281).
-// Contributors: Claude Fable 5.2 (testing pass: viewers whose registration isn't known, and reads
-// that overlap or outlive the event's change, #281).
+// Contributors: Claude Fable 5.2 (testing pass: viewers whose registration isn't known, reads that
+// overlap or outlive the event's change, and no state naming the organizer to a student who isn't
+// going, #281).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -71,6 +72,9 @@ class EventDetailOrganizerNameTest {
   private val associationNames = FakeAssociationNames(mapOf(CREATOR to CLUB_NAME))
   private var me: AuthUser? = AuthUser(ME, "fictional.student@epfl.ch", true)
 
+  /** Every state the detail showed, in order. */
+  private val shown = mutableListOf<EventDetailUiState>()
+
   /** A student's public event, created and organized by [CREATOR]. */
   private val event = studentEvent(validEvent()).copy(id = EVENT)
 
@@ -91,15 +95,17 @@ class EventDetailOrganizerNameTest {
           FakeReminderScheduler(clock),
       )
 
-  /** Opens the detail of [shown] and collects its state like the screen does. */
+  /** Opens the detail of [opened] and collects its state like the screen does, into [shown]. */
   private fun TestScope.open(
-      shown: Event = event,
+      opened: Event = event,
       profileRepository: PublicProfileRepository = profiles,
       registrationRepository: RegistrationRepository = registrations,
   ): EventDetailViewModel {
-    events.seed(shown)
+    events.seed(opened)
     return viewModel(profileRepository, registrationRepository).also { vm ->
-      backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect {} }
+      backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+        vm.uiState.collect { shown += it }
+      }
       runCurrent()
     }
   }
@@ -502,6 +508,28 @@ class EventDetailOrganizerNameTest {
     runCurrent()
 
     assertEquals(EventDetailUiState.NotFound, vm.uiState.value)
+  }
+
+  @Test
+  fun noStateEverNamesTheOrganizerToAStudentWhoIsntGoing() = runTest {
+    val vm = open()
+
+    vm.onImGoing()
+    runCurrent()
+    vm.onCancelRegistration()
+    runCurrent()
+    // Then registered and cancelled elsewhere: the detail observes the registrations live.
+    registrations.seedRegistration(EVENT, ME)
+    runCurrent()
+    assertEquals(CREATOR_NAME, vm.loaded.organizerName)
+    registrations.cancel(EVENT)
+    runCurrent()
+
+    // Not even the state between the cancellation and the name's removal.
+    val withAName =
+        shown.filterIsInstance<EventDetailUiState.Loaded>().filter { it.organizerName != null }
+    assertTrue(withAName.isNotEmpty())
+    assertTrue(withAName.all { it.attendance == Attendance.GOING })
   }
 
   private companion object {
