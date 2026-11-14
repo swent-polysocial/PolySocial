@@ -17,6 +17,7 @@
 // Contributors: Claude Opus 5.5 (the My friend code step, #339); Konstantinos Perdikeas (directed,
 // reviewed and owns it).
 // Contributors: OpenAI Codex (scoped the chat fake to this Hilt test, #238).
+// Contributors: Claude Fable 5.2 (the organizer's name on an event the student is going to, #281).
 package com.polysocial.endtoend
 
 import androidx.activity.compose.setContent
@@ -106,6 +107,7 @@ import com.polysocial.model.registration.RegistrationRepository
 import com.polysocial.model.time.ClockModule
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
+import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileModule
 import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.UserProfileModule
@@ -154,7 +156,8 @@ import org.junit.runner.RunWith
  *    (#34, #74).
  * 4. Events tab: the upcoming public events, grouped by day (#105).
  * 5. Event detail opened from the list, and Back to the list (#112). 5b. My events: the event the
- *    student is going to, its detail, and Back to My events (#204).
+ *    student is going to, its detail, which names its organizer to a student who is going (#281),
+ *    and Back to My events (#204).
  * 6. Create Event from the "+" (#46, #110): "Organized by you" for a student (#134), title,
  *    category, date and time pickers, public, and a place found with the location picker's search
  *    (#111).
@@ -211,7 +214,14 @@ class M1EndToEndTest {
   val registrations: RegistrationRepository =
       FakeRegistrationRepository(currentUid = UID).apply { seedRegistration(PARTY.id, UID) }
   @BindValue @JvmField val groups: GroupRepository = FakeGroupRepository()
-  @BindValue @JvmField val publicProfiles: PublicProfileRepository = FakePublicProfileRepository()
+  @BindValue
+  @JvmField
+  val publicProfiles: PublicProfileRepository =
+      FakePublicProfileRepository(
+          mutableMapOf(
+              PARTY_ORGANIZER to PublicProfile(PARTY_ORGANIZER, PARTY_ORGANIZER_NAME, "SC", "MA1")
+          )
+      )
   @BindValue @JvmField val profiles: UserProfileRepository = fakeProfiles
   @BindValue @JvmField val associations: AssociationRepository = FakeAssociationRepository()
   @BindValue @JvmField val clock: Clock = Clock.fixed(NOW, ZURICH)
@@ -328,6 +338,8 @@ class M1EndToEndTest {
     node(MyEventsTags.card(PARTY.id)).performClick()
     await(EventDetailTags.SCREEN)
     node(EventDetailTags.TITLE).assertTextContains(PARTY.title)
+    // The student is going, so the party names its organizer (#281).
+    awaitMatch(hasTestTag(EventDetailTags.ORGANIZER_NAME) and hasText("by $PARTY_ORGANIZER_NAME"))
     node(EventDetailTags.BACK).performClick()
     // Back returns to My events, not to Upcoming.
     await(MyEventsTags.card(PARTY.id))
@@ -515,6 +527,8 @@ class M1EndToEndTest {
     const val YEAR = "BA3"
     const val INTEREST = "music"
     const val NEW_TITLE = "Study together"
+    const val PARTY_ORGANIZER = "e2e-party-organizer"
+    const val PARTY_ORGANIZER_NAME = "Robin Example"
 
     val ZURICH: ZoneId = ZoneId.of("Europe/Zurich")
     /** Monday 2 March 2026, 09:00 in Zurich. */
@@ -541,6 +555,9 @@ class M1EndToEndTest {
             endTime = Instant.parse("2026-03-03T22:00:00Z"),
             capacity = null,
             isPrivate = false,
+            createdBy = PARTY_ORGANIZER,
+            organizerIds = listOf(PARTY_ORGANIZER),
+            allowedUids = listOf(PARTY_ORGANIZER),
         )
   }
 }
