@@ -1,11 +1,13 @@
 // Contributors: Claude (Fable 5.2, Anthropic) drafted the scheduled cleanup of unverified accounts, #226.
+// Contributors: Claude (Fable 5.2, Anthropic) (only email and password sign-ups are deleted, after review, #226).
 "use strict";
 
 const { errorCode } = require("./deleteAccountHandler");
 const { MAX_BATCH_WRITES } = require("./registrations");
 
 /**
- * How long an account may keep an unverified email before the daily cleanup deletes it, in days.
+ * How long an email and password sign-up may stay unverified before the daily cleanup deletes it,
+ * in days.
  * The one place to change the period. The README's Cloud Functions section and the app's privacy
  * notice (`privacy_notice_device_body` in strings.xml) state it too: change them together.
  */
@@ -17,11 +19,14 @@ const RETENTION_MS = UNVERIFIED_ACCOUNT_RETENTION_DAYS * 24 * 60 * 60 * 1000;
 const LIST_PAGE_SIZE = 1000;
 
 /**
- * Deletes the abandoned sign-ups: the Firebase Auth accounts whose email is still unverified more
- * than UNVERIFIED_ACCOUNT_RETENTION_DAYS after their creation, so a mistyped address is free again
- * for its real owner (#149, #226). It lists every Auth user, LIST_PAGE_SIZE at a time, and never
- * touches a verified account, an unverified one that is exactly the retention period old or
- * younger, or one whose creation time can't be read.
+ * Deletes the abandoned sign-ups: the Firebase Auth accounts with an email and a password whose
+ * email is still unverified more than UNVERIFIED_ACCOUNT_RETENTION_DAYS after their creation, so a
+ * mistyped address is free again for its real owner (#149, #226). It lists every Auth user,
+ * LIST_PAGE_SIZE at a time, and never touches a verified account, an unverified one that is
+ * exactly the retention period old or younger, or an account of another kind: one without an
+ * email or without the `password` provider (Google, phone, anonymous, made by hand without a
+ * password, or of a provider added later). An account whose email, providers or creation time
+ * can't be read is kept too.
  *
  * The abandoned accounts are then deleted MAX_BATCH_WRITES at a time (one Firestore batch, and
  * under the 1000 users of one `deleteUsers` call): first their `users/{uid}` documents, then the
@@ -104,14 +109,30 @@ async function deleteUnverifiedAccountsHandler({ adminAuth, db, now, logger }) {
 }
 
 /**
- * Whether the account's email is unverified and it was created before `createdBefore`
- * (milliseconds since the epoch). Only the boolean `false` counts as unverified, and a missing or
- * unreadable creation time as not old enough, so an account is never deleted on a guess.
+ * Whether the account is an email and password sign-up whose email is still unverified, created
+ * before `createdBefore` (milliseconds since the epoch). Only the boolean `false` counts as
+ * unverified, and a missing or unreadable creation time as not old enough, so an account is never
+ * deleted on a guess.
  */
 function isAbandoned(user, createdBefore) {
-  if (user.emailVerified !== false) return false;
+  if (user.emailVerified !== false || !isEmailPasswordSignUp(user)) return false;
   const createdAt = Date.parse(user.metadata && user.metadata.creationTime);
   return Number.isFinite(createdAt) && createdAt < createdBefore;
+}
+
+/**
+ * Whether the account has an email and the `password` provider, as a sign-up in the app has. The
+ * Admin SDK reports `emailVerified` as `false` for an account without any email as well, so the
+ * flag alone would also select anonymous and phone accounts, and those made by hand without a
+ * password. A missing or unreadable email or provider list is not a sign-up.
+ */
+function isEmailPasswordSignUp(user) {
+  return (
+    typeof user.email === "string" &&
+    user.email !== "" &&
+    Array.isArray(user.providerData) &&
+    user.providerData.some((provider) => provider && provider.providerId === "password")
+  );
 }
 
 /** Deletes the `users/{uid}` document, if any, of each of `uids` (at most MAX_BATCH_WRITES). */
