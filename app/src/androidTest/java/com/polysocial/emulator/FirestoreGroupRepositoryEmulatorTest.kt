@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (group repository tests against the rules, #232, and
 // more after review).
+// Contributors: Claude (Fable 5.2, Anthropic) (the student's groups across events, #363).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -23,6 +24,7 @@ import com.polysocial.model.group.Group
 import com.polysocial.model.group.GroupWriteResult
 import com.polysocial.model.group.GroupsResult
 import com.polysocial.model.group.MyGroupResult
+import com.polysocial.model.group.MyGroupsResult
 import com.polysocial.model.user.USERS_COLLECTION
 import java.time.Instant
 import kotlinx.coroutines.async
@@ -110,6 +112,14 @@ class FirestoreGroupRepositoryEmulatorTest {
             }
         assertTrue("Expected my group, got $result", result is MyGroupResult.Success)
         (result as MyGroupResult.Success).group
+      }
+
+  /** The signed-in student's groups across events, as the server first reports them. */
+  private suspend fun myGroups(): MyGroupsResult =
+      withTimeout(TIMEOUT_MS) {
+        repository.observeMyGroups().first {
+          it !is MyGroupsResult.Loading && (it !is MyGroupsResult.Success || !it.fromCache)
+        }
       }
 
   private suspend fun hasMarker(eventId: String, uid: String) =
@@ -369,6 +379,40 @@ class FirestoreGroupRepositoryEmulatorTest {
   }
 
   @Test
+  fun observeMyGroups_listsTheStudentsGroupsOfEveryEvent_evenOnesTheyCanNoLongerRead() =
+      runBlocking {
+        val uid = signIn(STUDENT_EMAIL)
+        seed("public")
+        // Not in allowedUids, as once the organizers removed them; "deleted" has no event anymore.
+        seed("private", event().copy(isPrivate = true))
+        seedGroup("public", "mine", listOf(FIRST_UID, uid))
+        seedGroup("public", "theirs", listOf(SECOND_UID, THIRD_UID))
+        seedGroup("private", "kept", listOf(uid))
+        seedGroup("private", "hidden", listOf(THIRD_UID))
+        seedGroup("deleted", "orphan", listOf(SECOND_UID, uid))
+
+        val result = myGroups()
+
+        assertTrue("Expected the student's groups, got $result", result is MyGroupsResult.Success)
+        val groups = (result as MyGroupsResult.Success).groups
+        // Created at the same time, so in the order of their IDs.
+        assertEquals(
+            listOf("private" to "kept", "public" to "mine", "deleted" to "orphan"),
+            groups.map { it.eventId to it.id },
+        )
+        assertEquals(listOf(FIRST_UID, uid), groups.single { it.id == "mine" }.memberUids)
+      }
+
+  @Test
+  fun observeMyGroups_withoutAnyGroup_isEmpty() = runBlocking {
+    signIn(STUDENT_EMAIL)
+    seed("public")
+    seedGroup("public", "theirs", listOf(FIRST_UID))
+
+    assertEquals(MyGroupsResult.Success(emptyList(), fromCache = false), myGroups())
+  }
+
+  @Test
   fun anAssociation_cannotReachGroups() = runBlocking {
     val uid = signIn(ASSOCIATION_EMAIL)
     emulator.createAsAdmin(
@@ -395,6 +439,7 @@ class FirestoreGroupRepositoryEmulatorTest {
         GroupsResult.UnexpectedError,
         timed { repository.observeGroups("own").first { it !is GroupsResult.Loading } },
     )
+    assertEquals(MyGroupsResult.UnexpectedError, myGroups())
     assertFalse(hasMarker("own", uid))
   }
 
