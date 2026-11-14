@@ -3,6 +3,7 @@
 <!-- Contributors: OpenAI Codex (group/chat account cleanup, explicit deleted authors and access restrictions, #241). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the groups, chat and public profile model, its rules, the co-organizer model and the deploy owner (#228); Franciszek Najda (decided and reviewed). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (members get their own group in the rules table, and groups of an ended event as an open question, #295). -->
+<!-- Contributors: Claude (Fable 5.2, Anthropic) (the chat list read: a student's groups across events with each latest message, #363); Claude (Opus 5.5, Anthropic) (one listener per chat and the chat list's failures, after review, #363). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (group chat messages built, refused offline rather than queued, and the messages left behind by a deleted group or account, #237; no messages from a deleted account and the Sprint 5 status, after review). -->
 <!-- Contributors: Claude Opus 5.5 (attendees schema, rules and capacity question, #121; the organizers' attendee count and the association's manage event, #131). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (deleteAccount deployed, region note, Blaze question closed, 2026-11-05). -->
@@ -240,24 +241,28 @@ flowchart TB
 
   find["Find a group · group card<br/>#233, #244"]:::pb --> findVM["<b>FindGroupViewModel</b><br/>Loading · Loaded (offline, joining) · CouldNotLoad<br/>Joined / Started · Full · Offline · Error"]:::pb
   findVM --> match["<b>Matching engine</b><br/><i>domain</i>, pure Kotlin, #231"]:::pb
-  findVM --> groups["<b>GroupRepository</b><br/>observeGroups · observeMyGroup<br/>createGroup · joinGroup · leaveGroup, #232"]:::pb
+  findVM --> groups["<b>GroupRepository</b><br/>observeGroups · observeMyGroup<br/>createGroup · joinGroup · leaveGroup, #232<br/>observeMyGroups, built, #363"]:::pb
   findVM --> pub["<b>PublicProfileRepository</b><br/>getPublicProfile · getPublicProfiles<br/>by UID only, built, #229"]:::s1
   detailVM["<b>EventDetailViewModel</b><br/>group card: yourGroup, #233"]:::pb --> groups
   detailVM --> pub
-  chat["Group chat<br/>#238"]:::s1 --> chatVM["<b>GroupChatViewModel</b>"]:::s1 --> msgs["<b>MessageRepository</b><br/>observeMessages · sendMessage, built, #237"]:::s1
+  chat["Group chat<br/>#238"]:::s1 --> chatVM["<b>GroupChatViewModel</b>"]:::s1 --> msgs["<b>MessageRepository</b><br/>observeMessages · sendMessage, built, #237<br/>observeLatestMessage, built, #363"]:::s1
+  chatsTab["Chats tab<br/>#364"]:::pb --> chatList["<b>ChatsRepository</b><br/>observeMyChats, built, #363"]:::s1
+  chatList --> groups
+  chatList --> msgs
   groups --> fs[("Firestore<br/>events/{e}/groups · groupMembers")]:::ext
   pub --> fs2[("Firestore<br/>publicProfiles")]:::ext
   msgs --> fs3[("Firestore<br/>events/{e}/groups/{g}/messages")]:::ext
 ```
 
-- **Groups live under their event:** `events/{eventId}/groups/{groupId}`, like the registrations (#121), so the rules reuse the event's readability from the path. A group has a fixed `capacity` of **4** (a product decision, not set by the organizer; stored so it can change without a migration), `memberUids` (1 to `capacity` UIDs, the creator first), `createdBy` and a server-set `createdAt`. A student's own groups, across events, are a collection-group query on `memberUids array-contains <their UID>`.
+- **Groups live under their event:** `events/{eventId}/groups/{groupId}`, like the registrations (#121), so the rules reuse the event's readability from the path. A group has a fixed `capacity` of **4** (a product decision, not set by the organizer; stored so it can change without a migration), `memberUids` (1 to `capacity` UIDs, the creator first), `createdBy` and a server-set `createdAt`. A student's own groups, across events, are a collection-group query on `memberUids array-contains <their UID>` (`observeMyGroups`, #363).
 - **Joining and leaving touch only your own UID.** Join adds the student's UID to `memberUids`, leave removes it, and the last member to leave deletes the group. The rules check `memberUids.size() <= capacity`, so the capacity needs no counter, and the client's **transaction** makes sure two students can't take the last place at the same time.
 - **One group per student per event:** the marker `events/{eventId}/groupMembers/{uid}` holds the student's `groupId`. It is created and deleted in the same transaction as the `memberUids` change, and the rules tie the two together with `getAfter`. Android transactions can't run queries, so the marker is how the transaction knows the student is already in a group.
 - **Who can join:** a student who can read the event. Requiring "I'm going" first is decided (#228) and built by #244, which also decides whether the rules check it. Associations never reach groups, messages or public profiles.
 - **Matching starts on the client.** The engine (#231) is a deterministic heuristic in a pure Kotlin module: given the student (section, year, interests) and the event's groups with their members' public profiles, it returns the open groups ranked, full groups left out, ties broken by a stable key. We revisit a Cloud Function only if fairness or cheating becomes a problem; the module would move unchanged.
 - **Public profiles (#229):** `publicProfiles/{uid}` holds `displayName`, `section`, `year` and `interests` (codes from #230's fixed list of about ten), never the email. It is written in the same transaction as `users/{uid}`. Public or private visibility of further fields comes later.
 - **Chat (#237, #238):** each group has `messages` (`senderId`, `text` of 1 to 1000 characters, server-set `createdAt`). Only members read and send, each sender writes only their own messages, a deleted account can't send, and nobody edits or deletes one yet. Sending is **refused offline** with Try again, like `createEvent`, rather than queued. A one-to-one chat is a two-member group, so there is one chat model and one set of rules.
-- **Real-time screens.** Groups, my group and messages are Firestore snapshot listeners exposed as `Flow`, usable from the cache offline.
+- **Chat list (#363, for the Chats tab, #364):** `ChatsRepository.observeMyChats` lists every group the student is in, across events, each with its latest message, newest activity first (the latest message's time, or the group's creation time without one). It combines `GroupRepository.observeMyGroups` with one `MessageRepository.observeLatestMessage` listener per group, a query on `createdAt` descending with `limit(1)`, so the list reads one message per chat; a group's listener starts when the group is listed and stops when it leaves, so joining a group opens one listener and restarts none. It works without the events: a member lists their groups and reads their chats once the event is deleted or no longer readable. Groups that can't be read, or a latest message that can't reach the server, end it. A denied latest message only leaves its chat out: on reconnection, Firestore reports the chat of a group left on another device as denied before the groups drop that group, so the list fails only if a later result of the groups from the server still lists it. No new rule or index: the cross-event `list` rule and the `groups.memberUids` collection-group index date from #232, the message rules from #237.
+- **Real-time screens.** Groups, my group, my chats and messages are Firestore snapshot listeners exposed as `Flow`, usable from the cache offline.
 - **Moderation-ready.** The rules are written per operation and messages carry `senderId` and `createdAt`, so report/block and rate limiting can be added later without a rule rewrite.
 
 ### 3.5 At the venue and social features (Product Backlog)
@@ -968,7 +973,7 @@ Every Scrum Board item mapped to the components it touches.
 | #27 Match with other students | Groups & Matchmaking | Match button, MatchRepository | 🟦 |
 | #28 Real-time list of matches | Groups & Matchmaking | Profile matches list, snapshot listener | 🟦 |
 | #15 Ping friends | Groups & Matchmaking | FriendRepository, notifications | ⬜ |
-| #25 Chat | Chat | Chats tab, ChatViewModel, ChatRepository, `messages` | 🟦 |
+| #25 Chat | Chat | Chats tab (#364), `ChatsRepository` (built, #363), group chat with `GroupChatViewModel` and `MessageRepository` (built, #237, #238), `messages` | 🟦 |
 | #16 Adding friends | Groups & Matchmaking | Friends screen, Friends ViewModel, FriendRepository, `friendships/{pairId}`, rules, `deleteAccount` cleanup; usernames an open question | 🟦 decided in #338 |
 | #17 Meeting people by QR | Groups & Matchmaking | QrScanner, QR payload parsing (built, #337), My friend code (built, #339), FriendRepository | 🟦 S5 #336, #337, #339 |
 | #22 Automatic check-in | — | check-in policy, LocationService, QR fallback, GroupRepository | 🟦 |
