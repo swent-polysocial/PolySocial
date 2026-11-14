@@ -18,7 +18,6 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -186,7 +185,10 @@ class EventDetailOrganizerNameScreenTest {
     state = loaded(study, organizerName = null, readingName = true)
     composeTestRule.waitForIdle()
     val dateWhileReading = node(EventDetailTags.DATE).getBoundsInRoot()
-    assertTrue("No place is held", dateWhileReading.top > dateWithoutTheRow.top + HALF_A_DP.dp)
+    assertTrue(
+        "No place is held",
+        dateWhileReading.top.value > dateWithoutTheRow.top.value + HALF_A_DP,
+    )
 
     // A missing or unreadable profile.
     state = loaded(study, organizerName = null)
