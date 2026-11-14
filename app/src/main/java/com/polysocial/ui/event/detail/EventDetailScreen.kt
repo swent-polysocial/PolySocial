@@ -13,6 +13,7 @@
 // denied note, from Figma 558:2, 558:119 and 558:186, second PR of #123).
 // Contributors: Claude Opus 5.5 (a Snackbar and Retry for a failed reminder cleanup after
 // cancelling the registration, second PR's review).
+// Contributors: Claude Fable 5.2 (the "by <name>" text on its own, to share it, #281).
 package com.polysocial.ui.event.detail
 
 import android.Manifest
@@ -942,31 +943,36 @@ private fun AssociationRow(name: String?) {
     return
   }
   Row(verticalAlignment = Alignment.CenterVertically) {
-    val by = stringResource(R.string.event_detail_by_association, name)
-    val nameStart = by.lastIndexOf(name)
-    Text(
-        text =
-            buildAnnotatedString {
-              append(by)
-              // Figma sets the name in bold Ink, after a regular "by".
-              if (nameStart >= 0) {
-                addStyle(
-                    SpanStyle(fontWeight = FontWeight.Bold, color = Ink),
-                    nameStart,
-                    nameStart + name.length,
-                )
-              }
-            },
-        style = BY_STYLE,
-        color = Ink2,
-        modifier = Modifier.weight(1f, fill = false).testTag(EventDetailTags.ASSOCIATION_NAME),
-    )
+    ByName(name, Modifier.weight(1f, fill = false).testTag(EventDetailTags.ASSOCIATION_NAME))
     Spacer(Modifier.width(9.dp))
     VerifiedPill(
         stringResource(R.string.event_verified_badge),
         Modifier.testTag(EventDetailTags.VERIFIED_BADGE),
     )
   }
+}
+
+/** "by <name>" under the title, as Figma sets it: [name] in bold Ink after a regular "by". */
+@Composable
+private fun ByName(name: String, modifier: Modifier = Modifier) {
+  val by = stringResource(R.string.event_detail_by, name)
+  val nameStart = by.lastIndexOf(name)
+  Text(
+      text =
+          buildAnnotatedString {
+            append(by)
+            if (nameStart >= 0) {
+              addStyle(
+                  SpanStyle(fontWeight = FontWeight.Bold, color = Ink),
+                  nameStart,
+                  nameStart + name.length,
+              )
+            }
+          },
+      style = BY_STYLE,
+      color = Ink2,
+      modifier = modifier,
+  )
 }
 
 /** Figma's "by <name>": 13 sp on a 16.4 sp line, glyphs placed like Figma's (see CONTEXT.md). */
