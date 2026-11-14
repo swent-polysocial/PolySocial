@@ -1,6 +1,6 @@
 // Contributors: Claude Fable 5.2 (wrote these tests of who gets a student organizer's name, #281).
 // Contributors: Claude Fable 5.2 (testing pass: viewers whose registration isn't known, and reads
-// that overlap, #281).
+// that overlap or outlive the event's change, #281).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -466,6 +466,42 @@ class EventDetailOrganizerNameTest {
     queued.reads[0].complete(named(CREATOR_NAME))
     runCurrent()
     assertEquals(NEW_NAME, vm.loaded.organizerName)
+  }
+
+  @Test
+  fun anEventMadePrivateWhileTheNameIsRead_neverShowsIt() = runTest {
+    registrations.seedRegistration(EVENT, ME)
+    val slow = SlowProfiles()
+    val vm = open(profileRepository = slow)
+
+    events.remove(EVENT)
+    events.seed(event.copy(isPrivate = true, allowedUids = listOf(CREATOR, ME)))
+    runCurrent()
+    assertTrue(vm.loaded.details.event.isPrivate)
+
+    // The read's late answer is for an event that names nobody anymore.
+    slow.answer.complete(Unit)
+    runCurrent()
+
+    assertNull(vm.loaded.organizerName)
+    assertEquals(1, slow.reads)
+  }
+
+  @Test
+  fun anEventDeletedWhileTheNameIsRead_showsNotFoundAtOnce() = runTest {
+    registrations.seedRegistration(EVENT, ME)
+    val slow = SlowProfiles()
+    val vm = open(profileRepository = slow)
+
+    events.remove(EVENT)
+    runCurrent()
+    // The read that is still running doesn't hold the deleted event on screen.
+    assertEquals(EventDetailUiState.NotFound, vm.uiState.value)
+
+    slow.answer.complete(Unit)
+    runCurrent()
+
+    assertEquals(EventDetailUiState.NotFound, vm.uiState.value)
   }
 
   private companion object {
