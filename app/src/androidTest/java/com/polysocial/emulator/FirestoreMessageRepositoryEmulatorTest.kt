@@ -1,9 +1,11 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (group chat repository tests against the rules, #237).
 // Contributors: OpenAI Codex (verified same-ID retry against Firestore rules, #238).
+// Contributors: Claude (Fable 5.2, Anthropic) (a group's latest message, #363).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.chat.FirestoreMessageRepository
+import com.polysocial.model.chat.LatestMessageResult
 import com.polysocial.model.chat.MESSAGES_COLLECTION
 import com.polysocial.model.chat.Message
 import com.polysocial.model.chat.MessagesResult
@@ -79,6 +81,15 @@ class FirestoreMessageRepositoryEmulatorTest {
         }
       }
 
+  /** The group's latest message, as the server first reports it through the repository. */
+  private suspend fun latest(): LatestMessageResult =
+      withTimeout(TIMEOUT_MS) {
+        repository.observeLatestMessage(EVENT, GROUP).first {
+          it !is LatestMessageResult.Loading &&
+              (it !is LatestMessageResult.Success || !it.fromCache)
+        }
+      }
+
   private suspend fun messages(): List<Message> {
     val result = chat()
     assertTrue("Expected messages, got $result", result is MessagesResult.Success)
@@ -104,6 +115,29 @@ class FirestoreMessageRepositoryEmulatorTest {
         "Expected the server's times in order: ${chat.map { it.createdAt }}",
         chat.zipWithNext().all { (first, next) -> first.createdAt < next.createdAt },
     )
+  }
+
+  @Test
+  fun observeLatestMessage_isOnlyTheNewestMessage_orNoneBeforeTheFirst() = runBlocking {
+    val uid = signIn(STUDENT_EMAIL)
+    seedGroup(listOf(OTHER_UID, uid))
+    assertEquals(LatestMessageResult.Success(null, fromCache = false), latest())
+
+    seedMessage("newer", OTHER_UID, "See you there", Instant.parse("2026-01-01T11:00:00Z"))
+    seedMessage("older", OTHER_UID, "Who's coming?", Instant.parse("2026-01-01T10:00:00Z"))
+    assertEquals(
+        LatestMessageResult.Success(
+            Message("newer", OTHER_UID, "See you there", Instant.parse("2026-01-01T11:00:00Z")),
+            fromCache = false,
+        ),
+        latest(),
+    )
+
+    // The server's time puts a message sent now after the seeded ones.
+    assertEquals(SendMessageResult.Sent, send("On my way"))
+    val sent = (latest() as LatestMessageResult.Success).message
+    assertEquals("On my way", sent?.text)
+    assertEquals(uid, sent?.senderId)
   }
 
   @Test
@@ -137,6 +171,7 @@ class FirestoreMessageRepositoryEmulatorTest {
     signIn(OUTSIDER_EMAIL)
 
     assertEquals(MessagesResult.UnexpectedError, chat())
+    assertEquals(LatestMessageResult.UnexpectedError, latest())
     assertEquals(SendMessageResult.UnexpectedError, send("Can I join?"))
 
     // Back as the member: the outsider's message was never stored.
