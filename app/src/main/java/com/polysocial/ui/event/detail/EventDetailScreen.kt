@@ -16,7 +16,7 @@
 // Contributors: Claude Fable 5.2 (the "by <name>" text on its own, shared with a student
 // organizer's name, shown to the students going and the organizers, #281).
 // Contributors: Claude (Opus 5.5, Anthropic) (the organizer's row holds its place while the name is
-// read, #281's review).
+// read, at any font size, #281's review).
 package com.polysocial.ui.event.detail
 
 import android.Manifest
@@ -74,6 +74,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -82,6 +83,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -968,13 +970,25 @@ private fun AssociationRow(name: String?) {
  * Who organizes a student's event (#281), for the students going and its organizers: the
  * association row's "by <name>" without the Verified badge, in the same place. Figma has no frame
  * for it, so it keeps that row's height (the badge's), which leaves the rows below where they are
- * on an association's event. While the [name] is read (null), the row holds that height and draws
- * nothing, so the rows below don't move when it arrives.
+ * on an association's event. While the [name] is read (null), the row also holds the height of one
+ * line of "by <name>", which grows with the font size, without drawing or saying it, so the rows
+ * below don't move when the name arrives. A name that wraps onto a second line still moves them
+ * once, by that line.
  */
 @Composable
 private fun OrganizerRow(name: String?) {
   Box(Modifier.heightIn(min = VERIFIED_PILL_HEIGHT), contentAlignment = Alignment.CenterStart) {
-    if (name != null) ByName(name, Modifier.testTag(EventDetailTags.ORGANIZER_NAME))
+    if (name != null) {
+      ByName(name, Modifier.testTag(EventDetailTags.ORGANIZER_NAME))
+    } else {
+      // One line of "by <name>", invisible and silent, for its height (like Create Event's, #134).
+      Text(
+          stringResource(R.string.event_detail_by, ""),
+          style = BY_STYLE,
+          maxLines = 1,
+          modifier = Modifier.alpha(0f).clearAndSetSemantics {},
+      )
+    }
   }
 }
 
