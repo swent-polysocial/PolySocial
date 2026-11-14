@@ -1,5 +1,7 @@
 // Contributors: Claude (the Verified pill shared by the event screens, from the Figma "Event
 // detail" frame, #128).
+// Contributors: Claude Fable 5.2 (named the pill's height, which a student organizer's row on the
+// event detail keeps, #281).
 package com.polysocial.ui.event
 
 import androidx.compose.foundation.background
@@ -33,7 +35,7 @@ fun VerifiedPill(text: String, modifier: Modifier = Modifier) {
           modifier
               // Read as one label, the text it holds.
               .semantics(mergeDescendants = true) {}
-              .heightIn(min = 22.dp)
+              .heightIn(min = VERIFIED_PILL_HEIGHT)
               .background(InfoSoft, RoundedCornerShape(50))
               .padding(horizontal = 8.dp, vertical = 3.dp),
       // Figma puts the text's box 3 dp from the top, not centered: its 15.1 sp line would sit
@@ -43,6 +45,9 @@ fun VerifiedPill(text: String, modifier: Modifier = Modifier) {
     Text(text = text, style = VERIFIED_PILL_STYLE, color = Info)
   }
 }
+
+/** Figma's height of the pill, and so of the row that holds it next to a name. */
+internal val VERIFIED_PILL_HEIGHT = 22.dp
 
 private val VERIFIED_PILL_STYLE =
     TextStyle(
