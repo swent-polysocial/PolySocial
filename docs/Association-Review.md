@@ -1,4 +1,5 @@
 <!-- Contributors: OpenAI Codex (drafted the review workflow and access matrix, then clarified console operations, pending outcomes and cache behavior, #210). -->
+<!-- Contributors: Claude (Fable 5.2, Anthropic) (the unverified accounts cleanup described as built, #226). -->
 
 # Association review and rejection
 
@@ -60,9 +61,10 @@ never-approved association cannot publish an association event, so declining
 its setup cannot leave an old badge. Removing or changing a published event
 is a separate action.
 
-Rejected and duplicate accounts retain verified email addresses, so
-[#226's planned cleanup][unverified-cleanup] would skip them. Removing a
-Firebase Authentication account alone would leave its Firestore records.
+Rejected and duplicate accounts retain verified email addresses, so the
+[daily cleanup of unverified accounts][unverified-cleanup] (#226) never deletes
+them. Removing a Firebase Authentication account alone would leave its
+Firestore records.
 The [association account deletion procedure][association-deletion] still needs
 to define who removes the Auth account and its Firestore identity and how to
 handle related events and records. It also needs to account for still-valid
