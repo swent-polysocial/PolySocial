@@ -2,6 +2,8 @@
 // detail screen, #281).
 // Contributors: Claude Fable 5.2 (testing pass: the long name's lines, and no name anywhere on the
 // screen of a student who isn't going, #281).
+// Contributors: Claude (Opus 5.5, Anthropic) (the row's place held while the name is read, #281's
+// review).
 package com.polysocial.ui.event.detail
 
 import androidx.compose.runtime.getValue
@@ -16,6 +18,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.height
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -72,6 +75,7 @@ class EventDetailOrganizerNameScreenTest {
       organizerName: String?,
       isOrganizer: Boolean = false,
       associationName: String? = null,
+      readingName: Boolean = false,
   ) =
       EventDetailUiState.Loaded(
           eventDetails(event, zone),
@@ -79,6 +83,7 @@ class EventDetailOrganizerNameScreenTest {
           isOrganizer = isOrganizer,
           associationName = associationName,
           organizerName = organizerName,
+          isReadingOrganizerName = readingName,
           attendance = if (isOrganizer) Attendance.NOT_GOING else Attendance.GOING,
       )
 
@@ -149,6 +154,47 @@ class EventDetailOrganizerNameScreenTest {
     assertEquals(association.bottom.value, organizer.bottom.value, HALF_A_DP)
     val dateBelowOrganizer = node(EventDetailTags.DATE).getBoundsInRoot()
     assertEquals(dateBelowAssociation.top.value, dateBelowOrganizer.top.value, HALF_A_DP)
+  }
+
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  @Test
+  fun whileTheNameIsRead_itsRowHoldsItsPlace_soNothingMovesWhenItArrives() {
+    var state by mutableStateOf(loaded(study, organizerName = null, readingName = true))
+    composeTestRule.setContent {
+      PolySocialTheme { EventDetailScreen(state, onBack = {}, onRetry = {}) }
+    }
+    node(EventDetailTags.ORGANIZER_NAME).assertDoesNotExist()
+    val dateWhileReading = node(EventDetailTags.DATE).getBoundsInRoot()
+
+    state = loaded(study, ORGANIZER_NAME)
+    composeTestRule.waitForIdle()
+
+    node(EventDetailTags.ORGANIZER_NAME).assertIsDisplayed()
+    val dateWithTheName = node(EventDetailTags.DATE).getBoundsInRoot()
+    assertEquals(dateWhileReading.top.value, dateWithTheName.top.value, HALF_A_DP)
+  }
+
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  @Test
+  fun whenTheReadFindsNoName_theRowItHeldCloses() {
+    var state by mutableStateOf(loaded(study, organizerName = null))
+    composeTestRule.setContent {
+      PolySocialTheme { EventDetailScreen(state, onBack = {}, onRetry = {}) }
+    }
+    val dateWithoutTheRow = node(EventDetailTags.DATE).getBoundsInRoot()
+
+    state = loaded(study, organizerName = null, readingName = true)
+    composeTestRule.waitForIdle()
+    val dateWhileReading = node(EventDetailTags.DATE).getBoundsInRoot()
+    assertTrue("No place is held", dateWhileReading.top > dateWithoutTheRow.top + HALF_A_DP.dp)
+
+    // A missing or unreadable profile.
+    state = loaded(study, organizerName = null)
+    composeTestRule.waitForIdle()
+
+    node(EventDetailTags.ORGANIZER_NAME).assertDoesNotExist()
+    val dateAfterTheRead = node(EventDetailTags.DATE).getBoundsInRoot()
+    assertEquals(dateWithoutTheRow.top.value, dateAfterTheRead.top.value, HALF_A_DP)
   }
 
   // The largest font size Android offers, with native graphics, which measure text like a phone.
