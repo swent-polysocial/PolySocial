@@ -4,7 +4,7 @@
 // going, #281).
 // Contributors: Claude (Opus 5.5, Anthropic) (returns to the detail after its screen stopped, and
 // no read again once back online unless the last one failed for the network; whether a read runs,
-// #281's review).
+// and from the first state of a student going, #281's review).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -492,6 +492,23 @@ class EventDetailOrganizerNameTest {
     assertEquals(Attendance.GOING, vm.loaded.attendance)
     assertEquals(CREATOR_NAME, vm.loaded.organizerName)
     assertEquals(emptyList<String>(), readUids)
+  }
+
+  @Test
+  fun aStudentGoing_seesTheNameOrItsHeldPlace_inEveryState() = runTest {
+    // Opening the detail, then coming back to it: the row never closes before the name comes, so
+    // nothing below it moves.
+    returnToTheDetail()
+
+    val going =
+        shown.filterIsInstance<EventDetailUiState.Loaded>().filter {
+          it.attendance == Attendance.GOING
+        }
+    assertTrue(going.isNotEmpty())
+    assertEquals(
+        emptyList<EventDetailUiState.Loaded>(),
+        going.filter { it.organizerName == null && !it.isReadingOrganizerName },
+    )
   }
 
   @Test
