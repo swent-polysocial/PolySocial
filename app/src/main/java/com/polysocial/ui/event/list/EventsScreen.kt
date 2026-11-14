@@ -454,8 +454,8 @@ private fun TitleWithBadge(title: @Composable () -> Unit, badge: @Composable () 
     // between its first and last baselines.
     val firstLineHeight = text.height - (text[LastBaseline] - text[FirstBaseline])
     layout(text.width + gap + (pill?.width ?: 0), text.height) {
-      text.place(0, 0)
-      pill?.place(text.width + gap, (firstLineHeight - pill.height) / 2)
+      text.placeRelative(0, 0)
+      pill?.placeRelative(text.width + gap, (firstLineHeight - pill.height) / 2)
     }
   }
 }

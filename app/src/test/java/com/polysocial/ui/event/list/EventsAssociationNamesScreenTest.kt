@@ -1,6 +1,8 @@
 // Contributors: Claude (wrote these tests, #128; the badge's position on the title, #250).
 package com.polysocial.ui.event.list
 
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertIsDisplayed
@@ -15,6 +17,7 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
@@ -75,31 +78,37 @@ class EventsAssociationNamesScreenTest {
           )
           .copy(id = "study", category = EventCategory.STUDY)
 
-  private fun show(names: Map<String, String>, events: List<Event> = listOf(study, party)) {
+  private fun show(
+      names: Map<String, String>,
+      events: List<Event> = listOf(study, party),
+      direction: LayoutDirection = LayoutDirection.Ltr,
+  ) {
     composeTestRule.setContent {
-      PolySocialTheme {
-        EventsScreen(
-            EventsUiState(
-                list =
-                    EventsListState.Events(
-                        groupEventsByDay(events, clock),
-                        today,
-                        isOffline = false,
-                    ),
-                associationNames = names,
-            ),
-            zone = lausanne,
-            today = today,
-            onRetry = {},
-            onClearFilters = {},
-            onSearchChange = {},
-            onSelectDate = {},
-            onToggleCategory = {},
-            onClearSheetFilters = {},
-            onSelectDistance = {},
-            onTurnOnLocation = {},
-            onEventClick = {},
-        )
+      CompositionLocalProvider(LocalLayoutDirection provides direction) {
+        PolySocialTheme {
+          EventsScreen(
+              EventsUiState(
+                  list =
+                      EventsListState.Events(
+                          groupEventsByDay(events, clock),
+                          today,
+                          isOffline = false,
+                      ),
+                  associationNames = names,
+              ),
+              zone = lausanne,
+              today = today,
+              onRetry = {},
+              onClearFilters = {},
+              onSearchChange = {},
+              onSelectDate = {},
+              onToggleCategory = {},
+              onClearSheetFilters = {},
+              onSelectDistance = {},
+              onTurnOnLocation = {},
+              onEventClick = {},
+          )
+        }
       }
     }
   }
@@ -179,6 +188,17 @@ class EventsAssociationNamesScreenTest {
     val student = detailsBelowTitle("twin")
     scrollTo("party")
     assertEquals(student.value, detailsBelowTitle("party").value, 0.01f)
+  }
+
+  @Test
+  fun inARightToLeftLanguage_theBadgeIsBeforeTheTitle() {
+    // Like the Row it replaced, the title and its badge mirror: the badge sits on the title's left.
+    show(mapOf(CLUB_UID to CLUB_NAME), listOf(party), LayoutDirection.Rtl)
+    scrollTo("party")
+
+    val badge = pill(EventsTags.verified("party")).getBoundsInRoot()
+    val title = titleOf("party", party.title).getBoundsInRoot()
+    assertTrue("The badge ends at ${badge.right}, past ${title.left}", badge.right <= title.left)
   }
 
   /**
