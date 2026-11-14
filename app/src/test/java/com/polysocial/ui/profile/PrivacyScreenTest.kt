@@ -5,6 +5,8 @@
 // #207;
 // Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (Fable 5.2, Anthropic) (the notice's date for the 7-day cleanup text, #226).
+// Contributors: Claude (Opus 5.5, Anthropic) (the 7-day cleanup text in the deletion section, after
+// review, #226).
 package com.polysocial.ui.profile
 
 import android.content.Context
@@ -175,6 +177,23 @@ class PrivacyScreenTest {
     rule.onNodeWithTag(C.Tag.privacy_screen).assertIsDisplayed()
     rule.onNodeWithTag(C.Tag.privacy_back).performClick()
     rule.onNodeWithTag(C.Tag.profile_privacy_entry).assertIsDisplayed()
+  }
+
+  @Test
+  fun fullNoticeStatesTheUnverifiedSignUpCleanupUnderAccountDeletion() {
+    rule.activity.setContent {
+      PolySocialTheme { FullPrivacyNoticeScreen({}, PrivacyUiState(), {}, {}) }
+    }
+    val cleanup =
+        "A sign-up whose email is still unverified after 7 days is deleted automatically by a " +
+            "daily cleanup, which frees the address."
+    // A single node holds the sentence (two would fail the lookup): the deletion section's body.
+    rule
+        .onNodeWithText(cleanup, substring = true)
+        .performScrollTo()
+        .assertTextEquals(text(R.string.privacy_notice_deletion_body))
+    rule.onNodeWithText(text(R.string.privacy_notice_device_body)).assertExists()
+    org.junit.Assert.assertFalse(text(R.string.privacy_notice_device_body).contains(cleanup))
   }
 
   @Test
