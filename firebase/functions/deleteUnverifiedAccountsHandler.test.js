@@ -1,6 +1,7 @@
 // Contributors: Claude (Fable 5.2, Anthropic) drafted the tests of the scheduled cleanup of unverified accounts, #226.
 // Contributors: Claude (Fable 5.2, Anthropic) (the tests a mutation check of the handler found missing, #226).
 // Contributors: Claude (Fable 5.2, Anthropic) (accounts that aren't email and password sign-ups are kept, after review, #226).
+// Contributors: Claude (Opus 5.5, Anthropic) (the notice's period read from its deletion section, after review, #226).
 "use strict";
 
 // Unit tests with fakes, no emulator:
@@ -550,7 +551,7 @@ test("the function is a 2nd generation one whose failed run isn't retried", () =
 test("the privacy notice and the README state the retention period", () => {
   const read = (file) => readFileSync(path.join(__dirname, "../..", file), "utf8");
   const notice = read("app/src/main/res/values/strings.xml").match(
-    /<string name="privacy_notice_device_body">.*still unverified after (\d+) days.*<\/string>/,
+    /<string name="privacy_notice_deletion_body">.*still unverified after (\d+) days.*<\/string>/,
   );
   const readme = read("README.md").match(/still unverified more than \*\*(\d+) days\*\* after/);
   if (!notice) throw new Error("The privacy notice words the period differently: update this test");
