@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #237).
 // Contributors: OpenAI Codex (tested successful retry and conflicting message IDs, #238).
+// Contributors: Claude (Fable 5.2, Anthropic) (tests of a group's latest message, #363).
 package com.polysocial.model.chat
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -498,6 +499,106 @@ class FirestoreMessageRepositoryTest {
         listOf(MessagesResult.Loading, MessagesResult.UnexpectedError),
         repository.observeMessages("", GROUP).toList(),
     )
+
+    verify(exactly = 0) { db.collection(any()) }
+  }
+
+  // observeLatestMessage
+
+  private val newestFirst = mockk<Query>()
+  private val newestOnly = mockk<Query>()
+
+  /** Stubs exactly the query observeLatestMessage must build, so any other query fails the test. */
+  private fun stubLatestMessageListener() {
+    every { messages.orderBy(MESSAGE_CREATED_AT, Query.Direction.DESCENDING) } returns newestFirst
+    every { newestFirst.limit(1) } returns newestOnly
+    every { newestOnly.addSnapshotListener(MetadataChanges.INCLUDE, capture(listener)) } returns
+        registration
+  }
+
+  @Test
+  fun observeLatestMessage_readsOnlyTheNewestMessage_orNoneYet() = runTest {
+    stubLatestMessageListener()
+    val results = mutableListOf<LatestMessageResult>()
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) {
+          repository.observeLatestMessage(EVENT, GROUP).collect { results += it }
+        }
+    val newest = document("c", stored("other", "See you at 6?", timestamp(1_900_000_100L)))
+
+    listener.captured.onEvent(messagesSnapshot(fromCache = true), null)
+    listener.captured.onEvent(messagesSnapshot(newest, fromCache = true), null)
+    listener.captured.onEvent(messagesSnapshot(newest), null)
+    collecting.cancel()
+
+    val message = Message("c", "other", "See you at 6?", Instant.ofEpochSecond(1_900_000_100L))
+    assertEquals(
+        listOf(
+            LatestMessageResult.Loading,
+            LatestMessageResult.Success(null, fromCache = true),
+            LatestMessageResult.Success(message, fromCache = true),
+            LatestMessageResult.Success(message, fromCache = false),
+        ),
+        results,
+    )
+    verify { registration.remove() }
+  }
+
+  @Test
+  fun observeLatestMessage_aNewestMessageThatCannotBeRead_isNoMessage() = runTest {
+    stubLatestMessageListener()
+    val results = collect(repository.observeLatestMessage(EVENT, GROUP))
+
+    listener.captured.onEvent(
+        messagesSnapshot(document("broken", mapOf("text" to "No sender or time"))),
+        null,
+    )
+    listener.captured.onEvent(null, failed(FirebaseFirestoreException.Code.UNAVAILABLE))
+
+    assertEquals(
+        listOf(
+            LatestMessageResult.Loading,
+            LatestMessageResult.Success(null, fromCache = false),
+            LatestMessageResult.NetworkError,
+        ),
+        results.await(),
+    )
+  }
+
+  @Test
+  fun observeLatestMessage_failures_endTheFlowWithTheirOwnErrorAndRemoveTheListener() = runTest {
+    stubLatestMessageListener()
+    val offline = collect(repository.observeLatestMessage(EVENT, GROUP))
+    listener.captured.onEvent(null, failed(FirebaseFirestoreException.Code.DEADLINE_EXCEEDED))
+    // For example a student who isn't in the group, or a deleted account still listed in it.
+    val denied = collect(repository.observeLatestMessage(EVENT, GROUP))
+    listener.captured.onEvent(null, failed(FirebaseFirestoreException.Code.PERMISSION_DENIED))
+    val unreadable = collect(repository.observeLatestMessage(EVENT, GROUP))
+    listener.captured.onEvent(
+        mockk<QuerySnapshot>().also {
+          every { it.documents } throws IllegalStateException("terminated")
+        },
+        null,
+    )
+
+    assertEquals(
+        listOf(LatestMessageResult.Loading, LatestMessageResult.NetworkError),
+        offline.await(),
+    )
+    val unexpected = listOf(LatestMessageResult.Loading, LatestMessageResult.UnexpectedError)
+    assertEquals(unexpected, denied.await())
+    assertEquals(unexpected, unreadable.await())
+    verify(exactly = 3) { registration.remove() }
+  }
+
+  @Test
+  fun observeLatestMessage_withoutAUserOrWithIdsThatCannotBeDocumentIds_readsNothing() = runTest {
+    val unexpected = listOf(LatestMessageResult.Loading, LatestMessageResult.UnexpectedError)
+
+    assertEquals(unexpected, repository.observeLatestMessage(EVENT, "groups/other").toList())
+    assertEquals(unexpected, repository.observeLatestMessage(" ", GROUP).toList())
+    auth.user = null
+    assertEquals(unexpected, repository.observeLatestMessage(EVENT, GROUP).toList())
 
     verify(exactly = 0) { db.collection(any()) }
   }

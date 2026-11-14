@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote this fake for tests, #237).
 // Contributors: OpenAI Codex (modeled same-ID retries in the chat fake, #238).
+// Contributors: Claude (Fable 5.2, Anthropic) (a group's latest message, #363).
 package com.polysocial.model.chat
 
 import com.polysocial.model.event.isReadableEventId
@@ -20,7 +21,8 @@ import kotlinx.coroutines.flow.map
  * anyone else's [observeMessages] ends with [MessagesResult.UnexpectedError], and their
  * [sendMessage] returns [SendMessageResult.UnexpectedError]. [observeMessages] reads [currentUid],
  * [readFailure] and the members when its collection starts, as the real listener reads the user
- * and is checked by the rules then.
+ * and is checked by the rules then. [observeLatestMessage] follows the same checks and emits the
+ * last of those messages, with its own results.
  *
  * Messages are listed oldest first, then by ID for equal times, as Firestore orders them. Sent
  * messages get the IDs `message-1`, `message-2`… and deterministic server times that put them
@@ -37,10 +39,10 @@ class FakeMessageRepository(var currentUid: String? = "test-student") : MessageR
   /** When set, sending returns this result instead of writing, like a failed transaction. */
   var sendFailure: SendMessageResult? = null
 
-  /** When set, [observeMessages] emits Loading, then this failure and ends, like a failed listener. */
+  /** When set, the observe flows emit Loading, then this failure and end, like a failed listener. */
   var readFailure: ReadFailure? = null
 
-  /** The `fromCache` flag [observeMessages] reports, to simulate reading from the offline cache. */
+  /** The `fromCache` flag the observe flows report, to simulate reading from the offline cache. */
   var readFromCache = false
 
   /** The two ways a listener can fail. */
@@ -103,6 +105,9 @@ class FakeMessageRepository(var currentUid: String? = "test-student") : MessageR
           )
     }
   }
+
+  override fun observeLatestMessage(eventId: String, groupId: String): Flow<LatestMessageResult> =
+      observeMessages(eventId, groupId).map { it.toLatestMessage() }.distinctUntilChanged()
 
   override suspend fun sendMessage(
       eventId: String,

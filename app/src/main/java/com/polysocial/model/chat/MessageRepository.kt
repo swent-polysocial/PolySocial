@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (drafted the group chat repository contract, #237).
 // Contributors: OpenAI Codex (added the retry ID and removed its legacy Kotlin bridge, #238).
+// Contributors: Claude (Fable 5.2, Anthropic) (a group's latest message, for the chat list, #363).
 package com.polysocial.model.chat
 
 import kotlinx.coroutines.flow.Flow
@@ -28,6 +29,42 @@ sealed interface MessagesResult {
    */
   data object UnexpectedError : MessagesResult
 }
+
+/** What [MessageRepository.observeLatestMessage] emits. */
+sealed interface LatestMessageResult {
+  /** Nothing has been read yet. Emitted first, unless a newer result already replaced it. */
+  data object Loading : LatestMessageResult
+
+  /**
+   * The group's latest message by the server's time, or null when the group has no message yet. A
+   * latest message that can't be read (a missing or wrong-typed field) also reads as null.
+   *
+   * @property fromCache true when it comes from Firestore's offline cache, like
+   *   [MessagesResult.Success.fromCache].
+   */
+  data class Success(val message: Message?, val fromCache: Boolean) : LatestMessageResult
+
+  /** The message couldn't be read because the server can't be reached. The flow then ends. */
+  data object NetworkError : LatestMessageResult
+
+  /**
+   * Any other failure, for example nobody signed in, or a student who isn't a member of the group.
+   * The flow then ends.
+   */
+  data object UnexpectedError : LatestMessageResult
+}
+
+/**
+ * The newest of these messages as a [LatestMessageResult], with the same loading and failure
+ * states: the last one, since [MessagesResult.Success.messages] are oldest first.
+ */
+fun MessagesResult.toLatestMessage(): LatestMessageResult =
+    when (this) {
+      MessagesResult.Loading -> LatestMessageResult.Loading
+      is MessagesResult.Success -> LatestMessageResult.Success(messages.lastOrNull(), fromCache)
+      MessagesResult.NetworkError -> LatestMessageResult.NetworkError
+      MessagesResult.UnexpectedError -> LatestMessageResult.UnexpectedError
+    }
 
 /** Outcome of [MessageRepository.sendMessage]. */
 sealed interface SendMessageResult {
@@ -78,6 +115,15 @@ interface MessageRepository {
    * (`GroupRepository.observeMyGroup`).
    */
   fun observeMessages(eventId: String, groupId: String): Flow<MessagesResult>
+
+  /**
+   * Observes only the latest message of the group [groupId] of the event [eventId], for a chat
+   * list's preview (#363): it reads one message, not the whole chat.
+   *
+   * The flow emits and ends like [observeMessages], with its own results, and reacts the same way
+   * when the student leaves the group.
+   */
+  fun observeLatestMessage(eventId: String, groupId: String): Flow<LatestMessageResult>
 
   /**
    * Sends [text] to the group [groupId] of the event [eventId] as the signed-in student.
