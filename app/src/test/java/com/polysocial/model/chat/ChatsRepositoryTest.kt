@@ -1,7 +1,9 @@
-// Contributors: Claude (Fable 5.2, Anthropic) (wrote these tests, #363).
+// Contributors: Claude (Fable 5.2, Anthropic) (wrote these tests, #363, with more from a test
+// audit).
 package com.polysocial.model.chat
 
 import com.polysocial.model.group.FakeGroupRepository
+import com.polysocial.model.group.GROUP_CAPACITY
 import com.polysocial.model.group.Group
 import com.polysocial.model.group.GroupRepository
 import com.polysocial.model.group.MyGroupsResult
@@ -11,6 +13,7 @@ import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -58,6 +61,19 @@ class ChatsRepositoryTest {
 
   private fun message(group: Group, id: String, text: String, at: Instant, sender: String = OTHER) =
       messages.seedMessage(group.eventId, group.id, id, sender, text, at)
+
+  /** Messages whose read of the group [slowGroupId] answers only once [answered] completes. */
+  private fun messagesAnsweringLate(slowGroupId: String, answered: CompletableDeferred<Unit>) =
+      object : MessageRepository by messages {
+        override fun observeLatestMessage(
+            eventId: String,
+            groupId: String,
+        ): Flow<LatestMessageResult> = flow {
+          emit(LatestMessageResult.Loading)
+          if (groupId == slowGroupId) answered.await()
+          emitAll(messages.observeLatestMessage(eventId, groupId))
+        }
+      }
 
   /** Collects the chats in the background; the list holds every result so far. */
   private fun TestScope.startCollecting(
@@ -136,6 +152,43 @@ class ChatsRepositoryTest {
     val results = startCollecting()
 
     assertEquals(listOf(hike, party), results.latest.chats.map { it.group })
+  }
+
+  @Test
+  fun chatsOfOneEventWithTheSameActivity_areOrderedByGroup() = runTest {
+    // Two groups of one event exist only if a group and its marker ever disagree; the list keeps a
+    // stable order even then.
+    val groupB =
+        Group("group-b", PARTY, GROUP_CAPACITY, listOf(STUDENT), STUDENT, NOON.plusSeconds(60))
+    val groupA = groupB.copy(id = "group-a")
+    listOf(groupA, groupB).forEach { messages.setMembers(PARTY, it.id, setOf(STUDENT)) }
+    val twoGroups =
+        object : GroupRepository by groups {
+          override fun observeMyGroups(): Flow<MyGroupsResult> =
+              flowOf(MyGroupsResult.Success(listOf(groupB, groupA), fromCache = false))
+        }
+
+    val results = startCollecting(ChatsRepository(twoGroups, messages))
+
+    assertEquals(listOf(groupA, groupB), results.latest.chats.map { it.group })
+  }
+
+  @Test
+  fun moreChatsThanAFlowBuffers_areAllListed_eachWithItsLatestMessage() = runTest {
+    // 70 chats: more than the 64 results a channel-backed flow buffers by default.
+    val chats = (1..70).map { chat("event-$it") }
+    chats.forEachIndexed { index, group ->
+      message(group, "a", "Message ${index + 1}", NOON.plusSeconds(3600L + index))
+    }
+
+    val results = startCollecting()
+
+    assertEquals(chats.reversed(), results.latest.chats.map { it.group })
+    assertEquals(
+        (70 downTo 1).map { "Message $it" },
+        results.latest.chats.map { it.latestMessage?.text },
+    )
+    assertEquals(70, listening)
   }
 
   @Test
@@ -254,6 +307,48 @@ class ChatsRepositoryTest {
   }
 
   @Test
+  fun groupsThatAnsweredBeforeTheirLatestMessages_areNotListedYet() = runTest {
+    // As with Firestore: the groups answer some time after Loading, each latest message later.
+    val group = chat(PARTY)
+    val myGroups = MutableStateFlow<MyGroupsResult>(MyGroupsResult.Loading)
+    val lateGroups =
+        object : GroupRepository by groups {
+          override fun observeMyGroups(): Flow<MyGroupsResult> = myGroups
+        }
+    val answered = CompletableDeferred<Unit>()
+    val results =
+        startCollecting(ChatsRepository(lateGroups, messagesAnsweringLate(group.id, answered)))
+
+    myGroups.value = MyGroupsResult.Success(listOf(group), fromCache = false)
+    runCurrent()
+    assertEquals(listOf<MyChatsResult>(MyChatsResult.Loading), results)
+
+    answered.complete(Unit)
+    runCurrent()
+    assertEquals(listOf(ChatPreview(group, null)), results.latest.chats)
+  }
+
+  @Test
+  fun aGroupJoinedWhileTheListShows_isAddedOnlyOnceItsLatestMessageAnswered() = runTest {
+    val kept = chat(PARTY)
+    val answered = CompletableDeferred<Unit>()
+    // The group joined below is the second one the fake creates.
+    val results =
+        startCollecting(ChatsRepository(groups, messagesAnsweringLate("group-2", answered)))
+    val shown = results.toList()
+    assertEquals(listOf(kept), results.latest.chats.map { it.group })
+
+    val joined = chat(HIKE)
+    runCurrent()
+    // Neither a list that shows the new chat as empty, nor Loading again: the list stays.
+    assertEquals(shown, results)
+
+    answered.complete(Unit)
+    runCurrent()
+    assertEquals(listOf(joined, kept), results.latest.chats.map { it.group })
+  }
+
+  @Test
   fun chatsFromTheCache_sayFromCache_whetherTheGroupsOrAMessageComeFromIt() = runTest {
     chat(PARTY)
     groups.readFromCache = true
@@ -301,6 +396,25 @@ class ChatsRepositoryTest {
     messages.seedMessage(HIKE, denied.id, "a", OTHER, "Unreadable", NOON)
 
     assertEquals(MyChatsResult.UnexpectedError, repository.observeMyChats().toList().last())
+    assertEquals(0, listening)
+  }
+
+  @Test
+  fun afterAFailure_collectingTheSameFlowAgain_readsTheChats() = runTest {
+    // What Retry does on the Chats tab.
+    val group = chat(PARTY)
+    val chats = repository.observeMyChats()
+    groups.readFailure = FakeGroupRepository.ReadFailure.NETWORK
+    assertEquals(MyChatsResult.NetworkError, chats.toList().last())
+    groups.readFailure = null
+    messages.readFailure = FakeMessageRepository.ReadFailure.UNEXPECTED
+    assertEquals(MyChatsResult.UnexpectedError, chats.toList().last())
+
+    messages.readFailure = null
+    assertEquals(
+        MyChatsResult.Success(listOf(ChatPreview(group, null)), fromCache = false),
+        chats.first { it is MyChatsResult.Success },
+    )
     assertEquals(0, listening)
   }
 
