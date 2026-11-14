@@ -6,6 +6,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) reloaded the account before deleting it, so leaving
 // never deletes a verified one and finishes a deletion whose answer was lost, and added Log out
 // anyway after a failed deletion, #225 review.
+// Contributors: Claude (Fable 5.2, Anthropic) (logOutAnyway's KDoc now that the 7-day cleanup is
+// built, #226).
 package com.polysocial.ui.auth
 
 import androidx.lifecycle.ViewModel
@@ -228,9 +230,9 @@ constructor(
   /**
    * Takes the way out that last failed without deleting the account, like the `RecentLoginRequired`
    * fallback: the account and its cooldown stay, so the address stays reserved until the 7-day
-   * cleanup (#226, not built yet). It keeps a way out while the deletion can't run (offline, or
-   * `deleteAccount` down). Does nothing without a failure, or while other work runs, as its button
-   * is then disabled.
+   * cleanup deletes the account (the scheduled function `deleteUnverifiedAccounts`, #226). It keeps
+   * a way out while the deletion can't run (offline, or `deleteAccount` down). Does nothing without
+   * a failure, or while other work runs, as its button is then disabled.
    */
   fun logOutAnyway() {
     val state = mutableState.value
