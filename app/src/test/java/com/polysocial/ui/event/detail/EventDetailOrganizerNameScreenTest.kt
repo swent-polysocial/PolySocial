@@ -2,8 +2,8 @@
 // detail screen, #281).
 // Contributors: Claude Fable 5.2 (testing pass: the long name's lines, and no name anywhere on the
 // screen of a student who isn't going, #281).
-// Contributors: Claude (Opus 5.5, Anthropic) (the row's place held while the name is read, #281's
-// review).
+// Contributors: Claude (Opus 5.5, Anthropic) (the row's place held while the name is read, also at
+// the largest font size, #281's review).
 package com.polysocial.ui.event.detail
 
 import androidx.compose.runtime.getValue
@@ -157,12 +157,29 @@ class EventDetailOrganizerNameScreenTest {
 
   @GraphicsMode(GraphicsMode.Mode.NATIVE)
   @Test
-  fun whileTheNameIsRead_itsRowHoldsItsPlace_soNothingMovesWhenItArrives() {
+  fun whileTheNameIsRead_itsRowHoldsItsPlace_soNothingMovesWhenItArrives() =
+      assertTheNameMovesNothingWhenItArrives()
+
+  // The largest font size Android offers: the name's line is then taller than the row's minimum.
+  @Config(qualifiers = "w360dp-h800dp-xxhdpi", fontScale = 2.0f)
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  @Test
+  fun atTheLargestFontSize_whileTheNameIsRead_itsRowHoldsItsPlace() =
+      assertTheNameMovesNothingWhenItArrives()
+
+  /**
+   * Shows the row held while the name is read, then the name, and checks that the rows below stay
+   * where they are. The held row shows and says nothing.
+   */
+  private fun assertTheNameMovesNothingWhenItArrives() {
     var state by mutableStateOf(loaded(study, organizerName = null, readingName = true))
     composeTestRule.setContent {
       PolySocialTheme { EventDetailScreen(state, onBack = {}, onRetry = {}) }
     }
     node(EventDetailTags.ORGANIZER_NAME).assertDoesNotExist()
+    composeTestRule
+        .onAllNodes(hasText("by", substring = true), useUnmergedTree = true)
+        .assertCountEquals(0)
     val dateWhileReading = node(EventDetailTags.DATE).getBoundsInRoot()
 
     state = loaded(study, ORGANIZER_NAME)
