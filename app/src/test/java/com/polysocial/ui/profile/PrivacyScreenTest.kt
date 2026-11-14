@@ -4,6 +4,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) replaced the unavailable deletion with its sheet,
 // #207;
 // Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Fable 5.2, Anthropic) (the notice's date for the 7-day cleanup text, #226).
 package com.polysocial.ui.profile
 
 import android.content.Context
@@ -184,7 +185,7 @@ class PrivacyScreenTest {
     rule.onNodeWithTag(C.Tag.privacy_chats).performScrollTo().assertIsDisplayed()
     rule.onNodeWithText(text(R.string.privacy_chats_body)).assertIsDisplayed()
     rule.onNodeWithTag(C.Tag.privacy_full_notice).performScrollTo().performClick()
-    rule.onNodeWithTag(C.Tag.privacy_notice_date).assertTextEquals("Updated 13 November 2026")
+    rule.onNodeWithTag(C.Tag.privacy_notice_date).assertTextEquals("Updated 14 November 2026")
   }
 
   private fun checkUnavailable(tag: String) {
