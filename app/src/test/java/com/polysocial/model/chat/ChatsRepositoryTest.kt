@@ -1,7 +1,7 @@
 // Contributors: Claude (Fable 5.2, Anthropic) (wrote these tests, #363, with more from a test
 // audit).
-// Contributors: Claude (Opus 5.5, Anthropic) (chats read their members from the groups, after
-// review, #363).
+// Contributors: Claude (Opus 5.5, Anthropic) (chats read their members from the groups, and one
+// listener per chat, after review, #363).
 package com.polysocial.model.chat
 
 import com.polysocial.model.group.FakeGroupRepository
@@ -12,6 +12,7 @@ import com.polysocial.model.group.MyGroupsResult
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emitAll
@@ -21,7 +22,9 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onCompletion
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -43,16 +46,18 @@ class ChatsRepositoryTest {
 
   /** How many latest-message listeners were ever opened, to check that they aren't reopened. */
   private var opened = 0
+
+  /** This latest-message listener, counted in [listening] and [opened]. */
+  private fun Flow<LatestMessageResult>.counted() = onStart {
+    listening++
+    opened++
+  }
+      .onCompletion { listening-- }
+
   private val countedMessages =
       object : MessageRepository by messages {
         override fun observeLatestMessage(eventId: String, groupId: String) =
-            messages
-                .observeLatestMessage(eventId, groupId)
-                .onStart {
-                  listening++
-                  opened++
-                }
-                .onCompletion { listening-- }
+            messages.observeLatestMessage(eventId, groupId).counted()
       }
   private val repository = ChatsRepository(groups, countedMessages)
 
@@ -78,6 +83,33 @@ class ChatsRepositoryTest {
           if (groupId == slowGroupId) answered.await()
           emitAll(messages.observeLatestMessage(eventId, groupId))
         }
+      }
+
+  /**
+   * The fake's messages, except that the latest message of each group in [scripted] answers what
+   * its flow emits and, like the real listener, ends after a failure. Every listener is counted.
+   */
+  private fun messagesWithLatest(
+      vararg scripted: Pair<Group, Flow<LatestMessageResult>>
+  ): MessageRepository {
+    val listeners = scripted.associate { (group, listener) ->
+      (group.eventId to group.id) to
+          listener.transformWhile {
+            emit(it)
+            it == LatestMessageResult.Loading || it is LatestMessageResult.Success
+          }
+    }
+    return object : MessageRepository by messages {
+      override fun observeLatestMessage(eventId: String, groupId: String) =
+          (listeners[eventId to groupId] ?: messages.observeLatestMessage(eventId, groupId))
+              .counted()
+    }
+  }
+
+  /** The fake's groups, except that the student's are what [myGroups] emits. */
+  private fun groupsFrom(myGroups: Flow<MyGroupsResult>): GroupRepository =
+      object : GroupRepository by groups {
+        override fun observeMyGroups(): Flow<MyGroupsResult> = myGroups
       }
 
   /** Collects the chats in the background; the list holds every result so far. */
@@ -232,6 +264,21 @@ class ChatsRepositoryTest {
   }
 
   @Test
+  fun joiningAGroup_opensOnlyItsChatsListener() = runTest {
+    val first = chat(PARTY)
+    val second = chat(HIKE)
+    val results = startCollecting()
+    assertEquals(2, opened)
+
+    val joined = chat(STUDY)
+
+    assertEquals(listOf(joined, second, first), results.latest.chats.map { it.group })
+    // The chats already listed keep their listeners.
+    assertEquals(3, opened)
+    assertEquals(3, listening)
+  }
+
+  @Test
   fun aMemberJoiningAChat_updatesItsGroup_withoutListeningToItsMessagesAgain() = runTest {
     val group = chat(PARTY)
     groups.readableEventIds += PARTY
@@ -352,6 +399,63 @@ class ChatsRepositoryTest {
   }
 
   @Test
+  fun aJoinedChatWaitingForItsLatestMessage_doesNotHoldUpTheOthers() = runTest {
+    val kept = chat(PARTY)
+    val answered = CompletableDeferred<Unit>()
+    // The group joined below is the second one the fake creates.
+    val results =
+        startCollecting(ChatsRepository(groups, messagesAnsweringLate("group-2", answered)))
+
+    val joined = chat(HIKE)
+    val sent = message(kept, "a", "Still on for tonight?", NOON.plusSeconds(60))
+    // The new message shows at once, without the joined chat, which hasn't answered yet.
+    assertEquals(listOf(ChatPreview(kept, sent)), results.latest.chats)
+
+    answered.complete(Unit)
+    runCurrent()
+    assertEquals(
+        listOf(ChatPreview(kept, sent), ChatPreview(joined, null)),
+        results.latest.chats,
+    )
+  }
+
+  @Test
+  fun aChatLeftAndJoinedAgain_ignoresTheLastAnswerOfItsStoppedListener() = runTest {
+    // The student leaves and joins again before the list has caught up, while the first listener
+    // still delivers an answer: that answer must not stand for the new listener's.
+    val group = chat(PARTY, OTHER)
+    val myGroups = Channel<MyGroupsResult>(Channel.UNLIMITED)
+    val firstListener = Channel<LatestMessageResult>(Channel.UNLIMITED)
+    var listeners = 0
+    val chatMessages =
+        object : MessageRepository by messages {
+          override fun observeLatestMessage(eventId: String, groupId: String) =
+              if (listeners++ == 0) firstListener.receiveAsFlow() else SILENT
+        }
+    val results = mutableListOf<MyChatsResult>()
+    // Not unconfined: the listeners and the list each run in the order they were woken up.
+    backgroundScope.launch {
+      ChatsRepository(groupsFrom(myGroups.receiveAsFlow()), chatMessages).observeMyChats().collect {
+        results += it
+      }
+    }
+    myGroups.send(MyGroupsResult.Success(listOf(group), fromCache = false))
+    firstListener.send(LatestMessageResult.Success(null, fromCache = false))
+    runCurrent()
+    assertEquals(listOf(ChatPreview(group, null)), results.latest.chats)
+
+    myGroups.send(MyGroupsResult.Success(emptyList(), fromCache = false))
+    myGroups.send(MyGroupsResult.Success(listOf(group), fromCache = false))
+    val stale = Message("a", OTHER, "Before leaving", NOON.plusSeconds(60))
+    firstListener.send(LatestMessageResult.Success(stale, fromCache = false))
+    runCurrent()
+
+    // The chat is back, but waits for its new listener, which hasn't answered.
+    assertEquals(MyChatsResult.Success(emptyList(), fromCache = false), results.last())
+    assertEquals(2, listeners)
+  }
+
+  @Test
   fun chatsFromTheCache_sayFromCache_whetherTheGroupsOrAMessageComeFromIt() = runTest {
     chat(PARTY)
     groups.readFromCache = true
@@ -388,6 +492,21 @@ class ChatsRepositoryTest {
     assertEquals(MyChatsResult.NetworkError, repository.observeMyChats().toList().last())
     messages.readFailure = FakeMessageRepository.ReadFailure.UNEXPECTED
     assertEquals(MyChatsResult.UnexpectedError, repository.observeMyChats().toList().last())
+    assertEquals(0, listening)
+  }
+
+  @Test
+  fun aChatThatCannotReachTheServer_endsTheList_withoutWaitingForASilentOne() = runTest {
+    val silent = chat(PARTY)
+    val unreachable = chat(HIKE)
+    val failing = flowOf(LatestMessageResult.Loading, LatestMessageResult.NetworkError)
+
+    val results =
+        startCollecting(
+            ChatsRepository(groups, messagesWithLatest(silent to SILENT, unreachable to failing))
+        )
+
+    assertEquals(listOf(MyChatsResult.Loading, MyChatsResult.NetworkError), results)
     assertEquals(0, listening)
   }
 
@@ -494,5 +613,11 @@ class ChatsRepositoryTest {
 
     /** When the fake group repository creates its first group, one second later. */
     val NOON: Instant = Instant.parse("2030-01-01T12:00:00Z")
+
+    /** A latest-message listener that never answers. */
+    val SILENT: Flow<LatestMessageResult> = flow {
+      emit(LatestMessageResult.Loading)
+      awaitCancellation()
+    }
   }
 }
