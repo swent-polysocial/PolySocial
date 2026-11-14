@@ -1,14 +1,18 @@
 // Contributors: Claude Fable 5.2 (wrote these tests of a student organizer's name on the event
 // detail screen, #281).
-// Contributors: Claude Fable 5.2 (testing pass: the long name's lines, #281).
+// Contributors: Claude Fable 5.2 (testing pass: the long name's lines, and no name anywhere on the
+// screen of a student who isn't going, #281).
 package com.polysocial.ui.event.detail
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -241,6 +245,22 @@ class EventDetailOrganizerNameScreenTest {
 
     node(EventDetailTags.IM_GOING).assertIsDisplayed()
     node(EventDetailTags.ORGANIZER_NAME).assertDoesNotExist()
+  }
+
+  @Test
+  fun route_aStudentWhoIsntGoing_findsTheOrganizersNameNowhere_andNoProfileIsRead() {
+    val profiles = organizerProfile()
+    showRoute(registrations(), profiles)
+
+    node(EventDetailTags.IM_GOING).assertIsDisplayed()
+    // Neither as a text nor as a description a screen reader would say.
+    composeTestRule
+        .onAllNodes(hasText(ORGANIZER_NAME, substring = true), useUnmergedTree = true)
+        .assertCountEquals(0)
+    composeTestRule
+        .onAllNodes(hasContentDescription(ORGANIZER_NAME, substring = true), useUnmergedTree = true)
+        .assertCountEquals(0)
+    assertTrue(profiles.requestedUids.isEmpty())
   }
 
   @Test
