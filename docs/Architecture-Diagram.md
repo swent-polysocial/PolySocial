@@ -25,6 +25,7 @@
 <!-- Contributors: Claude (Fable 5.2, Anthropic) (the scheduled cleanup of unverified accounts marked as built, #226). -->
 <!-- Contributors: Claude (Fable 5.2, Anthropic) (the event capacity decision, its rule sketch with the allowed and denied cases, and what each operation does to the counter, #372). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the event capacity decision's second-review corrections: the refusal's classification, where the rules tests go, the split into three issues and a Figma task, the counter at 1 and stored as a decimal, what only the emulator shows; from the PR review, the listeners' read estimate and the tables' replacement by #373's tests, #372). -->
+<!-- Contributors: Claude (Fable 5.2, Anthropic) drafted the one-to-one chat model, its rules design (run against the Firestore emulator first), its account-deletion rows and open questions (#365). -->
 
 How PolySocial is built, as we currently envision it. The page follows the [Android App Architecture guide](https://developer.android.com/topic/architecture/intro): a **UI layer** (Compose screens and ViewModels), a **domain layer** of pure Kotlin logic, and a **data layer** of repositories in front of Firebase, the map and geocoding services, and the device sensors.
 
@@ -134,6 +135,8 @@ flowchart TB
   groupS --> chat["Group chat<br/>#238"]:::s1
   profile -.-> friends["Friends · QR · matches"]:::pb
   chats["Chats list"]:::pb -.-> chat
+  chats -.-> direct["One-to-one chat<br/>#365"]:::pb
+  friends -.-> direct
 ```
 
 **Integration:** #112 replaces the Map detail placeholder with one shared screen and ViewModel class. Each entry tab registers its own event-ID route (the helper proposed in #157 is `Tab.eventDetailRoute`), so Events, Map and Create Event entry points return to their own tab stack without changing the selected tab. Unbuilt actions (Find a group, download data, attendance-based matching and account deletion) show a not-available Snackbar; they do not open unfinished screens. Account deletion keeps it until #207 connects the agreed flow (decision 15). Privacy's full notice works offline. Logout and account deletion must also cancel the previous account's reminders (#109, #123); #198's `SessionGuard` keeps the cached data away from the next account (decision 15).
@@ -260,7 +263,7 @@ flowchart TB
 - **Who can join:** a student who can read the event. Requiring "I'm going" first is decided (#228) and built by #244, which also decides whether the rules check it. Associations never reach groups, messages or public profiles.
 - **Matching starts on the client.** The engine (#231) is a deterministic heuristic in a pure Kotlin module: given the student (section, year, interests) and the event's groups with their members' public profiles, it returns the open groups ranked, full groups left out, ties broken by a stable key. We revisit a Cloud Function only if fairness or cheating becomes a problem; the module would move unchanged.
 - **Public profiles (#229):** `publicProfiles/{uid}` holds `displayName`, `section`, `year` and `interests` (codes from #230's fixed list of about ten), never the email. It is written in the same transaction as `users/{uid}`. Public or private visibility of further fields comes later.
-- **Chat (#237, #238):** each group has `messages` (`senderId`, `text` of 1 to 1000 characters, server-set `createdAt`). Only members read and send, each sender writes only their own messages, a deleted account can't send, and nobody edits or deletes one yet. Sending is **refused offline** with Try again, like `createEvent`, rather than queued. A one-to-one chat is a two-member group, so there is one chat model and one set of rules.
+- **Chat (#237, #238):** each group has `messages` (`senderId`, `text` of 1 to 1000 characters, server-set `createdAt`). Only members read and send, each sender writes only their own messages, a deleted account can't send, and nobody edits or deletes one yet. Sending is **refused offline** with Try again, like `createEvent`, rather than queued. A chat between two friends is not a group: it has its own collection, with the same message fields (#365, [3.8](#38-one-to-one-chat-product-backlog-decided-in-365)).
 - **Chat list (#363, for the Chats tab, #364):** `ChatsRepository.observeMyChats` lists every group the student is in, across events, each with its latest message, newest activity first (the latest message's time, or the group's creation time without one). It combines `GroupRepository.observeMyGroups` with one `MessageRepository.observeLatestMessage` listener per group, a query on `createdAt` descending with `limit(1)`, so the list reads one message per chat; a group's listener starts when the group is listed and stops when it leaves, so joining a group opens one listener and restarts none. It works without the events: a member lists their groups and reads their chats once the event is deleted or no longer readable. Groups that can't be read, or a latest message that can't reach the server, end it. A denied latest message only leaves its chat out: on reconnection, Firestore reports the chat of a group left on another device as denied before the groups drop that group, so the list fails only if a later result of the groups from the server still lists it. No new rule or index: the cross-event `list` rule and the `groups.memberUids` collection-group index date from #232, the message rules from #237.
 - **Real-time screens.** Groups, my group, my chats and messages are Firestore snapshot listeners exposed as `Flow`, usable from the cache offline.
 - **Moderation-ready.** The rules are written per operation and messages carry `senderId` and `createdAt`, so report/block and rate limiting can be added later without a rule rewrite.
@@ -317,6 +320,56 @@ flowchart TB
 - **Requests are seen in the app.** There are no push notifications (Firebase Cloud Messaging is not in use), so incoming requests show in the friends list.
 - **Associations never take part:** they can't send, receive or read a friendship.
 - **Public profiles (#229) and the later public/private choice.** The friend card and the lists show only what a public profile already shows (`displayName`, `section`, `year`, `interests`). Nobody can see another student's friends yet. Showing friends on a **public** profile, or to approved connections on a private one (section 5.2), needs its own read rule when that choice is built. So does using common friends in matching: the matching engine runs on the device, and today it can't read other students' friendships (section 7).
+- **Chatting with a friend (#365, [3.8](#38-one-to-one-chat-product-backlog-decided-in-365))** depends on this document as it is: the chat rules read `friendships/{pairId}` and let the two students send only while its `status` is `accepted`. Nothing in the friendship changes for the chat.
+
+### 3.8 One-to-one chat (Product Backlog, decided in #365)
+
+```mermaid
+flowchart TB
+  classDef pb fill:#dbe4ff,stroke:#364fc7,color:#000
+  classDef ext fill:#fff3bf,stroke:#e67700,color:#000
+  classDef s1 fill:#d3f9d8,stroke:#2b8a3e,color:#000
+
+  tab["Chats tab<br/>group and one-to-one chats, #364"]:::pb --> tabVM["<b>Chats ViewModel</b><br/>one list, latest activity first"]:::pb
+  friendsUi["Friends list<br/>#360"]:::pb -. "opens a friend's chat" .-> chatS
+  tab --> chatS["One-to-one chat<br/>history · composer or read-only note"]:::pb
+  chatS --> chatVM["<b>One-to-one chat ViewModel</b><br/>friends: send · otherwise read-only"]:::pb
+  tabVM --> repo["<b>One-to-one chat repository</b><br/>my chats · messages · latest message · send"]:::pb
+  chatVM --> repo
+  chatVM --> friendRepo["<b>FriendRepository</b><br/>observeFriendships, #357"]:::pb
+  chatVM --> pub["<b>PublicProfileRepository</b><br/>by UID only, built, #229"]:::s1
+  tabVM --> pub
+  repo --> fs[("Firestore<br/>chats/{pairId} · chats/{pairId}/messages")]:::ext
+  delFn["<b>deleteAccount</b><br/>Cloud Function, built, #206"]:::s1 -. "anonymises senders,<br/>takes the UID out of uids" .-> fs
+```
+
+Decided on 2026-11-14 (#365), replacing "a one-to-one chat is a two-member group". Nothing here is built yet: the collection, the fields and the rules are decided, and class and route names are proposals until their tasks fix them.
+
+- **A chat between two friends has its own top-level collection.** `chats/{pairId}` has the ID of the pair's friendship (#338: `{lowerUid}~{higherUid}`, built only by #357's pure function, never by a second one) and holds exactly `uids`, the two UIDs in the ID's order. `chats/{pairId}/messages/{id}` holds the messages, with exactly group chat's fields (#237): `senderId`, `text` (1 to 1000 UTF-16 units, trimmed) and the server's `createdAt`. No name, summary or counter: names come from the public profiles (#229). The friendship stays as #338 specifies; the chat only reads its `status`, in the rules.
+- **Accepted friends only.** The two students read the chat. Creating it or sending a message also needs `friendships/{pairId}` to exist with `status == "accepted"`. Students only: associations never reach it. Group-mates who aren't friends use their group chat.
+- **Created by whoever sends the first message, in the same transaction.** Sending to a pair runs #237's checks (the trimmed text, the IDs, the signed-in student, then `NetworkMonitor`), then one transaction, tried once:
+  1. read `chats/{pairId}` and, when the draft has an ID, the message under it (#238's retry check);
+  2. if the chat is missing, set `chats/{pairId}` to `{ uids: [lowerUid, higherUid] }`;
+  3. set the message (`senderId`, `text`, server `createdAt`), unless its ID already holds a message: the same sender and text is `Sent`, anything else `UnexpectedError`, as in #237.
+
+  So the app never creates an empty chat, the first message is never stored without its chat (the rules also refuse a message whose chat doesn't exist after the write), and every later message is one write.
+- **When both send their first message at once,** both transactions read the chat as missing and try to create it. One commits. The other fails as a whole and stores nothing: on the emulator with `ALREADY_EXISTS` (the transaction's own check that the chat was still missing); a write the rules evaluate first is `PERMISSION_DENIED` instead, since nobody may update a chat (the lost-race trap of #232). A transaction tried once isn't retried by the SDK, so the repository runs it once more itself when an attempt that tried to create the chat fails for any reason but being offline. The second attempt reads the chat as existing and writes only its message, so both messages end up in the one chat, in the server's time order. From then on two students sending at once write two different documents and can't conflict.
+- **On the Chats tab (#364),** one-to-one chats sit in the same list as the group chats (#363), ordered together by latest activity. One listener reads the student's chats, `chats where uids array-contains <UID>`: rules aren't filters, so the query must carry this filter, and without an `orderBy` it needs no composite index. As #363 does for each group, one listener per chat reads its latest message (`messages` ordered by `createdAt` descending, `limit(1)`), and the device sorts the merged list by that message's `createdAt`, newest first. A row shows the other student's public-profile name, the latest message and its time. The other student is the UID in `uids` that isn't the student's own: none means their account was deleted ("Deleted account"), and a profile that can't be read is "Profile unavailable" (#291). A chat without a message isn't listed (the app never creates one), and no unread state is stored.
+  - **Reads:** when the tab opens on an empty cache, two documents per chat (the chat and its latest message) plus the rules' own lookups, billed once per listener (the caller's profile and deletion marker, so two more per chat); then one read per new message while the tab stays open. The chat document never changes. Twenty chats are about 80 reads per cold open, against a free quota of 50,000 a day.
+  - **Why no last-message summary on the chat document:** one listener would then replace one per chat, for about a quarter of those reads, but every message would be two writes (writes cost more than reads and have a smaller free quota), both students would keep updating the same document (#232's lost-race trap on every simultaneous send), its update rule would have to prove that the summary equals the message written with it, and account deletion would have a second copy of a text and a sender to anonymise. As decided, a chat document is written once and never changes, so its rules are create-only. If a student ever has so many chats that the tab must page by activity, a `lastMessageAt` can be added then.
+- **The chat screen is #238's, for a pair:** the same history, composer, draft and retry behaviour (one ID per draft, kept on Try again), shared with the group chat rather than copied (`MODULARITY.md`), with the other student's name in the header in place of the event. It observes the messages, the student's chats (the tab's query: is this chat started, and is the other account deleted) and the friendship (`observeFriendships`, #357), which decides whether the composer shows. The other student's UID comes from the chat's `uids`, or from the friendship's while the chat doesn't exist yet. Reading never depends on the friendship, so nothing ends the message listener when a friend is removed: the screen follows the friendship to become read-only at once (as #238 follows the group, see #237's trap). A send that races the removal is denied and shows the failed-send state.
+- **Removing a friend keeps the conversation, read-only.** Removing deletes `friendships/{pairId}` as #338 says and writes nothing else. The chat and its messages stay where they are: both students still list and read it, and the rules refuse a new message from either. A note replaces the composer. A new request doesn't reopen the chat while it is pending; once it is accepted, both send again in the same chat, after its history.
+- **Account deletion keeps the other student's conversation, with the sender anonymised,** like group chat (#241). In `deleteAccount`'s order:
+  1. the `deletedAccounts/{uid}` marker (the existing first step) makes every chat rule refuse the deleted account's still-valid token: it reads, lists and sends nothing and creates no chat;
+  2. #241's step replaces `senderId` with an empty string on every message the account sent, keeping the text and the time. It queries the `messages` collection group, so it **already covers `chats/*/messages` as it stands**, with the same `messages.senderId` collection-group index (checked by running the unchanged handler against the emulator): no change;
+  3. #357's step deletes the account's friendships, which makes each of its chats read-only for the other student; from then on no chat can be created for the UID;
+  4. **new, after step 3:** for each chat of `chats where uids array-contains <uid>`, a transaction takes the UID out of `uids`. The other student still finds the chat with the same query, and a `uids` without another UID is how the app knows to show "Deleted account" instead of guessing from a missing public profile (#291). A chat nobody is left in (the other account was deleted earlier) is deleted, its messages first and then the chat, so no conversation stays stored that nobody can read and a Retry still finds an unfinished one through `uids`. Idempotent like the other steps.
+
+  The document ID still contains the deleted UID and can't be renamed: it stays as an opaque identifier, like `createdBy` on an event or a group. As for group chat, the kept text isn't redacted and copies cached on the other student's device aren't wiped.
+- **Offline.** Sending is refused offline with Try again, never queued, as in group chat. The Chats tab's list, the latest messages and a chat's history come from Firestore's cache, with the offline banner only when `NetworkMonitor` also says offline, and a first read without an answer times out after 10 s with Retry, like #238.
+- **Privacy notice.** When the feature ships, the notice (#103) must say: a one-to-one chat stores the two students' account identifiers and, for each message, its text, its sender's identifier and the server time; only the two students read it, never an association; removing a friend stops both from sending but keeps the conversation readable by both, and the app can't delete it; deleting the account removes the sender link from its messages and its identifier from the chat's participants, while their text and time stay in the other student's conversation, labelled as a deleted account, under an internal identifier of the deleted account; once both accounts are deleted, the conversation is deleted.
+- **Rejected:** messages under `friendships/{pairId}` (the friendship document is deleted on unfriending and on account deletion, so the conversation couldn't stay listed or readable); a two-member group (groups live under an event, and their join, leave and capacity rules don't fit two friends); also letting group-mates chat privately (a second membership check in the rules, and an unclear lifetime when one leaves the group).
+- **Proposals, not decided** (section 7, open questions): a student can't hide or delete a conversation; a read-only chat is listed like any other; a chat is started from the friends list.
 
 ## 4. Key flows
 
@@ -480,6 +533,8 @@ flowchart LR
   sub["messages #237 · locations<br/>check-ins"]:::pb
   mreq["matchRequests<br/>undecided"]:::pb
   friends["friendships/{pairId}<br/>two students, #338"]:::pb
+  direct["chats/{pairId}<br/>two friends, #365"]:::pb
+  directMsgs["chats/{pairId}/messages<br/>#365"]:::pb
   storage[("Cloud Storage<br/>photo files")]:::ext
 
   users --- |"same uid"| pub
@@ -495,6 +550,8 @@ flowchart LR
   pub -. "members' profiles<br/>for matching" .-> groups
   users --> mreq
   users --> friends
+  friends -. "same pairId,<br/>accepted to send" .-> direct
+  direct --> directMsgs
 ```
 
 ### 5.2 Collections and key fields
@@ -511,10 +568,12 @@ flowchart LR
 | `matchRequests/{id}` | `eventId`, `fromUid`, `toUid`, `status` | ⬜ not used by Find a group, where students join open groups directly (#228); revisit with #26, #27 |
 | `events/{eventId}/groups/{groupId}` | `capacity` (4), `memberUids` (1 to `capacity`, creator first), `createdBy`, server-set `createdAt` | 🟦 S4 #232 |
 | `events/{eventId}/groupMembers/{uid}` | `groupId`: the student's group for this event, written in the same transaction as `memberUids` | 🟦 S4 #232 |
-| `events/{eventId}/groups/{groupId}/messages/{id}` | `senderId` (empty after account deletion, displayed as Deleted account), `text` (1–1000), server-set `createdAt`. A one-to-one chat is a two-member group | 🟩 S5 #237 (built) |
+| `events/{eventId}/groups/{groupId}/messages/{id}` | `senderId` (empty after account deletion, displayed as Deleted account), `text` (1–1000), server-set `createdAt` | 🟩 S5 #237 (built) |
 | `events/{eventId}/groups/{groupId}/checkIns/{uid}` | `method` (gps or qr), `checkedInAt` | 🟦 #22 |
 | `events/{eventId}/groups/{groupId}/locations/{uid}` | position, `updatedAt`. Only during the event, deleted after | 🟦 #20 |
 | `friendships/{pairId}` | `pairId` = `{lowerUid}~{higherUid}`; `uids` (the two UIDs, sorted), `requestedBy` (the sender), `status` (`pending` or `accepted`), server-set `createdAt`, server-set `acceptedAt` once accepted. Deleted on decline, cancel or removal, and with either account | 🟦 PB, decided in #338 |
+| `chats/{pairId}` | `pairId` = the pair's friendship ID (`{lowerUid}~{higherUid}`, #338); exactly `uids` (the two UIDs, in the ID's order). Created with the first message; no client updates or deletes it. `deleteAccount` takes a deleted account's UID out of `uids` and deletes the chat once nobody is left | 🟦 PB, decided in #365 |
+| `chats/{pairId}/messages/{id}` | group chat's fields (#237): `senderId` (empty after account deletion, displayed as Deleted account), `text` (1–1000), server-set `createdAt` | 🟦 PB, decided in #365 |
 | `events/{id}/photos/{photoId}` | `storagePath`, `uploaderId`, `createdAt`. The file itself is in Cloud Storage. | 🟦 album |
 
 **Profiles are split, Instagram-style.** `users/{uid}` is private to its owner. `publicProfiles/{uid}` is what other students see. Section, year and interests are always visible because matching needs them. A **public** profile also shows friends, events attended, photos and the full bio to everyone. A **private** profile shows those only to approved connections.
@@ -752,7 +811,7 @@ Every PR that changes rules follows the process in `AGENTS.md`: "Changes Securit
 
 - **Google sign-in (#106):** both entry buttons use Credential Manager through the auth repository. Invalid domains are rejected before Firebase account creation; Firebase validates the token and verified exact `@epfl.ch` identity before profile access. Firebase manages compatible account linking; the owner confirmed automatic linking for EPFL Google accounts through EPFL SSO. Use Firebase's returned UID without client-side linking or a dedicated collision flow.
 
-Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after review, and 5 and 11 revised on 2026-10-06; 15 added on 2026-10-28 (#201); 16 to 18 decided by the Sprint 4 PO on 2026-11-01 (#228); 19 added on 2026-11-11 (#210); 20 decided by the Sprint 5 PO on 2026-11-11 (#338); 21 decided by the Sprint 6 PO on 2026-11-14 (#372); 22 decided by the Sprint 6 PO on 2026-11-14 (#281). The issues are being updated to match.
+Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after review, and 5 and 11 revised on 2026-10-06; 15 added on 2026-10-28 (#201); 16 to 18 decided by the Sprint 4 PO on 2026-11-01 (#228); 19 added on 2026-11-11 (#210); 20 decided by the Sprint 5 PO on 2026-11-11 (#338); 21 decided by the Sprint 6 PO on 2026-11-14 (#372); 22 decided by the Sprint 6 PO on 2026-11-14 (#281); 12 revised on 2026-11-14 (#365). The issues are being updated to match.
 
 | # | Topic | Decision |
 |---|---|---|
@@ -767,7 +826,7 @@ Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after re
 | 9 | QR codes | CameraX + ML Kit to read; ZXing `core` to draw (#339, ML Kit can't). Typed `polysocial://checkin/…` and `polysocial://friend/…` payloads, pure parser |
 | 10 | Section-exclusive events | Deferred. Later `allowedSections` on events, checked in the rules |
 | 11 | Association verification | Associations have no EPFL email and sign up with their own. A PolySocial admin verifies them by hand (`isAssociationVerified` in the Firebase console, documented in the README); no access before that, except their own `users/{uid}` and their own public `associations/{uid}`, which they set up while their review is pending (#126). Once verified, an association only sets up its association, manages its members and their roles, and publishes and manages its own events (no student profiles, groups, chats or matching). In-app admin flow later, not a current priority (changed on 2026-10-06) |
-| 12 | One-to-one chat | A two-member group (one chat model) |
+| 12 | One-to-one chat | Its own collection: `chats/{pairId}` with the friendship's pair ID (#338) and `uids`, and its `messages` with group chat's fields (#237), created with the first message. Accepted friends only: the two students read it, and send only while `friendships/{pairId}` is `accepted`; group-mates who aren't friends use the group chat. Removing a friend keeps the conversation, read-only for both, and it continues if they become friends again. Account deletion keeps it for the other student with the sender anonymised, like group chat (#241). Not a two-member group, and not messages under the friendship (section 3.8) (changed on 2026-11-14, #365) |
 | 13 | Dependency injection | **Hilt** (changed after review). It is Android's recommended DI library, scales as repositories grow, and Hilt test modules swap in the fakes cleanly. The cost is some setup and slower builds |
 | 14 | Back button | At a non-home tab root, go to the Events tab. At the Events root, exit. This is Android's standard pattern (changed after review) |
 | 15 | Account deletion | Self-service for students, unverified accounts included; associations stay admin-assisted and the flow refuses them with the privacy contact. A callable Cloud Function `deleteAccount` (Functions v2, Node 22, `europe-west6`, deployed since 2026-11-05; Firestore is in `eur3`, a mismatch accepted for this rarely used call) requires a sign-in under 5 minutes old, then deletes `users/{uid}` (with `publicProfiles/{uid}` in the same transaction since #229) then event registrations, message sender links and group memberships/markers, and finally the Auth user with the Admin SDK; all steps are idempotent, so Retry completes a partial deletion. Events are kept unchanged (the UID is opaque; a missing public profile isn't proof of a deletion, see #291). Restrictive rules deny deleted-token group joins and chat access (#241); deployed by hand on Blaze, expected within the free quotas. The client refuses offline, reauthenticates, then clears the cache and verification keys and opens Welcome. `SessionGuard` clears the cache on any UID change (#198); email/password sign-ups still unverified more than 7 days after sign-up are deleted by the scheduled function `deleteUnverifiedAccounts` (#149, built by #226; see below the matrix) (added on 2026-10-28, #201) |
@@ -973,7 +1032,7 @@ Every Scrum Board item mapped to the components it touches.
 | #27 Match with other students | Groups & Matchmaking | Match button, MatchRepository | 🟦 |
 | #28 Real-time list of matches | Groups & Matchmaking | Profile matches list, snapshot listener | 🟦 |
 | #15 Ping friends | Groups & Matchmaking | FriendRepository, notifications | ⬜ |
-| #25 Chat | Chat | Chats tab (#364), `ChatsRepository` (built, #363), group chat with `GroupChatViewModel` and `MessageRepository` (built, #237, #238), `messages` | 🟦 |
+| #25 Chat | Chat | Chats tab (#364), `ChatsRepository` (built, #363), group chat with `GroupChatViewModel` and `MessageRepository` (built, #237, #238; `messages` under the group), one-to-one chat (`chats/{pairId}`, decided in #365) | 🟦 |
 | #16 Adding friends | Groups & Matchmaking | Friends screen, Friends ViewModel, FriendRepository, `friendships/{pairId}`, rules, `deleteAccount` cleanup; usernames an open question | 🟦 decided in #338 |
 | #17 Meeting people by QR | Groups & Matchmaking | QrScanner, QR payload parsing (built, #337), My friend code (built, #339), FriendRepository | 🟦 S5 #336, #337, #339 |
 | #22 Automatic check-in | — | check-in policy, LocationService, QR fallback, GroupRepository | 🟦 |
