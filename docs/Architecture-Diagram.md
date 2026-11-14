@@ -533,17 +533,19 @@ Rules live in `firebase/firestore/firestore.rules` and are tested against the Fi
 | `friendships/{pairId}` | the two students only (`isStudent()`, own UID in `uids`, not under a `deletedAccounts/{uid}` marker); a list only with `uids array-contains` the caller's UID, so no listing of other students | the sender only (`requestedBy` = own UID, in `uids`, not under a `deletedAccounts/{uid}` marker): two different UIDs, sorted, the document ID built from them, `status == "pending"`, server `createdAt`, only these fields; the other UID has a `publicProfiles/{uid}`, so associations and deleted accounts can't be added. Per operation, so a rate limit and a blocks check fit later | update: the recipient only (in `uids`, not `requestedBy`), `pending` → `accepted` with server `acceptedAt`, nothing else changes, and neither student under a `deletedAccounts/{uid}` marker; delete: either student (decline, cancel, remove), not under a marker. A deleted account's still-valid token (up to 1 h) can't read or change its friendships while `deleteAccount` cleans them up; the cleanup uses the Admin SDK. No association access | #338 | 🟦 PB |
 | Storage `events/{id}/album/**` | event group members | checked-in members, size and type limits | uploader | album | 🟦 PB |
 
-**Event capacity rule** (decision 21, #372; built by #373). The sketch below replaces the `allow create` and `allow update` of `match /events/{eventId}` and the `allow create` and `allow delete` of its `match /attendees/{uid}`; nothing else in the rules changes. The two documents are tied in both directions: the event accepts a counter change only with the caller's own registration (`exists` / `existsAfter`), and a registration is accepted only with the counter change (`getAfter`), as groups tie `memberUids` to the `groupMembers` marker (#232). A student therefore changes the counter only by their own one place, and no client can skip or fake the count.
+**Event capacity rule** (decision 21, #372; built by #373). The sketch below replaces the `allow create` and `allow update` of `match /events/{eventId}` and the `allow create` and `allow delete` of its `match /attendees/{uid}`; nothing else in the rules changes. The two documents are tied in both directions: the event accepts a counter change only with the caller's own registration (`exists` / `existsAfter`), and a registration is accepted only with the counter change (`getAfter`), as groups tie `memberUids` to the `groupMembers` marker (#232). A student therefore changes the counter only by their own one place, and no client can skip or fake the count. The rule checks the capacity itself, against the counter as it is stored when the write commits, so the app's write doesn't have to read the event first: it sends `FieldValue.increment(±1)` (decision 21, "The app's transactions").
 
 ```
 // In match /events/{eventId}: replaces allow create and allow update.
 
-// A new event has no registration yet: attendeeCount is 0, or absent (an event written
-// before the counter existed counts as 0 everywhere).
+// A new event has no registration yet: attendeeCount is the whole number 0, or absent (an
+// event written before the counter existed counts as 0 everywhere). Numbers compare by
+// value, so `is int` is what refuses 0.0.
 allow create: if canWriteEvents()
     && request.resource.data.createdBy == request.auth.uid
     && isValidEvent(request.resource.data)
     && request.resource.data.isAssociationEvent == isVerifiedAssociation()
+    && request.resource.data.get('attendeeCount', 0) is int
     && request.resource.data.get('attendeeCount', 0) == 0;
 
 // The caller's own registration for this event.
@@ -595,12 +597,14 @@ function countsOwnRegistration() {
 }
 
 // Any organizer manages the event. The creator, the badge and the counter are fixed for
-// them: attendeeCount only changes through countsOwnRegistration.
+// them: attendeeCount only changes through countsOwnRegistration. An equal number of another
+// type (3.0 for 3) isn't a change for affectedKeys, so `is int` keeps the counter whole.
 allow update: if (canWriteEvents()
         && isOrganizer()
         && isValidEvent(request.resource.data)
         && !request.resource.data.diff(resource.data).affectedKeys()
-            .hasAny(['createdBy', 'isAssociationEvent', 'attendeeCount']))
+            .hasAny(['createdBy', 'isAssociationEvent', 'attendeeCount'])
+        && request.resource.data.get('attendeeCount', 0) is int)
     || countsOwnRegistration();
 
 // In match /attendees/{uid}: replaces allow create and allow delete.
@@ -636,7 +640,9 @@ allow delete: if isSelf()
         || countAfter() == countBefore() - 1);
 ```
 
-What the sketch allows and denies, one rules test per row. A **counted registration** is the caller's own `attendees/{uid}` created and the event's `attendeeCount` raised by one in the same write (a batch or a transaction); a **counted cancellation** is the caller's registration deleted and the counter lowered by one in the same write. Unless a row says otherwise, the caller is a student who can read the event, which hasn't ended.
+**Number types.** The rules compare numbers by value: `3 == 3.0`, and `affectedKeys()` doesn't see 3 rewritten as 3.0 as a change. So every place that accepts the counter also asks for `is int`: create (C5), the organizer branch (O10) and both student branches (R24), which keeps `attendeeCount` a whole number whatever a client sends. `capacity` isn't constrained that way: a counted registration may send the stored capacity back as a decimal (10.0 for 10). That changes nothing, since the rule takes any number as the capacity and the app reads `capacity` as a `Number`.
+
+What the sketch allows and denies, one rules test per row. A **counted registration** is the caller's own `attendees/{uid}` created and the event's `attendeeCount` raised by one in the same write (a batch or a transaction); a **counted cancellation** is the caller's registration deleted and the counter lowered by one in the same write. The app sends the change as `increment(1)` or `increment(-1)`, and the rows do too unless they say otherwise. Unless a row says otherwise, the caller is a student who can read the event, which hasn't ended.
 
 Creating an event:
 
@@ -646,13 +652,14 @@ Creating an event:
 | C2 | an event without `attendeeCount` (an app from before the counter) | allowed; reads as 0 |
 | C3 | an event with `attendeeCount` 1, −1, `null`, `"0"`, 0.5 or a list | denied |
 | C4 | a verified association's event with `attendeeCount` 0, then 3 | 0 allowed, 3 denied |
+| C5 | an event with `attendeeCount` 0.0, a decimal | denied |
 
 An organizer's edits:
 
 | # | Write | Result |
 |---|---|---|
 | O1 | other fields (`title`, `capacity`) without sending `attendeeCount` | allowed; the counter is kept |
-| O2 | `attendeeCount` set, raised by one, lowered by one or removed, alone or with another field | denied |
+| O2 | `attendeeCount` set, raised by one (also with `increment(1)`), lowered by one or removed, alone or with another field | denied |
 | O3 | `attendeeCount` (0 or any value) added to an event that has none | denied |
 | O4 | the whole event overwritten (`set`) without `attendeeCount`; with the stored value | denied; allowed |
 | O5 | `capacity` lowered below the count | allowed; registering is then denied and cancelling allowed, until the count is below it |
@@ -660,52 +667,57 @@ An organizer's edits:
 | O7 | an organizer who is a student: a counted registration for their own event; then the counter lowered as an organizer | allowed; denied |
 | O8 | an organizer's counted registration that also changes another field | denied |
 | O9 | an event with registrations deleted | allowed; the counter goes with it |
+| O10 | the whole event overwritten with the stored count as a decimal (3.0 for 3) | denied |
 
 Registering:
 
 | # | Write | Result |
 |---|---|---|
-| R1 | a counted registration in a transaction that first reads the event and the registration (the app's shape), a place left | allowed |
+| R1 | a counted registration as the app sends it: a transaction with no read, the registration and `increment(1)`; a place left | allowed |
 | R2 | a counted registration on an event without `attendeeCount` (absent → 1), also one without `organizerIds` | allowed |
 | R3 | a counted registration at `capacity − 1`; at `capacity` | allowed (reaches the capacity); denied |
 | R4 | `capacity` `null` or absent, whatever the count | allowed, and still counted |
 | R5 | `capacity` a string, a list or a boolean | allowed: not a number is no limit |
 | R6 | `capacity` a decimal (2.5): the second place; the third | allowed; denied |
 | R7 | `capacity` 0, negative or 1 (the form asks for at least 2) | registering denied; cancelling still allowed |
-| R8 | a registration with the counter raised by 2, unchanged, lowered, set to a string or removed | denied |
+| R8 | a registration with the counter raised by 2 (also `increment(2)`), unchanged, lowered, set to a string or removed | denied |
 | R9 | a counted registration that also changes `title`, `capacity`, `allowedUids` or `organizerIds` | denied |
-| R10 | the counter raised by one without the caller's registration: alone, with `increment(1)`, or with another student's registration in the write | denied |
+| R10 | the counter raised by one without the caller's registration: alone, or with another student's registration in the write | denied |
 | R11 | a non-organizer writing the counter back unchanged, changing any other field, or deleting the event | denied |
 | R12 | a registration without the counter (an app from before the counter), on an event with or without `attendeeCount` | denied |
-| R13 | already registered: the app's transaction writes nothing; a second counted registration, or the counter raised alone | nothing changes; denied |
-| R14 | two students for the last place: the first; the second, writing the count it read plus one (as plain writes and as a transaction tried once); `increment(1)` instead | allowed; denied with `permission-denied`, and its rerun reads a full event; denied by the capacity |
-| R15 | the same race with places left: the stale write; its rerun | denied; allowed |
-| R16 | a counted registration written with `increment(1)` | allowed |
+| R13 | already registered, also on a full event: a second counted registration; the counter raised alone | denied; nothing changes |
+| R14 | two students at once for the last place; a count read before the other registered (that count plus one, now stale) | one allowed, the other denied; denied |
+| R15 | two students at once with places left; a stale count | both allowed; denied |
+| R16 | a counted registration that writes the stored count plus one instead of `increment(1)` | allowed |
 | R17 | a private event: a student in `allowedUids`; another student, with or without a registration | allowed; denied |
 | R18 | an event that has ended | denied |
 | R19 | under a `deletedAccounts/{uid}` marker | denied |
 | R20 | a verified association, an unverified one, an `@epfl.ch` association, an unverified `@epfl.ch` user, a verified non-EPFL user and a signed-out user: the counter ±1, with or without a registration under their UID | denied |
 | R21 | an event that doesn't exist | denied |
 | R22 | the registration under one event and the counter of another | denied |
-| R23 | a student registered before the counter existed, registering again | the app's transaction writes nothing |
-| R24 | a counted registration whose counter is a decimal (4.0) | denied |
+| R23 | a student registered before the counter existed, registering again | denied; nothing changes, the registration is already there |
+| R24 | a counted registration or cancellation whose counter is a decimal (4.0, or `increment(1.0)`) | denied |
+| R25 | the caller's own registration and another student's in one write, on one counted place | denied |
+| R26 | a counted registration with an extra field | denied |
+| R27 | a counted registration with a `registeredAt` the client chose, or without one | denied |
+| R28 | a counted registration whose `uid` names another student, or without `uid` | denied |
 
 Cancelling:
 
 | # | Write | Result |
 |---|---|---|
-| X1 | a counted cancellation in a transaction that first reads the event and the registration (the app's shape) | allowed; the place can be taken again |
+| X1 | a counted cancellation as the app sends it: a transaction with no read, the delete and `increment(-1)`; also one that writes the stored count minus one | allowed; the place can be taken again |
 | X2 | a counted cancellation once the event has ended | allowed |
 | X3 | the registration deleted without lowering the counter, on a readable event whose counter is above 0 | denied |
-| X4 | a cancellation with the counter lowered by 2, raised or removed, or with another field changed | denied |
+| X4 | a cancellation with the counter lowered by 2 (also `increment(-2)`), raised or removed, or with another field changed | denied |
 | X5 | the counter lowered without deleting the caller's registration: a registered student keeping it; a student who isn't registered | denied |
-| X6 | counter 0 or absent, a registration from before the counter: deleted alone; with the counter lowered to −1 | allowed; denied |
-| X7 | the event is deleted: the registration deleted alone | allowed |
-| X8 | the event is no longer readable: the transaction's read of it; the registration deleted alone; with the counter lowered (also `increment(-1)`) | denied; allowed; denied. The counter stays |
-| X9 | a registration that doesn't exist deleted, on a counted event | allowed; nothing is counted |
+| X6 | counter 0 or absent, a registration from before the counter: a counted cancellation; the registration deleted with the counter set to any other value; the registration deleted alone | denied (never below 0); denied; allowed |
+| X7 | the event is deleted: a counted cancellation; the registration deleted alone | denied; allowed |
+| X8 | the event is no longer readable: a counted cancellation; the registration deleted alone | denied; allowed. The counter stays |
+| X9 | no registration, on a counted event: a counted cancellation; the delete alone | denied; allowed, and nothing is counted |
 | X10 | a counted cancellation under a `deletedAccounts/{uid}` marker | allowed |
-| X11 | another student's registration cancelled, even by an organizer | denied |
-| X12 | two students cancelling at once: the stale write; its rerun | denied; allowed |
+| X11 | another student's registration cancelled, alone or counted, even by an organizer | denied |
+| X12 | two students cancelling at once; a stale count | both allowed; denied |
 | X13 | the own registration deleted and created again in one write while the counter is lowered | denied |
 
 Reads, unchanged:
@@ -715,7 +727,14 @@ Reads, unchanged:
 | L1 | an organizer lists and `count()`s the attendees; another student | allowed; denied |
 | L2 | a student who can read the event reads its `attendeeCount` | allowed |
 
-Prototyped on 2026-11-14 against the Firestore emulator, with the README's rules-test command: this sketch passes every row above (83 tests, and R24 through the emulator's REST API, since the JS SDK always sends a whole number as an integer), and the existing suite (513 tests) passes with it once its six tests that register without the counter use the counted registration. A registration's write stays well within the 20 document reads the rules may make for a batched write.
+**The existing suite.** A bare registration is now denied whatever else the rule says, so an existing test that still sends one passes for the wrong reason. #373 therefore moves **every** existing test that writes a registration to the counted write, the denied ones as much as the six that fail, and counts the registrations it seeds in the seeded event. Only then does a test fail when the registration rule loses a check of its own.
+
+**Prototype** (2026-11-14, Firestore emulator, the README's rules-test command; outside the repository). With this sketch:
+- every row above passes (97 tests; C5, O10 and R24 through the emulator's REST API, since the JS SDK always sends a whole number as an integer), with the repository's answers of decision 21 (18 more tests);
+- the existing suite passes (513 tests) once every test that writes a registration uses the counted write;
+- each condition of the sketch was removed in turn (31 variants of the rules, two of them the registration's create rule without its own checks): 28 fail at least one row. The other 3 are conditions the other document's rule checks as well, so removing one alone changes nothing: the event branch's `isStudent()` (the registration's rules ask for a student), its `after == before + 1` when registering (the registration's create asks for the same raise), and the registration's `canReadEvent()` (the event branch asks for a readable event). Removed together with their twin, they fail too (R20, R8, R17). The create rule without its own checks fails R25 to R28, and 10 and 5 tests of the converted existing suite.
+
+A registration's write stays well within the 20 document reads the rules may make for a batched write.
 
 Every PR that changes rules follows the process in `AGENTS.md`: "Changes Security Rules" in the description, allowed and denied emulator tests, and explicit reviewer sign-off.
 
