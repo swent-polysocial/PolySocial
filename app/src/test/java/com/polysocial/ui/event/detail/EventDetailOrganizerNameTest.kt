@@ -1,4 +1,5 @@
 // Contributors: Claude Fable 5.2 (wrote these tests of who gets a student organizer's name, #281).
+// Contributors: Claude Fable 5.2 (testing pass: viewers whose registration isn't known, #281).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -12,6 +13,8 @@ import com.polysocial.model.event.validEvent
 import com.polysocial.model.group.FakeGroupRepository
 import com.polysocial.model.network.FakeNetworkMonitor
 import com.polysocial.model.registration.FakeRegistrationRepository
+import com.polysocial.model.registration.MyRegistrationsResult
+import com.polysocial.model.registration.RegistrationRepository
 import com.polysocial.model.reminder.FakeReminderScheduler
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.PublicProfile
@@ -26,6 +29,9 @@ import java.time.Clock
 import java.time.ZoneId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -61,12 +67,15 @@ class EventDetailOrganizerNameTest {
           )
       )
   private val associationNames = FakeAssociationNames(mapOf(CREATOR to CLUB_NAME))
-  private var me = AuthUser(ME, "fictional.student@epfl.ch", true)
+  private var me: AuthUser? = AuthUser(ME, "fictional.student@epfl.ch", true)
 
   /** A student's public event, created and organized by [CREATOR]. */
   private val event = studentEvent(validEvent()).copy(id = EVENT)
 
-  private fun viewModel(profileRepository: PublicProfileRepository = profiles) =
+  private fun viewModel(
+      profileRepository: PublicProfileRepository = profiles,
+      registrationRepository: RegistrationRepository = registrations,
+  ) =
       EventDetailViewModel(
           SavedStateHandle(mapOf(EventDetailViewModel.EVENT_ID_ARG to EVENT)),
           events,
@@ -74,7 +83,7 @@ class EventDetailOrganizerNameTest {
           FakeAuthRepository(me),
           clock,
           associationNames,
-          registrations,
+          registrationRepository,
           FakeGroupRepository(),
           profileRepository,
           FakeReminderScheduler(clock),
@@ -84,9 +93,10 @@ class EventDetailOrganizerNameTest {
   private fun TestScope.open(
       shown: Event = event,
       profileRepository: PublicProfileRepository = profiles,
+      registrationRepository: RegistrationRepository = registrations,
   ): EventDetailViewModel {
     events.seed(shown)
-    return viewModel(profileRepository).also { vm ->
+    return viewModel(profileRepository, registrationRepository).also { vm ->
       backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.collect {} }
       runCurrent()
     }
@@ -108,6 +118,16 @@ class EventDetailOrganizerNameTest {
       reads++
       answer.await()
       return profiles.getPublicProfile(uid)
+    }
+  }
+
+  /** Registrations that are only read once [answer] completes, like a slow connection. */
+  private inner class SlowRegistrations : RegistrationRepository by registrations {
+    val answer = CompletableDeferred<Unit>()
+
+    override fun observeMyRegistrations(): Flow<MyRegistrationsResult> = flow {
+      answer.await()
+      emitAll(registrations.observeMyRegistrations())
     }
   }
 
@@ -336,6 +356,48 @@ class EventDetailOrganizerNameTest {
     runCurrent()
 
     assertEquals("Study session, moved", vm.loaded.details.event.title)
+    assertEquals(CREATOR_NAME, vm.loaded.organizerName)
+    assertEquals(listOf(CREATOR), readUids)
+  }
+
+  @Test
+  fun aViewerWhoIsntSignedIn_getsNoName_andNoProfileIsRead() = runTest {
+    me = null
+    registrations.currentUid = null
+
+    val vm = open()
+
+    assertFalse(vm.loaded.isOrganizer)
+    assertNull(vm.loaded.organizerName)
+    assertTrue(profiles.requestedUids.isEmpty())
+  }
+
+  @Test
+  fun aViewerWhoseRegistrationsCantBeRead_getsNoName_andNoProfileIsRead() = runTest {
+    // An association, whose read of its registrations the rules refuse, or a failed query.
+    registrations.seedRegistration(EVENT, ME)
+    registrations.readFailure = true
+
+    val vm = open()
+
+    assertEquals(Attendance.NOT_GOING, vm.loaded.attendance)
+    assertNull(vm.loaded.organizerName)
+    assertTrue(profiles.requestedUids.isEmpty())
+  }
+
+  @Test
+  fun untilTheRegistrationsAnswer_noProfileIsRead() = runTest {
+    registrations.seedRegistration(EVENT, ME)
+    val slow = SlowRegistrations()
+
+    val vm = open(registrationRepository = slow)
+    assertEquals(Attendance.UNKNOWN, vm.loaded.attendance)
+    assertNull(vm.loaded.organizerName)
+    assertTrue(profiles.requestedUids.isEmpty())
+
+    slow.answer.complete(Unit)
+    runCurrent()
+
     assertEquals(CREATOR_NAME, vm.loaded.organizerName)
     assertEquals(listOf(CREATOR), readUids)
   }
