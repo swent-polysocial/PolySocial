@@ -1,6 +1,7 @@
 // Contributors: OpenAI Codex (deleted-token chat reads and immutable deleted authors, #241).
 // Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143; publicProfiles/{uid} tests, written test-first, #229; reads by ID only and the fixed section and year lists, after review, #229; private edits keep the public copy, and deleted accounts stay deleted, after review, #229; interests from the fixed list, test-first, #230; any code read in the list check, after review, #230); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121; deleted accounts can't register, #275); Claude (Opus 5.5, Anthropic) (event group and groupMembers marker tests, #232, with more after review; group chat message tests, #237, and a deleted account's messages, after review).
 // Contributors: Claude (Opus 5.5, Anthropic) (a non-EPFL association in allowedUids can't run My events' private query, #320).
+// Contributors: Claude (Fable 5.2, Anthropic) (other shapes and accounts denied the own-groups query, and the latest-message query of the chat list, #363).
 const { after, before, beforeEach, test } = require("node:test");
 // Contributors: OpenAI Codex (deleted-token membership creation/join regression, #241).
 const { readFileSync } = require("node:fs");
@@ -2610,11 +2611,30 @@ test("a student can't list other students' groups across events", async () => {
   )));
 });
 
+// The Chats tab (#363) lists a student's groups with the query two tests above, memberUids
+// array-contains their own UID. Any other query across events could return a group they aren't
+// in, so it is denied as a whole, even when every group stored today is theirs.
+for (const [name, listing] of [
+  ["a page of every group", (groups) => query(groups, limit(1))],
+  ["the groups of either of two students", (groups) =>
+    query(groups, where("memberUids", "array-contains-any", ["u1", "u2"]))],
+  ["the groups they started", (groups) => query(groups, where("createdBy", "==", "u1"))],
+]) {
+  test(`a student can't list groups across events by anything but their own membership: ${name}`, async () => {
+    await seedGroup("e1", "mine", ["u1"]);
+    await assertFails(getDocs(listing(collectionGroup(studentDb("u1"), "groups"))));
+  });
+}
+
 for (const [name, uid, db] of [
   ["a verified association", "verifiedClub", () => associationDb("verifiedClub")],
   ["an unverified association", "club", () => associationDb("club")],
   ["an @epfl.ch association", "epflClub", () => epflAssociationDb("epflClub")],
   ["an unverified @epfl.ch user", "u1", () => firestoreAs("student@epfl.ch", false, "u1")],
+  ["an @epfl.ch user without an email_verified claim", "u1",
+    () => env.authenticatedContext("u1", { email: "student@epfl.ch" }).firestore()],
+  ["a verified non-EPFL user who isn't an association", "u1",
+    () => firestoreAs("student@gmail.com", true, "u1")],
   ["a signed-out user", "u1", () => env.unauthenticatedContext().firestore()],
 ]) {
   test(`${name} can't read, start, join or leave groups`, async () => {
@@ -2992,6 +3012,37 @@ test("a member reads their group's chat in the server's time order, as the app d
   const chat = await assertSucceeds(getDocs(chatOf(db, "e1", "g1")));
   const ids = chat.docs.map((message) => message.id);
   if (ids.join(",") !== "earlier,later") throw new Error(`Unexpected order: ${ids}`);
+});
+
+/** The query FirestoreMessageRepository.observeLatestMessage listens to, for the chat list (#363). */
+function latestMessageOf(db, eventId, groupId) {
+  return query(
+    collection(db, `events/${eventId}/groups/${groupId}/messages`),
+    orderBy("createdAt", "desc"),
+    limit(1),
+  );
+}
+
+test("a member reads only their group's latest message, as the chat list does", async () => {
+  await seedGroup("e1", "g1", ["u2", "u1"]);
+  await seedMessage("e1", "g1", "later", "u2", 1_790_000_060_000);
+  await seedMessage("e1", "g1", "earlier", "u1", 1_790_000_000_000);
+  const latest = await assertSucceeds(getDocs(latestMessageOf(studentDb("u1"), "e1", "g1")));
+  expectIds(latest.docs.map((message) => message.id), ["later"]);
+});
+
+test("the latest message is denied to whoever can't read the chat", async () => {
+  await seedGroup("e1", "g1", ["u2", "u4"]);
+  await seedGroup("clubPublic", "g1", ["verifiedClub", "u2"]);
+  await seedMessage("e1", "g1", "m1", "u2");
+  await seedMessage("clubPublic", "g1", "m1", "u2");
+  // A student who isn't in the group, an association listed in one, and a deleted account whose
+  // membership hasn't been cleaned up yet.
+  await assertFails(getDocs(latestMessageOf(studentDb("u1"), "e1", "g1")));
+  await assertFails(getDocs(latestMessageOf(associationDb("verifiedClub"), "clubPublic", "g1")));
+  await assertSucceeds(getDocs(latestMessageOf(studentDb("u4"), "e1", "g1")));
+  await seedDeletedAccount("u4");
+  await assertFails(getDocs(latestMessageOf(studentDb("u4"), "e1", "g1")));
 });
 
 test("a student who isn't in the group can't read its chat, even if they can read the event", async () => {
