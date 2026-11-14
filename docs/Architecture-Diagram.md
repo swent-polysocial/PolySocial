@@ -522,9 +522,9 @@ Rules live in `firebase/firestore/firestore.rules` and are tested against the Fi
 | `users/{uid}` | own document only | own document only, not under a `deletedAccounts/{uid}` marker (#229); `displayName`, when present, a string of at most 50 characters on create and update (#143) | own document only; a change to `displayName`, `section` or `year` must update an existing public profile in the same write (#229) | #35, #143, #229 | 🟩 S1, S3, S4 |
 | | **Exceptions to *every rule*:** any account with a verified email reaches its own `users/{uid}`, but never sets `isAssociationVerified` (create or update), and can't change `uid` (which must match the document ID) or `accountType` after creation. An association account also reaches its own `associations/{uid}` (next row), pending or verified. That is all an unverified association can reach | | | #35, #126 | 🟩 S1, S3 |
 | `associations/{uid}` | its owner (an association account, pending or verified); EPFL students only once an admin has verified it (a denied read looks missing); never another association; no list | owner only, once, exactly the fields above with `createdAt` = server time | owner only; `createdAt` fixed, and `name` and `type` fixed once verified; delete by an admin only | #126 | 🟩 S3 |
-| `events/{id}`, public | any EPFL user | any EPFL user or verified association, `createdBy == auth.uid` and in `organizerIds`. `isAssociationEvent` only for a verified association | organizers only | #47, #52 | 🟩 S1 |
-| `events/{id}`, private | `auth.uid in allowedUids` (organizers, members, approved match requesters) | as above | organizers only | #52, #23 | 🟩 S1 |
-| `events/{eventId}/attendees/{uid}` | own attendance; attendee list only for the event's organizers | verified EPFL student, own UID, readable event that hasn't ended, account not deleted (`deletedAccounts/{uid}`, #275); no association registration | student deletes only own document, even once the event has ended or is gone; no writes to another student's attendance; nobody updates one; a deleted event's attendees are deleted by the `deleteEventRegistrations` trigger (Admin SDK, #275), unless the event is written again under its ID first | #121 | 🟩 in place (capacity not checked yet) |
+| `events/{id}`, public | any EPFL user | any EPFL user or verified association, `createdBy == auth.uid` and in `organizerIds`. `isAssociationEvent` only for a verified association. Planned (#372): `attendeeCount` 0 or absent | organizers only. Planned (#372): organizers can't change `attendeeCount`; a student who can read the event changes only that field, by exactly ±1, with their own registration created or deleted in the same write (rule sketch below) | #47, #52, #372 | 🟩 S1; `attendeeCount` 🟦 built by #373 |
+| `events/{id}`, private | `auth.uid in allowedUids` (organizers, members, approved match requesters) | as above | organizers only, and as above for `attendeeCount`: only a student in `allowedUids` | #52, #23, #372 | 🟩 S1; `attendeeCount` 🟦 built by #373 |
+| `events/{eventId}/attendees/{uid}` | own attendance; attendee list only for the event's organizers | verified EPFL student, own UID, readable event that hasn't ended, account not deleted (`deletedAccounts/{uid}`, #275); no association registration. Planned (#372): only in the same write as the event's `attendeeCount` + 1, which the event rule accepts only within the capacity | student deletes only own document, even once the event has ended or is gone; no writes to another student's attendance; nobody updates one; a deleted event's attendees are deleted by the `deleteEventRegistrations` trigger (Admin SDK, #275), unless the event is written again under its ID first. Planned (#372): the delete lowers the event's `attendeeCount` in the same write, unless the event is gone or no longer readable, or its counter is 0 or absent | #121, #372 | 🟩 in place; the capacity check 🟦 decided in #372, built by #373 |
 | `publicProfiles/{uid}` | any student, one document by UID (no list, so no student directory); no association | owner only, only the fields above, no email; `section`, `year` and `interests` from the app's fixed lists | owner only, as an exact copy of their `users/{uid}` after the same write (`getAfter`), never under a `deletedAccounts/{uid}` marker; no delete except with the account (`deleteAccount`) | #229 | 🟩 S4 (built) |
 | `events/{eventId}/groups/{groupId}` | a student who can read the event; a member also gets their own group without it, so they can still leave it (#295); a student lists their own groups across events (`memberUids array-contains` their UID) | a student who can read the event, not under a deletion marker, with `memberUids == [own UID]`, `capacity == 4`, `createdBy` = own UID, server `createdAt`, and their `groupMembers` marker in the same write | update: only `memberUids` changes, by adding (no deletion marker) or removing the caller's own UID, `size() <= capacity`, with the marker created or deleted alongside (`getAfter`); delete: the last member leaving. No association access | #232 | 🟦 S4 |
 | `events/{eventId}/groupMembers/{uid}` | own document only | own UID, not under a deletion marker, `groupId` of a group whose `memberUids` contain them after the write | delete own, when leaving that group; no update | #232 | 🟦 S4 |
@@ -532,6 +532,190 @@ Rules live in `firebase/firestore/firestore.rules` and are tested against the Fi
 | `matchRequests` | sender and recipient | sender | recipient responds | #26, #27 | 🟦 PB |
 | `friendships/{pairId}` | the two students only (`isStudent()`, own UID in `uids`, not under a `deletedAccounts/{uid}` marker); a list only with `uids array-contains` the caller's UID, so no listing of other students | the sender only (`requestedBy` = own UID, in `uids`, not under a `deletedAccounts/{uid}` marker): two different UIDs, sorted, the document ID built from them, `status == "pending"`, server `createdAt`, only these fields; the other UID has a `publicProfiles/{uid}`, so associations and deleted accounts can't be added. Per operation, so a rate limit and a blocks check fit later | update: the recipient only (in `uids`, not `requestedBy`), `pending` → `accepted` with server `acceptedAt`, nothing else changes, and neither student under a `deletedAccounts/{uid}` marker; delete: either student (decline, cancel, remove), not under a marker. A deleted account's still-valid token (up to 1 h) can't read or change its friendships while `deleteAccount` cleans them up; the cleanup uses the Admin SDK. No association access | #338 | 🟦 PB |
 | Storage `events/{id}/album/**` | event group members | checked-in members, size and type limits | uploader | album | 🟦 PB |
+
+**Event capacity rule** (decision 21, #372; built by #373). The sketch below replaces the `allow create` and `allow update` of `match /events/{eventId}` and the `allow create` and `allow delete` of its `match /attendees/{uid}`; nothing else in the rules changes. The two documents are tied in both directions: the event accepts a counter change only with the caller's own registration (`exists` / `existsAfter`), and a registration is accepted only with the counter change (`getAfter`), as groups tie `memberUids` to the `groupMembers` marker (#232). A student therefore changes the counter only by their own one place, and no client can skip or fake the count.
+
+```
+// In match /events/{eventId}: replaces allow create and allow update.
+
+// A new event has no registration yet: attendeeCount is 0, or absent (an event written
+// before the counter existed counts as 0 everywhere).
+allow create: if canWriteEvents()
+    && request.resource.data.createdBy == request.auth.uid
+    && isValidEvent(request.resource.data)
+    && request.resource.data.isAssociationEvent == isVerifiedAssociation()
+    && request.resource.data.get('attendeeCount', 0) == 0;
+
+// The caller's own registration for this event.
+function ownRegistration() {
+  return /databases/$(database)/documents/events/$(eventId)/attendees/$(request.auth.uid);
+}
+
+// The student branch of the event's read rule, on the stored event.
+function studentCanReadThisEvent() {
+  return resource.data.isPrivate == false
+      || (resource.data.isPrivate == true
+          && resource.data.allowedUids.hasAny([request.auth.uid]));
+}
+
+// Registering: the counter goes up by exactly one, stays within the capacity when it is a
+// number (null, missing or anything else is no limit), and the caller's registration,
+// missing before, exists after the same write. That document's own create rule checks the
+// rest (own UID, readable event that hasn't ended, account not deleted).
+function isRegistering() {
+  let capacity = resource.data.get('capacity', null);
+  let before = resource.data.get('attendeeCount', 0);
+  let after = request.resource.data.attendeeCount;
+  return after is int
+      && after == before + 1
+      && (!(capacity is number) || after <= capacity)
+      && !exists(ownRegistration())
+      && existsAfter(ownRegistration());
+}
+
+// Cancelling: the counter goes down by exactly one, never below 0, and the caller's
+// registration, there before, is deleted by the same write.
+function isCancelling() {
+  let before = resource.data.get('attendeeCount', 0);
+  let after = request.resource.data.attendeeCount;
+  return after is int
+      && after >= 0
+      && after == before - 1
+      && exists(ownRegistration())
+      && !existsAfter(ownRegistration());
+}
+
+// The only change a non-organizer may make to an event (#372): a student who can read it
+// changes attendeeCount, and nothing else, with their own registration.
+function countsOwnRegistration() {
+  return isStudent()
+      && studentCanReadThisEvent()
+      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attendeeCount'])
+      && (isRegistering() || isCancelling());
+}
+
+// Any organizer manages the event. The creator, the badge and the counter are fixed for
+// them: attendeeCount only changes through countsOwnRegistration.
+allow update: if (canWriteEvents()
+        && isOrganizer()
+        && isValidEvent(request.resource.data)
+        && !request.resource.data.diff(resource.data).affectedKeys()
+            .hasAny(['createdBy', 'isAssociationEvent', 'attendeeCount']))
+    || countsOwnRegistration();
+
+// In match /attendees/{uid}: replaces allow create and allow delete.
+
+// The event's attendeeCount before this write, and once the whole write (batch or
+// transaction) is applied. Missing counts as 0.
+function countBefore() {
+  return get(event()).data.get('attendeeCount', 0);
+}
+
+function countAfter() {
+  return getAfter(event()).data.get('attendeeCount', 0);
+}
+
+// A registration is counted: the same write raises the event's attendeeCount by one,
+// which the event's update rule accepts only within the capacity.
+allow create: if isSelf()
+    && !isDeletedAccount(uid)
+    && canReadEvent()
+    && hasNotEnded()
+    && request.resource.data.keys().hasOnly(['uid', 'registeredAt'])
+    && request.resource.data.uid == uid
+    && request.resource.data.registeredAt == request.time
+    && countAfter() == countBefore() + 1;
+
+// Cancelling lowers the counter in the same write, so nobody frees or keeps a place they
+// don't hold. It is still always possible: nothing is counted for a registration that
+// doesn't exist, an event that is gone or no longer readable, or a counter already at 0.
+allow delete: if isSelf()
+    && (resource == null
+        || !canReadEvent()
+        || countBefore() == 0
+        || countAfter() == countBefore() - 1);
+```
+
+What the sketch allows and denies, one rules test per row. A **counted registration** is the caller's own `attendees/{uid}` created and the event's `attendeeCount` raised by one in the same write (a batch or a transaction); a **counted cancellation** is the caller's registration deleted and the counter lowered by one in the same write. Unless a row says otherwise, the caller is a student who can read the event, which hasn't ended.
+
+Creating an event:
+
+| # | Write | Result |
+|---|---|---|
+| C1 | an event with `attendeeCount: 0` | allowed |
+| C2 | an event without `attendeeCount` (an app from before the counter) | allowed; reads as 0 |
+| C3 | an event with `attendeeCount` 1, −1, `null`, `"0"`, 0.5 or a list | denied |
+| C4 | a verified association's event with `attendeeCount` 0, then 3 | 0 allowed, 3 denied |
+
+An organizer's edits:
+
+| # | Write | Result |
+|---|---|---|
+| O1 | other fields (`title`, `capacity`) without sending `attendeeCount` | allowed; the counter is kept |
+| O2 | `attendeeCount` set, raised by one, lowered by one or removed, alone or with another field | denied |
+| O3 | `attendeeCount` (0 or any value) added to an event that has none | denied |
+| O4 | the whole event overwritten (`set`) without `attendeeCount`; with the stored value | denied; allowed |
+| O5 | `capacity` lowered below the count | allowed; registering is then denied and cancelling allowed, until the count is below it |
+| O6 | a verified association on its own event: `attendeeCount` ±1; another field | denied; allowed |
+| O7 | an organizer who is a student: a counted registration for their own event; then the counter lowered as an organizer | allowed; denied |
+| O8 | an organizer's counted registration that also changes another field | denied |
+| O9 | an event with registrations deleted | allowed; the counter goes with it |
+
+Registering:
+
+| # | Write | Result |
+|---|---|---|
+| R1 | a counted registration in a transaction that first reads the event and the registration (the app's shape), a place left | allowed |
+| R2 | a counted registration on an event without `attendeeCount` (absent → 1), also one without `organizerIds` | allowed |
+| R3 | a counted registration at `capacity − 1`; at `capacity` | allowed (reaches the capacity); denied |
+| R4 | `capacity` `null` or absent, whatever the count | allowed, and still counted |
+| R5 | `capacity` a string, a list or a boolean | allowed: not a number is no limit |
+| R6 | `capacity` a decimal (2.5): the second place; the third | allowed; denied |
+| R7 | `capacity` 0, negative or 1 (the form asks for at least 2) | registering denied; cancelling still allowed |
+| R8 | a registration with the counter raised by 2, unchanged, lowered, set to a string or removed | denied |
+| R9 | a counted registration that also changes `title`, `capacity`, `allowedUids` or `organizerIds` | denied |
+| R10 | the counter raised by one without the caller's registration: alone, with `increment(1)`, or with another student's registration in the write | denied |
+| R11 | a non-organizer writing the counter back unchanged, changing any other field, or deleting the event | denied |
+| R12 | a registration without the counter (an app from before the counter), on an event with or without `attendeeCount` | denied |
+| R13 | already registered: the app's transaction writes nothing; a second counted registration, or the counter raised alone | nothing changes; denied |
+| R14 | two students for the last place: the first; the second, writing the count it read plus one (as plain writes and as a transaction tried once); `increment(1)` instead | allowed; denied with `permission-denied`, and its rerun reads a full event; denied by the capacity |
+| R15 | the same race with places left: the stale write; its rerun | denied; allowed |
+| R16 | a counted registration written with `increment(1)` | allowed |
+| R17 | a private event: a student in `allowedUids`; another student, with or without a registration | allowed; denied |
+| R18 | an event that has ended | denied |
+| R19 | under a `deletedAccounts/{uid}` marker | denied |
+| R20 | a verified association, an unverified one, an `@epfl.ch` association, an unverified `@epfl.ch` user, a verified non-EPFL user and a signed-out user: the counter ±1, with or without a registration under their UID | denied |
+| R21 | an event that doesn't exist | denied |
+| R22 | the registration under one event and the counter of another | denied |
+| R23 | a student registered before the counter existed, registering again | the app's transaction writes nothing |
+| R24 | a counted registration whose counter is a decimal (4.0) | denied |
+
+Cancelling:
+
+| # | Write | Result |
+|---|---|---|
+| X1 | a counted cancellation in a transaction that first reads the event and the registration (the app's shape) | allowed; the place can be taken again |
+| X2 | a counted cancellation once the event has ended | allowed |
+| X3 | the registration deleted without lowering the counter, on a readable event whose counter is above 0 | denied |
+| X4 | a cancellation with the counter lowered by 2, raised or removed, or with another field changed | denied |
+| X5 | the counter lowered without deleting the caller's registration: a registered student keeping it; a student who isn't registered | denied |
+| X6 | counter 0 or absent, a registration from before the counter: deleted alone; with the counter lowered to −1 | allowed; denied |
+| X7 | the event is deleted: the registration deleted alone | allowed |
+| X8 | the event is no longer readable: the transaction's read of it; the registration deleted alone; with the counter lowered (also `increment(-1)`) | denied; allowed; denied. The counter stays |
+| X9 | a registration that doesn't exist deleted, on a counted event | allowed; nothing is counted |
+| X10 | a counted cancellation under a `deletedAccounts/{uid}` marker | allowed |
+| X11 | another student's registration cancelled, even by an organizer | denied |
+| X12 | two students cancelling at once: the stale write; its rerun | denied; allowed |
+| X13 | the own registration deleted and created again in one write while the counter is lowered | denied |
+
+Reads, unchanged:
+
+| # | Read | Result |
+|---|---|---|
+| L1 | an organizer lists and `count()`s the attendees; another student | allowed; denied |
+| L2 | a student who can read the event reads its `attendeeCount` | allowed |
+
+Prototyped on 2026-11-14 against the Firestore emulator, with the README's rules-test command: this sketch passes every row above (83 tests, and R24 through the emulator's REST API, since the JS SDK always sends a whole number as an integer), and the existing suite (513 tests) passes with it once its six tests that register without the counter use the counted registration. A registration's write stays well within the 20 document reads the rules may make for a batched write.
 
 Every PR that changes rules follows the process in `AGENTS.md`: "Changes Security Rules" in the description, allowed and denied emulator tests, and explicit reviewer sign-off.
 
@@ -565,7 +749,7 @@ Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after re
 | 18 | Deploying rules, indexes and functions | Nothing deploys automatically. After a PR changing `firestore.rules`, `firestore.indexes.json` or `firebase/functions` merges, its author deploys it with `--only`, or asks a teammate to (any team member can), and notes it in the PR. #220's rules and #214's index were missing from production until 2026-10-29 (added on 2026-11-01, #228) |
 | 19 | Manual association review | Project owners follow the [manual review workflow](Association-Review.md) in the Firebase console, checking representation and duplicates before approval. An account that is declined stays pending and can edit its setup. A future admin interface requires a server-checked reviewer role. (#210) |
 | 20 | Friends | One `friendships/{pairId}` document per pair of students (`{lowerUid}~{higherUid}`), `pending` → `accepted`; declining, cancelling and removing delete it, so two students never have more than one request. Added by scanning `polysocial://friend/{uid}` first; no usernames yet (open question). Only the two students read it, students only, and the other must have a public profile; a deleted account loses all access at once. Each action checks, in a transaction, that the request is still the one shown. Writes refused offline. `deleteAccount` deletes the account's friendships (added on 2026-11-11, #338) |
-| 21 | Event capacity | A counter on the event, kept in the registration transaction. Every `events/{id}` has `attendeeCount`: registering creates the student's `attendees/{uid}` and raises it by one in the same transaction, only while it is below `capacity`; cancelling deletes the registration and lowers it by one. The event update rule gains one narrow student branch: only `attendeeCount` changes, by exactly ±1, with the caller's own registration created or deleted in the same write; everything else about the event stays organizer-only. `deleteAccount` lowers the counter for each registration it removes, and a deleted event takes its counter along. Rejected: a counter in its own document, a Cloud Function that registers, and no capacity check. Details below; built by #373 (added on 2026-11-14, #372) |
+| 21 | Event capacity | A counter on the event, kept in the registration transaction. Every `events/{id}` has `attendeeCount`: registering creates the student's `attendees/{uid}` and raises it by one in the same transaction, only while it is below `capacity`; cancelling deletes the registration and lowers it by one. The event update rule gains one narrow student branch: only `attendeeCount` changes, by exactly ±1, with the caller's own registration created or deleted in the same write; everything else about the event stays organizer-only. `deleteAccount` lowers the counter for each registration it removes, and a deleted event takes its counter along. Rejected: a counter in its own document, a Cloud Function that registers, and no capacity check. Details below and in section 6; built by #373 (added on 2026-11-14, #372) |
 
 **Sprint 2 decisions:** sign-in is email/password and Google only, not Microsoft, which would need EPFL's admin to whitelist the app, while Google goes through EPFL's SSO (#106, #107, PR #197 review); events store the picked place's name as an optional `locationName` of at most 100 characters (rules #102, app #151; blank for older events); Nominatim remains the approved explicit-search geocoder; one shared detail screen replaces the Map placeholder, using each entry tab's event-ID route; co-organizers wait for Public profiles; associations move to Sprint 3; unbuilt actions show a Snackbar. Sources: #103, #106, #111, #112 and the Sprint Planning record #141.
 
@@ -612,7 +796,7 @@ How each failure behaves:
 
 How it runs and fails is in the README's Cloud Functions section; the constraint it puts on later features (a verified account must not become unverified again) is in `CONTEXT.md`, "7-day cleanup".
 
-**Event capacity** (decision 21, #372; built by #373). The counter is on the document every screen already reads, so "Event full" shows live from the event's own listener with no extra read, and registering stays one client transaction, covered by the rules tests and the instrumented emulator tests CI runs. The price is one narrow student branch in the organizer-only event update rule. The alternatives:
+**Event capacity** (decision 21, #372; built by #373). The counter is on the document every screen already reads, so "Event full" shows live from the event's own listener with no extra read, and registering stays one client transaction, covered by the rules tests and the instrumented emulator tests CI runs. The price is one narrow student branch in the organizer-only event update rule (rule sketch and its cases in section 6). The alternatives:
 
 | Rejected | Why |
 |---|---|
