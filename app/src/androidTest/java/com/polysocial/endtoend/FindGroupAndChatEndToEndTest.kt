@@ -2,6 +2,8 @@
 // joining a group and sending a chat message, #380.
 package com.polysocial.endtoend
 
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
@@ -12,7 +14,6 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
-import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -93,7 +94,9 @@ import dagger.hilt.android.testing.UninstallModules
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
+import java.util.Collections
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -261,16 +264,37 @@ class FindGroupAndChatEndToEndTest {
     )
     // A full group can't be joined, however well it fits.
     node(FindGroupTags.card(fullGroup.id)).assertDoesNotExist()
-    assertShows(
-        FindGroupTags.card(bestGroup.id),
-        "2 of 4",
-        "2 places left",
-        "Julia Example · IN · BA3   Marc Example · IN · MA1",
-        "2 shared interests",
-        "Same section · IN",
-        "Same year · BA3",
+    // Each card says who is in the group, how full it is and why it fits, and nothing else: a
+    // group that has less in common gives fewer reasons, down to none.
+    assertEquals(
+        listOf(
+            "JE",
+            "ME",
+            "2 of 4",
+            "2 places left",
+            "Join",
+            "Julia Example · IN · BA3   Marc Example · IN · MA1",
+            "2 shared interests",
+            "Same section · IN",
+            "Same year · BA3",
+        ),
+        textsIn(FindGroupTags.card(bestGroup.id)),
     )
-    assertShows(FindGroupTags.card(sameSectionGroup.id), "1 of 4", "Same section · IN")
+    assertEquals(
+        listOf(
+            "NE",
+            "1 of 4",
+            "3 places left",
+            "Join",
+            "Noah Example · IN · MA1",
+            "Same section · IN",
+        ),
+        textsIn(FindGroupTags.card(sameSectionGroup.id)),
+    )
+    assertEquals(
+        listOf("LE", "1 of 4", "3 places left", "Join", "Lina Example · GM · MA1"),
+        textsIn(FindGroupTags.card(strangerGroup.id)),
+    )
   }
 
   private fun joinTheBestMatch() {
@@ -280,7 +304,8 @@ class FindGroupAndChatEndToEndTest {
     awaitMatch(hasText(JOINED))
     // The members' names join the card once their profiles are read.
     awaitMatch(
-        hasTestTag(EventDetailTags.YOUR_GROUP) and hasText("Julia, Marc and you.", substring = true)
+        hasTestTag(EventDetailTags.YOUR_GROUP) and
+            hasText("Julia, Marc and you. One place left, so someone may still join.")
     )
     node(EventDetailTags.YOUR_GROUP).assertTextContains("Your group · 3 of 4")
     node(EventDetailTags.FIND_GROUP).assertDoesNotExist()
@@ -299,14 +324,21 @@ class FindGroupAndChatEndToEndTest {
   private fun seeTheMembers() {
     node(EventDetailTags.YOUR_GROUP).performScrollTo().performClick()
     awaitMatch(textIn(YourGroupTags.SCREEN, "Members · 3 of 4"))
-    assertShows(
+    // Each member under their initials, with their own section, year and interests, then the
+    // student ("You" as initials and as name), then the place still free.
+    assertShowsInARow(
         YourGroupTags.SCREEN,
+        "Members · 3 of 4",
+        "JE",
         "Julia Example",
         "IN · BA3 · Music, Cinema, Games",
+        "ME",
         "Marc Example",
         "IN · MA1 · Music",
         "You",
+        "You",
         "IN · BA3 · Music, Cinema",
+        "One place left, so someone may still join.",
     )
   }
 
@@ -314,7 +346,8 @@ class FindGroupAndChatEndToEndTest {
     node(YourGroupTags.CHAT).performScrollTo().performClick()
     // The chat opens on what the group already said, under its sender's name once it is read.
     awaitMatch(textIn(ChatTags.TIMELINE, "Julia Example"))
-    assertShows(ChatTags.TIMELINE, GREETING)
+    val earlier = listOf("Today", "Julia Example", "JE", GREETING)
+    assertEquals(earlier, textsIn(ChatTags.TIMELINE))
 
     node(ChatTags.INPUT).performTextInput(MESSAGE)
     // The keyboard opens late and would move Send after the tap is aimed (#314).
@@ -323,6 +356,12 @@ class FindGroupAndChatEndToEndTest {
 
     awaitMatch(textIn(ChatTags.TIMELINE, MESSAGE))
     compose.onNode(textIn(ChatTags.TIMELINE, MESSAGE)).assertIsDisplayed()
+    // Under the earlier message come only the new message's day (the fake dates it years later,
+    // so its text isn't checked) and the message: no name or initials over it, since it is the
+    // student's own.
+    val shown = textsIn(ChatTags.TIMELINE)
+    assertEquals(earlier, shown.take(earlier.size))
+    assertEquals(listOf(MESSAGE), shown.drop(earlier.size + 1))
     node(ChatTags.RETRY_SEND).assertDoesNotExist()
     assertEquals(
         listOf(JULIA.uid to GREETING, UID to MESSAGE),
@@ -335,9 +374,21 @@ class FindGroupAndChatEndToEndTest {
   /** The whole text [text], drawn inside the node tagged [tag]. */
   private fun textIn(tag: String, text: String) = hasText(text) and hasAnyAncestor(hasTestTag(tag))
 
-  /** Checks that each of [texts] is drawn, as a whole text, inside the node tagged [tag]. */
-  private fun assertShows(tag: String, vararg texts: String) = texts.forEach {
-    compose.onAllNodes(textIn(tag, it)).onFirst().assertExists()
+  /** Every text drawn inside the node tagged [tag], in the order the screen lays them out. */
+  private fun textsIn(tag: String): List<String> =
+      compose
+          .onAllNodes(hasAnyAncestor(hasTestTag(tag)))
+          .fetchSemanticsNodes()
+          .flatMap { it.config.getOrNull(SemanticsProperties.Text).orEmpty() }
+          .map { it.text }
+
+  /** Checks that [texts] are drawn one right after the other inside the node tagged [tag]. */
+  private fun assertShowsInARow(tag: String, vararg texts: String) {
+    val shown = textsIn(tag)
+    assertTrue(
+        "Expected ${texts.toList()} in a row inside $tag, which shows $shown",
+        Collections.indexOfSubList(shown, texts.toList()) >= 0,
+    )
   }
 
   private fun await(tag: String) = awaitMatch(hasTestTag(tag))
