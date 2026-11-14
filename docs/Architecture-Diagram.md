@@ -832,6 +832,44 @@ What each operation does:
 
 Once the recount has run, the counter is never below the number of registrations: every registration raises it, and it is only lowered together with the deletion of a counted registration. So drift can't let an event take more students than its capacity. (The one exception is an event created again under a deleted event's ID before the trigger removed the old registrations: it starts at 0 beside them. The app never reuses an ID, and the demo seed deletes everything under its events first.) The counter can only end up too high, by one for each student who cancels after losing read access to the event (today: an organizer making it private in Edit event; nothing removes a student from `allowedUids` yet). Such an event looks fuller than it is. The organizers' "Going" stays exact, and running the recount again repairs the counter.
 
+The app's transactions (#373), after the same first checks as today (the ID, a signed-in user, the connection):
+
+- **`register(eventId)`**
+  1. Read `events/{id}`. A denied read (missing or unreadable) is `NotFound`, as today.
+  2. Read the student's `attendees/{uid}`. If it exists, return `Registered` and write nothing; that covers a registration from before the counter too.
+  3. Take `attendeeCount` (absent: 0). If `capacity` isn't null and the count has reached it, return the new `RegisterResult.Full` and write nothing.
+  4. Write the registration (`uid`, server `registeredAt`) and `update` the event's `attendeeCount` to the count read plus one.
+- **`cancel(eventId)`**
+  1. Read `events/{id}`. If the read is denied (the event is gone or no longer readable), run a second transaction that only deletes the registration, which is today's `cancel`.
+  2. Read the student's `attendees/{uid}`. If it is missing, return `Cancelled` and write nothing.
+  3. Delete it and, if the count read is above 0, `update` the event's `attendeeCount` to that count minus one.
+- **Lost races are rerun.** Both write the count they read, so a transaction that another student overtook is denied by the rules (`permission-denied`: the emulator checks the rules before its conflict check and Firestore doesn't retry a denied transaction, as for groups, #232), and one an organizer's save overtook fails its conflict check (`failed-precondition` in the prototype). Rerun the whole transaction on either, reading afresh, up to 3 attempts, as `FirestoreGroupRepository.write` does; the student who lost the last place then gets `Full`. A write the rules deny every time (an event that just ended, a deleted account) uses the 3 attempts and ends in `UnexpectedError`; the screens don't offer either case.
+- **Model.** `Event.attendeeCount` (0 when absent) is read by `eventFromFirestore` and never written by `toFirestoreMap()`: `updateEvent` sends that map with `update`, so the stored counter survives an edit, and the rules would refuse it otherwise. `createEvent` adds `attendeeCount = 0` itself. "Full" is the pure check `capacity != null && attendeeCount >= capacity`, shown only to a student who isn't going; a going student keeps "✓ Going" and can cancel. The fakes follow the same results.
+- **Organizers' "Going"** stays `countAttendees` (#131), the server `count()` under the organizers' `list` rule. It counts the registrations themselves, so it stays exact if the counter drifts, and organizers keep `get` and `list` on attendees, which co-organizers (decision 17) also rely on. Reading the counter there instead, and then dropping `list`, is not part of this decision.
+
+Outside the app, the Admin SDK bypasses the rules, so each of its writers keeps the counter itself:
+
+- **`deleteAccount`** (`deleteUserRegistrations`): for each registration the collection-group query returns, one transaction reads the registration and its event; if the registration still exists, it deletes it and, when the event exists with a whole `attendeeCount` above 0, writes that count minus one. The count is lowered only by the transaction that deletes the registration, so a retry, the student's own cancellation or the trigger getting there first leaves nothing to count twice.
+- **`deleteEventRegistrations`** doesn't change: the counter was a field of the deleted event. If the event exists again, the trigger stops as today, and the new document carries its own counter.
+- **`demoData.js`** gives each demo event the `attendeeCount` of the registrations it seeds, derived from the same list, with a test that the two match: a wrong value fails silently (a demo event that fills too early or too late).
+- **A recount script** (`firebase/functions/scripts/`, run by a person with their own `gcloud` sign-in like `seedDemo.js`, never by CI or an agent): for each event, one transaction reads the event and the `count()` of its `attendees`, and writes `attendeeCount` when it differs. Events that had registrations before the counter existed get their first correct value this way. Running it again changes nothing, or repairs a drifted counter.
+
+`deleteAccount`'s step, the unchanged trigger next to it and the recount were prototyped with the Admin SDK against the emulator (8 cases: a retry after a failure midway, a deleted event, an event without a counter, the student's own cancellation in between, the trigger running at the same time, an event written again, and the recount run twice).
+
+Rollout (#373). Nothing deploys automatically (decision 18), and the order matters:
+
+1. Deploy `deleteAccount`. It works with either version of the rules: without a counter it lowers nothing.
+2. Deploy the rules. From then on a registration is accepted only with the counter, so an app from before #373 can no longer register, or cancel a counted registration, until it is updated (it shows its usual error with Retry).
+3. Run the recount script once, right away. Until it runs, an event that already had registrations counts from 0 and can take more students than its capacity.
+4. The app: CI publishes the APK from `main`. Between the merge and step 2, the new app's "I'm going" is refused (the old rules deny its write to the event), so steps 1 to 3 follow the merge at once.
+
+Known limits:
+
+- **Listeners.** Each registration or cancellation now rewrites `events/{id}`, so every snapshot listener that holds the event receives it again: the upcoming public events of every student online (Events tab and map), the detail's `getEvent`, My events' per-event listeners and an association's own events. That is one billed document read per listener per registration, where a registration reached no events listener before, and whatever reacts to an events snapshot runs once more. It is also what shows "Event full" live. Expected within the free quotas at this project's size.
+- **Moderation.** A student can change the counter only by their own one place, so nobody can fill or empty an event. A student can still register and cancel repeatedly, and each time rewrites the event (see Listeners): that is what a rate limit would bound. The registration's `create` and `delete` stay separate rules and the student branch is its own function, so a per-student rate limit or a block check fits on `create` later without touching the organizer branch. Not built; it needs its own issue.
+- **An organizer's save or Cancel event that a registration overtakes** fails the transaction's conflict check (`failed-precondition` in the prototype). It never writes a wrong counter, since a save doesn't send `attendeeCount`. `writeAsOrganizer` is tried once, so the form or the sheet shows Try again, as when two organizers save at once.
+- **Offline.** Registering and cancelling already refuse offline (#121) and still do. "Event full" comes from the cached event and can be out of date until the connection returns.
+
 **Open questions** (add new ones here and in `CONTEXT.md`), with an owner where one is agreed:
 - **Groups of a deleted event or account (owner: Ayoub with #275 for events, Mohamed for `deleteAccount`):** deleting an event must also delete its `groups`, `groupMembers` and messages, and deleting an account must take its UID out of `memberUids` and delete its marker. Client-side deletion of nested messages doesn't scale; a function triggered by the deletion may be needed (possible now that the project is on Blaze). The same holds when the last member leaves (#237): the client deletes the group, but its `messages` stay behind, personal data nobody can read or delete. `deleteAccount` doesn't delete a student's messages either; deleting or anonymizing them is the team's call. Until `deleteAccount` takes the UID out of `memberUids`, a deleted account's ID token, valid up to 1 h, can still read its groups and their chats; the message `create` rule's `isDeletedAccount` already stops it sending (#334 review).
 - **"I'm going" in the rules (owner: Ayoub, #244):** whether joining a group also requires an `attendees` document in the rules, or only in the app.
