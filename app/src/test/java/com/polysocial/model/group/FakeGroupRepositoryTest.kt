@@ -1,9 +1,13 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #232, and more after review).
+// Contributors: Claude (Fable 5.2, Anthropic) (tests of the student's groups across events, #363).
 package com.polysocial.model.group
 
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -283,6 +287,66 @@ class FakeGroupRepositoryTest {
     repository.readFailure = FakeGroupRepository.ReadFailure.UNEXPECTED
     assertEquals(GroupsResult.UnexpectedError, groups())
     assertEquals(MyGroupResult.UnexpectedError, myGroup())
+  }
+
+  @Test
+  fun observeMyGroups_listsOnlyTheStudentsGroupsOfEveryEvent_oldestFirst() = runTest {
+    // Like a private event the student was removed from: its group is still theirs to list.
+    val unreadable = repository.seedGroup("private", listOf("other", "student"))
+    repository.seedGroup(EVENT, listOf("other"))
+    val second = repository.seedGroup(OTHER, listOf("student"))
+    val third = repository.seedGroup(EVENT, listOf("student", "other"))
+    repository.readFromCache = true
+
+    assertEquals(
+        listOf(
+            MyGroupsResult.Loading,
+            MyGroupsResult.Success(listOf(unreadable, second, third), fromCache = true),
+        ),
+        repository.observeMyGroups().take(2).toList(),
+    )
+  }
+
+  @Test
+  fun observeMyGroups_emitsWhenTheStudentsGroupsChange_notWhenOthersDo() = runTest {
+    val results = mutableListOf<MyGroupsResult>()
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) {
+          repository.observeMyGroups().collect { results += it }
+        }
+
+    val theirs = repository.seedGroup(OTHER, listOf("other"))
+    repository.createGroup(EVENT)
+    repository.joinGroup(OTHER, theirs.id)
+    repository.leaveGroup(EVENT, repository.groupsOf(EVENT).single().id)
+    collecting.cancel()
+
+    assertEquals(
+        listOf(emptyList(), listOf(EVENT), listOf(OTHER, EVENT), listOf(OTHER)),
+        results.drop(1).map { result ->
+          (result as MyGroupsResult.Success).groups.map { it.eventId }
+        },
+    )
+    assertEquals(
+        listOf("other", "student"),
+        (results.last() as MyGroupsResult.Success).groups.single().memberUids,
+    )
+  }
+
+  @Test
+  fun observeMyGroups_readsTheStudentAndTheFailureWhenCollectionStarts() = runTest {
+    val group = repository.seedGroup(EVENT, listOf("later"))
+    val mine = repository.observeMyGroups()
+
+    repository.currentUid = "later"
+    assertEquals(MyGroupsResult.Success(listOf(group), fromCache = false), mine.drop(1).first())
+    repository.currentUid = null
+    assertEquals(listOf(MyGroupsResult.Loading, MyGroupsResult.UnexpectedError), mine.toList())
+    repository.currentUid = "later"
+    repository.readFailure = FakeGroupRepository.ReadFailure.NETWORK
+    assertEquals(listOf(MyGroupsResult.Loading, MyGroupsResult.NetworkError), mine.toList())
+    repository.readFailure = FakeGroupRepository.ReadFailure.UNEXPECTED
+    assertEquals(listOf(MyGroupsResult.Loading, MyGroupsResult.UnexpectedError), mine.toList())
   }
 
   @Test

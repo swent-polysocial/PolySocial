@@ -1,4 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #232).
+// Contributors: Claude (Fable 5.2, Anthropic) (tests of the student's groups across events, #363).
 package com.polysocial.model.group
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -657,6 +658,104 @@ class FirestoreGroupRepositoryTest {
     )
 
     verify(exactly = 0) { groups.whereArrayContains(any<String>(), any()) }
+  }
+
+  // observeMyGroups
+
+  private val everyGroupsCollection = mockk<Query>()
+
+  /** Stubs exactly the query observeMyGroups must build, so any other query fails the test. */
+  private fun stubMyGroupsListener() {
+    every { db.collectionGroup(GROUPS_COLLECTION) } returns everyGroupsCollection
+    every { everyGroupsCollection.whereArrayContains(MEMBER_UIDS, STUDENT) } returns mine
+    every { mine.addSnapshotListener(MetadataChanges.INCLUDE, capture(listener)) } returns
+        registration
+  }
+
+  /** A group document found across events at [path], which ends with `groups/{id}`. */
+  private fun found(path: String, data: Map<String, Any?>) =
+      document(path.substringAfterLast('/'), data).also { every { it.reference.path } returns path }
+
+  @Test
+  fun observeMyGroups_queriesTheStudentsGroupsAcrossEvents_oldestFirstWithTheirEvent() = runTest {
+    stubMyGroupsListener()
+    val results = mutableListOf<MyGroupsResult>()
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) {
+          repository.observeMyGroups().collect { results += it }
+        }
+    val newer = storedGroup("b", STUDENT) + ("createdAt" to Timestamp(1_900_000_100L, 0))
+
+    listener.captured.onEvent(
+        groupsSnapshot(
+            found("events/event-2/groups/newer", newer),
+            found("events/$EVENT/groups/older", storedGroup(STUDENT)),
+            found("events/$EVENT/groups/broken", mapOf("capacity" to "four")),
+            found("groups/top-level", storedGroup(STUDENT)),
+            found("clubs/club-1/groups/elsewhere", storedGroup(STUDENT)),
+            found("clubs/club-1/events/nested/groups/deeper", storedGroup(STUDENT)),
+            fromCache = true,
+        ),
+        null,
+    )
+    listener.captured.onEvent(groupsSnapshot(), null)
+    collecting.cancel()
+
+    assertEquals(
+        listOf(
+            MyGroupsResult.Loading,
+            MyGroupsResult.Success(
+                listOf(
+                    expectedGroup("older", Instant.ofEpochSecond(1_900_000_000L), STUDENT),
+                    expectedGroup("newer", Instant.ofEpochSecond(1_900_000_100L), "b", STUDENT)
+                        .copy(eventId = "event-2"),
+                ),
+                fromCache = true,
+            ),
+            MyGroupsResult.Success(emptyList(), fromCache = false),
+        ),
+        results,
+    )
+    verify { registration.remove() }
+  }
+
+  @Test
+  fun observeMyGroups_failures_endTheFlowWithTheirOwnError() = runTest {
+    stubMyGroupsListener()
+    val offline = collect(repository.observeMyGroups())
+    listener.captured.onEvent(null, failed(FirebaseFirestoreException.Code.UNAVAILABLE))
+    // For example an association, or a missing collection-group index (FAILED_PRECONDITION).
+    val denied = collect(repository.observeMyGroups())
+    listener.captured.onEvent(null, failed(FirebaseFirestoreException.Code.PERMISSION_DENIED))
+    val unindexed = collect(repository.observeMyGroups())
+    listener.captured.onEvent(null, failed(FirebaseFirestoreException.Code.FAILED_PRECONDITION))
+
+    assertEquals(listOf(MyGroupsResult.Loading, MyGroupsResult.NetworkError), offline.await())
+    assertEquals(listOf(MyGroupsResult.Loading, MyGroupsResult.UnexpectedError), denied.await())
+    assertEquals(listOf(MyGroupsResult.Loading, MyGroupsResult.UnexpectedError), unindexed.await())
+    verify(exactly = 3) { registration.remove() }
+  }
+
+  @Test
+  fun observeMyGroups_nobodySignedInWhenCollectionStarts_isAnUnexpectedErrorWithoutAQuery() =
+      runTest {
+        val flow = repository.observeMyGroups()
+        auth.user = null
+
+        assertEquals(listOf(MyGroupsResult.Loading, MyGroupsResult.UnexpectedError), flow.toList())
+
+        verify(exactly = 0) { db.collectionGroup(any()) }
+      }
+
+  @Test
+  fun observeMyGroups_anUnexpectedExceptionWhileStartingToListen_isAnUnexpectedError() = runTest {
+    // For example a database blocked while the session's cache is cleared (#198).
+    every { db.collectionGroup(GROUPS_COLLECTION) } throws IllegalStateException("terminated")
+
+    assertEquals(
+        listOf(MyGroupsResult.Loading, MyGroupsResult.UnexpectedError),
+        repository.observeMyGroups().toList(),
+    )
   }
 
   private companion object {

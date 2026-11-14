@@ -1,11 +1,13 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote this fake for tests, #232; aligned it with
 // FirestoreGroupRepository and the rules after review).
+// Contributors: Claude (Fable 5.2, Anthropic) (the student's groups across events, #363).
 package com.polysocial.model.group
 
 import com.polysocial.model.event.isReadableEventId
 import java.time.Instant
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
@@ -20,12 +22,14 @@ import kotlinx.coroutines.flow.map
  * [GroupWriteResult.NotFound]. A member's own group doesn't need the event: [observeMyGroup] shows
  * the group whose members include the student, and [leaveGroup] lets them leave it, as the rules
  * let a member list and read their own group even once they can no longer read the event. That is
- * also how the fake finds a student's group, so it needs no separate marker. New groups get the IDs
- * `group-1`, `group-2`… and deterministic creation times.
+ * also how the fake finds a student's group, so it needs no separate marker. [observeMyGroups]
+ * lists those groups across every event the same way, oldest first, and emits only when they
+ * change. New groups get the IDs `group-1`, `group-2`… and deterministic creation times, in the
+ * order they are created.
  *
  * The observe flows read [currentUid], [readFailure] and, for [observeGroups], [readableEventIds]
  * when their collection starts, as the real listeners read the user and are checked by the rules.
- * With nobody signed in, both end with their `UnexpectedError`, like the real ones.
+ * With nobody signed in, they end with their `UnexpectedError`, like the real ones.
  *
  * @property currentUid the signed-in student, or null when nobody is signed in.
  */
@@ -39,7 +43,7 @@ class FakeGroupRepository(var currentUid: String? = "test-student") : GroupRepos
   /** When set, every write returns this result instead of writing, like a failed transaction. */
   var writeFailure: GroupWriteResult? = null
 
-  /** When set, both observe flows emit Loading, then this failure and end, like a failed listener. */
+  /** When set, the observe flows emit Loading, then this failure and end, like a failed listener. */
   var readFailure: ReadFailure? = null
 
   /** The `fromCache` flag the observe flows report, to simulate reading from the offline cache. */
@@ -107,6 +111,34 @@ class FakeGroupRepository(var currentUid: String? = "test-student") : GroupRepos
                     readFromCache,
                 )
               }
+          )
+    }
+  }
+
+  override fun observeMyGroups(): Flow<MyGroupsResult> = flow {
+    emit(MyGroupsResult.Loading)
+    val failure = readFailure
+    val uid = currentUid
+    when {
+      failure != null ->
+          emit(
+              if (failure == ReadFailure.NETWORK) MyGroupsResult.NetworkError
+              else MyGroupsResult.UnexpectedError
+          )
+      uid == null -> emit(MyGroupsResult.UnexpectedError)
+      else ->
+          emitAll(
+              groups
+                  .map { stored ->
+                    MyGroupsResult.Success(
+                        stored.values
+                            .flatten()
+                            .filter { uid in it.memberUids }
+                            .sortedBy { it.createdAt },
+                        readFromCache,
+                    )
+                  }
+                  .distinctUntilChanged()
           )
     }
   }
