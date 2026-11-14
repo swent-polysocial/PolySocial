@@ -1,6 +1,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (group repository tests against the rules, #232, and
 // more after review).
-// Contributors: Claude (Fable 5.2, Anthropic) (the student's groups across events, #363).
+// Contributors: Claude (Fable 5.2, Anthropic) (the student's groups across events, #363; their
+// live changes and groups collections outside events, from a test audit).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -29,9 +30,13 @@ import com.polysocial.model.user.USERS_COLLECTION
 import java.time.Instant
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -121,6 +126,28 @@ class FirestoreGroupRepositoryEmulatorTest {
           it !is MyGroupsResult.Loading && (it !is MyGroupsResult.Success || !it.fromCache)
         }
       }
+
+  /**
+   * Waits until an open collection of the student's groups shows exactly [expected], as
+   * "event/group: members" in order. A read that failed, or one that never gets there, fails with
+   * what it shows.
+   */
+  private suspend fun StateFlow<MyGroupsResult>.awaitGroups(vararg expected: String) {
+    fun MyGroupsResult.listed(): List<String> {
+      assertTrue("Expected the student's groups, got $this", this is MyGroupsResult.Success)
+      return (this as MyGroupsResult.Success).groups.map {
+        "${it.eventId}/${it.id}: ${it.memberUids.joinToString()}"
+      }
+    }
+    val result =
+        withTimeoutOrNull(TIMEOUT_MS) {
+          first {
+            it !is MyGroupsResult.Loading &&
+                (it !is MyGroupsResult.Success || it.listed() == expected.toList())
+          }
+        }
+    assertEquals(expected.toList(), (result ?: value).listed())
+  }
 
   private suspend fun hasMarker(eventId: String, uid: String) =
       emulator.existsAsAdmin(markersOf(eventId), uid)
@@ -402,6 +429,73 @@ class FirestoreGroupRepositoryEmulatorTest {
         )
         assertEquals(listOf(FIRST_UID, uid), groups.single { it.id == "mine" }.memberUids)
       }
+
+  @Test
+  fun observeMyGroups_followsJoinsLeavesAndMemberChanges_whileCollecting() = runBlocking {
+    val uid = signIn(STUDENT_EMAIL)
+    seed("public")
+    seed("second")
+    seedGroup("second", "theirs", listOf(FIRST_UID))
+    val shown = MutableStateFlow<MyGroupsResult>(MyGroupsResult.Loading)
+    val open = launch { repository.observeMyGroups().collect { shown.value = it } }
+    try {
+      shown.awaitGroups()
+
+      val started = timed { repository.createGroup("public") }
+      assertTrue("Expected a new group, got $started", started is GroupWriteResult.Success)
+      val mine = (started as GroupWriteResult.Success).groupId
+      shown.awaitGroups("public/$mine: $uid")
+
+      // Another student joins it from a second phone: the member list changes.
+      val rival = emulator.signInVerifiedUser(OTHER_STUDENT_EMAIL, auth = RivalApp.auth).uid
+      assertEquals(
+          GroupWriteResult.Success(mine),
+          timed { rivalRepository.joinGroup("public", mine) },
+      )
+      shown.awaitGroups("public/$mine: $uid, $rival")
+
+      // A group of another event; it was created later (2030), so it is listed after.
+      assertEquals(
+          GroupWriteResult.Success("theirs"),
+          timed { repository.joinGroup("second", "theirs") },
+      )
+      shown.awaitGroups("public/$mine: $uid, $rival", "second/theirs: $FIRST_UID, $uid")
+
+      assertEquals(GroupWriteResult.Success(mine), timed { repository.leaveGroup("public", mine) })
+      shown.awaitGroups("second/theirs: $FIRST_UID, $uid")
+    } finally {
+      open.cancel()
+    }
+  }
+
+  @Test
+  fun observeMyGroups_skipsGroupsCollectionsOutsideAnEvent() = runBlocking {
+    val uid = signIn(STUDENT_EMAIL)
+    seedGroup("deleted", "mine", listOf(uid))
+    // Only an admin can store these, but the query across events matches any `groups` collection.
+    val stray =
+        mapOf(
+            "capacity" to GROUP_CAPACITY.toLong(),
+            "memberUids" to listOf(uid),
+            "createdBy" to uid,
+            "createdAt" to Instant.parse("2030-02-01T12:00:00Z"),
+        )
+    emulator.createAsAdmin(GROUPS_COLLECTION, "top-level", stray)
+    emulator.createAsAdmin("clubs/club-1/$GROUPS_COLLECTION", "elsewhere", stray)
+    emulator.createAsAdmin(
+        "$EVENTS_COLLECTION/deleted/photos/photo-1/$GROUPS_COLLECTION",
+        "below",
+        stray,
+    )
+
+    val result = myGroups()
+
+    assertTrue("Expected the student's groups, got $result", result is MyGroupsResult.Success)
+    assertEquals(
+        listOf("deleted" to "mine"),
+        (result as MyGroupsResult.Success).groups.map { it.eventId to it.id },
+    )
+  }
 
   @Test
   fun observeMyGroups_withoutAnyGroup_isEmpty() = runBlocking {
