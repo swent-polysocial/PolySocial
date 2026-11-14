@@ -607,7 +607,7 @@ How each failure behaves:
 | `publicProfiles/{uid}`, attendees, groups, messages, `associations/{uid}` | none can exist: nothing to do |
 | `deletedAccounts/{uid}` | not written: there is no still-valid verified token to stop |
 
-How it runs and fails is in the README's Cloud Functions section; the constraint it puts on later features (a verified account must not become unverified again) is in `CONTEXT.md`, "Unverified accounts".
+How it runs and fails is in the README's Cloud Functions section; the constraint it puts on later features (a verified account must not become unverified again) is in `CONTEXT.md`, "7-day cleanup".
 
 **Open questions** (add new ones here and in `CONTEXT.md`), with an owner where one is agreed:
 - **Groups of a deleted event or account (owner: Ayoub with #275 for events, Mohamed for `deleteAccount`):** deleting an event must also delete its `groups`, `groupMembers` and messages, and deleting an account must take its UID out of `memberUids` and delete its marker. Client-side deletion of nested messages doesn't scale; a function triggered by the deletion may be needed (possible now that the project is on Blaze). The same holds when the last member leaves (#237): the client deletes the group, but its `messages` stay behind, personal data nobody can read or delete. `deleteAccount` doesn't delete a student's messages either; deleting or anonymizing them is the team's call. Until `deleteAccount` takes the UID out of `memberUids`, a deleted account's ID token, valid up to 1 h, can still read its groups and their chats; the message `create` rule's `isDeletedAccount` already stops it sending (#334 review).
