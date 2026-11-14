@@ -5,6 +5,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) kept the test store's address cooldown, #225.
 // Contributors: Claude (shared fakes and dateDigits instead of private copies, #276).
 // Contributors: OpenAI Codex (scoped the chat fake to this Hilt test, #238).
+// Contributors: Claude Fable 5.2 (the organizer's own name on the detail, #281).
 package com.polysocial.endtoend
 
 import androidx.compose.ui.test.SemanticsMatcher
@@ -78,6 +79,7 @@ import com.polysocial.model.time.ClockModule
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.ProfileResult
+import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileModule
 import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.UserProfile
@@ -110,7 +112,8 @@ import org.junit.runner.RunWith
  * Steps, in order:
  * 1. The app opens on the Events tab for a student who is already signed in (#74, #105).
  * 2. Create Event from the "+" (#46, #110), with a place found by the location picker's search
- *    (#111), then "View event" opens its detail (#211) with "Organized by you" (#131).
+ *    (#111), then "View event" opens its detail (#211) with "Organized by you" (#131) and the
+ *    organizer's name as the students going see it (#281).
  * 3. Edit opens the form filled with the event, a new title is saved, and the detail shows it
  *    (#130, #131).
  * 4. Cancel event, confirmed in its sheet, deletes the event: the Events tab says so and no longer
@@ -168,7 +171,10 @@ class ManageEventEndToEndTest {
   @BindValue @JvmField val network: NetworkMonitor = FakeNetworkMonitor()
   @BindValue @JvmField val registrations: RegistrationRepository = FakeRegistrationRepository()
   @BindValue @JvmField val groups: GroupRepository = FakeGroupRepository()
-  @BindValue @JvmField val publicProfiles: PublicProfileRepository = FakePublicProfileRepository()
+  @BindValue
+  @JvmField
+  val publicProfiles: PublicProfileRepository =
+      FakePublicProfileRepository(mutableMapOf(UID to PublicProfile(UID, NAME, "IN", "BA3")))
   // The flow never logs out or deletes the account, but the app's graph still needs these.
   @BindValue @JvmField val deletion: AccountDeletionRepository = FakeAccountDeletionRepository()
   @BindValue
@@ -226,6 +232,8 @@ class ManageEventEndToEndTest {
     await(EventDetailTags.SCREEN)
     awaitMatch(hasTestTag(EventDetailTags.TITLE) and hasText(TITLE))
     await(EventDetailTags.ORGANIZED_BY_YOU)
+    // Their name from their public profile, as the students going to the event see it (#281).
+    awaitMatch(hasTestTag(EventDetailTags.ORGANIZER_NAME) and hasText("by $NAME"))
     return created.id
   }
 
