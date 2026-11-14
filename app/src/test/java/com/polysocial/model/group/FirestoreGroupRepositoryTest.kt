@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #232).
-// Contributors: Claude (Fable 5.2, Anthropic) (tests of the student's groups across events, #363).
+// Contributors: Claude (Fable 5.2, Anthropic) (tests of the student's groups across events, #363,
+// with more from a test audit).
 package com.polysocial.model.group
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -694,6 +695,7 @@ class FirestoreGroupRepositoryTest {
             found("groups/top-level", storedGroup(STUDENT)),
             found("clubs/club-1/groups/elsewhere", storedGroup(STUDENT)),
             found("clubs/club-1/events/nested/groups/deeper", storedGroup(STUDENT)),
+            found("events/$EVENT/photos/photo-1/groups/below", storedGroup(STUDENT)),
             fromCache = true,
         ),
         null,
@@ -734,6 +736,74 @@ class FirestoreGroupRepositoryTest {
     assertEquals(listOf(MyGroupsResult.Loading, MyGroupsResult.UnexpectedError), denied.await())
     assertEquals(listOf(MyGroupsResult.Loading, MyGroupsResult.UnexpectedError), unindexed.await())
     verify(exactly = 3) { registration.remove() }
+  }
+
+  @Test
+  fun observeMyGroups_collectedAgainAfterAFailure_listensAgain() = runTest {
+    stubMyGroupsListener()
+    val flow = repository.observeMyGroups()
+    val failedRead = collect(flow)
+    listener.captured.onEvent(null, failed(FirebaseFirestoreException.Code.UNAVAILABLE))
+    assertEquals(
+        listOf(MyGroupsResult.Loading, MyGroupsResult.NetworkError),
+        failedRead.await(),
+    )
+
+    // What Retry does: the same flow, collected again, registers a new listener.
+    val retried = mutableListOf<MyGroupsResult>()
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) { flow.collect { retried += it } }
+    listener.captured.onEvent(
+        groupsSnapshot(found("events/$EVENT/groups/mine", storedGroup(STUDENT))),
+        null,
+    )
+    collecting.cancel()
+
+    assertEquals(
+        listOf(
+            MyGroupsResult.Loading,
+            MyGroupsResult.Success(
+                listOf(expectedGroup("mine", Instant.ofEpochSecond(1_900_000_000L), STUDENT)),
+                fromCache = false,
+            ),
+        ),
+        retried,
+    )
+    verify(exactly = 2) { mine.addSnapshotListener(MetadataChanges.INCLUDE, any()) }
+    verify(exactly = 2) { registration.remove() }
+  }
+
+  @Test
+  fun observeMyGroups_afterAnAccountSwitch_queriesTheNewStudentsGroups() = runTest {
+    // A flow kept across an account switch must never list the previous student's groups.
+    val theirs = mockk<Query>()
+    every { db.collectionGroup(GROUPS_COLLECTION) } returns everyGroupsCollection
+    every { everyGroupsCollection.whereArrayContains(MEMBER_UIDS, "other") } returns theirs
+    every { theirs.addSnapshotListener(MetadataChanges.INCLUDE, capture(listener)) } returns
+        registration
+    val flow = repository.observeMyGroups()
+    auth.user = AuthUser("other", "other@epfl.ch", true)
+
+    val results = mutableListOf<MyGroupsResult>()
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) { flow.collect { results += it } }
+    listener.captured.onEvent(
+        groupsSnapshot(found("events/$EVENT/groups/theirs", storedGroup("other"))),
+        null,
+    )
+    collecting.cancel()
+
+    assertEquals(
+        listOf(
+            MyGroupsResult.Loading,
+            MyGroupsResult.Success(
+                listOf(expectedGroup("theirs", Instant.ofEpochSecond(1_900_000_000L), "other")),
+                fromCache = false,
+            ),
+        ),
+        results,
+    )
+    verify(exactly = 0) { everyGroupsCollection.whereArrayContains(MEMBER_UIDS, STUDENT) }
   }
 
   @Test
