@@ -4,6 +4,7 @@
 "use strict";
 
 // Contributors: OpenAI Codex (retryable membership cleanup and message author removal before Auth deletion, #241).
+// Contributors: Claude (Fable 5.2, Anthropic) (errorCode shared with the unverified accounts cleanup, #226).
 
 const { HttpsError } = require("firebase-functions/v2/https");
 const { deleteUserRegistrations, MAX_BATCH_WRITES } = require("./registrations");
@@ -235,4 +236,5 @@ module.exports = {
   MAX_AUTH_AGE_MS,
   REGION,
   deleteAccountHandler,
+  errorCode,
 };
