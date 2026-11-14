@@ -1,5 +1,6 @@
 // Contributors: Claude (Fable 5.2, Anthropic) drafted the emulator test of the scheduled cleanup of unverified accounts, #226.
 // Contributors: Claude (Fable 5.2, Anthropic) (the exported function called as Cloud Scheduler does, after a mutation check, #226).
+// Contributors: Claude (Fable 5.2, Anthropic) (accounts that aren't email and password sign-ups are kept, after review, #226).
 "use strict";
 
 // Runs the cleanup of unverified accounts on the Auth and Firestore emulators, through the Admin
@@ -61,8 +62,9 @@ async function clearEmulator(url) {
 }
 
 /**
- * A fictional account created `daysAgo` days ago, to import: an import chooses the creation time,
- * which Auth sets to now for an account that signs up.
+ * A fictional email and password sign-up created `daysAgo` days ago, to import: an import chooses
+ * the creation time, which Auth sets to now for an account that signs up. The password hash gives
+ * the imported account its `password` provider, as a sign-up has; nobody signs in with it.
  */
 function account(uid, daysAgo, emailVerified = false) {
   const createdAt = new Date(Date.now() - daysAgo * DAY_MS).toUTCString();
@@ -71,32 +73,51 @@ function account(uid, daysAgo, emailVerified = false) {
     email: `${uid}@example.com`,
     emailVerified,
     metadata: { creationTime: createdAt, lastSignInTime: createdAt },
+    passwordHash: Buffer.from("fictional-hash"),
   };
 }
+
+/** How the fictional password hashes are said to be made, which an import of hashes requires. */
+const IMPORT_OPTIONS = { hash: { algorithm: "HMAC_SHA256", key: Buffer.from("fictional-key") } };
 
 /** Imports the accounts with their creation times, at most 1000 per call as Auth requires. */
 async function importAccounts(accounts) {
   for (let start = 0; start < accounts.length; start += 1000) {
-    const result = await auth.importUsers(accounts.slice(start, start + 1000));
+    const result = await auth.importUsers(accounts.slice(start, start + 1000), IMPORT_OPTIONS);
     if (result.failureCount > 0) {
       throw new Error(`Could not import ${result.failureCount} accounts.`);
     }
   }
 }
 
-/** Runs the cleanup now and returns the number of accounts deleted and everything it logged. */
-async function runCleanup() {
+/**
+ * Signs up through the Auth REST API, as the app's client SDK does: with an email and a password,
+ * or anonymously without them. Returns the new account's uid.
+ */
+async function signUp(credentials) {
+  const response = await fetch(
+    `http://${AUTH_HOST}/identitytoolkit.googleapis.com/v1/accounts:signUp?key=any`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...credentials, returnSecureToken: true }),
+    },
+  );
+  if (!response.ok) throw new Error(`Sign-up failed (${response.status}).`);
+  return (await response.json()).localId;
+}
+
+/**
+ * Runs the cleanup at `now` (the present by default) and returns the number of accounts deleted
+ * and everything it logged.
+ */
+async function runCleanup(now = Date.now) {
   const logs = [];
   const logger = {
     info: (...entry) => logs.push(["info", ...entry]),
     error: (...entry) => logs.push(["error", ...entry]),
   };
-  const deleted = await deleteUnverifiedAccountsHandler({
-    adminAuth: auth,
-    db,
-    now: Date.now,
-    logger,
-  });
+  const deleted = await deleteUnverifiedAccountsHandler({ adminAuth: auth, db, now, logger });
   return { deleted, logs };
 }
 
@@ -164,6 +185,26 @@ test("an abandoned account and its profile are deleted, other accounts are kept"
   assert.equal(await documentExists("users/abandoned"), false);
   assert.equal(await documentExists("users/verified"), true);
   assert.equal(await documentExists("users/recent"), true);
+});
+
+// The Admin SDK reports an account without any email as unverified too. These accounts are made
+// now, as the app and the Admin SDK make them, so the cleanup runs with a clock past the period.
+test("only an email and password sign-up is deleted, other kinds of account are kept", async () => {
+  const signedUp = await signUp({ email: "signed-up@example.com", password: PASSWORD });
+  const kept = [
+    await signUp({}),
+    (await auth.createUser({ displayName: "Fictional account without an email" })).uid,
+    (await auth.createUser({ email: "no-password@example.com" })).uid,
+    (await auth.createUser({ phoneNumber: "+41790000000" })).uid,
+  ].sort();
+  for (const uid of [signedUp, ...kept]) await db.doc(`users/${uid}`).set({ uid });
+  const afterThePeriod = () => Date.now() + (UNVERIFIED_ACCOUNT_RETENTION_DAYS + 1) * DAY_MS;
+
+  assert.equal((await runCleanup(afterThePeriod)).deleted, 1);
+
+  assert.deepEqual(await accountsLeft(), kept);
+  assert.equal(await documentExists(`users/${signedUp}`), false);
+  for (const uid of kept) assert.equal(await documentExists(`users/${uid}`), true);
 });
 
 test("the address of a deleted account can sign up again", async () => {

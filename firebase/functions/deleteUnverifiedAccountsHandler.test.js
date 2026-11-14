@@ -1,5 +1,6 @@
 // Contributors: Claude (Fable 5.2, Anthropic) drafted the tests of the scheduled cleanup of unverified accounts, #226.
 // Contributors: Claude (Fable 5.2, Anthropic) (the tests a mutation check of the handler found missing, #226).
+// Contributors: Claude (Fable 5.2, Anthropic) (accounts that aren't email and password sign-ups are kept, after review, #226).
 "use strict";
 
 // Unit tests with fakes, no emulator:
@@ -26,13 +27,23 @@ const OLD = RETENTION_MS + DAY_MS;
 const SUMMARY = "deleteUnverifiedAccounts finished";
 const STEP_FAILED = "deleteUnverifiedAccounts step failed";
 
-/** A fictional Auth user created `age` milliseconds before NOW, as `listUsers` returns it. */
+/** The provider entry `listUsers` reports for an account that can sign in with a password. */
+function passwordProvider(email) {
+  return { uid: email, email, providerId: "password" };
+}
+
+/**
+ * A fictional email and password sign-up created `age` milliseconds before NOW, as `listUsers`
+ * returns it: with its email and the `password` provider.
+ */
 function account(uid, age, emailVerified = false) {
+  const email = `${uid}@example.com`;
   return {
     uid,
-    email: `${uid}@example.com`,
+    email,
     emailVerified,
     metadata: { creationTime: new Date(NOW - age).toUTCString() },
+    providerData: [passwordProvider(email)],
   };
 }
 
@@ -206,6 +217,79 @@ test("an account whose creation time the Admin SDK reports as null is kept", asy
   assert.equal(await run(backend), 0);
 
   assert.deepEqual(backend.uids(), ["null-creation-time"]);
+  assert.deepEqual(backend.calls, ["listUsers:"]);
+});
+
+// What `listUsers` reports for each kind of account, here all old enough: the Admin SDK reports
+// `emailVerified` as false for an account without any email too.
+test("only an email and password sign-up is deleted, not an account of another kind", async () => {
+  const phone = "+41790000000";
+  const other = (uid, changes) => ({ ...account(uid, OLD), ...changes });
+  const users = [
+    account("sign-up", OLD),
+    // A sign-up that linked a second way to sign in is still an unverified sign-up.
+    other("sign-up-with-phone", {
+      providerData: [
+        { uid: phone, phoneNumber: phone, providerId: "phone" },
+        passwordProvider("sign-up-with-phone@example.com"),
+      ],
+    }),
+    // Made with the Admin SDK or imported, with an email and no password.
+    other("email-without-password", { providerData: [] }),
+    // Anonymous, or made with the Admin SDK without an email.
+    other("no-email", { email: undefined, providerData: [] }),
+    other("phone-only", {
+      email: undefined,
+      phoneNumber: phone,
+      providerData: [{ uid: phone, phoneNumber: phone, providerId: "phone" }],
+    }),
+    // A provider added later that wouldn't verify the email.
+    other("other-provider", {
+      providerData: [
+        { uid: "fictional-id", email: "other-provider@example.com", providerId: "microsoft.com" },
+      ],
+    }),
+    other("password-without-email", { email: undefined }),
+  ];
+  const profiles = users.map((user) => `users/${user.uid}`);
+  const backend = fakeBackend({ users, profiles });
+
+  assert.equal(await run(backend), 2);
+
+  const kept = [
+    "email-without-password",
+    "no-email",
+    "phone-only",
+    "other-provider",
+    "password-without-email",
+  ];
+  assert.deepEqual(backend.uids(), kept);
+  assert.deepEqual(
+    [...backend.state.profiles],
+    kept.map((uid) => `users/${uid}`),
+  );
+});
+
+test("an account whose email or providers can't be read is kept", async () => {
+  const unreadable = (uid, changes) => ({ ...account(uid, OLD), ...changes });
+  const backend = fakeBackend({
+    users: [
+      unreadable("null-email", { email: null }),
+      unreadable("empty-email", { email: "" }),
+      unreadable("number-email", { email: 42 }),
+      unreadable("no-providers", { providerData: undefined }),
+      unreadable("null-providers", { providerData: null }),
+      unreadable("providers-not-a-list", { providerData: { providerId: "password" } }),
+      unreadable("text-providers", { providerData: "password" }),
+      unreadable("null-provider", { providerData: [null] }),
+      unreadable("provider-without-id", { providerData: [{ uid: "fictional-id" }] }),
+      unreadable("provider-id-not-text", { providerData: [{ providerId: ["password"] }] }),
+    ],
+  });
+
+  assert.equal(await run(backend), 0);
+
+  assert.equal(backend.uids().length, 10);
   assert.deepEqual(backend.calls, ["listUsers:"]);
 });
 

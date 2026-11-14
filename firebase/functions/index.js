@@ -39,8 +39,8 @@ exports.deleteEventRegistrations = onDocumentDeleted(
 );
 
 /**
- * Scheduled: every night, deletes the accounts whose email is still unverified after the retention
- * period. Without `timeZone`, the schedule would be read as UTC. See
+ * Scheduled: every night, deletes the email and password sign-ups whose email is still unverified
+ * after the retention period. Without `timeZone`, the schedule would be read as UTC. See
  * deleteUnverifiedAccountsHandler.js.
  */
 exports.deleteUnverifiedAccounts = onSchedule(
