@@ -4,16 +4,17 @@
 "use strict";
 
 // Contributors: OpenAI Codex (retryable membership cleanup and message author removal before Auth deletion, #241).
-// Contributors: Claude (Fable 5.2, Anthropic) (errorCode shared with the unverified accounts cleanup, #226).
+// Contributors: Claude (Fable 5.2, Anthropic) (errorCode shared with the unverified accounts cleanup, and REGION's KDoc for it, #226).
 
 const { HttpsError } = require("firebase-functions/v2/https");
 const { deleteUserRegistrations, MAX_BATCH_WRITES } = require("./registrations");
 
 /**
- * Region of the deleteAccount callable (Zurich). The Android client calls it with
- * ACCOUNT_DELETION_REGION in app/src/main/java/com/polysocial/model/account/AccountDeletion.kt,
- * which arrives with the app's follow-up PR (#206, branch feature/206-delete-account-repository):
- * both must match, or the client reaches no function.
+ * Region (Zurich) of the deleteAccount callable and of the scheduled deleteUnverifiedAccounts
+ * (#226), whose Cloud Scheduler job the deploy creates in the same region. The Android client
+ * calls deleteAccount with ACCOUNT_DELETION_REGION in
+ * app/src/main/java/com/polysocial/model/account/AccountDeletion.kt: both must match, or the
+ * client reaches no function.
  */
 const REGION = "europe-west6";
 
