@@ -20,6 +20,7 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (a verified association's map of its own events, #133, carried over from the wiki copy; association routing marked as built, after review). -->
 <!-- Contributors: Claude Opus 5.5 (My friend code and ZXing marked as built, #339); Konstantinos Perdikeas (directed, reviewed and owns it). -->
 <!-- Contributors: Claude (Fable 5.2, Anthropic) (the scheduled cleanup of unverified accounts marked as built, #226). -->
+<!-- Contributors: Claude (Fable 5.2, Anthropic) (the event capacity decision, its rule sketch with the allowed and denied cases, and what each operation does to the counter, #372). -->
 
 How PolySocial is built, as we currently envision it. The page follows the [Android App Architecture guide](https://developer.android.com/topic/architecture/intro): a **UI layer** (Compose screens and ViewModels), a **domain layer** of pure Kotlin logic, and a **data layer** of repositories in front of Firebase, the map and geocoding services, and the device sensors.
 
@@ -274,7 +275,7 @@ This is the design to build against, not a claim that every component is already
 | Pin and place search (#111) | Create Event → picker ViewModel; confirm coordinates and place name | Geocoding service interface and fake; reuse `LocationService` for optional centering and the isolated Mapbox renderer | Nominatim is the approved search provider: submitted searches only, custom User-Agent, caching and at most 1 request/second. Failed/offline search retains the pin; denied location opens on Lausanne. |
 | Event detail (#112) | Shared detail ViewModel, category styles, local date/time and one-off distance | `EventRepository.getEvent(id)` is a live `Flow`, decoded by hand with `eventFromFirestore` | Existing event read rules; deleted or unreadable is not found, network errors offer Retry, cached content remains visible offline. Optional `locationName` describes the chosen event venue, not a location history. |
 | Filtering (#114, #115) | `EventFilter` + pure `filterEvents(events, filter, userLocation)`; Events / Map ViewModels | Filter already loaded `getUpcomingPublicEvents` results | No new Firestore query or index. Case/accent-insensitive title search; categories OR, criteria AND; clock-injected date range [start, end); missing location ignores the distance criterion. |
-| Attendance (#121, #122) | Detail: register/cancel; pure capacity checks coordinated by its ViewModel; an association's "manage event" shows the "Going" count (#131) | `RegistrationRepository.register(eventId)`, `cancel(eventId)`, `observeMyRegistrations()`, `countAttendees(eventId)` (organizers, a server `count()`); Firestore implementation + fake | `events/{eventId}/attendees/{uid}` (`uid`, `registeredAt`); own registrations through a collection-group query on `uid`. Register and cancel are idempotent; offline writes fail instead of queuing. Refusing full events needs the capacity decision below. |
+| Attendance (#121, #122) | Detail: register/cancel; pure capacity checks coordinated by its ViewModel; an association's "manage event" shows the "Going" count (#131) | `RegistrationRepository.register(eventId)`, `cancel(eventId)`, `observeMyRegistrations()`, `countAttendees(eventId)` (organizers, a server `count()`); Firestore implementation + fake | `events/{eventId}/attendees/{uid}` (`uid`, `registeredAt`); own registrations through a collection-group query on `uid`. Register and cancel are idempotent; offline writes fail instead of queuing. A full event is refused with the event's `attendeeCount` (decision 21, #372; built by #373). |
 | Reminder (#120, #123) | Registered student's explicit opt-in; pure start minus 1 hour calculation | `ReminderScheduler` interface + fake; WorkManager only in its implementation | Unique work per event on the device, no new Firestore collection or FCM. No scheduling once the reminder time has passed; denial restores Off. Off/cancel/logout removes work; notification taps open shared detail. |
 | Privacy / logout (#103, #108, #109) | Profile entry, dated offline notice and unbuilt-action Snackbar; logout confirmation | Notice requires no new data access; logout uses `AuthRepository.logOut()` | Notice describes only collected data and actual access. Export and attendance-based matching remain unavailable, and in-app deletion until #207 (policy: decision 15). The private manual-deletion contact, also the associations' deletion route, must be confirmed. Cache isolation on any UID change follows #198 (decision 15). |
 
@@ -494,10 +495,10 @@ flowchart LR
 |---|---|---|
 | `users/{uid}` | `uid`, `email`, `displayName` (at most 50, #143), `section`, `year`, `interests` (codes from `INTERESTS` in `ProfileOptions.kt`, each at most once, in that list's order; absent on a profile saved before #230, empty for an association), `createdAt`, `accountType`, `isAssociationVerified` | 🟩 #34, #45, #230 |
 | `deletedAccounts/{uid}` | empty: only the deleted account's UID, as document ID. Written by `deleteAccount` with the profile deletion; the rules refuse recreating either profile, starting/joining groups, recreating markers or reading/sending chat messages (#241), under it. No app access | 🟩 #229 |
-| `events/{eventId}` | `title`, `description`, `category`, `location`, `locationName?` (#112), `startTime`, `endTime?`, `capacity?`, `isPrivate`, `createdBy`, `organizerIds`, `allowedUids`, `isAssociationEvent` | 🟩 #45 |
+| `events/{eventId}` | `title`, `description`, `category`, `location`, `locationName?` (#112), `startTime`, `endTime?`, `capacity?`, `isPrivate`, `createdBy`, `organizerIds`, `allowedUids`, `isAssociationEvent`; `attendeeCount` (#372): the number of registered students, a whole number changed only together with a registration, absent on an event written before it (read as 0) | 🟩 #45; `attendeeCount` 🟦 decided in #372, built by #373 |
 | `associations/{uid}` | `name` (1–60), `type` (`ASSOCIATION`, `COMMISSION`, `CLUB`, `EPFL_UNIT`), `about` (1–1000), `website?` (`https://`, at most 200), `createdAt`. Document ID = the association account's UID | 🟩 #126 |
 | `publicProfiles/{uid}` | `displayName`, `section`, `year`, `interests` (codes from #230's fixed list), always visible; never the email. Written in the same transaction as `users/{uid}`. `section`, `year` and `interests` must be codes from `ProfileOptions.kt`; `interests` copies the private list in the same order (`[]` when the private profile has none). A profile saved before #229 gets it at its next app start (#291, `ensurePublicProfile`). `username`, `visibility` (public or private) and `bio` come later | 🟩 S4 #229, #230 (built) |
-| `events/{eventId}/attendees/{uid}` | student UID as document ID; `uid` (same UID, for the collection-group query) and server-set `registeredAt` | 🟩 S2 #121; no separate top-level registrations collection |
+| `events/{eventId}/attendees/{uid}` | student UID as document ID; `uid` (same UID, for the collection-group query) and server-set `registeredAt`. Counted in the event's `attendeeCount` (#372) | 🟩 S2 #121; no separate top-level registrations collection |
 | Device reminder state | event ID, title and start time for a local notification; unique work, opt-in | 🟩 S2 #123; no Firestore collection |
 | `matchRequests/{id}` | `eventId`, `fromUid`, `toUid`, `status` | ⬜ not used by Find a group, where students join open groups directly (#228); revisit with #26, #27 |
 | `events/{eventId}/groups/{groupId}` | `capacity` (4), `memberUids` (1 to `capacity`, creator first), `createdBy`, server-set `createdAt` | 🟦 S4 #232 |
@@ -540,7 +541,7 @@ Every PR that changes rules follows the process in `AGENTS.md`: "Changes Securit
 
 - **Google sign-in (#106):** both entry buttons use Credential Manager through the auth repository. Invalid domains are rejected before Firebase account creation; Firebase validates the token and verified exact `@epfl.ch` identity before profile access. Firebase manages compatible account linking; the owner confirmed automatic linking for EPFL Google accounts through EPFL SSO. Use Firebase's returned UID without client-side linking or a dedicated collision flow.
 
-Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after review, and 5 and 11 revised on 2026-10-06; 15 added on 2026-10-28 (#201); 16 to 18 decided by the Sprint 4 PO on 2026-11-01 (#228); 19 added on 2026-11-11 (#210); 20 decided by the Sprint 5 PO on 2026-11-11 (#338). The issues are being updated to match.
+Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after review, and 5 and 11 revised on 2026-10-06; 15 added on 2026-10-28 (#201); 16 to 18 decided by the Sprint 4 PO on 2026-11-01 (#228); 19 added on 2026-11-11 (#210); 20 decided by the Sprint 5 PO on 2026-11-11 (#338); 21 added on 2026-11-14 (#372). The issues are being updated to match.
 
 | # | Topic | Decision |
 |---|---|---|
@@ -564,6 +565,7 @@ Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after re
 | 18 | Deploying rules, indexes and functions | Nothing deploys automatically. After a PR changing `firestore.rules`, `firestore.indexes.json` or `firebase/functions` merges, its author deploys it with `--only`, or asks a teammate to (any team member can), and notes it in the PR. #220's rules and #214's index were missing from production until 2026-10-29 (added on 2026-11-01, #228) |
 | 19 | Manual association review | Project owners follow the [manual review workflow](Association-Review.md) in the Firebase console, checking representation and duplicates before approval. An account that is declined stays pending and can edit its setup. A future admin interface requires a server-checked reviewer role. (#210) |
 | 20 | Friends | One `friendships/{pairId}` document per pair of students (`{lowerUid}~{higherUid}`), `pending` → `accepted`; declining, cancelling and removing delete it, so two students never have more than one request. Added by scanning `polysocial://friend/{uid}` first; no usernames yet (open question). Only the two students read it, students only, and the other must have a public profile; a deleted account loses all access at once. Each action checks, in a transaction, that the request is still the one shown. Writes refused offline. `deleteAccount` deletes the account's friendships (added on 2026-11-11, #338) |
+| 21 | Event capacity | A counter on the event, kept in the registration transaction. Every `events/{id}` has `attendeeCount`: registering creates the student's `attendees/{uid}` and raises it by one in the same transaction, only while it is below `capacity`; cancelling deletes the registration and lowers it by one. The event update rule gains one narrow student branch: only `attendeeCount` changes, by exactly ±1, with the caller's own registration created or deleted in the same write; everything else about the event stays organizer-only. `deleteAccount` lowers the counter for each registration it removes, and a deleted event takes its counter along. Rejected: a counter in its own document, a Cloud Function that registers, and no capacity check. Details below; built by #373 (added on 2026-11-14, #372) |
 
 **Sprint 2 decisions:** sign-in is email/password and Google only, not Microsoft, which would need EPFL's admin to whitelist the app, while Google goes through EPFL's SSO (#106, #107, PR #197 review); events store the picked place's name as an optional `locationName` of at most 100 characters (rules #102, app #151; blank for older events); Nominatim remains the approved explicit-search geocoder; one shared detail screen replaces the Map placeholder, using each entry tab's event-ID route; co-organizers wait for Public profiles; associations move to Sprint 3; unbuilt actions show a Snackbar. Sources: #103, #106, #111, #112 and the Sprint Planning record #141.
 
@@ -576,7 +578,7 @@ Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after re
 | `deletedAccounts/{uid}` | written empty in the same transaction (step 1) and kept: only the UID, so the deleted user's still-valid ID token can't recreate either profile | function (Admin SDK) |
 | `events/*` the user created or organizes | kept unchanged; co-organizers keep managing it, a sole organizer's event can't be edited any more; a missing public profile is a deleted account, an association or a profile saved before #229 whose student hasn't opened the app since (#291), so not shown as "Deleted user" on its own | none |
 | `allowedUids` entries on others' private events | kept (opaque UID, no personal data) | none |
-| the student's attendees (#121) | deleted after the marker (step 2, #275), with the collection-group query on `uid`; the rules refuse a new one under the marker | function (Admin SDK) |
+| the student's attendees (#121) | deleted after the marker (step 2, #275), with the collection-group query on `uid`; the rules refuse a new one under the marker. Each deletion also lowers its event's `attendeeCount` (decision 21, built by #373) | function (Admin SDK) |
 | reminders (#123) | not built yet; its issue adds cleanup to the function or the reminder worker | — |
 | `friendships/*` containing the UID (#338) | deleted, pending or accepted, by a query on `uids array-contains` in the function, **after** the profile transaction: from then on the public profile is gone and the marker exists, so no new request can name the UID, and the marker stops the deleted account's own token from reading or changing a friendship until the cleanup ends; idempotent like the other steps, so Retry finishes it. Added by the friendships storage task, together with its rules | function (Admin SDK) |
 | Firestore disk cache | cleared after `Deleted` (`SessionCache.clear()`) | client |
@@ -610,6 +612,42 @@ How each failure behaves:
 
 How it runs and fails is in the README's Cloud Functions section; the constraint it puts on later features (a verified account must not become unverified again) is in `CONTEXT.md`, "7-day cleanup".
 
+**Event capacity** (decision 21, #372; built by #373). The counter is on the document every screen already reads, so "Event full" shows live from the event's own listener with no extra read, and registering stays one client transaction, covered by the rules tests and the instrumented emulator tests CI runs. The price is one narrow student branch in the organizer-only event update rule. The alternatives:
+
+| Rejected | Why |
+|---|---|
+| A counter in its own document | It keeps the event update rule organizer-only, but costs an extra read wherever "Full" is shown, and a list of events can't show it cheaply |
+| A Cloud Function that registers server-side | A cold-start delay on "I'm going", a manual deploy to keep in step with the app and the rules, and no CI coverage for registration, since CI doesn't run the Functions emulator |
+| No capacity check | It leaves the organizer's story unmet: an event takes more students than the venue can hold |
+
+The field:
+- **`events/{id}.attendeeCount`** is the number of the event's registrations (its `attendees` documents), a whole number from 0 up. A new event starts at 0: the app writes 0, and the rules also accept an event without the field. An absent field reads as 0 in the rules and in the app; the rules read it with `get('attendeeCount', 0)`, because a missing field makes a rule fail rather than compare false.
+- **Kept for every event, with or without a `capacity`.** An organizer can add a capacity later and the count must already be right, and the app and the rules keep a single path.
+- **The limit applies when `capacity` is a number.** `null` or absent is no limit. The rules don't validate `capacity` (the form does: at least 2), so a value that isn't a number is no limit, and a number at or below the count means full.
+- **Everyone who can read the event reads how many students are going.** Before, only its organizers could count them, so #373 updates the privacy notice. Who is going stays visible to the organizers only.
+
+What each operation does:
+
+| Operation | The student's `attendees/{uid}` | `attendeeCount` |
+|---|---|---|
+| Create an event | none yet | 0 |
+| An organizer edits the event, `capacity` included | untouched | unchanged: the app's `update` never sends it, and the rules refuse an organizer's change |
+| Register, a place left or no capacity | created | +1 in the same transaction |
+| Register, event full | not created (`Full`) | unchanged |
+| Register again | untouched (`Registered`) | unchanged |
+| Cancel, event readable, also once it has ended | deleted | −1 in the same transaction |
+| Cancel, counter 0 or absent (a registration from before the counter, until the recount) | deleted | unchanged: never below 0 |
+| Cancel, event deleted | deleted | none: it went with the event |
+| Cancel, event no longer readable (made private, or the student removed from `allowedUids`) | deleted | unchanged, so **one too high** until a recount |
+| Cancel again, or without a registration | nothing to delete | unchanged |
+| Account deletion (`deleteAccount`) | deleted, one transaction per registration | −1 in that transaction if the event exists and its counter is above 0; a retry finds the registration gone, so never twice |
+| Event deletion (`deleteEvent`, then the `deleteEventRegistrations` trigger) | deleted by the trigger, as today | deleted with the event; the trigger doesn't change |
+| An event written again under the same ID (the demo seed) | the seed's | the seed's: `demoData.js` writes the number of registrations it seeds |
+| An organizer lowers `capacity` below the count | kept | unchanged: the event is full until enough students cancel (open question below) |
+| The recount script | untouched | set to the number of registrations |
+
+Once the recount has run, the counter is never below the number of registrations: every registration raises it, and it is only lowered together with the deletion of a counted registration. So drift can't let an event take more students than its capacity. (The one exception is an event created again under a deleted event's ID before the trigger removed the old registrations: it starts at 0 beside them. The app never reuses an ID, and the demo seed deletes everything under its events first.) The counter can only end up too high, by one for each student who cancels after losing read access to the event (today: an organizer making it private in Edit event; nothing removes a student from `allowedUids` yet). Such an event looks fuller than it is. The organizers' "Going" stays exact, and running the recount again repairs the counter.
+
 **Open questions** (add new ones here and in `CONTEXT.md`), with an owner where one is agreed:
 - **Groups of a deleted event or account (owner: Ayoub with #275 for events, Mohamed for `deleteAccount`):** deleting an event must also delete its `groups`, `groupMembers` and messages, and deleting an account must take its UID out of `memberUids` and delete its marker. Client-side deletion of nested messages doesn't scale; a function triggered by the deletion may be needed (possible now that the project is on Blaze). The same holds when the last member leaves (#237): the client deletes the group, but its `messages` stay behind, personal data nobody can read or delete. `deleteAccount` doesn't delete a student's messages either; deleting or anonymizing them is the team's call. Until `deleteAccount` takes the UID out of `memberUids`, a deleted account's ID token, valid up to 1 h, can still read its groups and their chats; the message `create` rule's `isDeletedAccount` already stops it sending (#334 review).
 - **"I'm going" in the rules (owner: Ayoub, #244):** whether joining a group also requires an `attendees` document in the rules, or only in the app.
@@ -619,7 +657,7 @@ How it runs and fails is in the README's Cloud Functions section; the constraint
 - **Shared privacy notice (#103):** Mapbox receives map requests for the viewed area; Mehdi owns Profile → Privacy & data; the private deletion contact and final wording still need confirmation before release.
 - **Association members and event drafts:** Figma has them, but there is no data model yet. How does an association find and add a student as a member, and what can each role do? Drafts are not in the `Event` model.
 - **Events without an end time:** `endTime` is optional, but check-in and Find my group only work during the event. Which time window applies when it is not set?
-- **Attendance capacity (#121):** the schema is decided (see the attendees row above). Refusing a full event atomically needs a counter on the event that a student may change by exactly ±1 with their own attendee document, which widens the organizer-only event update rule. The team decides whether to allow it before the second #121 PR.
+- **Capacity lowered below the number going (#372):** the rules let an organizer set any `capacity`, also below `attendeeCount`. Nothing is refused and nobody is removed: the event is full until enough students cancel (decision 21). Whether Edit event should refuse or warn is not decided.
 - **Logout/reminders (#109, #123):** confirm account-scoped reminder cancellation on logout and account deletion before another account enters; cache isolation is decided (#198, decision 15).
 - **Association account deletion (#201):** associations can't delete their own `users/{uid}` (#161), and the deletion flow refuses them with the privacy contact. Who deletes an association account, its `associations/{uid}` and its events, and how, is not decided.
 - **Year field values:** the profile step offers BA1–BA6 and MA1–MA4 under "Year" (as in Figma and #34), but these are EPFL semesters, and there is no option for exchange or PhD students. Rename to "Semester" and/or add options?
@@ -672,6 +710,7 @@ Every Scrum Board item mapped to the components it touches.
 | #120–#123 Registration / reminders | Attendance | attendees, `RegistrationRepository`, `ReminderScheduler`, notification permission | 🟩 S2 |
 | #137–#139 M1 delivery | Tooling / architecture | APK artifact, wiki, M1 snapshot, current architecture | 🟩 S2 |
 | #124–#131, #140 Associations | Associations | association repository / Organization tab / event management | 🟦 Sprint 3; no student-flow dependency |
+| #372, #373 Event capacity | Event Creation | `events/{id}.attendeeCount`, `RegistrationRepository` (`Full`), the event and attendees rules, `deleteAccount`, a recount script, "Event full" on the detail | 🟦 decided in #372, built by #373 |
 | #1, #53, #55 | — | project setup, PR template, CI. No product architecture impact | — |
 
 </details>
