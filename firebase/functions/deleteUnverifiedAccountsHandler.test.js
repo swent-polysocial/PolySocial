@@ -451,6 +451,16 @@ test("the function runs daily, on Zurich time, in deleteAccount's region", () =>
   assert.deepEqual(endpoint.region, [REGION]);
 });
 
+// From the same manifest. Without a retry setting, Cloud Scheduler doesn't call a failed run
+// again: the README and the handler count on the next day's run instead.
+test("the function is a 2nd generation one whose failed run isn't retried", () => {
+  const endpoint = require("./index").deleteUnverifiedAccounts.__endpoint;
+
+  assert.equal(endpoint.platform, "gcfv2");
+  // As the Firebase CLI reads the manifest, in JSON: settings left undefined are not in it.
+  assert.deepEqual(JSON.parse(JSON.stringify(endpoint.scheduleTrigger.retryConfig)), {});
+});
+
 // The period is a promise to users, stated in words in the privacy notice and in the README:
 // nothing else keeps those equal to the constant.
 test("the privacy notice and the README state the retention period", () => {
