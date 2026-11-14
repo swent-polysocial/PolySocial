@@ -1,5 +1,6 @@
 // Contributors: Claude (Fable 5.2, Anthropic) drafted the scheduled cleanup of unverified accounts, #226.
 // Contributors: Claude (Fable 5.2, Anthropic) (only email and password sign-ups are deleted, after review, #226).
+// Contributors: Claude (Opus 5.5, Anthropic) (the notice string named in the KDoc, after review, #226).
 "use strict";
 
 const { errorCode } = require("./deleteAccountHandler");
@@ -9,7 +10,7 @@ const { MAX_BATCH_WRITES } = require("./registrations");
  * How long an email and password sign-up may stay unverified before the daily cleanup deletes it,
  * in days.
  * The one place to change the period. The README's Cloud Functions section and the app's privacy
- * notice (`privacy_notice_device_body` in strings.xml) state it too: change them together.
+ * notice (`privacy_notice_deletion_body` in strings.xml) state it too: change them together.
  */
 const UNVERIFIED_ACCOUNT_RETENTION_DAYS = 7;
 
