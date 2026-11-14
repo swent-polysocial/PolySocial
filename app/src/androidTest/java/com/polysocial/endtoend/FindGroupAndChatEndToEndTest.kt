@@ -314,8 +314,9 @@ class FindGroupAndChatEndToEndTest {
     assertEquals(listOf(JULIA.uid, MARC.uid, UID), members)
     // Like the Security Rules, the chat takes its members from the group.
     fakeMessages.setMembers(PARTY.id, bestGroup.id, members.toSet())
-    // The app shell's Snackbar stays up over the screens opened next and covers the chat's Send,
-    // which the test reaches within a second: its tap would land on the Snackbar (#380).
+    // The app shell's Snackbar stays up over the screens opened next and covers the chat's Send:
+    // the tap would land on the Snackbar (#380). Its few seconds run on the test's clock, which
+    // moves only while the test waits: without this wait it is still up at Send on any device.
     compose.waitUntil("the Snackbar is gone", TIMEOUT_MS) {
       compose.onAllNodes(hasText(JOINED)).fetchSemanticsNodes().isEmpty()
     }
