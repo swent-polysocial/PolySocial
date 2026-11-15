@@ -1,4 +1,6 @@
 // Contributors: OpenAI Codex (deleted-token chat access, #241).
+// Contributors: Claude (Fable 5.2 and Opus 5.5, Anthropic) (prototype of the #365 chat rules on this
+// never-merged branch, firebase/firestore/PROTOTYPE-365.md).
 // Contributors: Claude (isEpflUser helper, #33; own users/{uid} rule and no catch-all, #35;
 // fixed uid and accountType after review, #35; @epfl.ch associations aren't students and
 // accountType values on create, association profiles not deletable by the client, #161;
@@ -449,6 +451,8 @@ service cloud.firestore {
     // rule, so a rate limit can be added to create without touching reads. Associations get no
     // access (isStudent). Account cleanup alone replaces senderId with an empty string, retaining
     // text/time; clients cannot forge that deleted-author marker or restore its account link.
+    // PROTOTYPE (#365, never merged): this match is the group-messages block of
+    // docs/Architecture-Diagram.md section 3.8 (the sender's unsend added), indented by 4 spaces.
     match /events/{eventId}/groups/{groupId}/messages/{messageId} {
       function isMember() {
         let group = /databases/$(database)/documents/events/$(eventId)/groups/$(groupId);
@@ -467,6 +471,162 @@ service cloud.firestore {
           && request.resource.data.text.size() >= 1
           && request.resource.data.text.size() <= 1000
           && request.resource.data.createdAt == request.time;
+      // Unsend (#365): the sender empties the text of their own message while still a member, and
+      // nothing else changes.
+      allow update: if isMember()
+          && resource.data.senderId == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text'])
+          && request.resource.data.text == '';
+    }
+
+    // PROTOTYPE (#365, never merged): friendships as #338 specifies, only as far as the chat
+    // rules need it. The real rules are #357's.
+    match /friendships/{pairId} {
+      function isOneOfThePair() {
+        return isStudent()
+            && !isDeletedAccount(request.auth.uid)
+            && resource.data.uids.hasAny([request.auth.uid]);
+      }
+
+      function otherUid(uids) {
+        return uids[0] == request.auth.uid ? uids[1] : uids[0];
+      }
+
+      allow read: if isOneOfThePair();
+      allow create: if isStudent()
+          && !isDeletedAccount(request.auth.uid)
+          && request.resource.data.keys().hasAll(['uids', 'requestedBy', 'status', 'createdAt'])
+          && request.resource.data.keys().hasOnly(['uids', 'requestedBy', 'status', 'createdAt'])
+          && request.resource.data.uids is list
+          && request.resource.data.uids.size() == 2
+          && request.resource.data.uids[0] < request.resource.data.uids[1]
+          && pairId == request.resource.data.uids[0] + '~' + request.resource.data.uids[1]
+          && request.resource.data.uids.hasAny([request.auth.uid])
+          && request.resource.data.requestedBy == request.auth.uid
+          && request.resource.data.status == 'pending'
+          && request.resource.data.createdAt == request.time
+          && exists(/databases/$(database)/documents/publicProfiles/$(otherUid(request.resource.data.uids)));
+      allow update: if isOneOfThePair()
+          && resource.data.requestedBy != request.auth.uid
+          && resource.data.status == 'pending'
+          && request.resource.data.status == 'accepted'
+          && request.resource.data.acceptedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'acceptedAt'])
+          && !isDeletedAccount(resource.data.requestedBy);
+      allow delete: if isOneOfThePair();
+    }
+
+    // PROTOTYPE (#365, never merged): from here to the association block, the main rules block of
+    // docs/Architecture-Diagram.md section 3.8, indented by 4 spaces.
+    // An ID of exactly two non-empty parts joined by one '~'. split('~') drops trailing empty parts,
+    // so the ID is also compared with its two parts joined again.
+    function isTwoPartId(id) {
+      let parts = id.split('~');
+      return parts.size() == 2
+          && parts[0] != ''
+          && id == parts[0] + '~' + parts[1];
+    }
+
+    // The pair ID of #338 for member: two different UIDs, sorted, one of them member's.
+    function isPairIdOf(id, member) {
+      let pair = id.split('~');
+      return isTwoPartId(id)
+          && pair[0] < pair[1]
+          && pair.hasAny([member]);
+    }
+
+    // The owner of a delete-for-me marker reads or writes it: a student, not under a deletion marker.
+    function isMarkerOwner(uid) {
+      return isStudent()
+          && request.auth.uid == uid
+          && !isDeletedAccount(uid);
+    }
+
+    // A delete-for-me marker holds exactly hiddenUpTo, no later than the server's time.
+    function isMarkerData() {
+      return request.resource.data.keys().hasOnly(['hiddenUpTo'])
+          && request.resource.data.hiddenUpTo <= request.time;
+    }
+
+    match /chats/{pairId} {
+      function isOfThePair() {
+        return isStudent()
+            && !isDeletedAccount(request.auth.uid)
+            && isPairIdOf(pairId, request.auth.uid);
+      }
+
+      function areFriends() {
+        let friendship = /databases/$(database)/documents/friendships/$(pairId);
+        return exists(friendship) && get(friendship).data.get('status', null) == 'accepted';
+      }
+
+      allow get: if isOfThePair();
+      allow list: if isStudent()
+          && !isDeletedAccount(request.auth.uid)
+          && resource.data.uids.hasAny([request.auth.uid]);
+      allow create: if isOfThePair()
+          && areFriends()
+          && request.resource.data.keys().hasOnly(['uids'])
+          && request.resource.data.uids == pairId.split('~');
+
+      match /messages/{messageId} {
+        allow get, list: if isOfThePair();
+        allow create: if isOfThePair()
+            && areFriends()
+            && existsAfter(/databases/$(database)/documents/chats/$(pairId))
+            && request.resource.data.keys().hasAll(['senderId', 'text', 'createdAt'])
+            && request.resource.data.keys().hasOnly(['senderId', 'text', 'createdAt'])
+            && request.resource.data.senderId == request.auth.uid
+            && request.resource.data.text is string
+            && request.resource.data.text.size() >= 1
+            && request.resource.data.text.size() <= 1000
+            && request.resource.data.createdAt == request.time;
+        // Unsend: the sender empties the text of their own message, and nothing else changes.
+        allow update: if isOfThePair()
+            && areFriends()
+            && resource.data.senderId == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text'])
+            && request.resource.data.text == '';
+      }
+    }
+
+    // Delete for me, one-to-one: a student's own marker on one of their chats.
+    match /users/{uid}/hiddenChats/{pairId} {
+      function isValidMarker() {
+        return isMarkerOwner(uid)
+            && isPairIdOf(pairId, uid)
+            && exists(/databases/$(database)/documents/chats/$(pairId))
+            && isMarkerData();
+      }
+
+      allow get, list: if isMarkerOwner(uid);
+      allow create: if isValidMarker();
+      // Only forward: an earlier time would list the chat again without a new message.
+      allow update: if isValidMarker()
+          && request.resource.data.hiddenUpTo >= resource.data.hiddenUpTo;
+    }
+
+    // Delete for me, group chat: a student's own marker on a group they are in, under the ID
+    // {eventId}~{groupId}, in a collection of its own.
+    match /users/{uid}/hiddenGroupChats/{chatId} {
+      function group() {
+        let ids = chatId.split('~');
+        return /databases/$(database)/documents/events/$(ids[0])/groups/$(ids[1]);
+      }
+
+      function isValidMarker() {
+        return isMarkerOwner(uid)
+            && isTwoPartId(chatId)
+            && exists(group())
+            && get(group()).data.memberUids.hasAny([uid])
+            && isMarkerData();
+      }
+
+      allow get, list: if isMarkerOwner(uid);
+      allow create: if isValidMarker();
+      // Only forward, as for a one-to-one chat.
+      allow update: if isValidMarker()
+          && request.resource.data.hiddenUpTo >= resource.data.hiddenUpTo;
     }
 
     // An association's public profile (#126), keyed by the association account's UID. Its

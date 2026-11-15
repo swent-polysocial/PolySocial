@@ -1,0 +1,5 @@
+# Contributors: Claude (Opus 5.5, Anthropic) (prototype of the #365 chat rules, never merged).
+# The mutants make.py writes are generated: never commit them.
+*.rules
+list.txt
+logs/

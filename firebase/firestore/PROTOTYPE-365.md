@@ -1,0 +1,24 @@
+<!-- Contributors: Claude (Fable 5.2 and Opus 5.5, Anthropic) (prototype of the #365 chat rules, never merged). -->
+
+Prototype for #365, **never merged**: the Security Rules of `docs/Architecture-Diagram.md` section 3.8 (one-to-one chats, unsend and delete for me in one-to-one and group chats) applied to the repository's rules, with a prototype of #338's `friendships` rules, the tests that checked them, a prototype of the step the design adds to `deleteAccount`, and one variant of the rules per new condition, all against the Firestore emulator. It is the branch `prototype/365-chat-rules`, one commit on top of `main`, for whoever builds the Sprint 7 tasks to check the design against what ran and to start from. The rules tasks write the real rules and move the cases into `firestore.rules.test.js`, the only rules file CI runs.
+
+| File | On this branch |
+|---|---|
+| `firebase/firestore/firestore.rules` | **replaces** the repository's rules: the chat blocks of section 3.8 (the main block and the group-messages block, byte-identical to the document's, indented by 4 spaces) and the `friendships` prototype. Only comments marked `PROTOTYPE` were added around them |
+| `firebase/firestore/firestore.rules.test.js` | unchanged: the repository's suite, run against these rules |
+| `firebase/firestore/chats.prototype.test.js` | new: the one-to-one chat (85 cases); `RULES_FILE` points it at a mutant |
+| `firebase/firestore/chats.deleting.prototype.test.js` | new: unsend and delete for me in one-to-one chats (38 cases) |
+| `firebase/firestore/chats.group.prototype.test.js` | new: unsend and delete for me in group chats (25 cases) |
+| `firebase/firestore/mutants-365/make.py`, `run.sh` | new: one variant of the rules per new condition (26), and the run; the `*.rules`, `list.txt` and `logs/` they write are generated and ignored |
+| `firebase/functions/chats.prototype.emulator.test.js` | new: what the unchanged `deleteAccountHandler` does to one-to-one messages, and the chat step the design adds, written in the test (8 tests) |
+| `firebase/functions/chatsDeleting.prototype.emulator.test.js` | new: the unchanged handler on unsent messages and markers, and the marker cleanup the design adds, written in the test (6 tests) |
+
+Run from the repository root on this branch, after `npm ci --prefix firebase` and `npm ci --prefix firebase/functions`:
+
+```
+firebase emulators:exec --project demo-polysocial --only firestore "node firebase/firestore/firestore.rules.test.js && node firebase/firestore/chats.prototype.test.js && node firebase/firestore/chats.deleting.prototype.test.js && node firebase/firestore/chats.group.prototype.test.js && node --test --test-concurrency=1 firebase/functions/chats.prototype.emulator.test.js firebase/functions/chatsDeleting.prototype.emulator.test.js"
+python3 firebase/firestore/mutants-365/make.py
+firebase emulators:exec --project demo-polysocial --only firestore "sh firebase/firestore/mutants-365/run.sh"
+```
+
+Expected (2026-11-14, rerun from a clean checkout on 2026-11-15): the repository's suite 513 of 513; the one-to-one chat 85 of 85; unsend and delete for me 38 of 38 (one-to-one) and 25 of 25 (group); the `deleteAccount` side 14 of 14 (8 + 6). Mutants: 26, caught 24. The two that survive are kept on purpose, as section 3.8 says: `two-part-size` (`parts.size() == 2`: other part counts are refused by the join comparison or by an error) and `group-hide-exists` (`exists(group())`: `get()` on a missing group is an error, so a denial anyway). `two-part-first` is caught by the one-to-one cases only, since an empty event ID in a group marker's path is an error too.
