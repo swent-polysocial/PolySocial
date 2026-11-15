@@ -747,7 +747,7 @@ Every PR that changes rules follows the process in `AGENTS.md`: "Changes Securit
 
 - **Google sign-in (#106):** both entry buttons use Credential Manager through the auth repository. Invalid domains are rejected before Firebase account creation; Firebase validates the token and verified exact `@epfl.ch` identity before profile access. Firebase manages compatible account linking; the owner confirmed automatic linking for EPFL Google accounts through EPFL SSO. Use Firebase's returned UID without client-side linking or a dedicated collision flow.
 
-Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after review, and 5 and 11 revised on 2026-10-06; 15 added on 2026-10-28 (#201); 16 to 18 decided by the Sprint 4 PO on 2026-11-01 (#228); 19 added on 2026-11-11 (#210); 20 decided by the Sprint 5 PO on 2026-11-11 (#338); 21 decided by the Sprint 6 PO on 2026-11-14 (#372); 22 decided on 2026-11-14 (#281). The issues are being updated to match.
+Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after review, and 5 and 11 revised on 2026-10-06; 15 added on 2026-10-28 (#201); 16 to 18 decided by the Sprint 4 PO on 2026-11-01 (#228); 19 added on 2026-11-11 (#210); 20 decided by the Sprint 5 PO on 2026-11-11 (#338); 21 decided by the Sprint 6 PO on 2026-11-14 (#372); 22 decided by the Sprint 6 PO on 2026-11-14 (#281). The issues are being updated to match.
 
 | # | Topic | Decision |
 |---|---|---|
