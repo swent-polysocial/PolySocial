@@ -4,6 +4,7 @@
 // failed request and the wipe's retry, #309).
 // Contributors: Claude (Opus 5.5, Anthropic) let a test sign in on its own Firebase app, #198;
 // Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) (the wipe also retries a cancelled answer, #363).
 package com.polysocial.emulator
 
 import android.net.Uri
@@ -166,10 +167,11 @@ class FirebaseEmulator : ExternalResource() {
   }
 
   /**
-   * Deletes everything at [url]. The Firestore emulator sometimes fails a wipe with HTTP 500 when
-   * it can't notify a listener whose stream has already closed, and the next try succeeds (see
-   * CONTEXT.md, Traps, #309). So a server error is retried a few times; any other failure fails at
-   * once.
+   * Deletes everything at [url]. The Firestore emulator sometimes fails a wipe when it can't notify
+   * a listener whose stream has already closed: with HTTP 500, or with 499 (`CANCELLED`, "call
+   * already cancelled") after a test that kept its listeners open while the device went offline.
+   * The next try succeeds (see CONTEXT.md, Traps, #309, #363). So a server error or a 499 is
+   * retried a few times; any other failure fails at once.
    */
   private suspend fun wipe(url: String) {
     repeat(WIPE_ATTEMPTS - 1) {
@@ -177,7 +179,7 @@ class FirebaseEmulator : ExternalResource() {
         request("DELETE", url)
         return
       } catch (e: RequestFailed) {
-        if (e.code < HTTP_SERVER_ERROR) throw e
+        if (e.code < HTTP_SERVER_ERROR && e.code != HTTP_CANCELLED) throw e
         delay(WIPE_RETRY_DELAY_MS)
       }
     }
@@ -281,6 +283,9 @@ class FirebaseEmulator : ExternalResource() {
     private const val HTTP_NOT_FOUND = 404
     private const val MAX_ERROR_BODY_CHARS = 1_000
     private const val HTTP_SERVER_ERROR = 500
+
+    /** What the emulator answers when it fails a request with gRPC's `CANCELLED` status. */
+    private const val HTTP_CANCELLED = 499
     private const val WIPE_ATTEMPTS = 3
     private const val WIPE_RETRY_DELAY_MS = 1_000L
   }
