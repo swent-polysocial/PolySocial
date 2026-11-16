@@ -11,7 +11,8 @@
 // stay allowed readers after review; event registrations, #121; deleted accounts can't
 // register, #275); Claude (Opus 5.5, Anthropic) (event groups and their groupMembers markers,
 // #232, with fixes after review; group chat messages, #237, and no messages from a deleted
-// account, after review).
+// account, after review); Claude Opus 5.5 (friendships, written test-first and adapted from
+// Mohamed Khellaf's #365 prototype, #357; Konstantinos Perdikeas directed, reviewed and owns it).
 rules_version = '2';
 // Contributors: OpenAI Codex (prevent deleted tokens recreating group membership, #241).
 // Contributors: Claude (Opus 5.5, Anthropic) (co-organizers, written test-first, #370).
@@ -497,6 +498,76 @@ service cloud.firestore {
           && request.resource.data.text.size() >= 1
           && request.resource.data.text.size() <= 1000
           && request.resource.data.createdAt == request.time;
+    }
+
+    // A friend request or friendship between two students (#357, designed in #338), one document
+    // per pair: pairId is the two UIDs sorted and joined by '~' (friendshipId in the app). It holds
+    // uids (the two, sorted), requestedBy, status ('pending', then 'accepted') and the server's
+    // createdAt and acceptedAt. Declining, cancelling and removing delete it. Only the two
+    // students reach it, never while marked deleted (their ID token outlives deleteAccount by up
+    // to an hour); associations never do. Each operation has its own rule, so a rate limit or a
+    // block list can be added to one later. deleteAccount deletes an account's friendships with
+    // the Admin SDK.
+    match /friendships/{pairId} {
+      function isActiveStudent() {
+        return isStudent() && !isDeletedAccount(request.auth.uid);
+      }
+
+      // pairId is exactly two different UIDs, sorted, joined by one '~', and one of them is the
+      // caller's. split('~') drops trailing empty parts ("u1~u2~" splits as "u1~u2" does), so
+      // the ID is also compared with its parts joined again (#357 review, from #365).
+      function isOwnPairId() {
+        let parts = pairId.split('~');
+        return parts.size() == 2
+            && parts[0] != ''
+            && pairId == parts[0] + '~' + parts[1]
+            && parts[0] < parts[1]
+            && parts.hasAny([request.auth.uid]);
+      }
+
+      // A student reads their own pair's document, or the missing one under their own pair ID:
+      // the app's transactions read it before sending, accepting or removing, and a missing
+      // document has no uids to check. A third student is refused either way, so nobody can
+      // tell whether two others are friends.
+      allow get: if isActiveStudent()
+          && (resource == null ? isOwnPairId() : request.auth.uid in resource.data.uids);
+
+      // Only the query uids array-contains <own UID>, so nobody lists other students' friendships.
+      allow list: if isActiveStudent() && request.auth.uid in resource.data.uids;
+
+      // Sending a request: as yourself, to a student with a public profile (so never to an
+      // association, a deleted account or a made-up UID), pending, at the server's time, with
+      // exactly these four fields, under the pair's exact ID.
+      allow create: if isActiveStudent()
+          && request.resource.data.keys().hasOnly(['uids', 'requestedBy', 'status', 'createdAt'])
+          && request.resource.data.uids is list
+          && request.resource.data.uids.size() == 2
+          && request.resource.data.uids[0] < request.resource.data.uids[1]
+          && pairId == request.resource.data.uids[0] + '~' + request.resource.data.uids[1]
+          && request.resource.data.requestedBy == request.auth.uid
+          && request.auth.uid in request.resource.data.uids
+          && request.resource.data.status == 'pending'
+          && request.resource.data.createdAt == request.time
+          && exists(/databases/$(database)/documents/publicProfiles/$(
+              request.resource.data.uids[0] == request.auth.uid
+                  ? request.resource.data.uids[1]
+                  : request.resource.data.uids[0]));
+
+      // Accepting: only the recipient (one of the pair, not requestedBy), only a pending request,
+      // changing only status to 'accepted' and acceptedAt to the server's time, and only while
+      // neither student is marked deleted.
+      allow update: if isActiveStudent()
+          && request.auth.uid in resource.data.uids
+          && resource.data.requestedBy != request.auth.uid
+          && resource.data.status == 'pending'
+          && request.resource.data.status == 'accepted'
+          && request.resource.data.acceptedAt == request.time
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'acceptedAt'])
+          && !isDeletedAccount(resource.data.requestedBy);
+
+      // Declining, cancelling or removing: either student. The rules can't tell these apart (a
+      // delete carries no data), so the app checks that the document is still the one it showed.
+      allow delete: if isActiveStudent() && request.auth.uid in resource.data.uids;
     }
 
     // An association's public profile (#126), keyed by the association account's UID. Its
