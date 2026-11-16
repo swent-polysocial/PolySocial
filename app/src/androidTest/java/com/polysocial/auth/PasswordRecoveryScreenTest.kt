@@ -5,6 +5,8 @@
 // Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (Opus 5.5, Anthropic) passed the deletion and network fakes, #225;
 // Mohamed Khellaf (reviewed and revised).
+// Contributors: Claude (Opus 5.5, Anthropic) typed through typeText and replaceText, which close
+// the keyboard before the next tap, #427.
 package com.polysocial.auth
 
 import android.graphics.Bitmap
@@ -20,6 +22,8 @@ import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.firebase.FakeSessionGuard
 import com.polysocial.model.network.FakeNetworkMonitor
 import com.polysocial.model.user.UserProfileRepository
+import com.polysocial.replaceText
+import com.polysocial.typeText
 import com.polysocial.ui.auth.*
 import com.polysocial.ui.login.LoginScreenTestTags
 import com.polysocial.ui.login.LoginViewModel
@@ -80,15 +84,15 @@ class PasswordRecoveryScreenTest {
       }
     }
     compose.onNodeWithTag(WelcomeTags.LogIn).performScrollTo().performClick()
-    compose.onNodeWithTag(LoginScreenTestTags.EMAIL).performTextInput("student@epfl.ch")
+    compose.typeText(compose.onNodeWithTag(LoginScreenTestTags.EMAIL), "student@epfl.ch")
     compose.onNodeWithTag(LoginScreenTestTags.FORGOT_PASSWORD).performScrollTo().performClick()
     compose.onNodeWithTag(PasswordRecoveryTags.Email).assertTextContains("student@epfl.ch")
     capture("recovery-ready")
-    compose.onNodeWithTag(PasswordRecoveryTags.Email).performTextReplacement("invalid")
+    compose.replaceText(compose.onNodeWithTag(PasswordRecoveryTags.Email), "invalid")
     compose.onNodeWithTag(PasswordRecoveryTags.Submit).performScrollTo().performClick()
     compose.onNodeWithTag(PasswordRecoveryTags.Error).assertIsDisplayed()
     coVerify(exactly = 0) { auth.sendPasswordResetEmail(any()) }
-    compose.onNodeWithTag(PasswordRecoveryTags.Email).performTextReplacement("student@epfl.ch")
+    compose.replaceText(compose.onNodeWithTag(PasswordRecoveryTags.Email), "student@epfl.ch")
     compose.onNodeWithTag(PasswordRecoveryTags.Submit).performClick()
     compose
         .onNodeWithTag(PasswordRecoveryTags.Error)

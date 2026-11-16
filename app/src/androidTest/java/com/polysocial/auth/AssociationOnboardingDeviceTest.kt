@@ -3,6 +3,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) bound the deletion and network fakes and expected the
 // prefilled address after Change address, #225; Mohamed Khellaf (reviewed and revised).
 // Contributors: OpenAI Codex (scoped the chat fake to this Hilt test, #238).
+// Contributors: Claude (Opus 5.5, Anthropic) typed through typeText and replaceText, which close
+// the keyboard before the next tap, #427.
 package com.polysocial.auth
 
 import android.graphics.Bitmap
@@ -27,7 +29,9 @@ import com.polysocial.model.network.FakeNetworkMonitor
 import com.polysocial.model.network.NetworkModule
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.user.*
+import com.polysocial.replaceText
 import com.polysocial.resources.C
+import com.polysocial.typeText
 import com.polysocial.ui.association.*
 import com.polysocial.ui.auth.*
 import com.polysocial.ui.profile.ProfileSetupTestTags
@@ -157,13 +161,8 @@ class AssociationOnboardingDeviceTest {
   fun defaultRoutesSaveTheAssociationInOrderAndLogoutClearsTheSession() {
     compose.onNodeWithTag(WelcomeTags.Association).performScrollTo().performClick()
     compose.onNodeWithTag(SignUpTags.input(SignUpField.FullName)).assertDoesNotExist()
-    compose.onNodeWithTag(SignUpTags.input(SignUpField.Email)).performTextInput(applicant.email)
-    compose.onNodeWithTag(SignUpTags.input(SignUpField.Password)).performTextInput("password1")
-    compose
-        .onNodeWithTag(SignUpTags.input(SignUpField.ConfirmPassword))
-        .performScrollTo()
-        .performTextInput("password1")
-    capture("association-signup", closeKeyboard = true)
+    fillSignUp()
+    capture("association-signup")
     compose.onNodeWithTag(SignUpTags.Submit).performScrollTo().performClick()
     compose.waitUntil(UI_TIMEOUT_MS) {
       compose.onAllNodesWithTag(VerifyEmailTags.Screen).fetchSemanticsNodes().isNotEmpty()
@@ -201,22 +200,28 @@ class AssociationOnboardingDeviceTest {
     }
     compose.onNodeWithTag(AssociationSetupTags.Screen).assertIsDisplayed()
     compose.onNodeWithTag(ProfileSetupTestTags.SCREEN).assertDoesNotExist()
-    compose
-        .onNodeWithTag(AssociationSetupTags.field(AssociationSetupField.Name))
-        .performScrollTo()
-        .performTextInput("Example Club")
+    compose.typeText(
+        compose
+            .onNodeWithTag(AssociationSetupTags.field(AssociationSetupField.Name))
+            .performScrollTo(),
+        "Example Club",
+    )
     compose
         .onNodeWithTag(AssociationSetupTags.type(AssociationType.CLUB))
         .performScrollTo()
         .performClick()
-    compose
-        .onNodeWithTag(AssociationSetupTags.field(AssociationSetupField.About))
-        .performScrollTo()
-        .performTextInput("Fictional campus activities")
-    compose
-        .onNodeWithTag(AssociationSetupTags.field(AssociationSetupField.Website))
-        .performScrollTo()
-        .performTextInput("https://example.org")
+    compose.typeText(
+        compose
+            .onNodeWithTag(AssociationSetupTags.field(AssociationSetupField.About))
+            .performScrollTo(),
+        "Fictional campus activities",
+    )
+    compose.typeText(
+        compose
+            .onNodeWithTag(AssociationSetupTags.field(AssociationSetupField.Website))
+            .performScrollTo(),
+        "https://example.org",
+    )
     compose.onNodeWithTag(AssociationSetupTags.Submit).performScrollTo().performClick()
     compose.waitUntil(UI_TIMEOUT_MS) {
       compose.onAllNodesWithTag(AssociationTags.UNDER_REVIEW).fetchSemanticsNodes().isNotEmpty()
@@ -246,12 +251,7 @@ class AssociationOnboardingDeviceTest {
   @Test
   fun wrongAddressReturnsToAssociationAccountCreationAndAcceptsAnotherNonEpflEmail() {
     compose.onNodeWithTag(WelcomeTags.Association).performScrollTo().performClick()
-    compose.onNodeWithTag(SignUpTags.input(SignUpField.Email)).performTextInput(applicant.email)
-    compose.onNodeWithTag(SignUpTags.input(SignUpField.Password)).performTextInput("password1")
-    compose
-        .onNodeWithTag(SignUpTags.input(SignUpField.ConfirmPassword))
-        .performScrollTo()
-        .performTextInput("password1")
+    fillSignUp()
     compose.onNodeWithTag(SignUpTags.Submit).performScrollTo().performClick()
     compose.waitUntil(UI_TIMEOUT_MS) {
       compose
@@ -281,27 +281,32 @@ class AssociationOnboardingDeviceTest {
     assertEquals(1, fakeDeletion.calls)
     // The deleted account's address is prefilled, so a typo can be fixed in place (#225).
     compose.onNodeWithTag(SignUpTags.input(SignUpField.Email)).assertTextContains(applicant.email)
-    capture("association-wrong-address", closeKeyboard = true)
-    compose
-        .onNodeWithTag(SignUpTags.input(SignUpField.Email))
-        .performTextReplacement("updated-club@example.org")
-    compose.onNodeWithTag(SignUpTags.input(SignUpField.Password)).performTextInput("password1")
-    compose
-        .onNodeWithTag(SignUpTags.input(SignUpField.ConfirmPassword))
-        .performScrollTo()
-        .performTextInput("password1")
+    capture("association-wrong-address")
+    compose.replaceText(
+        compose.onNodeWithTag(SignUpTags.input(SignUpField.Email)),
+        "updated-club@example.org",
+    )
+    compose.typeText(compose.onNodeWithTag(SignUpTags.input(SignUpField.Password)), "password1")
+    compose.typeText(
+        compose.onNodeWithTag(SignUpTags.input(SignUpField.ConfirmPassword)).performScrollTo(),
+        "password1",
+    )
     compose.onNodeWithTag(SignUpTags.error(SignUpField.Email)).assertDoesNotExist()
     compose.onNodeWithTag(SignUpTags.Submit).performScrollTo().assertIsEnabled()
     assertEquals(1, fakeAuth.signUpCalls)
   }
 
-  private fun capture(name: String, closeKeyboard: Boolean = false) {
-    if (closeKeyboard)
-        compose.runOnIdle {
-          compose.activity
-              .getSystemService(android.view.inputmethod.InputMethodManager::class.java)
-              .hideSoftInputFromWindow(compose.activity.window.decorView.windowToken, 0)
-        }
+  /** Fills the association sign-up form for the applicant; typing leaves the keyboard closed. */
+  private fun fillSignUp() {
+    compose.typeText(compose.onNodeWithTag(SignUpTags.input(SignUpField.Email)), applicant.email)
+    compose.typeText(compose.onNodeWithTag(SignUpTags.input(SignUpField.Password)), "password1")
+    compose.typeText(
+        compose.onNodeWithTag(SignUpTags.input(SignUpField.ConfirmPassword)).performScrollTo(),
+        "password1",
+    )
+  }
+
+  private fun capture(name: String) {
     compose.waitForIdle()
     val context = InstrumentationRegistry.getInstrumentation().targetContext
     val directory =
