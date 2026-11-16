@@ -2,6 +2,7 @@
 // following the Log in and profile screens; opens the location picker, #111; Edit event, #131;
 // its field label, failure banner and button shared through ui/common, #251; the organizer row,
 // #134).
+// Contributors: Claude (Opus 5.5, Anthropic) (Edit event's organizers block, #370).
 package com.polysocial.ui.event.create
 
 import androidx.activity.compose.BackHandler
@@ -218,6 +219,14 @@ private fun EventFormScreen(
                       picking = true
                     },
                 ),
+            coOrganizerActions =
+                CoOrganizerActions(
+                    onRemove = viewModel::onRemoveOrganizer,
+                    onOpenAdd = viewModel::onOpenAddCoOrganizer,
+                    onAdd = viewModel::onAddCoOrganizer,
+                    onRetry = viewModel::onRetryAddCoOrganizer,
+                    onCloseSheet = viewModel::onCloseAddCoOrganizer,
+                ),
             modifier = modifier,
         )
   }
@@ -239,8 +248,8 @@ data class CreateEventFormActions(
 )
 
 /**
- * The Create Event form, drawn from [state] alone and reporting through [actions], so it can be
- * previewed and tested without a ViewModel.
+ * The Create Event form, drawn from [state] alone and reporting through [actions] (and, for Edit
+ * event's organizers, [coOrganizerActions]), so it can be previewed and tested without a ViewModel.
  *
  * The layout follows the Figma frames (section 04): the gaps are the frame's, and a taller element
  * (a larger font size, an error message) pushes the ones below it down. The form scrolls above the
@@ -251,6 +260,7 @@ fun CreateEventFormContent(
     state: CreateEventUiState,
     actions: CreateEventFormActions,
     modifier: Modifier = Modifier,
+    coOrganizerActions: CoOrganizerActions = CoOrganizerActions(),
 ) {
   val form = state.form
   val editable = state.status != CreateEventStatus.Saving
@@ -434,6 +444,12 @@ fun CreateEventFormContent(
             ) {
               actions.onVisibilityChange(false)
             }
+          }
+
+          // Edit event only, after Visibility as in Figma section 17 (#370).
+          state.coOrganizers?.let {
+            Spacer(Modifier.height(SECTION_GAP))
+            CoOrganizersSection(it, editable, coOrganizerActions)
           }
 
           (state.status as? CreateEventStatus.Failed)?.let {
