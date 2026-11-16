@@ -1,10 +1,12 @@
-// Contributors: Claude Opus 5.5 (wrote these tests, #357); Konstantinos Perdikeas (directed,
-// reviewed and owns them).
+// Contributors: Claude Opus 5.5 (wrote these tests, #357; isFriendshipIdOf, second PR);
+// Konstantinos Perdikeas (directed, reviewed and owns them).
 package com.polysocial.model.friend
 
 import java.time.Instant
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class FriendshipTest {
@@ -77,6 +79,29 @@ class FriendshipTest {
 
     assertEquals("$longest~b", friendshipId(longest, "b"))
     assertNoId("a".repeat(129), "b")
+  }
+
+  @Test
+  fun isFriendshipIdOf_isTrueForEitherStudentOfTheExactId() {
+    assertTrue(isFriendshipIdOf("alice~bob", "alice"))
+    assertTrue(isFriendshipIdOf("alice~bob", "bob"))
+  }
+
+  @Test
+  fun isFriendshipIdOf_isFalseForAnIdFriendshipIdWouldNotBuild() {
+    for (id in listOf("bob~alice", "alice~bob~", "alice~bob~carol", "~alice~bob", "alice~~bob")) {
+      assertFalse("\"$id\" must not be alice's", isFriendshipIdOf(id, "alice"))
+    }
+    assertFalse(isFriendshipIdOf("alice", "alice"))
+    assertFalse(isFriendshipIdOf("alice~", "alice"))
+    assertFalse(isFriendshipIdOf("alice~alice", "alice"))
+    assertFalse(isFriendshipIdOf("alice~b/ob", "alice"))
+  }
+
+  @Test
+  fun isFriendshipIdOf_isFalseForSomeoneOutsideThePair() {
+    assertFalse(isFriendshipIdOf("alice~bob", "carol"))
+    assertFalse(isFriendshipIdOf("alice~bob", "alice~bob"))
   }
 
   private val friendship =

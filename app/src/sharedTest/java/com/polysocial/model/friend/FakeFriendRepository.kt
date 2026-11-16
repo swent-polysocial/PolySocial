@@ -1,5 +1,5 @@
-// Contributors: Claude Opus 5.5 (wrote this fake for tests, #357); Konstantinos Perdikeas
-// (directed, reviewed and owns it).
+// Contributors: Claude Opus 5.5 (wrote this fake for tests, #357; the shared pair check, second
+// PR); Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.model.friend
 
 import java.time.Instant
@@ -147,10 +147,7 @@ class FakeFriendRepository(
    * since it was shown, is [FriendshipActionResult.Gone].
    */
   private fun refusal(shown: Friendship, uid: String): FriendshipActionResult? {
-    val halves = shown.id.split("~")
-    val isOneHalf =
-        halves.size == 2 && uid in halves && friendshipId(halves[0], halves[1]) == shown.id
-    if (!isOneHalf) return FriendshipActionResult.UnexpectedError
+    if (!isFriendshipIdOf(shown.id, uid)) return FriendshipActionResult.UnexpectedError
     val stored = friendships.value[shown.id]
     if (stored == null || stored.status != shown.status || stored.createdAt != shown.createdAt) {
       return FriendshipActionResult.Gone
