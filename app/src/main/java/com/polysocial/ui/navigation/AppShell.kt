@@ -1,3 +1,5 @@
+// Contributors: Claude Opus 5.5 (Scan a friend's code opened from My friend code, #359);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: Claude Opus 5.5 (opened a pending reminder notification's event, #123's second PR
 // review).
 // Contributors: OpenAI Codex (preserved navigation, logout and pending edits on rebase, #140).
@@ -92,6 +94,7 @@ import com.polysocial.ui.event.create.EditEventScreen
 import com.polysocial.ui.event.detail.EventDetailRoute
 import com.polysocial.ui.event.detail.EventDetailViewModel
 import com.polysocial.ui.event.list.EventsTabRoute
+import com.polysocial.ui.friend.ScanFriendRoute
 import com.polysocial.ui.group.FindGroupDone
 import com.polysocial.ui.group.FindGroupRoute
 import com.polysocial.ui.group.YourGroupRoute
@@ -247,7 +250,8 @@ fun AppShell(
   val profileRowScreen =
       destination?.route == Tab.PROFILE.privacyRoute ||
           destination?.route == Tab.PROFILE.privacyNoticeRoute ||
-          destination?.route == Tab.PROFILE.friendCodeRoute
+          destination?.route == Tab.PROFILE.friendCodeRoute ||
+          destination?.route == Tab.PROFILE.scanFriendRoute
   val showBars =
       destination?.route != currentTab.createEventRoute &&
           destination?.route != currentTab.editEventRoute &&
@@ -372,7 +376,13 @@ fun AppShell(
           // Students only: an association has no friend code, so its graph has no such screen.
           if (!association) {
             composable(tab.friendCodeRoute) { entry ->
-              FriendCodeRoute(onBack = { if (entry.isResumed) navController.popBackStack() })
+              FriendCodeRoute(
+                  onBack = { if (entry.isResumed) navController.popBackStack() },
+                  onScan = { if (entry.isResumed) navController.navigate(tab.scanFriendRoute) },
+              )
+            }
+            composable(tab.scanFriendRoute) { entry ->
+              ScanFriendRoute(onBack = { if (entry.isResumed) navController.popBackStack() })
             }
           }
         }

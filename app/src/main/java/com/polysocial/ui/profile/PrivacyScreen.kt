@@ -1,6 +1,8 @@
 // Contributors: OpenAI Codex (Profile privacy entry, dated offline notice, Figma UI and contact,
 // #103).
 // Contributors: OpenAI Codex (offline group and chat collection/access notice, #241).
+// Contributors: Claude Opus 5.5 (an optional header color for the dark scanner, #359); Konstantinos
+// Perdikeas (directed, reviewed and owns it).
 // Contributors: Claude (Opus 5.5, Anthropic) connected Delete account to its flow, #207; Mohamed
 // Khellaf (reviewed and revised).
 // Contributors: Claude Opus 5.5 (shared the header and row with My friend code, #339); Konstantinos
@@ -386,18 +388,25 @@ internal fun PrivacyHeader(
     @DrawableRes icon: Int = R.drawable.ic_back,
     @StringRes iconDescription: Int = R.string.privacy_back,
     backTag: String = C.Tag.privacy_back,
+    color: Color? = null,
 ) {
   Row(
       Modifier.fillMaxWidth().padding(start = 6.dp, top = 10.dp, end = 20.dp).height(48.dp),
       verticalAlignment = Alignment.CenterVertically,
   ) {
     IconButton(onBack, Modifier.testTag(backTag)) {
-      Image(painterResource(icon), stringResource(iconDescription), Modifier.size(22.dp))
+      Image(
+          painterResource(icon),
+          stringResource(iconDescription),
+          Modifier.size(22.dp),
+          colorFilter = color?.let { ColorFilter.tint(it) },
+      )
     }
     Spacer(Modifier.width(2.dp))
     Text(
         stringResource(title),
         style = privacyTextStyle(17, 21.4f, FontWeight.Bold),
+        color = color ?: Color.Unspecified,
         modifier = Modifier.semantics { heading() }.testTag(tag),
     )
   }

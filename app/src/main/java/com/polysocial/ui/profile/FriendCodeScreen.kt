@@ -1,5 +1,5 @@
 // Contributors: Claude Opus 5.5 (drafted My friend code from Figma section 15, #339; the quiet
-// zone, small windows and black on white after review);
+// zone, small windows and black on white after review; the Scan button, #359);
 // Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.profile
 
@@ -67,20 +67,24 @@ import kotlin.math.floor
  * Navigation boundary for My friend code (#339): Close, Back and "Back to profile" call [onBack].
  */
 @Composable
-fun FriendCodeRoute(onBack: () -> Unit, viewModel: FriendCodeViewModel = hiltViewModel()) {
+fun FriendCodeRoute(
+    onBack: () -> Unit,
+    onScan: () -> Unit,
+    viewModel: FriendCodeViewModel = hiltViewModel(),
+) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   BackHandler(onBack = onBack)
-  FriendCodeScreen(state, onBack)
+  FriendCodeScreen(state, onBack, onScan)
 }
 
 /**
  * My friend code, as in Figma section 15 (#336): the student's own QR code on a card under their
  * name, section and year, with a note on what sharing it does; or, when no code can be drawn, "My
- * friend code · couldn't show" (#339). Figma's "Scan a friend's code" button comes with scanning,
- * in its own task.
+ * friend code · couldn't show" (#339). "Scan a friend's code" at the bottom opens the scanner
+ * (#359).
  */
 @Composable
-fun FriendCodeScreen(state: FriendCodeUiState, onBack: () -> Unit) {
+fun FriendCodeScreen(state: FriendCodeUiState, onBack: () -> Unit, onScan: () -> Unit = {}) {
   val background = if (state is FriendCodeUiState.Shown) Surface else Bg
   Column(Modifier.fillMaxSize().background(background).testTag(C.Tag.friend_code_screen)) {
     PrivacyHeader(
@@ -92,38 +96,54 @@ fun FriendCodeScreen(state: FriendCodeUiState, onBack: () -> Unit) {
         backTag = C.Tag.friend_code_close,
     )
     when (state) {
-      is FriendCodeUiState.Shown -> FriendCodeContent(state)
+      is FriendCodeUiState.Shown -> FriendCodeContent(state, onScan)
       FriendCodeUiState.CouldNotShow -> FriendCodeError(onBack)
     }
   }
 }
 
 @Composable
-private fun FriendCodeContent(state: FriendCodeUiState.Shown) {
+private fun FriendCodeContent(state: FriendCodeUiState.Shown, onScan: () -> Unit) {
   BoxWithConstraints(Modifier.fillMaxSize().testTag(C.Tag.friend_code_content)) {
     // Figma's 205 dp, smaller when the window can't show the whole code at once (split screen, a
     // narrow phone at a large display size): the screen scrolls, but only a whole code scans.
     val qrSide =
         minOf(QR_SIDE, maxWidth - (SCREEN_PADDING + CARD_PADDING) * 2, maxHeight)
             .coerceAtLeast(0.dp)
+    // At least the screen's height, so Scan sits at the bottom whenever everything fits, and the
+    // screen scrolls instead when it doesn't.
     Column(
-        Modifier.fillMaxSize()
+        Modifier.fillMaxWidth()
             .verticalScroll(rememberScrollState())
+            .heightIn(min = maxHeight)
             .padding(horizontal = SCREEN_PADDING),
+        verticalArrangement = Arrangement.SpaceBetween,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-      Spacer(Modifier.height(106.dp))
-      Column(
-          Modifier.width(qrSide + CARD_PADDING * 2)
-              .background(Bg, RoundedCornerShape(28.dp))
-              .padding(CARD_PADDING),
-          horizontalAlignment = Alignment.CenterHorizontally,
-      ) {
-        FriendCodeOwner(state.name, state.details)
-        Spacer(Modifier.height(14.dp))
-        QrSymbol(state.code, Modifier.size(qrSide))
+      Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Spacer(Modifier.height(106.dp))
+        Column(
+            Modifier.width(qrSide + CARD_PADDING * 2)
+                .background(Bg, RoundedCornerShape(28.dp))
+                .padding(CARD_PADDING),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+          FriendCodeOwner(state.name, state.details)
+          Spacer(Modifier.height(14.dp))
+          QrSymbol(state.code, Modifier.size(qrSide))
+        }
+        FriendCodeInfo()
       }
-      FriendCodeInfo()
+      Column {
+        Spacer(Modifier.height(24.dp))
+        PrimaryButton(
+            stringResource(R.string.friend_code_scan),
+            enabled = true,
+            tag = C.Tag.friend_code_scan,
+            onClick = onScan,
+        )
+        Spacer(Modifier.height(28.dp))
+      }
     }
   }
 }
