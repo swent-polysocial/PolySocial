@@ -13,7 +13,10 @@
     <string name="co_organizers_remove_yourself">Remove yourself</string>
     <string name="co_organizers_add">Add a co-organizer</string>
     <string name="co_organizers_hint">Co-organizers can edit and cancel the event. Choose them among the students going to it.</string>
-    <string name="co_organizers_full">An event has at most %1$d organizers. Remove one to add someone else.</string>
+    <plurals name="co_organizers_full">
+        <item quantity="one">An event has at most %1$d organizer. Remove one to add someone else.</item>
+        <item quantity="other">An event has at most %1$d organizers. Remove one to add someone else.</item>
+    </plurals>
 
     <!-- The "Add a co-organizer" sheet. -->
     <string name="add_co_organizer_title">Add a co-organizer</string>

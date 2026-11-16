@@ -28,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -116,7 +117,7 @@ internal fun CoOrganizersSection(
     AddCoOrganizerButton(enabled = enabled && state.canAdd, onClick = actions.onOpenAdd)
     Text(
         if (state.canAdd) stringResource(R.string.co_organizers_hint)
-        else stringResource(R.string.co_organizers_full, MAX_ORGANIZERS),
+        else pluralStringResource(R.plurals.co_organizers_full, MAX_ORGANIZERS, MAX_ORGANIZERS),
         style = secondaryTextStyle(),
         color = Ink3,
         modifier =
