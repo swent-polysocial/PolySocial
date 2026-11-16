@@ -213,6 +213,19 @@ class FakeFriendRepositoryTest {
   }
 
   @Test
+  fun observeFriendships_readsTheUserAndReadFailureWhenCollectionStarts() = runTest {
+    repository.seedFriendship(pending())
+    repository.currentUid = null
+    repository.readFailure = true
+    val flow = repository.observeFriendships()
+
+    repository.currentUid = "alice"
+    repository.readFailure = false
+
+    assertEquals(FriendshipsResult.Success(listOf(pending()), false), flow.first())
+  }
+
+  @Test
   fun aFailedRead_emitsErrorAndEnds() = runTest {
     repository.readFailure = true
 
