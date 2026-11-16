@@ -29,6 +29,7 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the event capacity decision's second-review corrections: the refusal's classification, where the rules tests go, the split into three issues and a Figma task, the counter at 1 and stored as a decimal, what only the emulator shows; from the PR review, the listeners' read estimate and the tables' replacement by #373's tests, #372). -->
 <!-- Contributors: Claude (Fable 5.2, Anthropic) drafted the one-to-one chat model, its rules design (run against the Firestore emulator first), its account-deletion rows and open questions (#365); Claude (Opus 5.5, Anthropic) recorded the decisions of 2026-11-14 and designed unsending a message and delete for me in one-to-one and group chats, with their rules (run against the Firestore emulator first) and account-deletion step, and recorded the decisions of 2026-11-16: leaving a group deletes its delete-for-me marker, with its rule (run against the Firestore emulator first), and a one-to-one chat deleted for me is back once its students are friends again (#365). -->
 <!-- Contributors: Claude Opus 5.5 (the friend repository contract and pair ID marked as built, and the read of a missing pair document, #357; the Firestore repository, rules and account cleanup marked as built, #357); Konstantinos Perdikeas (directed, reviewed and owns it). -->
+<!-- Contributors: Claude Opus 5.5 (Scan a friend's code marked as built, #359); Konstantinos Perdikeas (directed, reviewed and owns it). -->
 
 How PolySocial is built, as we currently envision it. The page follows the [Android App Architecture guide](https://developer.android.com/topic/architecture/intro): a **UI layer** (Compose screens and ViewModels), a **domain layer** of pure Kotlin logic, and a **data layer** of repositories in front of Firebase, the map and geocoding services, and the device sensors.
 
@@ -277,7 +278,7 @@ flowchart TB
 - **Find my group (#20).** Locations are shared **only with the group and only during the event** (README). Each member's position lives in `events/{eventId}/groups/{groupId}/locations/{uid}`. It is written only during the event window, readable only by group members, and deleted when the event ends. There is no location history.
 - **Album.** Photos are compressed and resized on the device, then stored in Cloud Storage. A Firestore document holds each photo's metadata. Storage Security Rules enforce size and type limits and check-in membership. Thumbnails are cached.
 - **Reminders (#21, #36).** WorkManager schedules them when the student registers, so they fire offline and survive reboots. The notification permission (Android 13+) is requested at that moment.
-- **QR codes (#17, #22).** Scanned with CameraX + ML Kit barcode scanning. Payloads are typed strings, `polysocial://checkin/{eventId}/{token}` and `polysocial://friend/{uid}`, validated by a pure parser. **The parser is built (#337):** `parseQrPayload` and `friendQrPayload` in `model/qr/QrPayload.kt`. It is strict: the scheme and host are exact lowercase, each ID is 1 to 128 of `[A-Za-z0-9_-]` and not one of Firestore's reserved `__…__` IDs, and anything else (a web link, another app's code, a damaged scan) is `Invalid`. **Showing a code is built (#339):** ZXing `core` encodes the payload (`encodeQrCode`, `model/qr/QrCode.kt`) and Profile's "My friend code" draws it, offline too; scanning one is planned (#359).
+- **QR codes (#17, #22).** Scanned with CameraX + ML Kit barcode scanning. Payloads are typed strings, `polysocial://checkin/{eventId}/{token}` and `polysocial://friend/{uid}`, validated by a pure parser. **The parser is built (#337):** `parseQrPayload` and `friendQrPayload` in `model/qr/QrPayload.kt`. It is strict: the scheme and host are exact lowercase, each ID is 1 to 128 of `[A-Za-z0-9_-]` and not one of Firestore's reserved `__…__` IDs, and anything else (a web link, another app's code, a damaged scan) is `Invalid`. **Showing a code is built (#339):** ZXing `core` encodes the payload (`encodeQrCode`, `model/qr/QrCode.kt`) and Profile's "My friend code" draws it, offline too. **Scanning one is built (#359):** CameraX with bundled ML Kit behind the `QrScanner` interface (`ui/friend`), so tests use a fake; the camera permission is asked when the scanner opens.
 
 ### 3.6 Sprint 2 additions (#103, #106–#123)
 
@@ -303,7 +304,7 @@ flowchart TB
   classDef ext fill:#fff3bf,stroke:#e67700,color:#000
   classDef s1 fill:#d3f9d8,stroke:#2b8a3e,color:#000
 
-  scan["Scan a QR code<br/>camera, #336 frames"]:::pb --> scanVM["<b>Scan ViewModel</b><br/>friend card · Send request"]:::pb
+  scan["Scan a friend's code<br/>QrScanner: CameraX + ML Kit, built, #359"]:::s1 --> scanVM["<b>ScanFriendViewModel</b><br/>friend card · Add friend · Accept<br/>built, #359"]:::s1
   scanVM --> qr["<b>parseQrPayload</b><br/><i>domain</i>, pure Kotlin, #337"]:::pb
   scanVM --> pub["<b>PublicProfileRepository</b><br/>by UID only, built, #229"]:::s1
   scanVM --> friendRepo["<b>FriendRepository</b><br/>observeFriendships · sendRequest<br/>accept · remove<br/>built, #357"]:::s1
@@ -1300,7 +1301,7 @@ Every Scrum Board item mapped to the components it touches.
 | #15 Ping friends | Groups & Matchmaking | FriendRepository, notifications | ⬜ |
 | #25 Chat | Chat | Chats tab with `ChatsViewModel` (built, #364), `ChatsRepository` (built, #363), group chat with `GroupChatViewModel` and `MessageRepository` (built, #237, #238; `messages` under the group), one-to-one chat (`chats/{pairId}`, decided in #365) | 🟦 |
 | #16 Adding friends | Groups & Matchmaking | Friends screen, Friends ViewModel, FriendRepository, `friendships/{pairId}`, rules and `deleteAccount` cleanup (built, #357); usernames an open question | 🟦 decided in #338 |
-| #17 Meeting people by QR | Groups & Matchmaking | QrScanner, QR payload parsing (built, #337), My friend code (built, #339), FriendRepository | 🟦 S5 #336, #337, #339 |
+| #17 Meeting people by QR | Groups & Matchmaking | QrScanner and Scan a friend's code (built, #359), QR payload parsing (built, #337), My friend code (built, #339), FriendRepository (built, #357) | 🟦 S5 #336, #337, #339 |
 | #22 Automatic check-in | — | check-in policy, LocationService, QR fallback, GroupRepository | 🟦 |
 | #20 Find my group | — | group venue map, `events/{e}/groups/{g}/locations` | 🟦 |
 | #21 Event notification | — | `ReminderScheduler`, pure reminder time, WorkManager, local notifications | 🟩 S2 #120, #123 |
