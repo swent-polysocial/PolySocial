@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
@@ -81,23 +82,28 @@ object CameraQrScanner : QrScanner {
         modifier = modifier,
     )
   }
+}
 
-  /** Reads one frame's QR codes, then frees it; a failed read just waits for the next frame. */
-  @OptIn(ExperimentalGetImage::class)
-  private fun readFrame(
-      frame: ImageProxy,
-      reader: com.google.mlkit.vision.barcode.BarcodeScanner,
-      scanning: Boolean,
-      onCode: (String) -> Unit,
-  ) {
-    val image = frame.image
-    if (!scanning || image == null) {
-      frame.close()
-      return
-    }
-    reader
-        .process(InputImage.fromMediaImage(image, frame.imageInfo.rotationDegrees))
-        .addOnSuccessListener { codes -> codes.firstNotNullOfOrNull { it.rawValue }?.let(onCode) }
-        .addOnCompleteListener { frame.close() }
+/**
+ * Reads one camera [frame]'s QR codes with [reader] and reports the first code's raw text, then
+ * frees the frame: CameraX sends no new frame until the last one is closed, so every path closes
+ * it. While not [scanning], or without an image, the frame is just closed; a failed read reports
+ * nothing and waits for the next frame.
+ */
+@OptIn(ExperimentalGetImage::class)
+internal fun readFrame(
+    frame: ImageProxy,
+    reader: BarcodeScanner,
+    scanning: Boolean,
+    onCode: (String) -> Unit,
+) {
+  val image = frame.image
+  if (!scanning || image == null) {
+    frame.close()
+    return
   }
+  reader
+      .process(InputImage.fromMediaImage(image, frame.imageInfo.rotationDegrees))
+      .addOnSuccessListener { codes -> codes.firstNotNullOfOrNull { it.rawValue }?.let(onCode) }
+      .addOnCompleteListener { frame.close() }
 }
