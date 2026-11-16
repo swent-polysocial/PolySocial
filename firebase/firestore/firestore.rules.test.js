@@ -1361,7 +1361,7 @@ test("a co-organizer can add another registered student", async () => {
   }));
 });
 
-// Who may remove whom is the frames' default until #400 settles it: any organizer removes any
+// Who may remove whom, as the Sprint 6 PO decided on #400: any organizer removes any
 // co-organizer, never the creator (see "an organizer can't remove the creator from the
 // organizers").
 for (const [name, uid] of [["the creator", "u2"], ["the co-organizer themselves", "u5"]]) {
@@ -1388,7 +1388,7 @@ test("an organizer can swap a co-organizer for a registered student in one updat
   }));
 });
 
-// Also the frames' default until #400 settles it: cancelling doesn't remove a co-organizer.
+// Also decided on #400: cancelling doesn't remove a co-organizer.
 test("a co-organizer who cancels their registration stays an organizer", async () => {
   await seedSoloEventWithAttendees();
   await assertSucceeds(setSoloOrganizers("u2", ["u2", "u1"]));
