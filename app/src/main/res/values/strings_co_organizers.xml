@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (Edit event's organizers and the "Add a
+     co-organizer" sheet, from #400's Figma section 17, #370). -->
+<resources>
+    <!-- Edit event's organizers block. -->
+    <string name="co_organizers_label">Organizers · %1$d of %2$d</string>
+    <string name="co_organizers_you">You</string>
+    <string name="co_organizers_unknown">Organizer</string>
+    <string name="co_organizers_creator">Creator · can\'t be removed</string>
+    <string name="co_organizers_co_organizer">Co-organizer</string>
+    <string name="co_organizers_profile_unavailable">Profile unavailable · Co-organizer</string>
+    <string name="co_organizers_remove">Remove %1$s</string>
+    <string name="co_organizers_remove_yourself">Remove yourself</string>
+    <string name="co_organizers_add">Add a co-organizer</string>
+    <string name="co_organizers_hint">Co-organizers can edit and cancel the event. Choose them among the students going to it.</string>
+    <string name="co_organizers_full">An event has at most %1$d organizers. Remove one to add someone else.</string>
+
+    <!-- The "Add a co-organizer" sheet. -->
+    <string name="add_co_organizer_title">Add a co-organizer</string>
+    <string name="add_co_organizer_body">Students going to this event. Co-organizers can edit and cancel it.</string>
+    <string name="add_co_organizer_loading">Loading who\'s going…</string>
+    <string name="add_co_organizer_nobody">No one else is going yet. Co-organizers are chosen among the students going to this event, so come back once someone has registered.</string>
+    <string name="add_co_organizer_failed">Couldn\'t load who\'s going. Check your connection and try again.</string>
+    <string name="add_co_organizer_retry">Retry</string>
+    <string name="add_co_organizer_add">Add</string>
+    <string name="add_co_organizer_add_description">Add %1$s</string>
+    <string name="add_co_organizer_close">Close</string>
+</resources>
