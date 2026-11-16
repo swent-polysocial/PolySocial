@@ -1,3 +1,5 @@
+// Contributors: Claude Opus 5.5 (a fake FriendRepository for the scanner's ViewModel, #359);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: OpenAI Codex (keep association onboarding dependencies fake in Hilt tests, #125).
 // Contributors: Claude (end-to-end test of the M1 student flow with Hilt test bindings and a fake
 // map renderer, #136; a fake association repository for the association names, #128; the
@@ -87,6 +89,9 @@ import com.polysocial.model.firebase.FirebaseModule
 import com.polysocial.model.firebase.SessionCache
 import com.polysocial.model.firebase.SessionGuard
 import com.polysocial.model.firebase.SessionOwnerStore
+import com.polysocial.model.friend.FakeFriendRepository
+import com.polysocial.model.friend.FriendModule
+import com.polysocial.model.friend.FriendRepository
 import com.polysocial.model.geocoding.FakeGeocodingService
 import com.polysocial.model.geocoding.GeocodingModule
 import com.polysocial.model.geocoding.GeocodingService
@@ -188,6 +193,7 @@ import org.junit.runner.RunWith
     NetworkModule::class,
     UserProfileModule::class,
     RegistrationModule::class,
+    FriendModule::class,
     GroupModule::class,
     PublicProfileModule::class,
 )
@@ -210,6 +216,7 @@ class M1EndToEndTest {
   @BindValue @JvmField val auth: AuthRepository = fakeAuth
   @BindValue @JvmField val events: EventRepository = fakeEvents
   // The student already said "I'm going" to the party, so it is in My events (#204).
+  @BindValue @JvmField val friends: FriendRepository = FakeFriendRepository()
   @BindValue
   @JvmField
   val registrations: RegistrationRepository =

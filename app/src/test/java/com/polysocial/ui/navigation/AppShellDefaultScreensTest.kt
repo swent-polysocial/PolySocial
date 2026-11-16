@@ -1,3 +1,5 @@
+// Contributors: Claude Opus 5.5 (a fake FriendRepository for the scanner's ViewModel, #359);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: Claude (UI test for the real Map and Create Event screens inside AppShell, #110;
 // the real Edit event screen, #131; a fake association repository for the association names, #128;
 // which map each account's Map tab reads, #133).
@@ -53,6 +55,9 @@ import com.polysocial.model.firebase.FakeSessionGuard
 import com.polysocial.model.firebase.FakeSessionOwnerStore
 import com.polysocial.model.firebase.SessionGuard
 import com.polysocial.model.firebase.SessionOwnerStore
+import com.polysocial.model.friend.FakeFriendRepository
+import com.polysocial.model.friend.FriendModule
+import com.polysocial.model.friend.FriendRepository
 import com.polysocial.model.group.FakeGroupRepository
 import com.polysocial.model.group.GroupModule
 import com.polysocial.model.group.GroupRepository
@@ -119,6 +124,7 @@ import org.robolectric.annotation.Config
     NetworkModule::class,
     PublicProfileModule::class,
     RegistrationModule::class,
+    FriendModule::class,
 )
 @Config(application = HiltTestApplication::class)
 @RunWith(AndroidJUnit4::class)
@@ -159,6 +165,8 @@ class AppShellDefaultScreensTest {
   @BindValue @JvmField val signupStore: AssociationSignupStore = EmptyAssociationSignupStore
   @BindValue @JvmField val groupRepository: GroupRepository = groups
   @BindValue @JvmField val network: NetworkMonitor = FakeNetworkMonitor()
+  @BindValue @JvmField val friends: FriendRepository = FakeFriendRepository()
+
   @BindValue @JvmField val registrations: RegistrationRepository = FakeRegistrationRepository()
 
   @BindValue

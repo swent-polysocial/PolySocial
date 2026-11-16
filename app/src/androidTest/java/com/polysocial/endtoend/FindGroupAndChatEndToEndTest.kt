@@ -1,3 +1,5 @@
+// Contributors: Claude Opus 5.5 (a fake FriendRepository for the scanner's ViewModel, #359);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: Claude (Fable 5.2, Anthropic) wrote this end-to-end test of going to an event,
 // joining a group and sending a chat message, #380; Claude (Opus 5.5, Anthropic) reordered its
 // group fixtures.
@@ -54,6 +56,9 @@ import com.polysocial.model.firebase.FirebaseModule
 import com.polysocial.model.firebase.SessionCache
 import com.polysocial.model.firebase.SessionGuard
 import com.polysocial.model.firebase.SessionOwnerStore
+import com.polysocial.model.friend.FakeFriendRepository
+import com.polysocial.model.friend.FriendModule
+import com.polysocial.model.friend.FriendRepository
 import com.polysocial.model.geocoding.FakeGeocodingService
 import com.polysocial.model.geocoding.GeocodingModule
 import com.polysocial.model.geocoding.GeocodingService
@@ -138,6 +143,7 @@ import org.junit.runner.RunWith
     UserProfileModule::class,
     PublicProfileModule::class,
     RegistrationModule::class,
+    FriendModule::class,
     ReminderModule::class,
 )
 @RunWith(AndroidJUnit4::class)
@@ -197,6 +203,8 @@ class FindGroupAndChatEndToEndTest {
   @BindValue @JvmField val sessionOwner: SessionOwnerStore = FakeSessionOwnerStore()
   @BindValue @JvmField val verificationStore: VerificationStore = MemoryVerificationStore()
   @BindValue @JvmField val network: NetworkMonitor = FakeNetworkMonitor()
+  @BindValue @JvmField val friends: FriendRepository = FakeFriendRepository()
+
   @BindValue @JvmField val registrations: RegistrationRepository = fakeRegistrations
   @BindValue @JvmField val groups: GroupRepository = fakeGroups
   @BindValue
