@@ -11,7 +11,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) passed the deletion and network fakes and stored
 // the address cooldown, #225; Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (the public profile repair's stub, #291).
-// Contributors: Claude (Opus 5.5, Anthropic) closed the keyboard after typing, #314.
+// Contributors: Claude (Opus 5.5, Anthropic) closed the keyboard after typing, #314; typed
+// through the shared typeText and replaceText and closed the keyboard a tap on a field opens, #427.
 package com.polysocial.auth
 
 import androidx.activity.ComponentActivity
@@ -31,7 +32,9 @@ import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.firebase.FakeSessionGuard
 import com.polysocial.model.network.FakeNetworkMonitor
 import com.polysocial.model.user.*
+import com.polysocial.replaceText
 import com.polysocial.resources.C
+import com.polysocial.typeText
 import com.polysocial.ui.auth.*
 import com.polysocial.ui.login.LoginScreenTestTags
 import com.polysocial.ui.login.LoginViewModel
@@ -165,15 +168,11 @@ class SignUpScreenTest {
   }
 
   // Typing ends with the keyboard closed, so no tap or check runs while it opens (#314).
-  private fun input(field: SignUpField, value: String) {
-    compose.onNodeWithTag(SignUpTags.input(field)).performScrollTo().performTextInput(value)
-    compose.closeKeyboard()
-  }
+  private fun input(field: SignUpField, value: String) =
+      compose.typeText(compose.onNodeWithTag(SignUpTags.input(field)).performScrollTo(), value)
 
-  private fun replace(field: SignUpField, value: String) {
-    compose.onNodeWithTag(SignUpTags.input(field)).performScrollTo().performTextReplacement(value)
-    compose.closeKeyboard()
-  }
+  private fun replace(field: SignUpField, value: String) =
+      compose.replaceText(compose.onNodeWithTag(SignUpTags.input(field)).performScrollTo(), value)
 
   private fun fill(email: String = "student.test@epfl.ch", confirmPassword: String = "password1") {
     input(SignUpField.FullName, "Test Student")
@@ -278,8 +277,11 @@ class SignUpScreenTest {
   @Test
   fun emptyFieldShowsRequiredMessageAfterLosingFocus() {
     launch()
+    // A tap on a field opens the keyboard too, which would move the next field or the error.
     compose.onNodeWithTag(SignUpTags.input(SignUpField.FullName)).performClick()
+    compose.closeKeyboard()
     compose.onNodeWithTag(SignUpTags.input(SignUpField.Email)).performClick()
+    compose.closeKeyboard()
     compose
         .onNodeWithTag(SignUpTags.error(SignUpField.FullName))
         .performScrollTo()
@@ -567,9 +569,8 @@ class SignUpScreenTest {
     }
     compose.onNodeWithTag(WelcomeTags.SignUp).performScrollTo().performClick()
     compose.onNodeWithTag(SignUpTags.LogIn).performScrollTo().performClick()
-    compose.onNodeWithTag(LoginScreenTestTags.EMAIL).performTextInput("student.test@epfl.ch")
-    compose.onNodeWithTag(LoginScreenTestTags.PASSWORD).performTextInput("password1")
-    compose.closeKeyboard()
+    compose.typeText(compose.onNodeWithTag(LoginScreenTestTags.EMAIL), "student.test@epfl.ch")
+    compose.typeText(compose.onNodeWithTag(LoginScreenTestTags.PASSWORD), "password1")
     compose.onNodeWithTag(LoginScreenTestTags.LOG_IN).performScrollTo().performClick()
     compose.onNodeWithTag(LoginScreenTestTags.ERROR).performScrollTo().assertIsDisplayed()
     compose.onNodeWithTag(LoginScreenTestTags.SCREEN).assertIsDisplayed()
@@ -609,10 +610,10 @@ class SignUpScreenTest {
     }
     compose.onNodeWithTag(WelcomeTags.SignUp).performScrollTo().performClick()
     compose.onNodeWithTag(SignUpTags.LogIn).performScrollTo().performClick()
-    compose.onNodeWithTag(LoginScreenTestTags.EMAIL).performTextInput("student.test@epfl.ch")
-    compose.onNodeWithTag(LoginScreenTestTags.PASSWORD).performTextInput("password1")
-    // Finish text/IME layout and scrolling before pausing the clock for the redirect assertions.
-    compose.closeKeyboard()
+    // Typing closes the keyboard, so text/IME layout and scrolling finish before the clock is
+    // paused for the redirect assertions.
+    compose.typeText(compose.onNodeWithTag(LoginScreenTestTags.EMAIL), "student.test@epfl.ch")
+    compose.typeText(compose.onNodeWithTag(LoginScreenTestTags.PASSWORD), "password1")
     compose.onNodeWithTag(LoginScreenTestTags.LOG_IN).performScrollTo()
     compose.mainClock.autoAdvance = false
     try {

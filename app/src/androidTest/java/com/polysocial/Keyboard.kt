@@ -1,13 +1,16 @@
 // Contributors: Claude (Opus 5.5, Anthropic) wrote it after tracing the random sign-up test
 // failures to the keyboard opening late, #314; Claude (Opus 5.5, Anthropic) made it close the
 // keyboard of the window that has focus (dialogs, bottom sheets) after Compose sent its request,
-// #427.
+// and added typeText and replaceText, #427.
 package com.polysocial
 
 import android.os.Build
 import android.view.View
 import android.view.inspector.WindowInspector
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.core.view.SoftwareKeyboardControllerCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -16,16 +19,39 @@ import androidx.core.view.WindowInsetsCompat
 private const val KEYBOARD_TIMEOUT_MS = 10_000L
 
 /**
+ * Types [text] into [field] ([performTextInput]), then closes the keyboard that typing opened
+ * ([closeKeyboard]), so that the next tap or check sees the screen as it stays.
+ *
+ * Device tests type through this or [replaceText], never with `performTextInput` or
+ * `performTextReplacement` alone: the keyboard opens after Compose is idle and moves the screen
+ * under the next tap, which then does nothing (#314, #427).
+ */
+fun AndroidComposeTestRule<*, *>.typeText(field: SemanticsNodeInteraction, text: String) {
+  field.performTextInput(text)
+  closeKeyboard()
+}
+
+/**
+ * Replaces [field]'s text with [text] ([performTextReplacement]), then closes the keyboard, as
+ * [typeText] does.
+ */
+fun AndroidComposeTestRule<*, *>.replaceText(field: SemanticsNodeInteraction, text: String) {
+  field.performTextReplacement(text)
+  closeKeyboard()
+}
+
+/**
  * Closes the soft keyboard and waits until it has left the screen.
  *
  * The keyboard belongs to another process (the input method, such as Gboard), which answers a text
  * field's focus late: when typing returns, it may not have started opening yet, or still be sliding
  * in. Compose's idling doesn't wait for it, so on a screen with `imePadding()` the test can scroll
  * to a button, then the keyboard shrinks the screen and the tap lands where the button was, or the
- * button leaves the screen right after. Call this after typing, before tapping or checking what is
- * below the fields (#314). It waits for the keyboard to be hidden, the state every device reaches,
- * not for a fixed time or for the keyboard to open: whether and how far it opens depends on the
- * device (a hardware keyboard, a password field).
+ * button leaves the screen right after. [typeText] and [replaceText] call it after typing; call it
+ * yourself after anything else that opens the keyboard, such as a tap on a text field, before
+ * tapping or checking what is below the fields (#314). It waits for the keyboard to be hidden, the
+ * state every device reaches, not for a fixed time or for the keyboard to open: whether and how far
+ * it opens depends on the device (a hardware keyboard, a password field).
  *
  * It closes the keyboard of the app's window that has focus, the one it types into: the activity's,
  * or, on Android 10+, a dialog's or bottom sheet's above it (the date picker, Delete account).
