@@ -1,12 +1,15 @@
 // Contributors: Claude (Opus 5.5, Anthropic) wrote it after tracing the random sign-up test
 // failures to the keyboard opening late, #314; Claude (Opus 5.5, Anthropic) made it close the
 // keyboard of the window that has focus (dialogs, bottom sheets) after Compose sent its request,
-// and added typeText and replaceText, #427.
+// wait for its slide to end, and added typeText and replaceText, #427.
 package com.polysocial
 
 import android.os.Build
 import android.view.View
+import android.view.WindowInsets
+import android.view.WindowInsetsAnimation
 import android.view.inspector.WindowInspector
+import androidx.annotation.RequiresApi
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.compose.ui.test.performTextInput
@@ -51,12 +54,15 @@ fun AndroidComposeTestRule<*, *>.replaceText(field: SemanticsNodeInteraction, te
  * yourself after anything else that opens the keyboard, such as a tap on a text field, before
  * tapping or checking what is below the fields (#314). It waits for the keyboard to be hidden, the
  * state every device reaches, not for a fixed time or for the keyboard to open: whether and how far
- * it opens depends on the device (a hardware keyboard, a password field).
+ * it opens depends on the device (a hardware keyboard, a password field). With animations on, it
+ * also waits for the keyboard's slide to end (Android 11+): the window's insets give the final
+ * state as soon as it starts, but `imePadding()` follows it frame by frame, so the screen still
+ * moves until then.
  *
  * It closes the keyboard of the app's window that has focus, the one it types into: the activity's,
  * or, on Android 10+, a dialog's or bottom sheet's above it (the date picker, Delete account).
  * Don't call it while a menu is open: the menu's popup has focus then, so it would close and wait
- * on the popup's window instead of the field's.
+ * on the popup's window instead of the field's, and replace Compose's own insets callback there.
  */
 fun AndroidComposeTestRule<*, *>.closeKeyboard() {
   // A field Compose has just focused asks for the keyboard on the next frame. Letting it ask first
@@ -65,18 +71,59 @@ fun AndroidComposeTestRule<*, *>.closeKeyboard() {
   val activityWindow = activity.window.decorView
   val window = runOnUiThread { focusedWindow() ?: activityWindow }
   val ime = WindowInsetsCompat.Type.ime()
-  // Cancels a keyboard Compose asked for, which goes through the window's insets controller;
-  // one asked for only through InputMethodManager can still flash after this (seen on API 34).
-  runOnUiThread { SoftwareKeyboardControllerCompat(window).hide() }
-  waitUntil("the keyboard is closed", KEYBOARD_TIMEOUT_MS) {
-    runOnUiThread {
-      // Null once the window is gone (a dialog closed), and its keyboard with it.
-      val insets = ViewCompat.getRootWindowInsets(window)
-      insets == null || (!insets.isVisible(ime) && insets.getInsets(ime).bottom == 0)
+  // The keyboard's slides running in the window, filled by KeyboardSlides (Android 11+).
+  val slides = mutableSetOf<WindowInsetsAnimation>()
+  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+      runOnUiThread { window.setWindowInsetsAnimationCallback(KeyboardSlides(slides)) }
+  try {
+    // Cancels a keyboard Compose asked for, which goes through the window's insets controller;
+    // one asked for only through InputMethodManager can still flash after this (seen on API 34).
+    runOnUiThread { SoftwareKeyboardControllerCompat(window).hide() }
+    waitUntil("the keyboard is closed", KEYBOARD_TIMEOUT_MS) {
+      runOnUiThread {
+        // Null once the window is gone (a dialog closed), and its keyboard with it.
+        val insets = ViewCompat.getRootWindowInsets(window)
+        insets == null ||
+            (!insets.isVisible(ime) && insets.getInsets(ime).bottom == 0 && slides.isEmpty())
+      }
     }
+  } finally {
+    // The activity's, a dialog's and a bottom sheet's windows have none of their own there (Compose
+    // sets its own on the views below), so removing ours leaves them as they were.
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R)
+        runOnUiThread { window.setWindowInsetsAnimationCallback(null) }
   }
   // Lets the screen lay out again without the keyboard.
   waitForIdle()
+}
+
+/**
+ * Keeps in [running] the keyboard's slides (animations) in a window, from the callback set on its
+ * root view, which lets the window's own views get theirs too.
+ */
+@RequiresApi(Build.VERSION_CODES.R)
+private class KeyboardSlides(private val running: MutableSet<WindowInsetsAnimation>) :
+    WindowInsetsAnimation.Callback(DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
+  private fun follow(animation: WindowInsetsAnimation) {
+    if (animation.typeMask and WindowInsets.Type.ime() != 0) running += animation
+  }
+
+  override fun onPrepare(animation: WindowInsetsAnimation) = follow(animation)
+
+  override fun onStart(
+      animation: WindowInsetsAnimation,
+      bounds: WindowInsetsAnimation.Bounds,
+  ): WindowInsetsAnimation.Bounds = bounds.also { follow(animation) }
+
+  // A slide that began before the callback was set shows up here.
+  override fun onProgress(
+      insets: WindowInsets,
+      runningAnimations: MutableList<WindowInsetsAnimation>,
+  ): WindowInsets = insets.also { runningAnimations.forEach(::follow) }
+
+  override fun onEnd(animation: WindowInsetsAnimation) {
+    running -= animation
+  }
 }
 
 /**
