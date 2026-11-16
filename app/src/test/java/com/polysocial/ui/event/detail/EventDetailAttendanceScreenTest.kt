@@ -226,13 +226,14 @@ class EventDetailAttendanceScreenTest {
   }
 
   @Test
-  fun inAGroup_hasNoCancelLink() {
-    // Cancelling would leave the student in the group without being registered; the link waits
-    // for #244's "you'll also leave your group" sheet (#318).
+  fun inAGroup_theCancelLinkIsThere_andAsksThroughTheViewModel() {
+    // Cancelling also leaves the group, so the screen only forwards the tap: the ViewModel opens
+    // the "you'll also leave your group" sheet (#318).
     show(loaded(Attendance.GOING, yourGroup = YourGroup("g", 4, emptyList(), STUDENT)))
 
     composeTestRule.onNodeWithText(string(R.string.event_detail_youre_going)).assertIsDisplayed()
-    node(EventDetailTags.CANCEL_REGISTRATION).assertDoesNotExist()
+    node(EventDetailTags.CANCEL_REGISTRATION).assertIsDisplayed().performClick()
+    assertEquals(listOf("cancel"), calls)
   }
 
   @Test
