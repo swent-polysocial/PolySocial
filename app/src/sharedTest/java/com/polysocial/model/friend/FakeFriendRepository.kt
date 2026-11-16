@@ -127,7 +127,10 @@ class FakeFriendRepository(
    * since it was shown, is [FriendshipActionResult.Gone].
    */
   private fun refusal(shown: Friendship, uid: String): FriendshipActionResult? {
-    if (uid !in shown.id.split("~")) return FriendshipActionResult.UnexpectedError
+    val halves = shown.id.split("~")
+    val isOneHalf =
+        halves.size == 2 && uid in halves && friendshipId(halves[0], halves[1]) == shown.id
+    if (!isOneHalf) return FriendshipActionResult.UnexpectedError
     val stored = friendships.value[shown.id]
     if (stored == null || stored.status != shown.status || stored.createdAt != shown.createdAt) {
       return FriendshipActionResult.Gone
