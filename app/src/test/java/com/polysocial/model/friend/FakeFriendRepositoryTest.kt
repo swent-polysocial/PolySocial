@@ -47,8 +47,7 @@ class FakeFriendRepositoryTest {
   fun sendRequest_toAHigherOrLowerUid_storesTheUidsSorted() = runTest {
     repository.currentUid = "bob"
 
-    repository.sendRequest("alice")
-
+    assertEquals(SendFriendRequestResult.Sent, repository.sendRequest("alice"))
     assertEquals(pending(requestedBy = "bob"), repository.friendship("alice~bob"))
   }
 
@@ -185,7 +184,7 @@ class FakeFriendRepositoryTest {
   }
 
   @Test
-  fun observeFriendships_emitsOnEveryChange() = runTest {
+  fun observeFriendships_showsTheCurrentStateOnEachCollection() = runTest {
     repository.seedFriendship(pending())
     val emissions = mutableListOf<FriendshipsResult>()
     val flow = repository.observeFriendships()
@@ -301,7 +300,7 @@ class FakeFriendRepositoryTest {
   }
 
   @Test
-  fun observeFriendships_oneCollectorGetsEveryChangeWithTheCurrentCacheFlag() = runTest {
+  fun observeFriendships_oneCollectorGetsEveryChange_includingACacheFlagChange() = runTest {
     val emissions = mutableListOf<FriendshipsResult>()
     backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
       repository.observeFriendships().toList(emissions)
@@ -315,6 +314,7 @@ class FakeFriendRepositoryTest {
         listOf(
             FriendshipsResult.Success(emptyList(), false),
             FriendshipsResult.Success(listOf(pending(requestedBy = "alice")), false),
+            FriendshipsResult.Success(listOf(pending(requestedBy = "alice")), true),
             FriendshipsResult.Success(emptyList(), true),
         ),
         emissions,

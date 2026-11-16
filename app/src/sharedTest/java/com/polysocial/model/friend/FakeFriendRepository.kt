@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 
 /**
  * In-memory [FriendRepository] for tests. It follows the [FriendRepository] contracts and checks in
@@ -40,8 +40,17 @@ class FakeFriendRepository(
   /** When true, [observeFriendships] emits [FriendshipsResult.Error], like a failed query. */
   var readFailure = false
 
-  /** The `fromCache` flag [observeFriendships] reports, to simulate being offline. */
-  var readFromCache = false
+  private val fromCache = MutableStateFlow(false)
+
+  /**
+   * The `fromCache` flag [observeFriendships] reports, to simulate being offline. Changing it
+   * emits a new result, like a listener that includes metadata changes.
+   */
+  var readFromCache: Boolean
+    get() = fromCache.value
+    set(value) {
+      fromCache.value = value
+    }
 
   /** Stores [friendship] directly under its ID, like a request another student sent. */
   fun seedFriendship(friendship: Friendship) {
@@ -59,8 +68,8 @@ class FakeFriendRepository(
       return@flow
     }
     emitAll(
-        friendships.map { stored ->
-          FriendshipsResult.Success(stored.values.filter { uid in it.uids }, readFromCache)
+        combine(friendships, fromCache) { stored, cached ->
+          FriendshipsResult.Success(stored.values.filter { uid in it.uids }, cached)
         })
   }
 
