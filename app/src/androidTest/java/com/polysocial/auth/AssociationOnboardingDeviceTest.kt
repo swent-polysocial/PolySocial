@@ -4,7 +4,7 @@
 // prefilled address after Change address, #225; Mohamed Khellaf (reviewed and revised).
 // Contributors: OpenAI Codex (scoped the chat fake to this Hilt test, #238).
 // Contributors: Claude (Opus 5.5, Anthropic) typed through typeText and replaceText, which close
-// the keyboard before the next tap, #427.
+// the keyboard before the next tap, and checked the activity kept from before Back, #427.
 package com.polysocial.auth
 
 import android.graphics.Bitmap
@@ -244,8 +244,11 @@ class AssociationOnboardingDeviceTest {
     assertEquals(1, clears)
     assertEquals(1, fakeAuth.logOutCalls)
     assertNull(fakeAuth.user)
-    compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
-    assertTrue(compose.activity.isFinishing)
+    // Back on Welcome leaves the app. The activity can be destroyed before the check, and
+    // compose.activity can't be read then, so the check reads the one kept from before Back.
+    val activity = compose.activity
+    compose.runOnIdle { activity.onBackPressedDispatcher.onBackPressed() }
+    assertTrue(activity.isFinishing)
   }
 
   @Test
