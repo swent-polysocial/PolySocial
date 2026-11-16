@@ -197,6 +197,19 @@ class FakeFriendRepositoryTest {
   }
 
   @Test
+  fun anIdThatFriendshipIdWouldNotBuild_isNotAPair() = runTest {
+    // The student's UID must be exactly one half of an ID friendshipId builds, not just one of its
+    // parts: three parts, unsorted halves and a missing half are all refused.
+    repository.currentUid = "bob"
+
+    for (id in listOf("alice~bob~carol", "bob~alice", "bob~", "bob")) {
+      val shown = pending().copy(id = id)
+      assertEquals(id, FriendshipActionResult.UnexpectedError, repository.accept(shown))
+      assertEquals(id, FriendshipActionResult.UnexpectedError, repository.remove(shown))
+    }
+  }
+
+  @Test
   fun observeFriendships_showsOnlyTheSignedInStudentsFriendships() = runTest {
     val carolAndDan =
         pending().copy(id = "carol~dan", uids = listOf("carol", "dan"), requestedBy = "carol")
