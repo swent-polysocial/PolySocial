@@ -4,6 +4,7 @@
 // single-event listener and its failures, #112; updating and deleting as an organizer, #130; an
 // association's own events, #132); Franciszek Najda (reviewed #130).
 // Contributors: Claude (Opus 5.5, Anthropic) added the readable private events query, #320.
+// Contributors: Claude (Opus 5.5, Anthropic) saved co-organizer changes with an update, #370.
 package com.polysocial.model.event
 
 import com.google.firebase.FirebaseException
@@ -16,10 +17,13 @@ import com.google.firebase.firestore.Transaction
 import com.google.firebase.firestore.TransactionOptions
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.network.NetworkMonitor
+import com.polysocial.model.registration.ATTENDEES_COLLECTION
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.UserProfileRepository
 import java.time.Clock
+import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
@@ -99,7 +103,10 @@ class FirestoreEventRepository(
     }
   }
 
-  override suspend fun updateEvent(event: Event): UpdateEventResult {
+  override suspend fun updateEvent(
+      event: Event,
+      organizers: OrganizerChanges,
+  ): UpdateEventResult {
     val now = clock.instant()
     // A start in the past depends on the stored start, so it is checked after the read.
     val errors = validateNewEvent(event, now) - EventValidationError.START_IN_PAST
@@ -107,23 +114,56 @@ class FirestoreEventRepository(
     if (!isReadableEventId(event.id)) return UpdateEventResult.NotFound
     val user = auth.currentUser() ?: return UpdateEventResult.NotOrganizer
     if (!network.isOnline()) return UpdateEventResult.NetworkError
+    // Set on Firestore's transaction thread, read here once the transaction has ended.
+    val refusal = AtomicReference<UpdateEventResult>()
     val outcome =
         writeAsOrganizer(event.id, user.uid) { transaction, document, stored ->
-          val valid = validateEventUpdate(event, stored, now).isEmpty()
-          // `update`, not `set`, so fields this app version doesn't write are kept.
-          if (valid) transaction.update(document, event.withOwnershipOf(stored).toFirestoreMap())
-          valid
+          refusal.set(writeUpdate(transaction, document, stored, event, organizers, now))
+          refusal.get() == null
         }
     return when (outcome) {
       OrganizerWrite.DONE -> UpdateEventResult.Updated
-      // The start is the only rule left unchecked before the read.
-      OrganizerWrite.REFUSED ->
-          UpdateEventResult.Invalid(listOf(EventValidationError.START_IN_PAST))
+      // Only the start and the organizers are left unchecked before the read.
+      OrganizerWrite.REFUSED -> refusal.get() ?: UpdateEventResult.UnexpectedError
       OrganizerWrite.NOT_FOUND -> UpdateEventResult.NotFound
       OrganizerWrite.NOT_ORGANIZER -> UpdateEventResult.NotOrganizer
       OrganizerWrite.NETWORK_ERROR -> UpdateEventResult.NetworkError
       OrganizerWrite.UNEXPECTED_ERROR -> UpdateEventResult.UnexpectedError
     }
+  }
+
+  /**
+   * Writes [event] over [stored] with the [organizers] changes, or returns why it can't without
+   * writing: a new start in the past, or organizer changes [applyOrganizerChanges] refuses or that
+   * add a student who isn't registered for the event. Their registrations are read in the same
+   * transaction, so a student who cancels meanwhile isn't added.
+   */
+  private fun writeUpdate(
+      transaction: Transaction,
+      document: DocumentReference,
+      stored: Event,
+      event: Event,
+      organizers: OrganizerChanges,
+      now: Instant,
+  ): UpdateEventResult? {
+    if (validateEventUpdate(event, stored, now).isNotEmpty()) {
+      return UpdateEventResult.Invalid(listOf(EventValidationError.START_IN_PAST))
+    }
+    val update =
+        when (val changes = applyOrganizerChanges(stored, organizers)) {
+          is OrganizersUpdate.Refused -> return UpdateEventResult.InvalidOrganizers(changes.error)
+          is OrganizersUpdate.Valid -> changes
+        }
+    if (!update.newOrganizers.all { transaction.get(attendee(document, it)).exists() }) {
+      return UpdateEventResult.InvalidOrganizers(OrganizerError.NOT_REGISTERED)
+    }
+    val edited =
+        event
+            .withOwnershipOf(stored)
+            .copy(organizerIds = update.organizerIds, allowedUids = update.allowedUids)
+    // `update`, not `set`, so fields this app version doesn't write are kept.
+    transaction.update(document, edited.toFirestoreMap())
+    return null
   }
 
   override suspend fun deleteEvent(id: String): DeleteEventResult {
@@ -145,6 +185,10 @@ class FirestoreEventRepository(
       OrganizerWrite.UNEXPECTED_ERROR -> DeleteEventResult.UnexpectedError
     }
   }
+
+  /** The registration of [uid] for the event [event]. */
+  private fun attendee(event: DocumentReference, uid: String) =
+      event.collection(ATTENDEES_COLLECTION).document(uid)
 
   /** How [writeAsOrganizer] ended. */
   private enum class OrganizerWrite {

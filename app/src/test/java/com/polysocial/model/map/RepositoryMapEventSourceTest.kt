@@ -1,7 +1,8 @@
 // Contributors: OpenAI Codex (repository-to-map stream tests for #50; location fakes for #51);
 // Claude (getEvent stub, #112; update and delete stubs, #130; own association events stub, #132;
 // the association names dependency, #128).
-// Contributors: Claude (Opus 5.5, Anthropic) stubbed the readable private events, #320.
+// Contributors: Claude (Opus 5.5, Anthropic) stubbed the readable private events, #320, and the
+// organizer changes, #370.
 package com.polysocial.model.map
 
 import com.polysocial.model.association.FakeAssociationNames
@@ -11,6 +12,7 @@ import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.EventResult
 import com.polysocial.model.event.FakeEventRepository
+import com.polysocial.model.event.OrganizerChanges
 import com.polysocial.model.event.OwnEventsResult
 import com.polysocial.model.event.PrivateEventsResult
 import com.polysocial.model.event.PublicEventsResult
@@ -140,8 +142,10 @@ class RepositoryMapEventSourceTest {
           override suspend fun createEvent(event: Event): CreateEventResult =
               error("This test only observes events")
 
-          override suspend fun updateEvent(event: Event): UpdateEventResult =
-              error("This test only observes events")
+          override suspend fun updateEvent(
+              event: Event,
+              organizers: OrganizerChanges,
+          ): UpdateEventResult = error("This test only observes events")
 
           override suspend fun deleteEvent(id: String): DeleteEventResult =
               error("This test only observes events")

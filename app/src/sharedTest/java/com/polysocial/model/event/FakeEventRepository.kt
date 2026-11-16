@@ -3,6 +3,7 @@
 // (reviewed). Claude (updating and deleting, #130; an association's own events, #132); Franciszek
 // Najda (reviewed).
 // Contributors: Claude (Opus 5.5, Anthropic) added the readable private events to this fake, #320.
+// Contributors: Claude (Opus 5.5, Anthropic) added co-organizer changes to this fake, #370.
 package com.polysocial.model.event
 
 import java.time.Instant
@@ -51,6 +52,15 @@ class FakeEventRepository(
 
   /** The events passed to [updateEvent] so far, valid or not, in call order. */
   val updateRequests = mutableListOf<Event>()
+
+  /** The organizer changes passed to [updateEvent] so far, in call order. */
+  val organizerRequests = mutableListOf<OrganizerChanges>()
+
+  /**
+   * The students registered for each event, by event ID, which [updateEvent] checks before adding
+   * them as organizers, like the repository reading their registrations.
+   */
+  val registeredUids = mutableMapOf<String, Set<String>>()
 
   /** The IDs passed to [deleteEvent] so far, in call order. */
   val deleteRequests = mutableListOf<String>()
@@ -106,8 +116,12 @@ class FakeEventRepository(
     return CreateEventResult.Created(saved.id)
   }
 
-  override suspend fun updateEvent(event: Event): UpdateEventResult {
+  override suspend fun updateEvent(
+      event: Event,
+      organizers: OrganizerChanges,
+  ): UpdateEventResult {
     updateRequests += event
+    organizerRequests += organizers
     val errors = validateNewEvent(event, now) - EventValidationError.START_IN_PAST
     if (errors.isNotEmpty()) return UpdateEventResult.Invalid(errors)
     if (!isReadableEventId(event.id)) return UpdateEventResult.NotFound
@@ -122,7 +136,18 @@ class FakeEventRepository(
     if (uid !in stored.organizerIds) return UpdateEventResult.NotOrganizer
     val startErrors = validateEventUpdate(event, stored, now)
     if (startErrors.isNotEmpty()) return UpdateEventResult.Invalid(startErrors)
-    events[index] = event.withOwnershipOf(stored)
+    val update =
+        when (val changes = applyOrganizerChanges(stored, organizers)) {
+          is OrganizersUpdate.Refused -> return UpdateEventResult.InvalidOrganizers(changes.error)
+          is OrganizersUpdate.Valid -> changes
+        }
+    if (!registeredUids[stored.id].orEmpty().containsAll(update.newOrganizers)) {
+      return UpdateEventResult.InvalidOrganizers(OrganizerError.NOT_REGISTERED)
+    }
+    events[index] =
+        event
+            .withOwnershipOf(stored)
+            .copy(organizerIds = update.organizerIds, allowedUids = update.allowedUids)
     changes.value++
     return UpdateEventResult.Updated
   }
