@@ -72,6 +72,21 @@ sealed interface AttendeeCountResult {
   data object UnexpectedError : AttendeeCountResult
 }
 
+/** Outcome of [RegistrationRepository.getAttendeeUids]. */
+sealed interface AttendeesResult {
+  /** The UIDs of the students registered for the event, as the server listed them. */
+  data class Attendees(val uids: List<String>) : AttendeesResult
+
+  /** The device is offline: the list comes only from the server, never from the cache. */
+  data object NetworkError : AttendeesResult
+
+  /**
+   * Any other failure, for example a list the Security Rules deny because the user doesn't organize
+   * the event, or a missing event.
+   */
+  data object UnexpectedError : AttendeesResult
+}
+
 /**
  * Stores students' registrations for events ("I'm going") in `events/{eventId}/attendees/{uid}`,
  * one document per registered student, so an event's organizers can count its attendees.
@@ -126,4 +141,15 @@ interface RegistrationRepository {
    * [AttendeeCountResult.UnexpectedError].
    */
   suspend fun countAttendees(eventId: String): AttendeeCountResult
+
+  /**
+   * Lists the UIDs of the students registered for the event [eventId], so its organizers can pick
+   * co-organizers among them (#370, decision 17). Only an organizer of the event may list them (the
+   * same `list` rule as [countAttendees]); their names come from their public profiles.
+   *
+   * Like [countAttendees], it is read once from the server: an offline device returns
+   * [AttendeesResult.NetworkError] without asking Firestore, and an ID that can't be a document ID
+   * [AttendeesResult.UnexpectedError].
+   */
+  suspend fun getAttendeeUids(eventId: String): AttendeesResult
 }
