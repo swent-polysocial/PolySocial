@@ -1,4 +1,5 @@
 // Contributors: Claude (wrote these tests, #134; additional tests from a test audit, #134).
+// Contributors: Claude (Opus 5.5, Anthropic) (the co-organizer repositories, #370).
 package com.polysocial.ui.event.create
 
 import androidx.lifecycle.SavedStateHandle
@@ -14,6 +15,8 @@ import com.polysocial.model.event.CreateEventResult
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.UpdateEventResult
 import com.polysocial.model.event.withCreator
+import com.polysocial.model.registration.FakeRegistrationRepository
+import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.ui.event.detail.EventDetailViewModel
@@ -50,6 +53,8 @@ class CreateEventOrganizerTest {
           auth,
           profiles,
           associations,
+          FakeRegistrationRepository(),
+          FakePublicProfileRepository(),
       )
 
   private fun runPending() = mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()

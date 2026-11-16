@@ -1,5 +1,6 @@
 // Contributors: Claude (wrote these tests of the Edit event screen, #131; the organizer's
 // repositories, #134).
+// Contributors: Claude (Opus 5.5, Anthropic) (the co-organizer repositories, #370).
 package com.polysocial.ui.event.create
 
 import android.app.Application
@@ -23,6 +24,8 @@ import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.UpdateEventResult
 import com.polysocial.model.event.withCreator
+import com.polysocial.model.registration.FakeRegistrationRepository
+import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.resources.C
 import com.polysocial.ui.event.detail.EventDetailViewModel
@@ -63,6 +66,8 @@ class EditEventScreenTest {
             FakeAuthRepository(),
             FakeUserProfileRepository(),
             FakeAssociationRepository(),
+            FakeRegistrationRepository(),
+            FakePublicProfileRepository(),
         )
     composeTestRule.setContent {
       EditEventScreen(

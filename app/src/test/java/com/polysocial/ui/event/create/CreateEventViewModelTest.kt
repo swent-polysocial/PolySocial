@@ -1,6 +1,7 @@
 // Contributors: Claude (wrote these tests; the location picker's selection, #111; saving the
 // place name, #112); Mohamed Khellaf (reviewed). Claude (the ViewModel's navigation arguments,
 // #131; the repository's errors, #131 review; the organizer's repositories, #134).
+// Contributors: Claude (Opus 5.5, Anthropic) (the co-organizer repositories, #370).
 package com.polysocial.ui.event.create
 
 import androidx.lifecycle.SavedStateHandle
@@ -15,6 +16,8 @@ import com.polysocial.model.geocoding.FakeGeocodingService
 import com.polysocial.model.geocoding.Place
 import com.polysocial.model.geocoding.ReverseGeocodeResult
 import com.polysocial.model.location.FakeLocationService
+import com.polysocial.model.registration.FakeRegistrationRepository
+import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.utils.MainDispatcherRule
 import java.time.Clock
@@ -46,6 +49,8 @@ class CreateEventViewModelTest {
         FakeAuthRepository(),
         FakeUserProfileRepository(),
         FakeAssociationRepository(),
+        FakeRegistrationRepository(),
+        FakePublicProfileRepository(),
     )
   }
 

@@ -3,6 +3,7 @@
 // tabs, and the created event's id reaching the Map's detail route, #110; "View event" opening the
 // event detail, #211; the ViewModel's navigation arguments, #131; the organizer's repositories,
 // #134).
+// Contributors: Claude (Opus 5.5, Anthropic) (the co-organizer repositories, #370).
 package com.polysocial.ui.navigation
 
 import android.app.Application
@@ -30,6 +31,8 @@ import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.FakeEventRepository
+import com.polysocial.model.registration.FakeRegistrationRepository
+import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.resources.C
 import com.polysocial.ui.event.create.CreateEventScreen
@@ -108,6 +111,8 @@ class CreateEventNavigationTest {
                     FakeAuthRepository(),
                     FakeUserProfileRepository(),
                     FakeAssociationRepository(),
+                    FakeRegistrationRepository(),
+                    FakePublicProfileRepository(),
                 )
               }
               createEventViewModel = viewModel

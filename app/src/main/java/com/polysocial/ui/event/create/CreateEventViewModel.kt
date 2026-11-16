@@ -1,6 +1,7 @@
 // Contributors: Claude (drafted the Create Event ViewModel); Mohamed Khellaf (reviewed). Claude
 // (editing an event, #131; the repository's errors, #131 review; the organizer row, #134).
-// Contributors: Claude (Opus 5.5, Anthropic) (refused organizer changes, #370).
+// Contributors: Claude (Opus 5.5, Anthropic) (refused organizer changes; Edit event's organizers
+// and the "Add a co-organizer" sheet, #370).
 package com.polysocial.ui.event.create
 
 import androidx.lifecycle.SavedStateHandle
@@ -15,8 +16,14 @@ import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.EventResult
 import com.polysocial.model.event.EventValidationError
+import com.polysocial.model.event.OrganizerChanges
 import com.polysocial.model.event.UpdateEventResult
+import com.polysocial.model.registration.AttendeesResult
+import com.polysocial.model.registration.RegistrationRepository
 import com.polysocial.model.user.ProfileResult
+import com.polysocial.model.user.PublicProfile
+import com.polysocial.model.user.PublicProfileRepository
+import com.polysocial.model.user.PublicProfilesResult
 import com.polysocial.model.user.UserProfileRepository
 import com.polysocial.ui.event.detail.EventDetailViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -24,6 +31,7 @@ import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalTime
 import javax.inject.Inject
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -94,6 +102,8 @@ sealed interface Organizer {
  * @property isEditing true for Edit event, which saves changes to an existing event instead of
  *   creating one.
  * @property organizer who the form says organizes the event.
+ * @property coOrganizers Edit event's organizers block (#370), or null when the form has none:
+ *   creating an event, or editing an association's, which keeps its single organizer.
  */
 data class CreateEventUiState(
     val today: LocalDate,
@@ -103,6 +113,7 @@ data class CreateEventUiState(
     val canSubmit: Boolean = true,
     val status: CreateEventStatus = CreateEventStatus.Editing,
     val organizer: Organizer = Organizer.Loading,
+    val coOrganizers: CoOrganizersUiState? = null,
 )
 
 /**
@@ -124,11 +135,20 @@ data class CreateEventUiState(
  * and an account whose profile or association can't be read, sees "Organized by you". The form
  * never waits for it.
  *
+ * Editing a student's event, it also manages its organizers (#370): the block lists them with their
+ * public profiles ([PublicProfileRepository]), and the "Add a co-organizer" sheet offers the
+ * students going ([RegistrationRepository.getAttendeeUids]). Adding and removing only change the
+ * form: they are saved with the rest of the event, as [OrganizerChanges], by Save changes. An
+ * organizer who removes themselves stops managing the event once it is saved, and Edit event closes
+ * as after any save.
+ *
  * @param clock gives the current time and time zone, so tests can fix them.
  * @param savedStateHandle holds the navigation arguments; without an event ID, it creates an event.
  * @param auth gives the signed-in account, whose organizer row is shown.
  * @param profiles reads that account's profile, to know whether it is a verified association.
  * @param associations reads a verified association's name.
+ * @param registrations lists the students going, for the "Add a co-organizer" sheet.
+ * @param publicProfiles reads the organizers' and those students' names, section and year.
  */
 @HiltViewModel
 class CreateEventViewModel
@@ -140,6 +160,8 @@ constructor(
     private val auth: AuthRepository,
     private val profiles: UserProfileRepository,
     private val associations: AssociationRepository,
+    private val registrations: RegistrationRepository,
+    private val publicProfiles: PublicProfileRepository,
 ) : ViewModel() {
 
   /** The ID of the event being edited, or null when creating one. */
@@ -169,6 +191,18 @@ constructor(
   /** The event being edited, as read when the screen opened. */
   private var stored: Event? = null
 
+  /** The organizers added and removed in the form, saved with the rest of the event. */
+  private var organizerChanges = OrganizerChanges.NONE
+
+  /** The public profiles read so far, of the organizers and of the students going, by UID. */
+  private var knownProfiles: Map<String, PublicProfile> = emptyMap()
+
+  private var profilesLoading = false
+  private var sheet: AddCoOrganizerSheet? = null
+
+  /** The read of the students going, cancelled when the sheet closes. */
+  private var sheetJob: Job? = null
+
   init {
     viewModelScope.launch {
       val organizer = readOrganizer()
@@ -193,11 +227,113 @@ constructor(
     when (val result = repository.getEvent(id).first()) {
       is EventResult.Found -> {
         stored = result.event
+        profilesLoading = !result.event.isAssociationEvent
         publish(result.event.toForm(clock.zone), CreateEventStatus.Editing)
+        if (profilesLoading) readOrganizerProfiles(result.event.organizerIds)
       }
       EventResult.NotFound,
       EventResult.NotCached -> _uiState.update { it.copy(status = CreateEventStatus.Unavailable) }
     }
+  }
+
+  /**
+   * Reads the stored organizers' public profiles. A failure leaves them without one, so their rows
+   * say the profile is unavailable; the organizers can still be changed and saved.
+   */
+  private suspend fun readOrganizerProfiles(uids: List<String>) {
+    (publicProfiles.getPublicProfiles(uids) as? PublicProfilesResult.Found)?.let {
+      knownProfiles = knownProfiles + it.profiles
+    }
+    profilesLoading = false
+    showCoOrganizers()
+  }
+
+  /** Removes [uid] from the organizers in the form; the creator can't be removed. */
+  fun onRemoveOrganizer(uid: String) {
+    val event = stored ?: return
+    if (_uiState.value.status.isLocked || uid == event.createdBy) return
+    changeOrganizers(organizerChanges.removing(uid))
+  }
+
+  /** Opens the "Add a co-organizer" sheet and reads the students going. */
+  fun onOpenAddCoOrganizer() {
+    if (_uiState.value.status.isLocked || _uiState.value.coOrganizers?.canAdd != true) return
+    readAddableStudents()
+  }
+
+  /** Reads the students going again, after the sheet couldn't. */
+  fun onRetryAddCoOrganizer() {
+    if (sheet == AddCoOrganizerSheet.Failed) readAddableStudents()
+  }
+
+  /** Adds [uid], picked in the sheet, to the organizers in the form, and closes the sheet. */
+  fun onAddCoOrganizer(uid: String) {
+    val students = (sheet as? AddCoOrganizerSheet.Students)?.students ?: return
+    if (students.none { it.uid == uid }) return
+    sheet = null
+    changeOrganizers(organizerChanges.adding(uid))
+  }
+
+  fun onCloseAddCoOrganizer() {
+    sheetJob?.cancel()
+    sheet = null
+    showCoOrganizers()
+  }
+
+  private fun readAddableStudents() {
+    val eventId = editedId ?: return
+    sheet = AddCoOrganizerSheet.Loading
+    showCoOrganizers()
+    sheetJob?.cancel()
+    sheetJob = viewModelScope.launch {
+      sheet = addableStudentsSheet(eventId)
+      showCoOrganizers()
+    }
+  }
+
+  private suspend fun addableStudentsSheet(eventId: String): AddCoOrganizerSheet {
+    val attendees =
+        when (val result = registrations.getAttendeeUids(eventId)) {
+          is AttendeesResult.Attendees -> result.uids
+          AttendeesResult.NetworkError,
+          AttendeesResult.UnexpectedError -> return AddCoOrganizerSheet.Failed
+        }
+    val me = auth.currentUser()?.uid
+    val organizers = _uiState.value.coOrganizers?.organizers.orEmpty().map { it.uid }
+    val candidates = attendees - organizers.toSet() - setOfNotNull(me)
+    if (candidates.isEmpty()) return AddCoOrganizerSheet.NobodyGoing
+    when (val result = publicProfiles.getPublicProfiles(candidates)) {
+      is PublicProfilesResult.Found -> knownProfiles = knownProfiles + result.profiles
+      PublicProfilesResult.NetworkError,
+      PublicProfilesResult.UnexpectedError -> return AddCoOrganizerSheet.Failed
+    }
+    val students = addableStudents(candidates, organizers, me, knownProfiles)
+    return if (students.isEmpty()) AddCoOrganizerSheet.NobodyGoing
+    else AddCoOrganizerSheet.Students(students)
+  }
+
+  private fun changeOrganizers(changes: OrganizerChanges) {
+    organizerChanges = changes
+    refused = emptySet()
+    val state = _uiState.value
+    val status =
+        if (state.status is CreateEventStatus.Failed) CreateEventStatus.Editing else state.status
+    publish(state.form, status)
+  }
+
+  private fun showCoOrganizers() {
+    _uiState.update { it.copy(coOrganizers = coOrganizersState()) }
+  }
+
+  /** The organizers block, or null when the form has none (see [CreateEventUiState]). */
+  private fun coOrganizersState(): CoOrganizersUiState? {
+    val event = stored?.takeUnless { it.isAssociationEvent } ?: return null
+    return CoOrganizersUiState(
+        organizers =
+            organizerEntries(event, organizerChanges, auth.currentUser()?.uid, knownProfiles),
+        profilesLoading = profilesLoading,
+        sheet = sheet,
+    )
   }
 
   fun onTitleChange(title: String) = edit(Field.TITLE) { it.copy(title = title) }
@@ -245,13 +381,15 @@ constructor(
   }
 
   private suspend fun save(event: Event): CreateEventStatus =
-      when (val result = repository.updateEvent(event)) {
+      when (val result = repository.updateEvent(event, organizerChanges)) {
         UpdateEventResult.Updated -> CreateEventStatus.Saved
         is UpdateEventResult.Invalid -> refuse(result.errors)
         UpdateEventResult.NetworkError ->
             CreateEventStatus.Failed(CreateEventStatus.Failed.Reason.OFFLINE)
-        // Never reported as saved: the form stays, with Try again (#131). The form doesn't
-        // change organizers until #370's screen, so InvalidOrganizers can't happen yet.
+        // Never reported as saved: the form stays, with Try again (#131). The block itself never
+        // removes the creator or adds a sixth organizer, so InvalidOrganizers means a student
+        // cancelled since being picked, or another organizer changed the list meanwhile. Figma
+        // reuses section 10's couldn't-save frame for it (#400).
         is UpdateEventResult.InvalidOrganizers,
         UpdateEventResult.NotOrganizer,
         UpdateEventResult.NotFound,
@@ -301,6 +439,7 @@ constructor(
               status != CreateEventStatus.Saving && !(submitAttempted && errors.isNotEmpty()),
           status = status,
           organizer = it.organizer,
+          coOrganizers = coOrganizersState(),
       )
     }
   }
