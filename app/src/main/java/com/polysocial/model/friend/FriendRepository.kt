@@ -32,7 +32,11 @@ sealed interface SendFriendRequestResult {
    */
   data object AlreadyExists : SendFriendRequestResult
 
-  /** The device is offline. Nothing was written or queued, so the student can try again. */
+  /**
+   * The server couldn't be reached or didn't confirm the write. Nothing was queued. If the write
+   * did reach the server, trying again returns [AlreadyExists] and
+   * [FriendRepository.observeFriendships] shows the request.
+   */
   data object NetworkError : SendFriendRequestResult
 
   /**
@@ -55,7 +59,11 @@ sealed interface FriendshipActionResult {
    */
   data object Gone : FriendshipActionResult
 
-  /** The device is offline. Nothing was written or queued, so the student can try again. */
+  /**
+   * The server couldn't be reached or didn't confirm the write. Nothing was queued. If the write
+   * did reach the server, trying again returns [Gone] and [FriendRepository.observeFriendships]
+   * shows the new state.
+   */
   data object NetworkError : FriendshipActionResult
 
   /**
@@ -81,10 +89,11 @@ interface FriendRepository {
   /**
    * Observes the signed-in student's friend requests and friendships, sent and received.
    *
-   * The flow emits on every change, including from the offline cache while the device is offline. A
-   * slow collector gets only the latest result. It ends after a [FriendshipsResult.Error], which is
-   * always delivered. The user is read when collection starts, and cancelling the collection stops
-   * listening.
+   * The flow emits on every change, including from the offline cache while the device is offline,
+   * and when only [FriendshipsResult.Success.fromCache] changes (for example when the device comes
+   * back online). A slow collector gets only the latest result. It ends after a
+   * [FriendshipsResult.Error], which is always delivered. The user is read when collection starts,
+   * and cancelling the collection stops listening.
    */
   fun observeFriendships(): Flow<FriendshipsResult>
 
@@ -110,6 +119,13 @@ interface FriendRepository {
    * [FriendshipActionResult.NetworkError], before anything is read. Then, in one step, the document
    * is read again and written only if it still has the [shown] `status` and `createdAt`; otherwise
    * this returns [FriendshipActionResult.Gone].
+   *
+   * The checks on the document run in this order: a student outside the [shown] pair gets
+   * [FriendshipActionResult.UnexpectedError] (the Security Rules refuse the read), then the
+   * [FriendshipActionResult.Gone] check, then, on the document as read again, its sender accepting
+   * or a status that isn't [FriendshipStatus.PENDING] gets
+   * [FriendshipActionResult.UnexpectedError]. So a stale request is [FriendshipActionResult.Gone]
+   * even when accepting it would have been refused.
    */
   suspend fun accept(shown: Friendship): FriendshipActionResult
 
@@ -117,8 +133,9 @@ interface FriendRepository {
    * Deletes the friendship or request [shown], as the screen showed it: declining (by the
    * recipient), cancelling (by the sender) or removing a friend (by either student).
    *
-   * Like [accept], nobody signed in and an offline device fail before anything is read. Then, in
-   * one step, the document is read again and deleted only if it still has the [shown] `status` and
+   * Like [accept], nobody signed in and an offline device fail before anything is read, and a
+   * student outside the [shown] pair gets [FriendshipActionResult.UnexpectedError]. Then, in one
+   * step, the document is read again and deleted only if it still has the [shown] `status` and
    * `createdAt`; otherwise this returns [FriendshipActionResult.Gone]. So a Cancel tapped after the
    * other student accepted can't delete the new friendship, and a stale tap can't delete a request
    * cancelled and sent again under the same ID. The Security Rules can't tell these apart, since a
