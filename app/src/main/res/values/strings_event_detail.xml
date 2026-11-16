@@ -50,6 +50,12 @@
     <string name="event_detail_edit">Edit</string>
     <string name="event_detail_organized_by_you">Organized by you</string>
     <string name="event_detail_cancel_event">Cancel event</string>
+    <string name="cancel_registration_title">Cancel your registration?</string>
+    <string name="cancel_registration_body">You\'ll also leave your group for \"%1$s\". If you\'re its last member, the group is deleted.</string>
+    <string name="cancel_registration_leaving">Leaving your group…</string>
+    <string name="cancel_registration_keep">Keep going</string>
+    <string name="cancel_registration_offline">You\'re offline, so you\'re still in your group and registered. Try again once you\'re back online.</string>
+    <string name="cancel_registration_unexpected">Something went wrong, so you\'re still in your group and registered. Try again.</string>
     <string name="cancel_event_title">Cancel this event?</string>
     <!-- %1$s is the event's title. -->
     <string name="cancel_event_body">\"%1$s\" is deleted for everyone and disappears from the map and the Events list. This can\'t be undone.</string>

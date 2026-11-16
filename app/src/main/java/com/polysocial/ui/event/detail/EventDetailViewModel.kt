@@ -22,6 +22,8 @@
 // creator, for the same viewers as the creator's, #371).
 // Contributors: Claude (Opus 5.5, Anthropic) (a full event's refusal shown as the usual failure,
 // #373).
+// Contributors: Claude (Sonnet 5.5, Anthropic) asked before a student in a group cancels, then
+// leaves the group and cancels the registration, #318.
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -37,6 +39,7 @@ import com.polysocial.model.event.isLive
 import com.polysocial.model.event.isPast
 import com.polysocial.model.group.Group
 import com.polysocial.model.group.GroupRepository
+import com.polysocial.model.group.GroupWriteResult
 import com.polysocial.model.group.MyGroupResult
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.registration.AttendeeCountResult
@@ -60,6 +63,7 @@ import java.time.LocalTime
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -352,6 +356,30 @@ sealed interface CancelEventState {
 }
 
 /**
+ * The "Cancel your registration?" confirmation a student in a group sees before cancelling (#318):
+ * cancelling also leaves the group, since a student can't be in a group for an event they aren't
+ * registered for (#244).
+ */
+sealed interface CancelRegistrationState {
+  /** The confirmation isn't shown. */
+  data object Hidden : CancelRegistrationState
+
+  /** The confirmation asks whether to cancel the registration and leave the group. */
+  data object Confirming : CancelRegistrationState
+
+  /** The group is being left; the confirmation can't be dismissed meanwhile. */
+  data object Leaving : CancelRegistrationState
+
+  /** The group wasn't left, so the registration is untouched; the confirmation stays. */
+  data class Failed(val reason: Reason) : CancelRegistrationState {
+    enum class Reason {
+      OFFLINE,
+      UNEXPECTED,
+    }
+  }
+}
+
+/**
  * Shows the event whose ID is the navigation argument [EVENT_ID_ARG], live: the screen updates when
  * the event changes, shows "not found" once it is deleted, and loads it by itself when the device
  * comes back online.
@@ -434,6 +462,10 @@ constructor(
 
   private val _cancelState = MutableStateFlow<CancelEventState>(CancelEventState.Hidden)
   val cancelState: StateFlow<CancelEventState> = _cancelState.asStateFlow()
+
+  private val _registrationSheet =
+      MutableStateFlow<CancelRegistrationState>(CancelRegistrationState.Hidden)
+  val registrationSheet: StateFlow<CancelRegistrationState> = _registrationSheet.asStateFlow()
 
   /** The event last shown, kept on screen while it is deleted. */
   private var lastLoaded: EventDetailUiState.Loaded? = null
@@ -755,8 +787,64 @@ constructor(
   /** "I'm going": registers the student. Ignored while a save is running. */
   fun onImGoing() = saveAttendance(going = true)
 
-  /** "Cancel registration": removes the student's registration. Ignored while a save is running. */
-  fun onCancelRegistration() = saveAttendance(going = false)
+  /**
+   * "Cancel registration": removes the student's registration, after a confirmation that also
+   * leaves their group if they are in one (#318). Ignored while a save is running.
+   */
+  fun onCancelRegistration() {
+    if ((uiState.value as? EventDetailUiState.Loaded)?.yourGroup == null) {
+      saveAttendance(going = false)
+    } else {
+      _registrationSheet.compareAndSet(
+          CancelRegistrationState.Hidden,
+          CancelRegistrationState.Confirming,
+      )
+    }
+  }
+
+  /** "Keep going": closes the confirmation, unless the group is being left. */
+  fun onKeepRegistration() {
+    _registrationSheet.update {
+      if (it == CancelRegistrationState.Leaving) it else CancelRegistrationState.Hidden
+    }
+  }
+
+  /**
+   * Confirms the sheet: leaves the group first, then cancels the registration. This order never
+   * leaves the student in a group without a registration; if only the cancellation fails, the
+   * student is still registered and the usual Snackbar offers Retry.
+   */
+  fun onConfirmCancelRegistration() {
+    val group = (uiState.value as? EventDetailUiState.Loaded)?.yourGroup ?: return
+    val current = _registrationSheet.value
+    if (
+        (current != CancelRegistrationState.Confirming &&
+            current !is CancelRegistrationState.Failed) ||
+            !_registrationSheet.compareAndSet(current, CancelRegistrationState.Leaving)
+    )
+        return
+    viewModelScope.launch {
+      val failure =
+          try {
+            when (groups.leaveGroup(eventId, group.groupId)) {
+              is GroupWriteResult.Success -> null
+              GroupWriteResult.NetworkError -> CancelRegistrationState.Failed.Reason.OFFLINE
+              else -> CancelRegistrationState.Failed.Reason.UNEXPECTED
+            }
+          } catch (cancelled: CancellationException) {
+            _registrationSheet.value = current
+            throw cancelled
+          } catch (_: Exception) {
+            CancelRegistrationState.Failed.Reason.UNEXPECTED
+          }
+      if (failure == null) {
+        _registrationSheet.value = CancelRegistrationState.Hidden
+        saveAttendance(going = false)
+      } else {
+        _registrationSheet.value = CancelRegistrationState.Failed(failure)
+      }
+    }
+  }
 
   /** Clears [shown], unless a newer failure replaced it meanwhile. */
   fun onAttendanceFeedbackShown(shown: AttendanceFeedback) {

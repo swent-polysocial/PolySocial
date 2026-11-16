@@ -1,5 +1,6 @@
 // Contributors: Claude (Cancel event confirmation from the Figma "Cancel event" frames, #131; its
 // sheet parts moved to ui/common, #296).
+// Contributors: Claude (Sonnet 5.5, Anthropic) made its red button reusable, #318.
 package com.polysocial.ui.event.detail
 
 import androidx.compose.foundation.background
@@ -93,7 +94,12 @@ internal fun CancelEventSheet(
 
 /** Figma's red button: "Cancel event", "Try again", or a spinner and "Cancelling event…". */
 @Composable
-private fun ConfirmButton(text: Int, cancelling: Boolean, onClick: () -> Unit) {
+internal fun ConfirmButton(
+    text: Int,
+    cancelling: Boolean,
+    onClick: () -> Unit,
+    tag: String = EventDetailTags.CONFIRM_CANCEL,
+) {
   Row(
       Modifier.fillMaxWidth()
           .height(52.dp)
@@ -102,7 +108,7 @@ private fun ConfirmButton(text: Int, cancelling: Boolean, onClick: () -> Unit) {
           .clip(RoundedCornerShape(26.dp))
           .background(Accent)
           .clickable(enabled = !cancelling, role = Role.Button, onClick = onClick)
-          .testTag(EventDetailTags.CONFIRM_CANCEL),
+          .testTag(tag),
       horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
       verticalAlignment = Alignment.CenterVertically,
   ) {
