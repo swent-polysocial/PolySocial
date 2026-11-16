@@ -1,0 +1,121 @@
+// Contributors: Claude Opus 5.5 (wrote this fake for tests, #357); Konstantinos Perdikeas
+// (directed, reviewed and owns it).
+package com.polysocial.model.friend
+
+import java.time.Instant
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+
+/**
+ * In-memory [FriendRepository] for tests. It follows the [FriendRepository] contracts and checks in
+ * the order the Firestore repository must: the signed-in user, then (for [sendRequest]) the pair's
+ * [friendshipId], then [sendFailure], [acceptFailure] or [removeFailure] (like an offline device),
+ * then the stored friendship, as the transaction and the Security Rules would.
+ *
+ * Unlike the Security Rules, it doesn't check that the other student has a public profile, so any
+ * valid UID can be sent a request.
+ *
+ * @property currentUid the signed-in student, or null when nobody is signed in.
+ * @property now the server time the fake stores as `createdAt` and `acceptedAt`.
+ */
+class FakeFriendRepository(
+    var currentUid: String? = "test-student",
+    var now: Instant = Instant.parse("2026-01-01T00:00:00Z"),
+) : FriendRepository {
+  /** The stored friendships, by ID. */
+  private val friendships = MutableStateFlow<Map<String, Friendship>>(emptyMap())
+
+  /** When set, [sendRequest] returns this result instead of sending, like a failed write. */
+  var sendFailure: SendFriendRequestResult? = null
+
+  /** When set, [accept] returns this result instead of accepting, like a failed write. */
+  var acceptFailure: FriendshipActionResult? = null
+
+  /** When set, [remove] returns this result instead of deleting, like a failed write. */
+  var removeFailure: FriendshipActionResult? = null
+
+  /** When true, [observeFriendships] emits [FriendshipsResult.Error], like a failed query. */
+  var readFailure = false
+
+  /** The `fromCache` flag [observeFriendships] reports, to simulate being offline. */
+  var readFromCache = false
+
+  /** Stores [friendship] directly under its ID, like a request another student sent. */
+  fun seedFriendship(friendship: Friendship) {
+    friendships.value += friendship.id to friendship
+  }
+
+  /** The stored friendship with this [id], or null when there is none. */
+  fun friendship(id: String): Friendship? = friendships.value[id]
+
+  override fun observeFriendships(): Flow<FriendshipsResult> {
+    val uid = currentUid
+    if (uid == null || readFailure) return flowOf(FriendshipsResult.Error)
+    return friendships.map { stored ->
+      FriendshipsResult.Success(stored.values.filter { uid in it.uids }, readFromCache)
+    }
+  }
+
+  override suspend fun sendRequest(otherUid: String): SendFriendRequestResult {
+    val uid = currentUid ?: return SendFriendRequestResult.UnexpectedError
+    val id = friendshipId(uid, otherUid) ?: return SendFriendRequestResult.UnexpectedError
+    sendFailure?.let {
+      return it
+    }
+    if (id in friendships.value) return SendFriendRequestResult.AlreadyExists
+    seedFriendship(
+        Friendship(
+            id = id,
+            uids = listOf(uid, otherUid).sorted(),
+            requestedBy = uid,
+            status = FriendshipStatus.PENDING,
+            createdAt = now,
+            acceptedAt = null,
+        ))
+    return SendFriendRequestResult.Sent
+  }
+
+  override suspend fun accept(shown: Friendship): FriendshipActionResult {
+    val uid = currentUid ?: return FriendshipActionResult.UnexpectedError
+    acceptFailure?.let {
+      return it
+    }
+    refusal(shown, uid)?.let {
+      return it
+    }
+    val stored = friendships.value.getValue(shown.id)
+    if (stored.requestedBy == uid || stored.status != FriendshipStatus.PENDING) {
+      return FriendshipActionResult.UnexpectedError
+    }
+    seedFriendship(stored.copy(status = FriendshipStatus.ACCEPTED, acceptedAt = now))
+    return FriendshipActionResult.Done
+  }
+
+  override suspend fun remove(shown: Friendship): FriendshipActionResult {
+    val uid = currentUid ?: return FriendshipActionResult.UnexpectedError
+    removeFailure?.let {
+      return it
+    }
+    refusal(shown, uid)?.let {
+      return it
+    }
+    friendships.value -= shown.id
+    return FriendshipActionResult.Done
+  }
+
+  /**
+   * What reading [shown]'s document again, as [uid], refuses, or null when it is still as shown: a
+   * student outside the pair can't read it (the Security Rules refuse), and a missing document, or
+   * one whose status or `createdAt` changed since it was shown, is [FriendshipActionResult.Gone].
+   */
+  private fun refusal(shown: Friendship, uid: String): FriendshipActionResult? {
+    if (uid !in shown.uids) return FriendshipActionResult.UnexpectedError
+    val stored = friendships.value[shown.id]
+    if (stored == null || stored.status != shown.status || stored.createdAt != shown.createdAt) {
+      return FriendshipActionResult.Gone
+    }
+    return null
+  }
+}
