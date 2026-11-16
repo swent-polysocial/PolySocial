@@ -1,3 +1,5 @@
+// Contributors: Claude Opus 5.5 (a fake FriendRepository for the scanner's ViewModel, #359);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the account deletion flow through the real
 // routes and the lost-session case, #207; Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (Opus 5.5, Anthropic) bound a fake session guard and its parts after
@@ -56,6 +58,9 @@ import com.polysocial.model.firebase.FirebaseModule
 import com.polysocial.model.firebase.SessionCache
 import com.polysocial.model.firebase.SessionGuard
 import com.polysocial.model.firebase.SessionOwnerStore
+import com.polysocial.model.friend.FakeFriendRepository
+import com.polysocial.model.friend.FriendModule
+import com.polysocial.model.friend.FriendRepository
 import com.polysocial.model.group.FakeGroupRepository
 import com.polysocial.model.group.GroupModule
 import com.polysocial.model.group.GroupRepository
@@ -103,6 +108,7 @@ import org.robolectric.annotation.Config
     MessageModule::class,
     NetworkModule::class,
     RegistrationModule::class,
+    FriendModule::class,
     GroupModule::class,
     PublicProfileModule::class,
     UserProfileModule::class,
@@ -127,6 +133,8 @@ class DeleteAccountInjectionTest {
   @BindValue @JvmField val associationSignup: AssociationSignupStore = EmptyAssociationSignupStore
   @BindValue @JvmField val deletion: AccountDeletionRepository = fakeDeletion
   @BindValue @JvmField val events: EventRepository = FakeEventRepository()
+  @BindValue @JvmField val friends: FriendRepository = FakeFriendRepository()
+
   @BindValue @JvmField val registrations: RegistrationRepository = FakeRegistrationRepository()
   @BindValue @JvmField val groups: GroupRepository = FakeGroupRepository()
   @BindValue @JvmField val publicProfiles: PublicProfileRepository = FakePublicProfileRepository()

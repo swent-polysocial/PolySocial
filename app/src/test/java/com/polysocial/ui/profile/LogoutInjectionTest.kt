@@ -1,3 +1,5 @@
+// Contributors: Claude Opus 5.5 (a fake FriendRepository for the scanner's ViewModel, #359);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: OpenAI Codex (keep association onboarding dependencies fake in Hilt tests, #125).
 // Contributors: OpenAI Codex (Hilt logout and verification wiring with offline fakes, #109).
 // Contributors: Claude (fake association repository for the association names, #128; fake
@@ -36,6 +38,9 @@ import com.polysocial.model.chat.MessageModule
 import com.polysocial.model.chat.MessageRepository
 import com.polysocial.model.event.*
 import com.polysocial.model.firebase.*
+import com.polysocial.model.friend.FakeFriendRepository
+import com.polysocial.model.friend.FriendModule
+import com.polysocial.model.friend.FriendRepository
 import com.polysocial.model.group.FakeGroupRepository
 import com.polysocial.model.group.GroupModule
 import com.polysocial.model.group.GroupRepository
@@ -67,6 +72,7 @@ import org.robolectric.annotation.Config
     FirebaseModule::class,
     MessageModule::class,
     RegistrationModule::class,
+    FriendModule::class,
     GroupModule::class,
     PublicProfileModule::class,
 )
@@ -90,6 +96,8 @@ class LogoutInjectionTest {
   @BindValue @JvmField val verificationClock: VerificationClock = VerificationClock { 1000 }
   @BindValue @JvmField val auth: AuthRepository = fakeAuth
   @BindValue @JvmField val events: EventRepository = FakeEventRepository()
+  @BindValue @JvmField val friends: FriendRepository = FakeFriendRepository()
+
   @BindValue @JvmField val registrations: RegistrationRepository = FakeRegistrationRepository()
   @BindValue @JvmField val groups: GroupRepository = FakeGroupRepository()
   @BindValue @JvmField val publicProfiles: PublicProfileRepository = FakePublicProfileRepository()

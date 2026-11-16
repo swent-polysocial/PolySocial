@@ -1,3 +1,5 @@
+// Contributors: Claude Opus 5.5 (a fake FriendRepository for the scanner's ViewModel, #359);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: Claude (end-to-end test of the organizer flow: create, edit and cancel an event,
 // #239; every data source bound to a fake, as in M1EndToEndTest, #239 review).
 // Contributors: Claude (Opus 5.5, Anthropic) bound fake group and public profile repositories,
@@ -59,6 +61,9 @@ import com.polysocial.model.firebase.FirebaseModule
 import com.polysocial.model.firebase.SessionCache
 import com.polysocial.model.firebase.SessionGuard
 import com.polysocial.model.firebase.SessionOwnerStore
+import com.polysocial.model.friend.FakeFriendRepository
+import com.polysocial.model.friend.FriendModule
+import com.polysocial.model.friend.FriendRepository
 import com.polysocial.model.geocoding.FakeGeocodingService
 import com.polysocial.model.geocoding.GeocodingModule
 import com.polysocial.model.geocoding.GeocodingService
@@ -140,6 +145,7 @@ import org.junit.runner.RunWith
     UserProfileModule::class,
     PublicProfileModule::class,
     RegistrationModule::class,
+    FriendModule::class,
 )
 @RunWith(AndroidJUnit4::class)
 class ManageEventEndToEndTest {
@@ -171,6 +177,8 @@ class ManageEventEndToEndTest {
   @BindValue @JvmField val sessionOwner: SessionOwnerStore = FakeSessionOwnerStore()
   @BindValue @JvmField val verificationStore: VerificationStore = MemoryVerificationStore()
   @BindValue @JvmField val network: NetworkMonitor = FakeNetworkMonitor()
+  @BindValue @JvmField val friends: FriendRepository = FakeFriendRepository()
+
   @BindValue @JvmField val registrations: RegistrationRepository = FakeRegistrationRepository()
   @BindValue @JvmField val groups: GroupRepository = FakeGroupRepository()
   @BindValue
