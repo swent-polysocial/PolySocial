@@ -1,6 +1,8 @@
-# Contributors: Claude (Opus 5.5, Anthropic) (prototype of the #365 chat rules, never merged).
+# Contributors: Claude (Opus 5.5, Anthropic) (prototype of the #365 chat rules, never merged; the
+# group marker's delete rule, 2026-11-16).
 """Writes one variant of firebase/firestore/firestore.rules per new condition of the #365 chat
-rules, with that condition replaced by `true`, next to this file (<name>.rules), and list.txt with
+rules, with that condition replaced by `true` (group-unhide-before-write instead reads the group as
+it was before the write), next to this file (<name>.rules), and list.txt with
 "<name> <suites>" for run.sh. The conditions are found in the two blocks of
 docs/Architecture-Diagram.md section 3.8 as the rules file holds them (indented by 4 spaces).
 Suites: old = chats.prototype.test.js, new = chats.deleting.prototype.test.js,
@@ -19,6 +21,8 @@ GROUP_END = "\n    }\n"
 OTO = "match /users/{uid}/hiddenChats/{pairId} {"
 GRP = "match /users/{uid}/hiddenGroupChats/{chatId} {"
 FWD = "      && request.resource.data.hiddenUpTo >= resource.data.hiddenUpTo;"
+DEL = "allow delete: if isStudent()"
+OWNER = "function isMarkerOwner(uid) {"
 U1 = ("    allow update: if isOfThePair()\n        && areFriends()\n"
       "        && resource.data.senderId == request.auth.uid\n")
 # (name, block "main" or "group", anchor or None, condition as written, replacement, suites)
@@ -29,7 +33,7 @@ MUTANTS = [
     ("pair-sorted", "main", None, "      && pair[0] < pair[1]", "      && true", "old,new"),
     ("pair-member", "main", None, "      && pair.hasAny([member]);", "      && true;", "old,new"),
     ("owner-student", "main", None, "  return isStudent()\n      && request.auth.uid == uid", "  return true\n      && request.auth.uid == uid", "new,group"),
-    ("owner-uid", "main", None, "      && request.auth.uid == uid\n", "      && true\n", "new,group"),
+    ("owner-uid", "main", OWNER, "      && request.auth.uid == uid\n", "      && true\n", "new,group"),
     ("owner-not-deleted", "main", None, "      && !isDeletedAccount(uid);", "      && true;", "new,group"),
     ("data-only-field", "main", None, "  return request.resource.data.keys().hasOnly(['hiddenUpTo'])", "  return true", "new,group"),
     ("data-not-future", "main", None, "      && request.resource.data.hiddenUpTo <= request.time;", "      && true;", "new,group"),
@@ -45,6 +49,13 @@ MUTANTS = [
     ("group-hide-exists", "main", GRP, "        && exists(group())", "        && true", "group"),
     ("group-hide-member", "main", GRP, "        && get(group()).data.memberUids.hasAny([uid])", "        && true", "group"),
     ("group-hide-forward-only", "main", GRP, FWD, "      && true;", "group"),
+    ("group-unhide-student", "main", None, "  " + DEL, "  allow delete: if true", "group"),
+    ("group-unhide-uid", "main", DEL, "      && request.auth.uid == uid", "      && true", "group"),
+    ("group-unhide-two-part", "main", DEL, "      && isTwoPartId(chatId)", "      && true", "group"),
+    ("group-unhide-out-of-group", "main", None, "      && !isInGroupAfter();", "      && true;", "group"),
+    ("group-unhide-exists-after", "main", None, "    return existsAfter(group())", "    return true", "group"),
+    ("group-unhide-member-after", "main", None, "        && getAfter(group()).data.memberUids.hasAny([uid]);", "        && true;", "group"),
+    ("group-unhide-before-write", "main", None, "    return existsAfter(group())\n        && getAfter(group())", "    return exists(group())\n        && get(group())", "group"),
     ("group-unsend-member", "group", None, "  allow update: if isMember()", "  allow update: if true", "group"),
     ("group-unsend-own-sender", "group", None, "      && resource.data.senderId == request.auth.uid", "      && true", "group"),
     ("group-unsend-only-text", "group", None, "      && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text'])", "      && true", "group"),

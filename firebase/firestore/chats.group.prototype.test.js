@@ -1,6 +1,7 @@
-// Contributors: Claude (Fable 5.2 and Opus 5.5, Anthropic) (prototype of the #365 chat rules, never merged).
+// Contributors: Claude (Fable 5.2 and Opus 5.5, Anthropic) (prototype of the #365 chat rules, never merged;
+// Opus 5.5: the group marker deleted when its owner leaves the group, decided on 2026-11-16).
 // PROTOTYPE for #365, never merged: unsend and delete for me in group chats, from
-// docs/Architecture-Diagram.md section 3.8 (25 cases). The helpers are copied from
+// docs/Architecture-Diagram.md section 3.8 (37 cases). The helpers are copied from
 // chats.prototype.test.js. From the repository root (firebase/firestore/PROTOTYPE-365.md):
 //   firebase emulators:exec --project demo-polysocial --only firestore "node firebase/firestore/chats.group.prototype.test.js"
 const { after, before, beforeEach, test } = require("node:test");
@@ -296,20 +297,54 @@ function groupLatestOf(db, eventId, groupId) {
   );
 }
 
-/** A student leaves a group as #232 does: memberUids without them and their marker deleted. */
-function leaveGroupAs(db, uid, eventId, groupId) {
+/**
+ * A student leaves a group as #232's leaveGroup does (it reads the group and their groupMembers
+ * marker, writes memberUids without them or deletes the group when they were its last member, and
+ * deletes the groupMembers marker if it exists), plus what the rejoin decision (2026-11-16) adds:
+ * one delete of their group-chat marker, without reading it, whether or not it exists. With
+ * `deleteMarker: false`, it leaves as today's leaveGroup does, or a client that skips that delete.
+ */
+function leaveGroupAs(
+  db, uid, eventId, groupId,
+  { deleteMarker = true, markerId = groupMarkerId(eventId, groupId) } = {},
+) {
   return runTransaction(db, async (transaction) => {
     const group = doc(db, groupPath(eventId, groupId));
+    const member = doc(db, `events/${eventId}/groupMembers/${uid}`);
     const snapshot = await transaction.get(group);
-    const remaining = snapshot.get("memberUids").filter((member) => member !== uid);
+    const hasMember = (await transaction.get(member)).exists();
+    const remaining = snapshot.get("memberUids").filter((other) => other !== uid);
     if (remaining.length === 0) transaction.delete(group);
     else transaction.update(group, { memberUids: remaining });
-    transaction.delete(doc(db, `events/${eventId}/groupMembers/${uid}`));
+    if (hasMember) transaction.delete(member);
+    // No marker ID (see groupMarkerId): its chat can't be hidden, and the delete would fail the leave.
+    if (deleteMarker && markerId !== null) transaction.delete(doc(db, groupMarkerPath(uid, markerId)));
   });
 }
 
+/** A student joins a group as #232's joinGroup does: their UID appended, with their groupMembers marker. */
+function joinGroupAs(db, uid, eventId, groupId) {
+  return runTransaction(db, async (transaction) => {
+    const group = doc(db, groupPath(eventId, groupId));
+    const member = doc(db, `events/${eventId}/groupMembers/${uid}`);
+    const snapshot = await transaction.get(group);
+    if ((await transaction.get(member)).exists()) throw new Error(`${uid} is already in a group`);
+    transaction.update(group, { memberUids: [...snapshot.get("memberUids"), uid] });
+    transaction.set(member, { groupId });
+  });
+}
+
+/**
+ * The app's one pure function for a group marker's ID, `{eventId}~{groupId}`, or null when it can't
+ * be built: either ID contains '~' (the rules refuse it), the joined ID is one Firestore reserves
+ * (`__.*__`, e.g. `__a~b__` from two valid IDs) or it is over 1,500 bytes. Hide refuses on null;
+ * leave skips the delete.
+ */
 function groupMarkerId(eventId, groupId) {
-  return `${eventId}~${groupId}`;
+  if (eventId.includes("~") || groupId.includes("~")) return null;
+  const id = `${eventId}~${groupId}`;
+  if (/^__[\s\S]*__$/.test(id) || Buffer.byteLength(id, "utf8") > 1500) return null;
+  return id;
 }
 
 function groupMarkerPath(uid, markerId) {
@@ -534,7 +569,7 @@ test("[group hide] a marker holds exactly hiddenUpTo, no later than the server's
   }
 });
 
-test("[group hide] nobody else reads or writes a marker; nobody deletes one; no query across students", async () => {
+test("[group hide] nobody else reads or writes a marker; nobody deletes one while its owner is in the group; no query across students", async () => {
   await seedGroupWithMessages();
   const id = "e1~g1";
   await assertFails(setDoc(doc(studentDb("u2"), groupMarkerPath("u1", id)), { hiddenUpTo: Timestamp.fromMillis(T1) }));
@@ -545,16 +580,7 @@ test("[group hide] nobody else reads or writes a marker; nobody deletes one; no 
   await assertFails(getDocs(collectionGroup(studentDb("u1"), "hiddenGroupChats")));
 });
 
-test("[group hide] after leaving, no new marker; the old one stays, only for its owner", async () => {
-  await seedGroupWithMessages();
-  const db = studentDb("u1");
-  await assertSucceeds(hideGroupAs(db, "u1", "e1~g1", Timestamp.fromMillis(T2)));
-  await assertSucceeds(leaveGroupAs(db, "u1", "e1", "g1"));
-  await assertFails(hideGroupAs(db, "u1", "e1~g1", Timestamp.fromMillis(T3)));
-  expectEqual((await groupMarkerFor(db, "u1", "e1~g1")).hiddenUpTo.toMillis(), T2, "kept");
-});
-
-test("[group hide] under a deletion marker, a student reads and writes none of their group markers", async () => {
+test("[group hide] under a deletion marker, a student reads, creates or moves none of their group markers", async () => {
   await seedGroupWithMessages();
   await assertSucceeds(hideGroupAs(studentDb("u1"), "u1", "e1~g1", Timestamp.fromMillis(T3)));
   await seedDeletedAccount("u1");
@@ -576,5 +602,213 @@ for (const [name, db, uid] of [
     await admin((adminDb) => setDoc(doc(adminDb, groupMarkerPath(uid, "e1~g1")), { hiddenUpTo: Timestamp.fromMillis(T1) }));
     await assertFails(getDoc(doc(db(), groupMarkerPath(uid, "e1~g1"))));
     await assertFails(getDocs(collection(db(), `users/${uid}/hiddenGroupChats`)));
+    // Nor deletes one, even for a group that is gone.
+    await admin((adminDb) => setDoc(doc(adminDb, groupMarkerPath(uid, "e1~gone")), { hiddenUpTo: Timestamp.fromMillis(T1) }));
+    await assertFails(deleteDoc(doc(db(), groupMarkerPath(uid, "e1~gone"))));
   });
 }
+
+// ---- leaving deletes the group marker (decided by the Sprint 6 PO on 2026-11-16) ----
+
+test("[group unhide] leaving deletes the marker in the leave transaction, without reading it", async () => {
+  await seedGroupWithMessages();
+  const db = studentDb("u1");
+  await assertSucceeds(hideGroupAs(db, "u1", "e1~g1", Timestamp.fromMillis(T3)));
+  await assertSucceeds(leaveGroupAs(db, "u1", "e1", "g1"));
+  await expectMissing(groupMarkerPath("u1", "e1~g1"));
+  await expectMissing("events/e1/groupMembers/u1");
+  expectEqual((await stored(groupPath("e1", "g1"))).memberUids, ["u2"], "members");
+  // Out of the group, no new marker.
+  await assertFails(hideGroupAs(db, "u1", "e1~g1", Timestamp.fromMillis(T3)));
+});
+
+test("[group unhide] the last member's leave deletes the group, their groupMembers marker and the chat marker together", async () => {
+  await seedGroup("e1", "solo", ["u1"]);
+  await seedGroupMessage("e1", "solo", "m1", "u1", T1);
+  const db = studentDb("u1");
+  await assertSucceeds(hideGroupAs(db, "u1", "e1~solo", Timestamp.fromMillis(T1)));
+  await assertSucceeds(leaveGroupAs(db, "u1", "e1", "solo"));
+  for (const gone of [groupPath("e1", "solo"), "events/e1/groupMembers/u1", groupMarkerPath("u1", "e1~solo")]) {
+    await expectMissing(gone);
+  }
+});
+
+test("[group unhide] leaving without a marker: deleting the missing marker passes, and the leave with it", async () => {
+  await seedGroupWithMessages();
+  await assertSucceeds(leaveGroupAs(studentDb("u1"), "u1", "e1", "g1"));
+  expectEqual((await stored(groupPath("e1", "g1"))).memberUids, ["u2"], "members");
+  await expectMissing(groupMarkerPath("u1", "e1~g1"));
+  await seedGroup("e2", "solo", ["u1"]);
+  await assertSucceeds(leaveGroupAs(studentDb("u1"), "u1", "e2", "solo"));
+  await expectMissing(groupPath("e2", "solo"));
+});
+
+test("[group unhide] a member removed from a private event still leaves, and their marker goes with it", async () => {
+  await seedGroupWithMessages();
+  await assertSucceeds(hideGroupAs(studentDb("u1"), "u1", "e1~g1", Timestamp.fromMillis(T3)));
+  await admin((db) => setDoc(doc(db, "events/e1"), {
+    title: "Event", isPrivate: true, createdBy: "u3", organizerIds: ["u3"], allowedUids: ["u3"],
+  }));
+  await assertSucceeds(leaveGroupAs(studentDb("u1"), "u1", "e1", "g1"));
+  await expectMissing(groupMarkerPath("u1", "e1~g1"));
+});
+
+test("[group unhide] after leaving and rejoining, the chat is listed again at once, with its whole history", async () => {
+  await seedGroupWithMessages();
+  const db = studentDb("u1");
+  const id = groupMarkerId("e1", "g1");
+  const latest = await groupLatestFor(db, "e1", "g1");
+  await assertSucceeds(hideGroupAs(db, "u1", id, latest.createdAt));
+  expectEqual(isGroupChatListed(latest, await groupMarkerFor(db, "u1", id)), false, "hidden");
+  await assertSucceeds(leaveGroupAs(db, "u1", "e1", "g1"));
+  await assertSucceeds(joinGroupAs(db, "u1", "e1", "g1"));
+  expectEqual((await stored(groupPath("e1", "g1"))).memberUids, ["u2", "u1"], "members");
+  const again = await groupLatestFor(db, "e1", "g1");
+  expectEqual(again.createdAt.toMillis(), T3, "no new message");
+  expectEqual(isGroupChatListed(again, await groupMarkerFor(db, "u1", id)), true, "listed");
+  expectEqual(ids(await assertSucceeds(getDocs(collection(db, "users/u1/hiddenGroupChats")))), "", "markers");
+  const history = await assertSucceeds(getDocs(groupChatOf(db, "e1", "g1")));
+  expectEqual(history.docs.map((d) => d.id), ["m1", "m2", "m3"], "history");
+});
+
+test("[group unhide] a member can't delete their marker while still in the group", async () => {
+  await seedGroupWithMessages();
+  const db = studentDb("u1");
+  await assertSucceeds(hideGroupAs(db, "u1", "e1~g1", Timestamp.fromMillis(T3)));
+  await assertFails(deleteDoc(doc(db, groupMarkerPath("u1", "e1~g1"))));
+  expectEqual((await groupMarkerFor(db, "u1", "e1~g1")).hiddenUpTo.toMillis(), T3, "kept");
+  // A member without a marker can't delete the missing one either.
+  await assertFails(deleteDoc(doc(studentDb("u2"), groupMarkerPath("u2", "e1~g1"))));
+});
+
+test("[group unhide] a client that leaves without deleting its marker still leaves; only its owner deletes the marker later", async () => {
+  await seedGroupWithMessages();
+  const db = studentDb("u1");
+  await assertSucceeds(hideGroupAs(db, "u1", "e1~g1", Timestamp.fromMillis(T2)));
+  await assertSucceeds(leaveGroupAs(db, "u1", "e1", "g1", { deleteMarker: false }));
+  expectEqual((await stored(groupPath("e1", "g1"))).memberUids, ["u2"], "members");
+  await assertFails(hideGroupAs(db, "u1", "e1~g1", Timestamp.fromMillis(T3)));
+  expectEqual((await groupMarkerFor(db, "u1", "e1~g1")).hiddenUpTo.toMillis(), T2, "kept");
+  for (const other of ["u2", "u3"]) {
+    await assertFails(deleteDoc(doc(studentDb(other), groupMarkerPath("u1", "e1~g1"))));
+  }
+  await assertSucceeds(deleteDoc(doc(db, groupMarkerPath("u1", "e1~g1"))));
+  await expectMissing(groupMarkerPath("u1", "e1~g1"));
+});
+
+test("[group unhide] once a group is deleted with its event, its owner may delete the marker; nobody else", async () => {
+  await seedGroupWithMessages();
+  await assertSucceeds(hideGroupAs(studentDb("u1"), "u1", "e1~g1", Timestamp.fromMillis(T3)));
+  await admin((db) => deleteDoc(doc(db, groupPath("e1", "g1"))));
+  await assertFails(deleteDoc(doc(studentDb("u2"), groupMarkerPath("u1", "e1~g1"))));
+  await assertSucceeds(deleteDoc(doc(studentDb("u1"), groupMarkerPath("u1", "e1~g1"))));
+  await expectMissing(groupMarkerPath("u1", "e1~g1"));
+});
+
+test("[group unhide] deleting a marker needs an ID of exactly {eventId}~{groupId}, even for a group its owner isn't in", async () => {
+  await seedGroupWithMessages();
+  const db = studentDb("u1");
+  for (const id of ["e1~g2~", "e1~g2~x", "e1~~g2", "~g2", "e1"]) {
+    await admin((adminDb) => setDoc(doc(adminDb, groupMarkerPath("u1", id)), { hiddenUpTo: Timestamp.fromMillis(T1) }));
+    await assertFails(deleteDoc(doc(db, groupMarkerPath("u1", id)))).catch((error) => {
+      throw new Error(`deleting the group marker ${id} was allowed: ${error.message}`);
+    });
+  }
+  // A well-formed ID of a group they aren't in: their own marker, which hides nothing.
+  await assertSucceeds(deleteDoc(doc(db, groupMarkerPath("u1", "e1~g2"))));
+});
+
+test("[group unhide] under a deletion marker, a member still leaves, the last member too, and the leave deletes their marker", async () => {
+  await seedGroupWithMessages();
+  await seedGroup("e1", "solo", ["u3"]);
+  await assertSucceeds(hideGroupAs(studentDb("u1"), "u1", "e1~g1", Timestamp.fromMillis(T3)));
+  await assertSucceeds(hideGroupAs(studentDb("u3"), "u3", "e1~solo", Timestamp.fromMillis(GROUP_CREATED)));
+  // As deleteAccount leaves them: the deletion marker written and the profile deleted.
+  await admin(async (adminDb) => {
+    for (const uid of ["u1", "u3"]) {
+      await setDoc(doc(adminDb, `deletedAccounts/${uid}`), {});
+      await deleteDoc(doc(adminDb, `users/${uid}`));
+    }
+  });
+  await assertSucceeds(leaveGroupAs(studentDb("u1"), "u1", "e1", "g1"));
+  expectEqual((await stored(groupPath("e1", "g1"))).memberUids, ["u2"], "members");
+  await expectMissing(groupMarkerPath("u1", "e1~g1"));
+  await assertSucceeds(leaveGroupAs(studentDb("u3"), "u3", "e1", "solo"));
+  for (const gone of [groupPath("e1", "solo"), "events/e1/groupMembers/u3", groupMarkerPath("u3", "e1~solo")]) {
+    await expectMissing(gone);
+  }
+});
+
+test("[group unhide] under a deletion marker, the one new grant is deleting one's own marker once out of the group", async () => {
+  await seedGroupWithMessages();
+  for (const uid of ["u1", "u2"]) {
+    await admin((adminDb) => setDoc(doc(adminDb, groupMarkerPath(uid, "e1~g1")), { hiddenUpTo: Timestamp.fromMillis(T1) }));
+  }
+  await seedDeletedAccount("u1");
+  const db = studentDb("u1");
+  const marker = doc(db, groupMarkerPath("u1", "e1~g1"));
+  await assertFails(getDoc(marker));
+  await assertFails(getDocs(collection(db, "users/u1/hiddenGroupChats")));
+  await assertFails(setDoc(marker, { hiddenUpTo: Timestamp.fromMillis(T3) }));
+  await assertFails(updateDoc(marker, { hiddenUpTo: Timestamp.fromMillis(T3) }));
+  await assertFails(setDoc(doc(db, groupMarkerPath("u1", "e2~new")), { hiddenUpTo: Timestamp.fromMillis(T1) }));
+  // While in the group, no delete; another student's, never.
+  await assertFails(deleteDoc(marker));
+  await assertFails(deleteDoc(doc(db, groupMarkerPath("u2", "e1~g1"))));
+  // Out of the group (deleteAccount takes them out, #241): their own, under a two-part ID only.
+  await admin((adminDb) => setDoc(doc(adminDb, groupPath("e1", "g1")), { memberUids: ["u2"] }, { merge: true }));
+  await assertFails(deleteDoc(doc(db, groupMarkerPath("u2", "e1~g1"))));
+  await assertFails(deleteDoc(doc(db, groupMarkerPath("u1", "e1~g1~"))));
+  await assertSucceeds(deleteDoc(marker));
+  await expectMissing(groupMarkerPath("u1", "e1~g1"));
+  expectEqual((await stored(groupMarkerPath("u2", "e1~g1"))).hiddenUpTo.toMillis(), T1, "u2's kept");
+});
+
+test("[group unhide] in the batch that leaves, a modified client can still create its marker; it only affects its own list", async () => {
+  await seedGroupWithMessages();
+  const db = studentDb("u1");
+  // isValidMarker() reads the group as it was before the write, when it still lists u1.
+  const batch = writeBatch(db);
+  batch.update(doc(db, groupPath("e1", "g1")), { memberUids: ["u2"] });
+  batch.delete(doc(db, "events/e1/groupMembers/u1"));
+  batch.set(doc(db, groupMarkerPath("u1", "e1~g1")), { hiddenUpTo: Timestamp.fromMillis(T1) });
+  await assertSucceeds(batch.commit());
+  expectEqual((await stored(groupMarkerPath("u1", "e1~g1"))).hiddenUpTo.toMillis(), T1, "created");
+  // Once the leave has committed: no new write; its owner may delete it.
+  await assertFails(setDoc(doc(db, groupMarkerPath("u1", "e1~g1")), { hiddenUpTo: Timestamp.fromMillis(T3) }));
+  await assertSucceeds(deleteDoc(doc(db, groupMarkerPath("u1", "e1~g1"))));
+});
+
+test("[group unhide] IDs a marker ID can't be built from: the delete would fail the leave, so the app skips it", async () => {
+  expectEqual(
+    [groupMarkerId("e1", "g1"), groupMarkerId("ev~il", "g1"), groupMarkerId("e1", "gr~oup"),
+      groupMarkerId("__a", "b__"), groupMarkerId("a".repeat(1490), "AbCdEfGhIjKlMnOpQrSt")],
+    ["e1~g1", null, null, null, null],
+    "marker IDs",
+  );
+  const event = {
+    title: "T", description: "", category: "OTHER", isPrivate: false, isAssociationEvent: false,
+    createdBy: "u3", organizerIds: ["u3"], allowedUids: ["u3"],
+  };
+  // A student creates such events and groups: no rule constrains their IDs.
+  const creator = studentDb("u3");
+  for (const [eventId, groupId] of [["ev~il", "g1"], ["e2", "gr~oup"], ["__a", "b__"]]) {
+    await assertSucceeds(setDoc(doc(creator, `events/${eventId}`), event));
+    const batch = writeBatch(creator);
+    batch.set(doc(creator, groupPath(eventId, groupId)), {
+      capacity: 4, memberUids: ["u3"], createdBy: "u3", createdAt: serverTimestamp(),
+    });
+    batch.set(doc(creator, `events/${eventId}/groupMembers/u3`), { groupId });
+    await assertSucceeds(batch.commit());
+    const db = studentDb("u1");
+    await assertSucceeds(joinGroupAs(db, "u1", eventId, groupId));
+    // The delete under the joined ID: refused by the rules for a '~', INVALID_ARGUMENT for __a~b__.
+    const error = await leaveGroupAs(db, "u1", eventId, groupId, { markerId: `${eventId}~${groupId}` })
+      .then(() => null, (failure) => failure);
+    expectEqual(error?.code, eventId === "__a" ? "invalid-argument" : "permission-denied", `${eventId}/${groupId}`);
+    expectEqual((await stored(groupPath(eventId, groupId))).memberUids, ["u3", "u1"], "still in");
+    // The app's leave skips the delete and passes.
+    await assertSucceeds(leaveGroupAs(db, "u1", eventId, groupId));
+    expectEqual((await stored(groupPath(eventId, groupId))).memberUids, ["u3"], "left");
+  }
+});

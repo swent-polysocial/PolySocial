@@ -1,6 +1,7 @@
 // Contributors: OpenAI Codex (deleted-token chat access, #241).
 // Contributors: Claude (Fable 5.2 and Opus 5.5, Anthropic) (prototype of the #365 chat rules on this
-// never-merged branch, firebase/firestore/PROTOTYPE-365.md).
+// never-merged branch, firebase/firestore/PROTOTYPE-365.md; a group-chat marker deleted when its
+// owner leaves the group, decided on 2026-11-16).
 // Contributors: Claude (isEpflUser helper, #33; own users/{uid} rule and no catch-all, #35;
 // fixed uid and accountType after review, #35; @epfl.ch associations aren't students and
 // accountType values on create, association profiles not deletable by the client, #161;
@@ -622,11 +623,25 @@ service cloud.firestore {
             && isMarkerData();
       }
 
+      // Whether the owner is in the group once this write is applied.
+      function isInGroupAfter() {
+        return existsAfter(group())
+            && getAfter(group()).data.memberUids.hasAny([uid]);
+      }
+
       allow get, list: if isMarkerOwner(uid);
       allow create: if isValidMarker();
       // Only forward, as for a one-to-one chat.
       allow update: if isValidMarker()
           && request.resource.data.hiddenUpTo >= resource.data.hiddenUpTo;
+      // Only once its owner is out of the group: leaving deletes it, in the leave transaction, so
+      // the chat is listed again if they rejoin. Never while they are in it. No deletion-marker
+      // check, unlike the rules above: like the groupMembers delete beside it, it must not make a
+      // leave fail, and a delete writes no personal data.
+      allow delete: if isStudent()
+          && request.auth.uid == uid
+          && isTwoPartId(chatId)
+          && !isInGroupAfter();
     }
 
     // An association's public profile (#126), keyed by the association account's UID. Its
