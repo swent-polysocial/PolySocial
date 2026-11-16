@@ -1,5 +1,5 @@
-// Contributors: Claude Opus 5.5 (drafted the QR payload format and parser, #337); Konstantinos
-// Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude Opus 5.5 (drafted the QR payload format and parser, #337; shared the ID
+// check with friendships, #357); Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.model.qr
 
 /**
@@ -37,7 +37,11 @@ private val QR_ID = Regex("[A-Za-z0-9_-]{1,$MAX_QR_ID_LENGTH}")
 /** Firestore reserves document IDs of this form, so no code may carry one. */
 private val RESERVED_ID = Regex("__.*__")
 
-private fun isQrId(text: String) = QR_ID.matches(text) && !RESERVED_ID.matches(text)
+/**
+ * Whether [text] is an ID a code may carry. `friendshipId` checks both UIDs with it too, since a
+ * friend's UID arrives in a scanned friend code.
+ */
+internal fun isQrId(text: String) = QR_ID.matches(text) && !RESERVED_ID.matches(text)
 
 /**
  * Reads a scanned code. Only surrounding whitespace, as Kotlin's `trim()` defines it, is ignored
