@@ -858,7 +858,7 @@ Rules live in `firebase/firestore/firestore.rules` and are tested against the Fi
 | `users/{uid}/hiddenGroupChats/{chatId}` | as `hiddenChats` | its owner, under an ID that is exactly two non-empty parts, `{eventId}~{groupId}` (`isTwoPartId`), for a group that exists and lists them in `memberUids`: exactly `hiddenUpTo`, a timestamp no later than the server's time | update: as `hiddenChats`, forward only; delete: its owner (a student, their own UID, also under a deletion marker), under a two-part ID, only once they are out of the group after the write (`existsAfter`/`getAfter`): in #232's leave transaction, or for a group they left or that was deleted; deleted with the account. No association access | #365 | 🟦 PB |
 | Storage `events/{id}/album/**` | event group members | checked-in members, size and type limits | uploader | album | 🟦 PB |
 
-**Event capacity rule** (decision 21, #372; built by #373). The sketch below replaces the `allow create` and `allow update` of `match /events/{eventId}` and the `allow create` and `allow delete` of its `match /attendees/{uid}`; nothing else in the rules changes. The two documents are tied in both directions: the event accepts a counter change only with the caller's own registration (`exists` / `existsAfter`), and a registration is accepted only with the counter change (`getAfter`), as groups tie `memberUids` to the `groupMembers` marker (#232). A student therefore changes the counter only by their own one place, and no client can skip or fake the count. The rule checks the capacity itself, against the counter as it is stored when the write commits, so the app's write doesn't have to read the event first: it sends `FieldValue.increment(±1)` (decision 21, "The app's transactions").
+**Event capacity rule** (decision 21, #372; built by #373). The sketch below replaces the `allow create` and `allow update` of `match /events/{eventId}` and the `allow create` and `allow delete` of its `match /attendees/{uid}`; nothing else in the rules changes. It keeps #370's co-organizer checks: the creator is a new event's only organizer, and `keepsValidOrganizers()` checks an organizer's change to `organizerIds`. The two documents are tied in both directions: the event accepts a counter change only with the caller's own registration (`exists` / `existsAfter`), and a registration is accepted only with the counter change (`getAfter`), as groups tie `memberUids` to the `groupMembers` marker (#232). A student therefore changes the counter only by their own one place, and no client can skip or fake the count. The rule checks the capacity itself, against the counter as it is stored when the write commits, so the app's write doesn't have to read the event first: it sends `FieldValue.increment(±1)` (decision 21, "The app's transactions").
 
 ```
 // In match /events/{eventId}: replaces allow create and allow update.
@@ -868,6 +868,7 @@ Rules live in `firebase/firestore/firestore.rules` and are tested against the Fi
 // value, so `is int` is what refuses 0.0.
 allow create: if canWriteEvents()
     && request.resource.data.createdBy == request.auth.uid
+    && request.resource.data.organizerIds == [request.auth.uid]
     && isValidEvent(request.resource.data)
     && request.resource.data.isAssociationEvent == isVerifiedAssociation()
     && request.resource.data.get('attendeeCount', 0) is int
@@ -927,6 +928,7 @@ function countsOwnRegistration() {
 allow update: if (canWriteEvents()
         && isOrganizer()
         && isValidEvent(request.resource.data)
+        && keepsValidOrganizers()
         && !request.resource.data.diff(resource.data).affectedKeys()
             .hasAny(['createdBy', 'isAssociationEvent', 'attendeeCount'])
         && request.resource.data.get('attendeeCount', 0) is int)
