@@ -251,7 +251,8 @@ service cloud.firestore {
       // Co-organizers (#370, decision 17): at most 5 organizers, each listed once, and every
       // one added must be registered for this event, so organizers only add students they can
       // already list (only students register). Rules can't loop, so each of the at most 4
-      // added (5 organizers, one of them the creator) is checked by its index. Any organizer
+      // added (5 organizers, one of them the creator) is checked by its index, and a fifth
+      // is refused, so raising the limit can't skip a check. Any organizer
       // adds or removes co-organizers and a co-organizer stays one after cancelling, the
       // frames' defaults until #400 settles them. An association event keeps its single
       // organizer until the team decides on association co-organizers.
@@ -262,6 +263,7 @@ service cloud.firestore {
             || (resource.data.isAssociationEvent == false
                 && organizers.size() <= 5
                 && organizers.toSet().size() == organizers.size()
+                && added.size() <= 4
                 && (added.size() < 1 || isRegistered(added[0]))
                 && (added.size() < 2 || isRegistered(added[1]))
                 && (added.size() < 3 || isRegistered(added[2]))

@@ -1334,6 +1334,15 @@ for (const position of [0, 1, 2, 3]) {
   });
 }
 
+// Only the first 4 added are checked by index, so a fifth must be refused even when the stored
+// list lacks the creator (an event written by hand, before isValidEvent required them) and
+// re-adding them makes room for it.
+test("adding a fifth organizer at once is denied, so it can't skip the registration check", async () => {
+  await seedEvent("solo", eventBy("u2", { organizerIds: ["u5"], allowedUids: ["u2", "u5"] }));
+  for (const uid of ["u2", "u1", "u3", "u4"]) await seedAttendee("solo", uid);
+  await assertFails(setSoloOrganizers("u5", ["u2", "u1", "u3", "u4", "u7"]));
+});
+
 test("a sixth organizer is denied, even a registered student", async () => {
   await seedSoloEventWithAttendees();
   await seedAttendee("solo", "u7");
