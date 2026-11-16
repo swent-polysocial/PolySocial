@@ -1,5 +1,6 @@
 // Contributors: Claude Opus 5.5 (registration repository tests against the rules, #121; the ended
 // event after review; the organizer's attendee count, #131).
+// Contributors: Claude (Opus 5.5, Anthropic) (listing the attendees against the rules, #370).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -10,6 +11,7 @@ import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.toFirestoreMap
 import com.polysocial.model.registration.ATTENDEES_COLLECTION
 import com.polysocial.model.registration.AttendeeCountResult
+import com.polysocial.model.registration.AttendeesResult
 import com.polysocial.model.registration.CancelRegistrationResult
 import com.polysocial.model.registration.FirestoreRegistrationRepository
 import com.polysocial.model.registration.MyRegistrationsResult
@@ -257,6 +259,32 @@ class FirestoreRegistrationRepositoryEmulatorTest {
     assertEquals(
         AttendeeCountResult.UnexpectedError,
         withTimeout(TIMEOUT_MS) { repository.countAttendees("public") },
+    )
+  }
+
+  @Test
+  fun attendees_aStudentOrganizerListsWhoIsGoingToTheirEventOnly() = runBlocking {
+    val uid = signInStudent()
+    seed("own", event().withOrganizer(uid))
+    seedRegistration("own", OTHER_STUDENT_UID)
+    seedRegistration("own", "fictional-student-2")
+    seedRegistration("other", "fictional-student-3")
+
+    assertEquals(
+        AttendeesResult.Attendees(listOf(OTHER_STUDENT_UID, "fictional-student-2")),
+        withTimeout(TIMEOUT_MS) { repository.getAttendeeUids("own") },
+    )
+  }
+
+  @Test
+  fun attendees_aStudentWhoDoesntOrganizeTheEvent_isRefused() = runBlocking {
+    val uid = signInStudent()
+    seed("public", event())
+    seedRegistration("public", uid)
+
+    assertEquals(
+        AttendeesResult.UnexpectedError,
+        withTimeout(TIMEOUT_MS) { repository.getAttendeeUids("public") },
     )
   }
 

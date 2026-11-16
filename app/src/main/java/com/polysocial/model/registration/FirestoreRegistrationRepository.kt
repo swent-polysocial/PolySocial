@@ -1,5 +1,6 @@
 // Contributors: Claude Opus 5.5 (drafted the Firestore registration repository, #121; the attendee
 // count, #131).
+// Contributors: Claude (Opus 5.5, Anthropic) (listing the attendees for co-organizers, #370).
 package com.polysocial.model.registration
 
 import com.google.firebase.FirebaseException
@@ -8,6 +9,7 @@ import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.MetadataChanges
+import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.TransactionOptions
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.event.EVENTS_COLLECTION
@@ -212,6 +214,33 @@ class FirestoreRegistrationRepository(
       AttendeeCountResult.UnexpectedError
     } catch (e: Exception) {
       AttendeeCountResult.UnexpectedError
+    }
+  }
+
+  /**
+   * Reads `events/{eventId}/attendees` from the server, so a student who just cancelled isn't
+   * offered from the cache. Only the document IDs, the attendees' UIDs, are used. A list the rules
+   * deny (not an organizer, or no such event) is [AttendeesResult.UnexpectedError].
+   */
+  override suspend fun getAttendeeUids(eventId: String): AttendeesResult {
+    if (!isReadableEventId(eventId)) return AttendeesResult.UnexpectedError
+    if (!network.isOnline()) return AttendeesResult.NetworkError
+    return try {
+      val snapshot =
+          db.collection(EVENTS_COLLECTION)
+              .document(eventId)
+              .collection(ATTENDEES_COLLECTION)
+              .get(Source.SERVER)
+              .await()
+      AttendeesResult.Attendees(snapshot.documents.map { it.id })
+    } catch (e: FirebaseException) {
+      if (e.isOffline()) AttendeesResult.NetworkError else AttendeesResult.UnexpectedError
+    } catch (e: CancellationException) {
+      // Like register: a task cancelled while the caller still runs is a failure.
+      currentCoroutineContext().ensureActive()
+      AttendeesResult.UnexpectedError
+    } catch (e: Exception) {
+      AttendeesResult.UnexpectedError
     }
   }
 

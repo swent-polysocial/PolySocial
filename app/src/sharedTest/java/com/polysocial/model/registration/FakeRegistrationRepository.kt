@@ -1,5 +1,6 @@
 // Contributors: Claude Opus 5.5 (wrote this fake for tests, #121; matched the real checks' order
 // after review; the attendee count, #131).
+// Contributors: Claude (Opus 5.5, Anthropic) (listing the attendees, #370).
 package com.polysocial.model.registration
 
 import com.polysocial.model.event.isReadableEventId
@@ -44,6 +45,9 @@ class FakeRegistrationRepository(var currentUid: String? = "test-student") :
   /** How many times [countAttendees] was called, to check when a screen counts again. */
   var countCalls = 0
     private set
+
+  /** When set, [getAttendeeUids] returns this result instead of listing, like a failed read. */
+  var attendeesFailure: AttendeesResult? = null
 
   /** Registers [uid] for [eventId] directly, like another student's registration. */
   fun seedRegistration(eventId: String, uid: String) {
@@ -93,5 +97,14 @@ class FakeRegistrationRepository(var currentUid: String? = "test-student") :
       return it
     }
     return AttendeeCountResult.Count(attendeesOf(eventId).size.toLong())
+  }
+
+  /** Lists for anyone, like [countAttendees], sorted like Firestore's document IDs. */
+  override suspend fun getAttendeeUids(eventId: String): AttendeesResult {
+    if (!isReadableEventId(eventId)) return AttendeesResult.UnexpectedError
+    attendeesFailure?.let {
+      return it
+    }
+    return AttendeesResult.Attendees(attendeesOf(eventId).sorted())
   }
 }

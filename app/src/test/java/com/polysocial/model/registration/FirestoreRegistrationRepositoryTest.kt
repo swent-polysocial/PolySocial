@@ -1,4 +1,5 @@
 // Contributors: Claude Opus 5.5 (wrote these tests, #121; the attendee count, #131).
+// Contributors: Claude (Opus 5.5, Anthropic) (listing the attendees, #370).
 package com.polysocial.model.registration
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -19,6 +20,7 @@ import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
 import com.google.firebase.firestore.SnapshotMetadata
+import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.Transaction
 import com.google.firebase.firestore.TransactionOptions
 import com.polysocial.model.auth.AuthUser
@@ -500,6 +502,72 @@ class FirestoreRegistrationRepositoryTest {
     val call =
         launch(start = CoroutineStart.UNDISPATCHED) {
           result = repository.countAttendees("event-1")
+        }
+
+    call.cancel()
+    call.join()
+
+    assertTrue(call.isCancelled)
+    assertEquals(null, result)
+  }
+
+  // getAttendeeUids
+
+  /** Makes the server read of `events/event-1/attendees` answer [task]. */
+  private fun stubAttendees(task: com.google.android.gms.tasks.Task<QuerySnapshot>) {
+    every { attendees.get(Source.SERVER) } returns task
+  }
+
+  @Test
+  fun attendees_returnsTheUidsOfTheServersRegistrations() = runTest {
+    val registrations =
+        listOf("ana", "ben").map { uid ->
+          mockk<DocumentSnapshot>().also { every { it.id } returns uid }
+        }
+    stubAttendees(
+        Tasks.forResult(
+            mockk<QuerySnapshot>().also { every { it.documents } returns registrations }
+        )
+    )
+
+    assertEquals(
+        AttendeesResult.Attendees(listOf("ana", "ben")),
+        repository.getAttendeeUids("event-1"),
+    )
+    verify { attendees.get(Source.SERVER) }
+  }
+
+  @Test
+  fun attendees_offlineOrAnInvalidId_failWithoutAskingFirestore() = runTest {
+    assertEquals(AttendeesResult.UnexpectedError, repository.getAttendeeUids("events/other"))
+    online = false
+    assertEquals(AttendeesResult.NetworkError, repository.getAttendeeUids("event-1"))
+
+    verify(exactly = 0) { db.collection(any()) }
+  }
+
+  @Test
+  fun attendees_failures_areReportedByKind() = runTest {
+    stubAttendees(Tasks.forException(failed(FirebaseFirestoreException.Code.UNAVAILABLE)))
+    assertEquals(AttendeesResult.NetworkError, repository.getAttendeeUids("event-1"))
+
+    stubAttendees(Tasks.forException(failed(FirebaseFirestoreException.Code.PERMISSION_DENIED)))
+    assertEquals(AttendeesResult.UnexpectedError, repository.getAttendeeUids("event-1"))
+
+    stubAttendees(Tasks.forCanceled())
+    assertEquals(AttendeesResult.UnexpectedError, repository.getAttendeeUids("event-1"))
+
+    every { db.collection(EVENTS_COLLECTION) } throws IllegalStateException("terminated")
+    assertEquals(AttendeesResult.UnexpectedError, repository.getAttendeeUids("event-1"))
+  }
+
+  @Test
+  fun attendees_cancellingTheCaller_stillCancelsIt() = runTest {
+    stubAttendees(TaskCompletionSource<QuerySnapshot>().task)
+    var result: AttendeesResult? = null
+    val call =
+        launch(start = CoroutineStart.UNDISPATCHED) {
+          result = repository.getAttendeeUids("event-1")
         }
 
     call.cancel()
