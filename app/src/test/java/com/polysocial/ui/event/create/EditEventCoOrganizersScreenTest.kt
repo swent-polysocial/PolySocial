@@ -181,7 +181,7 @@ class EditEventCoOrganizersScreenTest {
     node(CoOrganizerTags.ADD).performScrollTo().assertIsNotEnabled()
     node(CoOrganizerTags.FULL)
         .performScrollTo()
-        .assertTextEquals(string(R.string.co_organizers_full, 5))
+        .assertTextEquals(context.resources.getQuantityString(R.plurals.co_organizers_full, 5, 5))
     node(CoOrganizerTags.HINT).assertDoesNotExist()
   }
 
