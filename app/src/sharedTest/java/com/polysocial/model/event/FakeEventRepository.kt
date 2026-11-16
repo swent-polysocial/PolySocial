@@ -3,7 +3,8 @@
 // (reviewed). Claude (updating and deleting, #130; an association's own events, #132); Franciszek
 // Najda (reviewed).
 // Contributors: Claude (Opus 5.5, Anthropic) added the readable private events to this fake, #320.
-// Contributors: Claude (Opus 5.5, Anthropic) added co-organizer changes to this fake, #370.
+// Contributors: Claude (Opus 5.5, Anthropic) added co-organizer changes to this fake, #370, and
+// read the registrations from a FakeRegistrationRepository, #370 review.
 package com.polysocial.model.event
 
 import java.time.Instant
@@ -23,11 +24,15 @@ import kotlinx.coroutines.flow.map
  * @property currentUid the signed-in user, or null when nobody is signed in.
  * @property creatorIsVerifiedAssociation whether the signed-in user is a verified association.
  * @property now the time used to reject events that start in the past.
+ * @property registeredUids the students registered for an event, by its ID, which [updateEvent]
+ *   checks before adding them as organizers, like the repository reading their registrations. Pass
+ *   a `FakeRegistrationRepository`'s `attendeesOf`, so a test seeds each registration once.
  */
 class FakeEventRepository(
     var currentUid: String? = "test-creator",
     var creatorIsVerifiedAssociation: Boolean = false,
     var now: Instant = TEST_NOW,
+    private val registeredUids: (eventId: String) -> Set<String> = { emptySet() },
 ) : EventRepository {
   /** The events saved so far, in creation order. */
   val events = mutableListOf<Event>()
@@ -55,12 +60,6 @@ class FakeEventRepository(
 
   /** The organizer changes passed to [updateEvent] so far, in call order. */
   val organizerRequests = mutableListOf<OrganizerChanges>()
-
-  /**
-   * The students registered for each event, by event ID, which [updateEvent] checks before adding
-   * them as organizers, like the repository reading their registrations.
-   */
-  val registeredUids = mutableMapOf<String, Set<String>>()
 
   /** The IDs passed to [deleteEvent] so far, in call order. */
   val deleteRequests = mutableListOf<String>()
@@ -141,7 +140,7 @@ class FakeEventRepository(
           is OrganizersUpdate.Refused -> return UpdateEventResult.InvalidOrganizers(changes.error)
           is OrganizersUpdate.Valid -> changes
         }
-    if (!registeredUids[stored.id].orEmpty().containsAll(update.newOrganizers)) {
+    if (!registeredUids(stored.id).containsAll(update.newOrganizers)) {
       return UpdateEventResult.InvalidOrganizers(OrganizerError.NOT_REGISTERED)
     }
     events[index] =

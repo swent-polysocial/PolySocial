@@ -1,9 +1,11 @@
 // Contributors: Claude (wrote these tests of the fake's getEvent contract, #112; updateEvent and
 // deleteEvent, #130; its own association events, #132); Franciszek Najda (reviewed #130).
 // Contributors: Claude (Opus 5.5, Anthropic) tested the fake's readable private events, #320.
-// Contributors: Claude (Opus 5.5, Anthropic) tested the fake's organizer changes, #370.
+// Contributors: Claude (Opus 5.5, Anthropic) tested the fake's organizer changes, #370; read the
+// registrations from FakeRegistrationRepository, #370 review.
 package com.polysocial.model.event
 
+import com.polysocial.model.registration.FakeRegistrationRepository
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
@@ -21,7 +23,8 @@ import org.junit.Test
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class FakeEventRepositoryTest {
-  private val repository = FakeEventRepository()
+  private val registrations = FakeRegistrationRepository()
+  private val repository = FakeEventRepository(registeredUids = registrations::attendeesOf)
   private val event = validEvent().copy(id = "event-1")
 
   @Test
@@ -107,7 +110,7 @@ class FakeEventRepositoryTest {
   @Test
   fun updateEvent_addsOnlyRegisteredStudentsAsOrganizers() = runTest {
     repository.seed(organized)
-    repository.registeredUids["event-1"] = setOf("ana")
+    registrations.seedRegistration("event-1", "ana")
 
     assertEquals(
         UpdateEventResult.InvalidOrganizers(OrganizerError.NOT_REGISTERED),
