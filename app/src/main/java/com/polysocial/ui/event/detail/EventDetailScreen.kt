@@ -7,6 +7,8 @@
 // Contributors: Claude Opus 5.5 ("I'm going" and Cancel registration from the Figma "Event
 // detail", "· registered" and "· in a group" frames, #122).
 // Contributors: OpenAI Codex (connected the group card to the roster route, #234).
+// Contributors: Claude (Sonnet 5.5, Anthropic) gave a student in a group the Cancel registration
+// link and its confirmation sheet, #318.
 // Contributors: Claude (Sonnet 5, Anthropic) greyed out Find a group until the student is going,
 // #244.
 // Contributors: Claude Opus 5.5 (the "Remind me" toggle, its permission explanation sheet and
@@ -170,6 +172,10 @@ object EventDetailTags {
   const val ATTENDANCE_SAVING = "event_detail_attendance_saving"
   const val REGISTERED_NOTE = "event_detail_registered_note"
   const val CANCEL_REGISTRATION = "event_detail_cancel_registration"
+  const val CANCEL_REGISTRATION_SHEET = "event_detail_cancel_registration_sheet"
+  const val CONFIRM_CANCEL_REGISTRATION = "event_detail_confirm_cancel_registration"
+  const val KEEP_REGISTRATION = "event_detail_keep_registration"
+  const val CANCEL_REGISTRATION_FAILURE = "event_detail_cancel_registration_failure"
   const val REMINDER_ROW = "event_detail_reminder_row"
   const val REMINDER_SWITCH = "event_detail_reminder_switch"
   const val REMINDER_DENIED_NOTE = "event_detail_reminder_denied_note"
@@ -191,6 +197,8 @@ object EventDetailTags {
 data class EventAttendanceActions(
     val onImGoing: () -> Unit = {},
     val onCancelRegistration: () -> Unit = {},
+    val onConfirmCancelRegistration: () -> Unit = {},
+    val onKeepRegistration: () -> Unit = {},
     val onMessageShown: (AttendanceFeedback) -> Unit = {},
     val onReminderSwitchChange: (Boolean) -> Unit = {},
     val onReminderExplanationContinue: () -> Unit = {},
@@ -233,6 +241,7 @@ fun EventDetailRoute(
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   val cancelState by viewModel.cancelState.collectAsStateWithLifecycle()
+  val registrationSheet by viewModel.registrationSheet.collectAsStateWithLifecycle()
   val attendanceFeedback by viewModel.attendanceFeedback.collectAsStateWithLifecycle()
   val context = LocalContext.current
   val lifecycleOwner = LocalLifecycleOwner.current
@@ -289,10 +298,13 @@ fun EventDetailRoute(
       onFindGroup = onFindGroup,
       onOpenGroup = onOpenGroup,
       attendanceFeedback = attendanceFeedback,
+      registrationSheet = registrationSheet,
       attendance =
           EventAttendanceActions(
               onImGoing = viewModel::onImGoing,
               onCancelRegistration = viewModel::onCancelRegistration,
+              onConfirmCancelRegistration = viewModel::onConfirmCancelRegistration,
+              onKeepRegistration = viewModel::onKeepRegistration,
               onMessageShown = viewModel::onAttendanceFeedbackShown,
               onReminderSwitchChange = { on ->
                 when {
@@ -344,6 +356,7 @@ fun EventDetailScreen(
     onRetryGoing: () -> Unit = {},
     onFindGroup: () -> Unit = {},
     attendanceFeedback: AttendanceFeedback? = null,
+    registrationSheet: CancelRegistrationState = CancelRegistrationState.Hidden,
     attendance: EventAttendanceActions = EventAttendanceActions(),
     onOpenGroup: () -> Unit = {},
 ) {
@@ -414,6 +427,18 @@ fun EventDetailScreen(
                 Modifier.testTag(EventDetailTags.RETRY),
             )
           }
+    }
+    if (
+        state is EventDetailUiState.Loaded &&
+            !state.isOrganizer &&
+            registrationSheet != CancelRegistrationState.Hidden
+    ) {
+      CancelRegistrationSheet(
+          title = state.details.event.title,
+          state = registrationSheet,
+          onConfirm = attendance.onConfirmCancelRegistration,
+          onKeep = attendance.onKeepRegistration,
+      )
     }
     if (state is EventDetailUiState.Loaded && state.isOrganizer) {
       if (cancelState != CancelEventState.Hidden) {
@@ -548,10 +573,8 @@ private fun EventContent(
     // Matching other students for an event nobody confirmed attending doesn't make sense (#244);
     // an organizer counts as going without needing the attendance flow.
     val findGroupEnabled = state.isOrganizer || isGoing
-    // In a group, cancelling here would leave the student in it without being registered, so the
-    // link waits for #244's "you'll also leave your group" sheet (#318).
-    val onCancelRegistration =
-        attendance.onCancelRegistration.takeIf { isGoing && state.yourGroup == null }
+    // In a group, the link asks first, since cancelling also leaves the group (#318).
+    val onCancelRegistration = attendance.onCancelRegistration.takeIf { isGoing }
     if (state.hasEnded || (state.isOrganizer && findGroup == null)) {
       // The privacy notice says a registration can be cancelled at any time, even after the event
       // (the rules already allow it), so the note stays even once the event has ended. A reminder
@@ -650,10 +673,8 @@ private val AttendanceMessage.text: Int
       }
 
 /**
- * Figma "Event detail · registered": "You're going." and its "Cancel registration" link.
- * [onCancelRegistration] is null for a student in a group, since cancelling would leave them in the
- * group without being registered, a state Figma's "in a group" sheet (#244) doesn't allow yet; the
- * link comes back once #244 ships it (#318).
+ * Figma "Event detail · registered": "You're going." and its "Cancel registration" link, which a
+ * student in a group also gets: it opens the sheet that says cancelling leaves the group (#318).
  */
 @Composable
 private fun RegisteredNote(
