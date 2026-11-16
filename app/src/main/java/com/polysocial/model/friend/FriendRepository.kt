@@ -40,8 +40,10 @@ sealed interface SendFriendRequestResult {
   data object NetworkError : SendFriendRequestResult
 
   /**
-   * Any other failure. Nothing was written. This covers nobody signed in, the student's own UID or
-   * an invalid one (see [friendshipId]), and a write the Security Rules deny, for example to a UID
+   * Any other failure. Nothing was written, unless the failure came after the server stored the
+   * request; [FriendRepository.observeFriendships] then shows it. Timeouts and an unreachable
+   * server are [NetworkError] instead. This covers nobody signed in, the student's own UID or an
+   * invalid one (see [friendshipId]), and a write the Security Rules deny, for example to a UID
    * without a public profile.
    */
   data object UnexpectedError : SendFriendRequestResult
@@ -67,9 +69,11 @@ sealed interface FriendshipActionResult {
   data object NetworkError : FriendshipActionResult
 
   /**
-   * Any other failure. Nothing was written. This covers nobody signed in, a student outside the
-   * pair, accepting a request the student sent themselves or one already accepted, and a write the
-   * Security Rules deny.
+   * Any other failure. Nothing was written, unless the failure came after the server stored the
+   * change; [FriendRepository.observeFriendships] then shows it. Timeouts and an unreachable server
+   * are [NetworkError] instead. This covers nobody signed in, a student outside the pair, accepting
+   * a request the student sent themselves or one already accepted, and a write the Security Rules
+   * deny.
    */
   data object UnexpectedError : FriendshipActionResult
 }
@@ -120,10 +124,10 @@ interface FriendRepository {
    * is read again and written only if it still has the [shown] `status` and `createdAt`; otherwise
    * this returns [FriendshipActionResult.Gone].
    *
-   * The checks on the document run in this order: a student outside the [shown] pair gets
-   * [FriendshipActionResult.UnexpectedError] (the Security Rules refuse the read), then the
-   * [FriendshipActionResult.Gone] check, then, on the document as read again, its sender accepting
-   * or a status that isn't [FriendshipStatus.PENDING] gets
+   * The checks on the document run in this order: a student whose UID isn't one half of
+   * [Friendship.id] gets [FriendshipActionResult.UnexpectedError] (the Security Rules refuse the
+   * read), then the [FriendshipActionResult.Gone] check, then, on the document as read again, its
+   * sender accepting or a status that isn't [FriendshipStatus.PENDING] gets
    * [FriendshipActionResult.UnexpectedError]. So a stale request is [FriendshipActionResult.Gone]
    * even when accepting it would have been refused.
    */
@@ -134,12 +138,13 @@ interface FriendRepository {
    * recipient), cancelling (by the sender) or removing a friend (by either student).
    *
    * Like [accept], nobody signed in and an offline device fail before anything is read, and a
-   * student outside the [shown] pair gets [FriendshipActionResult.UnexpectedError]. Then, in one
-   * step, the document is read again and deleted only if it still has the [shown] `status` and
-   * `createdAt`; otherwise this returns [FriendshipActionResult.Gone]. So a Cancel tapped after the
-   * other student accepted can't delete the new friendship, and a stale tap can't delete a request
-   * cancelled and sent again under the same ID. The Security Rules can't tell these apart, since a
-   * delete carries no data, so this check is the repository's.
+   * student whose UID isn't one half of [Friendship.id] gets
+   * [FriendshipActionResult.UnexpectedError]. Then, in one step, the document is read again and
+   * deleted only if it still has the [shown] `status` and `createdAt`; otherwise this returns
+   * [FriendshipActionResult.Gone]. So a Cancel tapped after the other student accepted can't delete
+   * the new friendship, and a stale tap can't delete a request cancelled and sent again under the
+   * same ID. The Security Rules can't tell these apart, since a delete carries no data, so this
+   * check is the repository's.
    */
   suspend fun remove(shown: Friendship): FriendshipActionResult
 }
