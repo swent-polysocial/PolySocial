@@ -5,7 +5,8 @@ package com.polysocial.model.friend
 import java.time.Instant
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 
 /**
@@ -50,12 +51,17 @@ class FakeFriendRepository(
   /** The stored friendship with this [id], or null when there is none. */
   fun friendship(id: String): Friendship? = friendships.value[id]
 
-  override fun observeFriendships(): Flow<FriendshipsResult> {
+  /** Like the contract, the user and [readFailure] are read when collection starts. */
+  override fun observeFriendships(): Flow<FriendshipsResult> = flow {
     val uid = currentUid
-    if (uid == null || readFailure) return flowOf(FriendshipsResult.Error)
-    return friendships.map { stored ->
-      FriendshipsResult.Success(stored.values.filter { uid in it.uids }, readFromCache)
+    if (uid == null || readFailure) {
+      emit(FriendshipsResult.Error)
+      return@flow
     }
+    emitAll(
+        friendships.map { stored ->
+          FriendshipsResult.Success(stored.values.filter { uid in it.uids }, readFromCache)
+        })
   }
 
   override suspend fun sendRequest(otherUid: String): SendFriendRequestResult {
