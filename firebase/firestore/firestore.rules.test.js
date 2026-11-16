@@ -2,6 +2,7 @@
 // Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143; publicProfiles/{uid} tests, written test-first, #229; reads by ID only and the fixed section and year lists, after review, #229; private edits keep the public copy, and deleted accounts stay deleted, after review, #229; interests from the fixed list, test-first, #230; any code read in the list check, after review, #230); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121; deleted accounts can't register, #275); Claude (Opus 5.5, Anthropic) (event group and groupMembers marker tests, #232, with more after review; group chat message tests, #237, and a deleted account's messages, after review).
 // Contributors: Claude (Opus 5.5, Anthropic) (a non-EPFL association in allowedUids can't run My events' private query, #320).
 // Contributors: Claude (Fable 5.2, Anthropic) (other shapes and accounts denied the own-groups query, and the latest-message query of the chat list, #363; groups documents outside an event, and more accounts and membership changes on the latest-message query, from a test audit).
+// Contributors: Claude (Opus 5.5, Anthropic) (co-organizer tests, written test-first, #370).
 const { after, before, beforeEach, test } = require("node:test");
 // Contributors: OpenAI Codex (deleted-token membership creation/join regression, #241).
 const { readFileSync } = require("node:fs");
@@ -1105,13 +1106,15 @@ for (const [name, overrides] of [
   });
 }
 
-test("an event's co-organizers must also be allowed readers", async () => {
+// Nobody is registered for an event that doesn't exist yet, so co-organizers come only with an
+// update, where the rules check their registrations (#370).
+test("an event is created with its creator as its only organizer", async () => {
   const db = studentDb("u1");
   await assertFails(setDoc(doc(db, "events/new"), eventBy("u1", {
-    isPrivate: true, organizerIds: ["u1", "u5"],
+    isPrivate: true, organizerIds: ["u1", "u5"], allowedUids: ["u1", "u5"],
   })));
   await assertSucceeds(setDoc(doc(db, "events/new"), eventBy("u1", {
-    isPrivate: true, organizerIds: ["u1", "u5"], allowedUids: ["u1", "u5"],
+    isPrivate: true, allowedUids: ["u1", "u5"],
   })));
 });
 
@@ -1218,7 +1221,7 @@ for (const [role, uid] of [["creator", "u2"], ["co-organizer", "u5"]]) {
 }
 
 test("an organizer can add another organizer", async () => {
-  await seedManagedEvent();
+  await seedManagedEventWithAttendees();
   await assertSucceeds(updateDoc(doc(studentDb("u2"), "events/managed"), {
     organizerIds: ["u2", "u5", "u3"],
   }));
@@ -1226,6 +1229,7 @@ test("an organizer can add another organizer", async () => {
 
 test("an organizer added with the allowlist can read and manage a private event", async () => {
   await seedManagedEvent();
+  await seedAttendee("managed", "u4");
   await assertSucceeds(updateDoc(doc(studentDb("u2"), "events/managed"), {
     isPrivate: true, organizerIds: ["u2", "u5", "u4"], allowedUids: ["u2", "u5", "u3", "u4"],
   }));
@@ -1248,7 +1252,7 @@ for (const [name, getDb] of [
 }
 
 test("a non-organizer can't make themselves an organizer", async () => {
-  await seedManagedEvent();
+  await seedManagedEventWithAttendees();
   await assertFails(updateDoc(doc(studentDb("u3"), "events/managed"), {
     organizerIds: ["u2", "u5", "u3"],
   }));
@@ -1277,6 +1281,119 @@ for (const [name, change] of [
     await assertFails(updateDoc(doc(studentDb("u5"), "events/managed"), change));
   });
 }
+
+// ---- co-organizers (#370, decision 17) ----
+
+/** u2 created "solo" and is its only organizer; u1, u3, u4 and u6 are registered for it. */
+async function seedSoloEventWithAttendees() {
+  await seedEvent("solo", eventBy("u2"));
+  for (const uid of ["u1", "u3", "u4", "u6"]) await seedAttendee("solo", uid);
+}
+
+/** [uid]'s update of "solo"'s organizers to [organizerIds], each also an allowed reader. */
+function setSoloOrganizers(uid, organizerIds) {
+  return updateDoc(doc(studentDb(uid), "events/solo"), {
+    organizerIds, allowedUids: organizerIds,
+  });
+}
+
+test("an organizer adds a registered student, who can then manage the event", async () => {
+  await seedSoloEventWithAttendees();
+  await assertSucceeds(setSoloOrganizers("u2", ["u2", "u1"]));
+  await assertSucceeds(updateDoc(doc(studentDb("u1"), "events/solo"), { title: "Moved" }));
+});
+
+test("an organizer can't add a student who isn't registered, even an allowed reader", async () => {
+  await seedManagedEventWithAttendees();
+  await assertFails(updateDoc(doc(studentDb("u2"), "events/managed"), {
+    organizerIds: ["u2", "u5", "u4"], allowedUids: ["u2", "u5", "u3", "u4"],
+  }));
+});
+
+test("a registration for another event doesn't make a student addable", async () => {
+  await seedManagedEvent();
+  await seedAttendee("other", "u3");
+  await assertFails(updateDoc(doc(studentDb("u2"), "events/managed"), {
+    organizerIds: ["u2", "u5", "u3"],
+  }));
+});
+
+test("an organizer adds up to 4 registered students at once, the 5-organizer limit", async () => {
+  await seedSoloEventWithAttendees();
+  await assertSucceeds(setSoloOrganizers("u2", ["u2", "u1", "u3", "u4", "u6"]));
+});
+
+// The rules check each added organizer by its index, so an unregistered one is caught in every
+// position.
+for (const position of [0, 1, 2, 3]) {
+  test(`adding 4 organizers is denied if the one at index ${position} isn't registered`, async () => {
+    await seedSoloEventWithAttendees();
+    const added = ["u1", "u3", "u4", "u6"];
+    added[position] = "u7";
+    await assertFails(setSoloOrganizers("u2", ["u2", ...added]));
+  });
+}
+
+test("a sixth organizer is denied, even a registered student", async () => {
+  await seedSoloEventWithAttendees();
+  await seedAttendee("solo", "u7");
+  await assertFails(setSoloOrganizers("u2", ["u2", "u1", "u3", "u4", "u6", "u7"]));
+});
+
+test("an organizer can't be listed twice", async () => {
+  await seedSoloEventWithAttendees();
+  await assertFails(setSoloOrganizers("u2", ["u2", "u1", "u1"]));
+});
+
+test("a co-organizer can add another registered student", async () => {
+  await seedManagedEventWithAttendees();
+  await assertSucceeds(updateDoc(doc(studentDb("u5"), "events/managed"), {
+    organizerIds: ["u2", "u5", "u3"],
+  }));
+});
+
+// Who may remove whom is the frames' default until #400 settles it: any organizer removes any
+// co-organizer, never the creator (see "an organizer can't remove the creator from the
+// organizers").
+for (const [name, uid] of [["the creator", "u2"], ["the co-organizer themselves", "u5"]]) {
+  test(`${name} can remove a co-organizer`, async () => {
+    await seedManagedEventWithAttendees();
+    await assertSucceeds(updateDoc(doc(studentDb(uid), "events/managed"), {
+      organizerIds: ["u2"],
+    }));
+  });
+}
+
+test("a removed co-organizer can no longer manage the event", async () => {
+  await seedManagedEventWithAttendees();
+  await assertSucceeds(updateDoc(doc(studentDb("u2"), "events/managed"), {
+    organizerIds: ["u2"],
+  }));
+  await assertFails(updateDoc(doc(studentDb("u5"), "events/managed"), { title: "Hijacked" }));
+});
+
+test("an organizer can swap a co-organizer for a registered student in one update", async () => {
+  await seedManagedEventWithAttendees();
+  await assertSucceeds(updateDoc(doc(studentDb("u2"), "events/managed"), {
+    organizerIds: ["u2", "u3"],
+  }));
+});
+
+// Also the frames' default until #400 settles it: cancelling doesn't remove a co-organizer.
+test("a co-organizer who cancels their registration stays an organizer", async () => {
+  await seedSoloEventWithAttendees();
+  await assertSucceeds(setSoloOrganizers("u2", ["u2", "u1"]));
+  await assertSucceeds(deleteDoc(doc(studentDb("u1"), "events/solo/attendees/u1")));
+  await assertSucceeds(updateDoc(doc(studentDb("u1"), "events/solo"), { title: "Moved" }));
+});
+
+test("an association event keeps its single organizer, even with a registered student", async () => {
+  await seedEvent("clubManaged", eventBy("verifiedClub", { isAssociationEvent: true }));
+  await seedAttendee("clubManaged", "u1");
+  await assertFails(updateDoc(doc(associationDb("verifiedClub"), "events/clubManaged"), {
+    organizerIds: ["verifiedClub", "u1"], allowedUids: ["verifiedClub", "u1"],
+  }));
+});
 
 test("a verified association manages its own event and keeps its badge", async () => {
   await seedEvent("clubManaged", eventBy("verifiedClub", { isAssociationEvent: true }));

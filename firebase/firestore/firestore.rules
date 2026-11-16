@@ -14,6 +14,7 @@
 // account, after review).
 rules_version = '2';
 // Contributors: OpenAI Codex (prevent deleted tokens recreating group membership, #241).
+// Contributors: Claude (Opus 5.5, Anthropic) (co-organizers, written test-first, #370).
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -243,11 +244,37 @@ service cloud.firestore {
         return resource.data.organizerIds.hasAny([request.auth.uid]);
       }
 
+      function isRegistered(uid) {
+        return exists(/databases/$(database)/documents/events/$(eventId)/attendees/$(uid));
+      }
+
+      // Co-organizers (#370, decision 17): at most 5 organizers, each listed once, and every
+      // one added must be registered for this event, so organizers only add students they can
+      // already list (only students register). Rules can't loop, so each of the at most 4
+      // added (5 organizers, one of them the creator) is checked by its index. Any organizer
+      // adds or removes co-organizers and a co-organizer stays one after cancelling, the
+      // frames' defaults until #400 settles them. An association event keeps its single
+      // organizer until the team decides on association co-organizers.
+      function keepsValidOrganizers() {
+        let organizers = request.resource.data.organizerIds;
+        let added = organizers.removeAll(resource.data.organizerIds);
+        return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['organizerIds'])
+            || (resource.data.isAssociationEvent == false
+                && organizers.size() <= 5
+                && organizers.toSet().size() == organizers.size()
+                && (added.size() < 1 || isRegistered(added[0]))
+                && (added.size() < 2 || isRegistered(added[1]))
+                && (added.size() < 3 || isRegistered(added[2]))
+                && (added.size() < 4 || isRegistered(added[3])));
+      }
+
       // Only a verified association may publish under its name (the verified badge), and it
       // always does: it can read only its own association events, so an event without the
-      // badge would be unreadable to its own creator.
+      // badge would be unreadable to its own creator. Nobody is registered yet, so the creator
+      // is its only organizer, and co-organizers come with an update (#370).
       allow create: if canWriteEvents()
           && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.organizerIds == [request.auth.uid]
           && isValidEvent(request.resource.data)
           && request.resource.data.isAssociationEvent == isVerifiedAssociation();
 
@@ -255,6 +282,7 @@ service cloud.firestore {
       allow update: if canWriteEvents()
           && isOrganizer()
           && isValidEvent(request.resource.data)
+          && keepsValidOrganizers()
           && !request.resource.data.diff(resource.data).affectedKeys()
               .hasAny(['createdBy', 'isAssociationEvent']);
 
