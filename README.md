@@ -18,6 +18,7 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the deleteEventRegistrations trigger and registrations in deleteAccount, #275). -->
 <!-- Contributors: OpenAI Codex (CI signing, direct APK downloads, Firebase setup and review fixes for #383). -->
 <!-- Contributors: Claude (Fable 5.2, Anthropic) (the scheduled deleteUnverifiedAccounts function, its retention period and first deploy, #226). -->
+<!-- Contributors: Claude Opus 5.5 (the friendships' deploy order, #357); Konstantinos Perdikeas (directed, reviewed and owns it). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the notice's deletion section that states the period, after review, #226). -->
 
 # PolySocial
@@ -202,6 +203,8 @@ firebase deploy --only firestore:indexes --project <project-id>   # firebase/fir
 ```
 
 **Order depends on the change.** For public-profile deletion (#229), deploy `deleteAccount` first, then the Security Rules, then distribute the app. For #241 group cleanup, deploy its restrictive rules first, as described below under Cloud Functions. For #229 the order matters both ways: with the old function, deleting an account leaves the public profile behind and writes no `deletedAccounts/{uid}` marker; with the old rules, the new app's profile creation (which also writes `publicProfiles/{uid}`) is refused. The function uses the Admin SDK, so it works with either version of the rules.
+
+For friendships (#357), the rules and `deleteAccount` can be deployed in either order: the function deletes friendships with the Admin SDK, and no released app reads or writes them until the friends screens ship.
 
 `<project-id>` is the `project_id` in your `app/google-services.json`. Functions deploy as described in [Cloud Functions](#cloud-functions). A new index takes a few minutes to build (Firebase console → Firestore → Indexes); until it's ready, the query that needs it fails. The local emulator doesn't need indexes.
 
