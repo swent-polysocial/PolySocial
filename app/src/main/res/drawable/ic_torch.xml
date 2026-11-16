@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude Opus 5.5 (exported from Figma "Scan a friend's code · Camera", #359); Konstantinos Perdikeas (directed, reviewed and owns it). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="22dp"
+    android:height="22dp"
+    android:viewportWidth="22"
+    android:viewportHeight="22">
+    <path
+        android:pathData="M11.9167,1.832L2.75,12.832H11L10.0833,20.1654L19.25,9.1654H11L11.9167,1.832Z"
+        android:strokeWidth="1.83333"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

@@ -1,5 +1,5 @@
 // Contributors: Claude Opus 5.5 (drafted the My friend code screen tests, #339; the quiet zone,
-// small window and black-on-white tests after review);
+// small window and black-on-white tests after review; the Scan button, #359);
 // Konstantinos Perdikeas (directed, reviewed and owns them).
 package com.polysocial.ui.profile
 
@@ -11,7 +11,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
-import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHeightIsEqualTo
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
@@ -65,8 +64,25 @@ class FriendCodeScreenTest {
 
   private fun text(id: Int) = compose.activity.getString(id)
 
-  private fun show(state: FriendCodeUiState, onBack: () -> Unit = {}) {
-    compose.setContent { PolySocialTheme { FriendCodeScreen(state, onBack) } }
+  private fun show(state: FriendCodeUiState, onScan: () -> Unit = {}, onBack: () -> Unit = {}) {
+    compose.setContent { PolySocialTheme { FriendCodeScreen(state, onBack, onScan) } }
+  }
+
+  @Test
+  fun scanAFriendsCode_opensTheScanner() {
+    var scans = 0
+    show(shown, onScan = { scans++ })
+
+    compose.onNodeWithTag(C.Tag.friend_code_scan).assertTextEquals("Scan a friend’s code")
+    compose.onNodeWithTag(C.Tag.friend_code_scan).performClick()
+    assertEquals(1, scans)
+  }
+
+  @Test
+  fun whenTheCodeCannotBeShown_thereIsNoScanButton() {
+    show(FriendCodeUiState.CouldNotShow)
+
+    compose.onNodeWithTag(C.Tag.friend_code_scan).assertDoesNotExist()
   }
 
   @Test
@@ -90,13 +106,6 @@ class FriendCodeScreenTest {
         .filterToOne(hasText("Share this code so another student can open your public profile."))
         .assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.friend_code_error).assertDoesNotExist()
-  }
-
-  @Test
-  fun scanningIsNotOfferedYet() {
-    show(shown)
-
-    compose.onAllNodes(hasText("Scan", substring = true, ignoreCase = true)).assertCountEquals(0)
   }
 
   @Test
@@ -258,7 +267,7 @@ class FriendCodeScreenTest {
   fun systemBackOnTheRouteLeavesTheScreen() {
     var backs = 0
     val vm = FriendCodeViewModel(FakeAuthRepository(user = null), FakeUserProfileRepository())
-    compose.setContent { PolySocialTheme { FriendCodeRoute({ backs++ }, vm) } }
+    compose.setContent { PolySocialTheme { FriendCodeRoute({ backs++ }, {}, vm) } }
 
     compose.onNodeWithTag(C.Tag.friend_code_error).assertExists()
     compose.runOnIdle { compose.activity.onBackPressedDispatcher.onBackPressed() }
@@ -269,7 +278,7 @@ class FriendCodeScreenTest {
   fun theRouteShowsTheSignedInStudentsCode() {
     val auth = FakeAuthRepository(AuthUser(uid, "fictional@epfl.ch", true, "Léa Martin"))
     val vm = FriendCodeViewModel(auth, FakeUserProfileRepository())
-    compose.setContent { PolySocialTheme { FriendCodeRoute({}, vm) } }
+    compose.setContent { PolySocialTheme { FriendCodeRoute({}, {}, vm) } }
 
     compose.onNodeWithTag(C.Tag.friend_code_qr).assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.friend_code_name).assertTextEquals("Léa Martin")

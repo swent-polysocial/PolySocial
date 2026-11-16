@@ -1,3 +1,5 @@
+// Contributors: Claude Opus 5.5 (the Scan a friend's code route, #359); Konstantinos Perdikeas
+// (directed, reviewed and owns it).
 // Contributors: OpenAI Codex (account-specific tab presentation, #140).
 // Contributors: Claude (tab definitions for the bottom navigation, #41; loading messages, #43;
 // per-tab routes, #42; Create Event route, #110; app bar actions, #84; event detail route, #112;
@@ -104,6 +106,10 @@ enum class Tab(
   /** The student's own friend QR code in the Profile graph (#339). */
   val friendCodeRoute: String
     get() = "$route/friend-code"
+
+  /** Scan a friend's code, opened from My friend code (#359). */
+  val scanFriendRoute: String
+    get() = "$route/friend-code/scan"
 
   /** Test tag of the tab's placeholder detail screen. */
   val detailTag: String

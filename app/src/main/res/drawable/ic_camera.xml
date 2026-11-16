@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude Opus 5.5 (exported from Figma "Scan a friend's code · Camera denied", #359); Konstantinos Perdikeas (directed, reviewed and owns it). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="28dp"
+    android:height="28dp"
+    android:viewportWidth="28"
+    android:viewportHeight="28">
+    <path
+        android:pathData="M16.9167,4.668H11.0834L8.1667,8.168H4.6667C4.0479,8.168 3.4544,8.4138 3.0168,8.8514C2.5792,9.289 2.3334,9.8825 2.3334,10.5013V21.0013C2.3334,21.6201 2.5792,22.2136 3.0168,22.6512C3.4544,23.0888 4.0479,23.3346 4.6667,23.3346H23.3334C23.9522,23.3346 24.5457,23.0888 24.9833,22.6512C25.4209,22.2136 25.6667,21.6201 25.6667,21.0013V10.5013C25.6667,9.8825 25.4209,9.289 24.9833,8.8514C24.5457,8.4138 23.9522,8.168 23.3334,8.168H19.8334L16.9167,4.668Z"
+        android:strokeWidth="2.33333"
+        android:strokeColor="#8C5100"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+    <path
+        android:pathData="M14,18.668C15.933,18.668 17.5,17.101 17.5,15.168C17.5,13.235 15.933,11.668 14,11.668C12.067,11.668 10.5,13.235 10.5,15.168C10.5,17.101 12.067,18.668 14,18.668Z"
+        android:strokeWidth="2.33333"
+        android:strokeColor="#8C5100" />
+</vector>

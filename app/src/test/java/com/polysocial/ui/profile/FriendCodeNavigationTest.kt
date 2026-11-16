@@ -1,5 +1,5 @@
-// Contributors: Claude Opus 5.5 (drafted the My friend code navigation tests, #339); Konstantinos
-// Perdikeas (directed, reviewed and owns them).
+// Contributors: Claude Opus 5.5 (drafted the My friend code navigation tests, #339; the scanner's
+// route, #359); Konstantinos Perdikeas (directed, reviewed and owns them).
 // Contributors: Claude Opus 5.5 (test WorkManager initialization, needed once ProfileViewModel
 // depends on ReminderScheduler for real DI, #123).
 package com.polysocial.ui.profile
@@ -109,6 +109,25 @@ class FriendCodeNavigationTest {
     rule.onNodeWithTag(C.Tag.profile_friend_code_entry).assertIsDisplayed()
     rule.onNodeWithTag(C.Tag.nav_item_profile).assertIsSelected()
     rule.onNodeWithTag(C.Tag.bottom_nav).assertIsDisplayed()
+  }
+
+  @Test
+  fun theScannerOpensFullScreenFromMyFriendCodeAndCloseReturnsThere() {
+    // The test app has no signed-in student, so My friend code shows no Scan button: the route is
+    // opened directly (the button is covered by FriendCodeScreenTest). Robolectric never answers
+    // the camera permission request, so the scanner stays in its "asking" state, without a camera.
+    openFromProfile()
+    rule.runOnIdle { navController.navigate(Tab.PROFILE.scanFriendRoute) }
+
+    rule.onNodeWithTag(C.Tag.scan_friend_screen).assertIsDisplayed()
+    rule.onNodeWithTag(C.Tag.bottom_nav).assertDoesNotExist()
+    rule.onNodeWithTag(C.Tag.app_bar_title).assertDoesNotExist()
+
+    rule.onNodeWithTag(C.Tag.scan_friend_close).performClick()
+    rule.onNodeWithTag(C.Tag.friend_code_screen).assertIsDisplayed()
+    rule.runOnIdle {
+      assertEquals(Tab.PROFILE.friendCodeRoute, navController.currentDestination?.route)
+    }
   }
 
   @Test
