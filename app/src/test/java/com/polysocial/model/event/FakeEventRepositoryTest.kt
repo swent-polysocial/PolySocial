@@ -1,6 +1,7 @@
 // Contributors: Claude (wrote these tests of the fake's getEvent contract, #112; updateEvent and
 // deleteEvent, #130; its own association events, #132); Franciszek Najda (reviewed #130).
 // Contributors: Claude (Opus 5.5, Anthropic) tested the fake's readable private events, #320.
+// Contributors: Claude (Opus 5.5, Anthropic) tested the fake's organizer changes, #370.
 package com.polysocial.model.event
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -101,6 +102,42 @@ class FakeEventRepositoryTest {
     assertEquals(UpdateEventResult.NotOrganizer, repository.updateEvent(organized))
 
     assertEquals(listOf(organized, event.copy(id = "event-2")), repository.events)
+  }
+
+  @Test
+  fun updateEvent_addsOnlyRegisteredStudentsAsOrganizers() = runTest {
+    repository.seed(organized)
+    repository.registeredUids["event-1"] = setOf("ana")
+
+    assertEquals(
+        UpdateEventResult.InvalidOrganizers(OrganizerError.NOT_REGISTERED),
+        repository.updateEvent(organized, OrganizerChanges(added = setOf("ana", "ben"))),
+    )
+    assertEquals(
+        UpdateEventResult.Updated,
+        repository.updateEvent(organized, OrganizerChanges(added = setOf("ana"))),
+    )
+
+    val saved = (repository.getEvent("event-1").first() as EventResult.Found).event
+    assertEquals(listOf("test-creator", "ana"), saved.organizerIds)
+    assertEquals(listOf("test-creator", "ana"), saved.allowedUids)
+    assertEquals(
+        listOf(
+            OrganizerChanges(added = setOf("ana", "ben")),
+            OrganizerChanges(added = setOf("ana")),
+        ),
+        repository.organizerRequests,
+    )
+  }
+
+  @Test
+  fun updateEvent_refusesOrganizerChangesTheRulesRefuse() = runTest {
+    repository.seed(organized)
+
+    assertEquals(
+        UpdateEventResult.InvalidOrganizers(OrganizerError.CREATOR_REMOVED),
+        repository.updateEvent(organized, OrganizerChanges(removed = setOf("test-creator"))),
+    )
   }
 
   @Test

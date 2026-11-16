@@ -3,6 +3,7 @@
 // (updating and deleting, #130; an association's own events, #132); Franciszek Najda (reviewed).
 // Claude (NotCached KDoc, #194).
 // Contributors: Claude (Opus 5.5, Anthropic) added getReadablePrivateEvents and its result, #320.
+// Contributors: Claude (Opus 5.5, Anthropic) added organizer changes to updateEvent, #370.
 package com.polysocial.model.event
 
 import kotlinx.coroutines.flow.Flow
@@ -35,6 +36,12 @@ sealed interface UpdateEventResult {
 
   /** The new values break the rules in [errors] (see [validateNewEvent]). Nothing was written. */
   data class Invalid(val errors: List<EventValidationError>) : UpdateEventResult
+
+  /**
+   * The organizer changes break [error]'s rule (see [applyOrganizerChanges]), checked against the
+   * stored event. Nothing was written.
+   */
+  data class InvalidOrganizers(val error: OrganizerError) : UpdateEventResult
 
   /**
    * The user may not manage this event: they aren't one of its organizers, nobody is signed in, or
@@ -181,7 +188,8 @@ interface EventRepository {
   /**
    * Saves [event]'s new values over the stored `events/[Event.id]`, if the signed-in user is one of
    * its organizers. The stored [Event.createdBy], [Event.organizerIds], [Event.allowedUids] and
-   * [Event.isAssociationEvent] are kept, ignoring the caller's values (see [withOwnershipOf]).
+   * [Event.isAssociationEvent] are kept, ignoring the caller's values (see [withOwnershipOf]),
+   * except for the changes in [organizers].
    *
    * The checks run in this order, and each one stops before anything is written: new values that
    * [validateNewEvent] rejects for another reason than a start in the past return
@@ -193,8 +201,16 @@ interface EventRepository {
    * [EventValidationError.START_IN_PAST] only if it differs from the stored start (see
    * [validateEventUpdate]): an event that has started can still be edited, but no event can be
    * moved into the past. Only the fields [Event] holds are written; other stored fields are kept.
+   *
+   * [organizers] are the co-organizers added and removed on the form (#370), applied in the same
+   * step to the stored organizers with [applyOrganizerChanges]. A refused change returns
+   * [UpdateEventResult.InvalidOrganizers], also when a student added isn't registered for the event
+   * any more ([OrganizerError.NOT_REGISTERED]), and nothing is written.
    */
-  suspend fun updateEvent(event: Event): UpdateEventResult
+  suspend fun updateEvent(
+      event: Event,
+      organizers: OrganizerChanges = OrganizerChanges.NONE,
+  ): UpdateEventResult
 
   /**
    * Deletes `events/[id]`, if the signed-in user is one of its organizers. In Sprint 2, cancelling

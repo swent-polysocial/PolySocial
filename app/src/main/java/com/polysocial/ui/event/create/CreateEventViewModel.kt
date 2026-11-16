@@ -1,5 +1,6 @@
 // Contributors: Claude (drafted the Create Event ViewModel); Mohamed Khellaf (reviewed). Claude
 // (editing an event, #131; the repository's errors, #131 review; the organizer row, #134).
+// Contributors: Claude (Opus 5.5, Anthropic) (refused organizer changes, #370).
 package com.polysocial.ui.event.create
 
 import androidx.lifecycle.SavedStateHandle
@@ -249,7 +250,9 @@ constructor(
         is UpdateEventResult.Invalid -> refuse(result.errors)
         UpdateEventResult.NetworkError ->
             CreateEventStatus.Failed(CreateEventStatus.Failed.Reason.OFFLINE)
-        // Never reported as saved: the form stays, with Try again (#131).
+        // Never reported as saved: the form stays, with Try again (#131). The form doesn't
+        // change organizers until #370's screen, so InvalidOrganizers can't happen yet.
+        is UpdateEventResult.InvalidOrganizers,
         UpdateEventResult.NotOrganizer,
         UpdateEventResult.NotFound,
         UpdateEventResult.UnexpectedError ->

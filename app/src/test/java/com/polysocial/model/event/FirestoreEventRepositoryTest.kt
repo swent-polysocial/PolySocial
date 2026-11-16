@@ -5,6 +5,7 @@
 // #130).
 // Contributors: OpenAI Codex (listener disposal failure and cancellation tests, #156).
 // Contributors: Claude (Opus 5.5, Anthropic) tested the readable private events query, #320.
+// Contributors: Claude (Opus 5.5, Anthropic) tested saving co-organizer changes, #370.
 package com.polysocial.model.event
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -1034,6 +1035,142 @@ class FirestoreEventRepositoryTest {
         Tasks.forCanceled()
 
     assertEquals(UpdateEventResult.UnexpectedError, repository.updateEvent(edit))
+  }
+
+  // Co-organizers (#370)
+
+  /** [managed] as a student's event, whose organizers may change. */
+  private val studentManaged = managed.copy(isAssociationEvent = false)
+  private val attendees = mockk<CollectionReference>()
+
+  /**
+   * Stubs [studentManaged] as stored, with [registered] as the only students registered for it.
+   * Every other registration the transaction reads is missing.
+   */
+  private fun stubStudentEvent(vararg registered: String) {
+    stubStoredEvent(studentManaged.toFirestoreMap())
+    every { storedDocument.collection("attendees") } returns attendees
+    every { attendees.document(any()) } answers
+        {
+          val uid = firstArg<String>()
+          mockk<DocumentReference>().also { registration ->
+            every { transaction.get(registration) } returns
+                mockk<DocumentSnapshot>().also { every { it.exists() } returns (uid in registered) }
+          }
+        }
+  }
+
+  @Test
+  fun update_addingRegisteredStudents_savesThemAsOrganizersAndReaders() = runTest {
+    stubStudentEvent("ana", "ben")
+
+    val result =
+        repository.updateEvent(edit, OrganizerChanges(added = setOf("ben", "ana", "creator")))
+
+    assertEquals(UpdateEventResult.Updated, result)
+    assertEquals(listOf("creator", "co-organizer", "ana", "ben"), updatedFields()["organizerIds"])
+    assertEquals(
+        listOf("creator", "co-organizer", "member", "ana", "ben"),
+        updatedFields()["allowedUids"],
+    )
+    assertEquals("Exam review", updatedFields()["title"])
+    verify(exactly = 0) { attendees.document("creator") }
+  }
+
+  @Test
+  fun update_removingACoOrganizer_keepsThemAsAReader() = runTest {
+    stubStudentEvent()
+
+    val result = repository.updateEvent(edit, OrganizerChanges(removed = setOf("co-organizer")))
+
+    assertEquals(UpdateEventResult.Updated, result)
+    assertEquals(listOf("creator"), updatedFields()["organizerIds"])
+    assertEquals(listOf("creator", "co-organizer", "member"), updatedFields()["allowedUids"])
+  }
+
+  @Test
+  fun update_addingAStudentWhoIsNotRegistered_isRefusedAndWritesNothing() = runTest {
+    stubStudentEvent("ana")
+
+    val result = repository.updateEvent(edit, OrganizerChanges(added = setOf("ana", "member")))
+
+    assertEquals(UpdateEventResult.InvalidOrganizers(OrganizerError.NOT_REGISTERED), result)
+    verify(exactly = 0) { transaction.update(any<DocumentReference>(), any<Map<String, Any>>()) }
+  }
+
+  @Test
+  fun update_organizerChangesTheRulesRefuse_areRefusedBeforeReadingRegistrations() = runTest {
+    for ((stored, changes, error) in
+        listOf(
+            Triple(
+                studentManaged,
+                OrganizerChanges(removed = setOf("creator")),
+                OrganizerError.CREATOR_REMOVED,
+            ),
+            Triple(
+                studentManaged,
+                OrganizerChanges(added = setOf("a", "b", "c", "d")),
+                OrganizerError.TOO_MANY_ORGANIZERS,
+            ),
+            Triple(
+                managed,
+                OrganizerChanges(added = setOf("ana")),
+                OrganizerError.ASSOCIATION_EVENT,
+            ),
+        )) {
+      stubStudentEvent("ana", "a", "b", "c", "d")
+      stubStoredEvent(stored.toFirestoreMap())
+
+      assertEquals(
+          UpdateEventResult.InvalidOrganizers(error),
+          repository.updateEvent(edit, changes),
+      )
+    }
+    verify(exactly = 0) { attendees.document(any()) }
+    verify(exactly = 0) { transaction.update(any<DocumentReference>(), any<Map<String, Any>>()) }
+  }
+
+  @Test
+  fun update_aStartMovedIntoThePast_isReportedBeforeOrganizerChanges() = runTest {
+    stubStudentEvent()
+
+    val result =
+        repository.updateEvent(
+            edit.copy(startTime = TEST_NOW.minusSeconds(60)),
+            OrganizerChanges(removed = setOf("creator")),
+        )
+
+    assertEquals(UpdateEventResult.Invalid(listOf(EventValidationError.START_IN_PAST)), result)
+  }
+
+  @Test
+  fun update_withoutOrganizerChanges_readsNoRegistration() = runTest {
+    stubStudentEvent()
+
+    assertEquals(UpdateEventResult.Updated, repository.updateEvent(edit))
+    verify(exactly = 0) { attendees.document(any()) }
+  }
+
+  @Test
+  fun update_losingTheConnectionWhileReadingARegistration_isANetworkError() = runTest {
+    stubStudentEvent()
+    every { attendees.document("ana") } returns
+        mockk<DocumentReference>().also {
+          every { transaction.get(it) } throws
+              FirebaseFirestoreException("offline", FirebaseFirestoreException.Code.UNAVAILABLE)
+        }
+    every { db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Any>>()) } answers
+        {
+          try {
+            Tasks.forResult(secondArg<Transaction.Function<Any>>().apply(transaction))
+          } catch (e: FirebaseFirestoreException) {
+            Tasks.forException(e)
+          }
+        }
+
+    val result = repository.updateEvent(edit, OrganizerChanges(added = setOf("ana")))
+
+    assertEquals(UpdateEventResult.NetworkError, result)
   }
 
   @Test

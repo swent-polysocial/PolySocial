@@ -9,6 +9,7 @@
 // #121).
 // Contributors: Claude (Opus 5.5, Anthropic) tested the private events query against the rules,
 // #320.
+// Contributors: Claude (Opus 5.5, Anthropic) (co-organizer changes against the rules, #370).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -21,6 +22,8 @@ import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.EventResult
 import com.polysocial.model.event.FirestoreEventRepository
+import com.polysocial.model.event.OrganizerChanges
+import com.polysocial.model.event.OrganizerError
 import com.polysocial.model.event.OwnEventsResult
 import com.polysocial.model.event.PrivateEventsResult
 import com.polysocial.model.event.PublicEventsResult
@@ -28,6 +31,7 @@ import com.polysocial.model.event.UpdateEventResult
 import com.polysocial.model.event.eventFromFirestore
 import com.polysocial.model.event.toFirestoreMap
 import com.polysocial.model.event.withCreator
+import com.polysocial.model.registration.ATTENDEES_COLLECTION
 import com.polysocial.model.user.FirestoreUserProfileRepository
 import com.polysocial.model.user.USERS_COLLECTION
 import java.time.Clock
@@ -452,6 +456,73 @@ class FirestoreEventRepositoryEmulatorTest {
     assertEquals(UpdateEventResult.NotFound, result)
   }
 
+  private suspend fun seedRegistration(eventId: String, uid: String) =
+      emulator.createAsAdmin(
+          "$EVENTS_COLLECTION/$eventId/$ATTENDEES_COLLECTION",
+          uid,
+          mapOf("uid" to uid, "registeredAt" to NOW),
+      )
+
+  @Test
+  fun updateEvent_addingRegisteredStudents_isAcceptedAndMakesThemOrganizersAndReaders() =
+      runBlocking {
+        val uid = signInStudent()
+        seed("managed", managedBy(uid))
+        seedRegistration("managed", MEMBER_UID)
+        seedRegistration("managed", ATTENDEE_UID)
+
+        val result =
+            withTimeout(TIMEOUT_MS) {
+              repository.updateEvent(
+                  managedBy(uid).copy(id = "managed", title = "New title"),
+                  OrganizerChanges(added = setOf(MEMBER_UID, ATTENDEE_UID)),
+              )
+            }
+
+        assertEquals(UpdateEventResult.Updated, result)
+        val stored = storedEvent("managed")
+        assertEquals("New title", stored?.title)
+        assertEquals(listOf(uid, ORGANIZER_UID, ATTENDEE_UID, MEMBER_UID), stored?.organizerIds)
+        assertEquals(listOf(uid, ORGANIZER_UID, MEMBER_UID, ATTENDEE_UID), stored?.allowedUids)
+      }
+
+  @Test
+  fun updateEvent_addingAStudentWhoIsNotRegistered_isRefusedAndChangesNothing() = runBlocking {
+    val uid = signInStudent()
+    seed("managed", managedBy(uid))
+    seedRegistration("other", MEMBER_UID)
+
+    val result =
+        withTimeout(TIMEOUT_MS) {
+          repository.updateEvent(
+              managedBy(uid).copy(id = "managed", title = "New title"),
+              OrganizerChanges(added = setOf(MEMBER_UID)),
+          )
+        }
+
+    assertEquals(UpdateEventResult.InvalidOrganizers(OrganizerError.NOT_REGISTERED), result)
+    assertEquals("Test event", storedEvent("managed")?.title)
+    assertEquals(listOf(uid, ORGANIZER_UID), storedEvent("managed")?.organizerIds)
+  }
+
+  @Test
+  fun updateEvent_removingACoOrganizer_isAcceptedAndKeepsThemAsAReader() = runBlocking {
+    val uid = signInStudent()
+    seed("managed", managedBy(uid).copy(isPrivate = true))
+
+    val result =
+        withTimeout(TIMEOUT_MS) {
+          repository.updateEvent(
+              managedBy(uid).copy(id = "managed", isPrivate = true),
+              OrganizerChanges(removed = setOf(ORGANIZER_UID)),
+          )
+        }
+
+    assertEquals(UpdateEventResult.Updated, result)
+    assertEquals(listOf(uid), storedEvent("managed")?.organizerIds)
+    assertEquals(listOf(uid, ORGANIZER_UID, MEMBER_UID), storedEvent("managed")?.allowedUids)
+  }
+
   @Test
   fun deleteEvent_byAnOrganizer_removesTheEvent() = runBlocking {
     val uid = signInStudent()
@@ -617,6 +688,7 @@ class FirestoreEventRepositoryEmulatorTest {
     const val ASSOCIATION_EMAIL = "test.association@example.com"
     const val ORGANIZER_UID = "fictional-organizer"
     const val MEMBER_UID = "fictional-member"
+    const val ATTENDEE_UID = "fictional-attendee"
     const val WINDOW_DAYS = 14
     val WINDOW: Duration = Duration.ofDays(WINDOW_DAYS.toLong())
     val NOW: Instant = Instant.parse("2030-03-01T12:00:00Z")
