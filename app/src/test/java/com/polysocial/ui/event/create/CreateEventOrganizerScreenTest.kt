@@ -1,5 +1,6 @@
 // Contributors: Claude (wrote these tests, #134; additional tests from a test audit, #134; large
 // font sizes and TalkBack, #134).
+// Contributors: Claude (Opus 5.5, Anthropic) (the co-organizer repositories, #370).
 package com.polysocial.ui.event.create
 
 import android.app.Application
@@ -33,6 +34,8 @@ import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.withCreator
+import com.polysocial.model.registration.FakeRegistrationRepository
+import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.resources.C
@@ -76,6 +79,8 @@ class CreateEventOrganizerScreenTest {
           auth,
           profiles,
           associations,
+          FakeRegistrationRepository(),
+          FakePublicProfileRepository(),
       )
 
   private fun showCreateEvent(): CreateEventViewModel {

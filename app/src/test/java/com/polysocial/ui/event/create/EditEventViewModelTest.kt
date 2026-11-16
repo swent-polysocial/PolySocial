@@ -1,5 +1,6 @@
 // Contributors: Claude (wrote these tests of Edit event, #131; the repository's errors, #131
 // review; the organizer's repositories, #134).
+// Contributors: Claude (Opus 5.5, Anthropic) (the co-organizer repositories, #370).
 package com.polysocial.ui.event.create
 
 import androidx.lifecycle.SavedStateHandle
@@ -9,6 +10,8 @@ import com.polysocial.model.event.EventValidationError
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.UpdateEventResult
 import com.polysocial.model.event.withCreator
+import com.polysocial.model.registration.FakeRegistrationRepository
+import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.ui.event.detail.EventDetailViewModel
 import com.polysocial.utils.MainDispatcherRule
@@ -43,6 +46,8 @@ class EditEventViewModelTest {
           FakeAuthRepository(),
           FakeUserProfileRepository(),
           FakeAssociationRepository(),
+          FakeRegistrationRepository(),
+          FakePublicProfileRepository(),
       )
 
   private fun runPending() = mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
