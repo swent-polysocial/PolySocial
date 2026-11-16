@@ -252,10 +252,10 @@ service cloud.firestore {
       // one added must be registered for this event, so organizers only add students they can
       // already list (only students register). Rules can't loop, so each of the at most 4
       // added (5 organizers, one of them the creator) is checked by its index, and a fifth
-      // is refused, so raising the limit can't skip a check. Any organizer
-      // adds or removes co-organizers and a co-organizer stays one after cancelling, the
-      // frames' defaults until #400 settles them. An association event keeps its single
-      // organizer until the team decides on association co-organizers.
+      // is refused, so raising the limit can't skip a check. Any organizer adds or removes
+      // co-organizers, and a co-organizer stays one after cancelling (Sprint 6 PO, #400). An
+      // association event keeps its single organizer until the team decides on association
+      // co-organizers.
       function keepsValidOrganizers() {
         let organizers = request.resource.data.organizerIds;
         let added = organizers.removeAll(resource.data.organizerIds);
