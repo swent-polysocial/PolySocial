@@ -5,9 +5,9 @@ package com.polysocial.model.friend
 import java.time.Instant
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
-import kotlinx.coroutines.flow.combine
 
 /**
  * In-memory [FriendRepository] for tests. It follows the [FriendRepository] contracts and checks in
@@ -122,11 +122,12 @@ class FakeFriendRepository(
 
   /**
    * What reading [shown]'s document again, as [uid], refuses, or null when it is still as shown: a
-   * student outside the pair can't read it (the Security Rules refuse), and a missing document, or
-   * one whose status or `createdAt` changed since it was shown, is [FriendshipActionResult.Gone].
+   * student whose UID isn't one half of its ID can't read it, whether or not it exists (the
+   * Security Rules refuse), and a missing document, or one whose status or `createdAt` changed
+   * since it was shown, is [FriendshipActionResult.Gone].
    */
   private fun refusal(shown: Friendship, uid: String): FriendshipActionResult? {
-    if (uid !in shown.uids) return FriendshipActionResult.UnexpectedError
+    if (uid !in shown.id.split("~")) return FriendshipActionResult.UnexpectedError
     val stored = friendships.value[shown.id]
     if (stored == null || stored.status != shown.status || stored.createdAt != shown.createdAt) {
       return FriendshipActionResult.Gone

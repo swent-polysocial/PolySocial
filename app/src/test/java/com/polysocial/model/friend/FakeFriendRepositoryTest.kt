@@ -174,6 +174,29 @@ class FakeFriendRepositoryTest {
   }
 
   @Test
+  fun aStudentOutsideThePair_ofAMissingFriendship_isUnexpected() = runTest {
+    repository.currentUid = "carol"
+
+    assertEquals(FriendshipActionResult.UnexpectedError, repository.accept(pending()))
+    assertEquals(FriendshipActionResult.UnexpectedError, repository.remove(pending()))
+  }
+
+  @Test
+  fun thePairIsReadFromTheId_notFromTheShownUids() = runTest {
+    // Like the Security Rules, which read the document under its ID: a shown friendship whose uids
+    // disagree with its ID can't act on another pair's document.
+    val aliceAndCarol =
+        pending().copy(id = "alice~carol", uids = listOf("alice", "carol"), requestedBy = "carol")
+    repository.seedFriendship(aliceAndCarol)
+    repository.currentUid = "bob"
+    val mislabelled = aliceAndCarol.copy(uids = listOf("alice", "bob"))
+
+    assertEquals(FriendshipActionResult.UnexpectedError, repository.accept(mislabelled))
+    assertEquals(FriendshipActionResult.UnexpectedError, repository.remove(mislabelled))
+    assertEquals(aliceAndCarol, repository.friendship("alice~carol"))
+  }
+
+  @Test
   fun observeFriendships_showsOnlyTheSignedInStudentsFriendships() = runTest {
     val carolAndDan =
         pending().copy(id = "carol~dan", uids = listOf("carol", "dan"), requestedBy = "carol")
