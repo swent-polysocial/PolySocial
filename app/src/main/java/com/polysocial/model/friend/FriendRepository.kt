@@ -41,10 +41,10 @@ sealed interface SendFriendRequestResult {
 
   /**
    * Any other failure. Nothing was written, unless the failure came after the server stored the
-   * request; [FriendRepository.observeFriendships] then shows it. Timeouts and an unreachable
-   * server are [NetworkError] instead. This covers nobody signed in, the student's own UID or an
-   * invalid one (see [friendshipId]), and a write the Security Rules deny, for example to a UID
-   * without a public profile.
+   * request; [FriendRepository.observeFriendships] then shows it. An unreachable server is
+   * [NetworkError] instead. This covers nobody signed in, the student's own UID or an invalid one
+   * (see [friendshipId]), and a write the Security Rules deny, for example to a UID without a
+   * public profile.
    */
   data object UnexpectedError : SendFriendRequestResult
 }
@@ -70,9 +70,9 @@ sealed interface FriendshipActionResult {
 
   /**
    * Any other failure. Nothing was written, unless the failure came after the server stored the
-   * change; [FriendRepository.observeFriendships] then shows it. Timeouts and an unreachable server
-   * are [NetworkError] instead. This covers nobody signed in, a student outside the pair, accepting
-   * a request the student sent themselves or one already accepted, and a write the Security Rules
+   * change; [FriendRepository.observeFriendships] then shows it. An unreachable server is
+   * [NetworkError] instead. This covers nobody signed in, a student outside the pair, accepting a
+   * request the student sent themselves or one already accepted, and a write the Security Rules
    * deny.
    */
   data object UnexpectedError : FriendshipActionResult
