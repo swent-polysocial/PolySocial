@@ -1,5 +1,5 @@
-// Contributors: Claude Opus 5.5 (drafted the friendship model and pair ID, #357); Konstantinos
-// Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude Opus 5.5 (drafted the friendship model and pair ID, #357; the pair check,
+// second PR); Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.model.friend
 
 import com.polysocial.model.qr.isQrId
@@ -50,6 +50,16 @@ private const val PAIR_SEPARATOR = "~"
 fun friendshipId(uidA: String, uidB: String): String? {
   if (uidA == uidB || !isQrId(uidA) || !isQrId(uidB)) return null
   return if (uidA < uidB) "$uidA$PAIR_SEPARATOR$uidB" else "$uidB$PAIR_SEPARATOR$uidA"
+}
+
+/**
+ * Whether [id] is a [friendshipId] with [uid] as one of its two halves: what the Security Rules
+ * check before a student may read a pair's document, even a missing one. An ID with more or fewer
+ * than two parts, unsorted halves or an invalid UID is nobody's.
+ */
+fun isFriendshipIdOf(id: String, uid: String): Boolean {
+  val halves = id.split(PAIR_SEPARATOR)
+  return halves.size == 2 && uid in halves && friendshipId(halves[0], halves[1]) == id
 }
 
 /** The other student of the pair, or null when [myUid] isn't one of the two. */
