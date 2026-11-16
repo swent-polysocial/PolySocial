@@ -3444,3 +3444,372 @@ test("members read retained messages but cannot forge or reverse a deleted autho
   await assertFails(updateDoc(ref, {text: "Changed"}));
   await assertFails(deleteDoc(ref));
 });
+
+// ---- friendships/{pairId} (#357, designed in #338) ----
+
+/** A new friend request [from] sends to [to], as FirestoreFriendRepository writes it. */
+function friendRequest(from, to, changes = {}) {
+  const data = {
+    uids: [from, to].sort(),
+    requestedBy: from,
+    status: "pending",
+    createdAt: serverTimestamp(),
+    ...changes,
+  };
+  for (const key of Object.keys(data)) {
+    if (data[key] === undefined) delete data[key];
+  }
+  return data;
+}
+
+function friendshipRef(db, id) {
+  return doc(db, `friendships/${id}`);
+}
+
+/** Seeds students u1, u2 and u3 with public profiles, so each can be sent a request. */
+async function seedFriendStudents() {
+  for (const uid of ["u1", "u2", "u3"]) await seedStudentWithPublicProfile(uid);
+}
+
+/** Stores friendships/[id] with the rules off, as a request already sent. */
+async function seedFriendship(id, data) {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), `friendships/${id}`), data);
+  });
+}
+
+/** A request u1 sent to u2 at a fixed time, stored with the rules off. */
+async function seedPendingRequest(changes = {}) {
+  await seedFriendship("u1~u2", {
+    uids: ["u1", "u2"],
+    requestedBy: "u1",
+    status: "pending",
+    createdAt: Timestamp.fromDate(new Date("2026-11-16T10:00:00Z")),
+    ...changes,
+  });
+}
+
+/** What u2 writes to accept u1's request. */
+function acceptance(changes = {}) {
+  return { status: "accepted", acceptedAt: serverTimestamp(), ...changes };
+}
+
+async function storedFriendship(id) {
+  let data = null;
+  await env.withSecurityRulesDisabled(async (context) => {
+    const snapshot = await getDoc(doc(context.firestore(), `friendships/${id}`));
+    data = snapshot.exists() ? snapshot.data() : null;
+  });
+  return data;
+}
+
+// Create
+
+test("a student can send a friend request to a student with a public profile", async () => {
+  await seedFriendStudents();
+
+  await assertSucceeds(setDoc(friendshipRef(studentDb("u1"), "u1~u2"), friendRequest("u1", "u2")));
+  await assertSucceeds(setDoc(friendshipRef(studentDb("u3"), "u2~u3"), friendRequest("u3", "u2")));
+});
+
+test("a request is sent as the app does: in a transaction that reads the missing pair first", async () => {
+  await seedFriendStudents();
+  const db = studentDb("u1");
+
+  await assertSucceeds(
+    runTransaction(db, async (transaction) => {
+      const existing = await transaction.get(friendshipRef(db, "u1~u2"));
+      if (existing.exists()) throw new Error("The pair's document should be missing");
+      transaction.set(friendshipRef(db, "u1~u2"), friendRequest("u1", "u2"));
+    }),
+  );
+});
+
+test("a second request between the same two students is denied, in either direction", async () => {
+  await seedFriendStudents();
+  await setDoc(friendshipRef(studentDb("u1"), "u1~u2"), friendRequest("u1", "u2"));
+
+  await assertFails(setDoc(friendshipRef(studentDb("u2"), "u1~u2"), friendRequest("u2", "u1")));
+  await assertFails(setDoc(friendshipRef(studentDb("u1"), "u1~u2"), friendRequest("u1", "u2")));
+  if ((await storedFriendship("u1~u2")).requestedBy !== "u1") throw new Error("The request changed");
+});
+
+test("a request must be stored under the pair's exact ID", async () => {
+  await seedFriendStudents();
+  const db = studentDb("u1");
+
+  for (const id of ["u2~u1", "u1~u2~", "u1~u2~u3", "u1~u3", "u1", "~u1~u2", "u1~~u2"]) {
+    await assertFails(setDoc(friendshipRef(db, id), friendRequest("u1", "u2"))).catch((error) => {
+      throw new Error(`The ID ${id} was allowed: ${error.message}`);
+    });
+  }
+});
+
+test("a request needs two different UIDs, sorted, one of them the sender's", async () => {
+  await seedFriendStudents();
+  const db = studentDb("u1");
+
+  await assertFails(setDoc(friendshipRef(db, "u1~u2"), friendRequest("u1", "u2", { uids: ["u2", "u1"] })));
+  await assertFails(setDoc(friendshipRef(db, "u1~u1"), friendRequest("u1", "u1", { uids: ["u1", "u1"] })));
+  await assertFails(setDoc(friendshipRef(db, "u2~u3"), friendRequest("u2", "u3")));
+  // Sent "as yourself" for a pair you aren't in.
+  await assertFails(setDoc(friendshipRef(db, "u2~u3"), friendRequest("u2", "u3", { requestedBy: "u1" })));
+  await assertFails(
+    setDoc(friendshipRef(db, "u1~u2"), friendRequest("u1", "u2", { uids: ["u1", "u2", "u3"] })),
+  );
+  await assertFails(setDoc(friendshipRef(db, "u1~u2"), friendRequest("u1", "u2", { uids: "u1~u2" })));
+});
+
+test("a request is sent only as yourself, pending, at the server's time", async () => {
+  await seedFriendStudents();
+  const db = studentDb("u1");
+  const ref = friendshipRef(db, "u1~u2");
+
+  await assertFails(setDoc(ref, friendRequest("u1", "u2", { requestedBy: "u2" })));
+  await assertFails(setDoc(ref, friendRequest("u1", "u2", { status: "accepted" })));
+  await assertFails(
+    setDoc(ref, friendRequest("u1", "u2", { createdAt: Timestamp.fromDate(new Date()) })),
+  );
+});
+
+test("a request holds exactly its four fields", async () => {
+  await seedFriendStudents();
+  const ref = friendshipRef(studentDb("u1"), "u1~u2");
+
+  await assertFails(setDoc(ref, friendRequest("u1", "u2", { acceptedAt: serverTimestamp() })));
+  await assertFails(setDoc(ref, friendRequest("u1", "u2", { displayName: "Student One" })));
+  for (const field of ["uids", "requestedBy", "status", "createdAt"]) {
+    await assertFails(setDoc(ref, friendRequest("u1", "u2", { [field]: undefined }))).catch(
+      (error) => {
+        throw new Error(`A request without ${field} was allowed: ${error.message}`);
+      },
+    );
+  }
+});
+
+test("a request to a UID without a public profile is denied", async () => {
+  await seedFriendStudents();
+
+  // u9 has no public profile: an association, a deleted account or a made-up UID.
+  await assertFails(setDoc(friendshipRef(studentDb("u1"), "u1~u9"), friendRequest("u1", "u9")));
+  // verifiedClub is an association, which never has one.
+  await assertFails(
+    setDoc(friendshipRef(studentDb("u1"), "u1~verifiedClub"), friendRequest("u1", "verifiedClub")),
+  );
+});
+
+test("an association can't send a friend request", async () => {
+  await seedFriendStudents();
+  await storeUserAsAdmin("epflClub", { uid: "epflClub", accountType: "association" });
+
+  await assertFails(
+    setDoc(friendshipRef(associationDb("verifiedClub"), "u1~verifiedClub"), friendRequest("verifiedClub", "u1")),
+  );
+  await assertFails(
+    setDoc(
+      friendshipRef(firestoreAs("club@epfl.ch", true, "epflClub"), "epflClub~u1"),
+      friendRequest("epflClub", "u1"),
+    ),
+  );
+});
+
+test("an unverified or signed-out account can't send a friend request", async () => {
+  await seedFriendStudents();
+
+  await assertFails(
+    setDoc(friendshipRef(firestoreAs("student@epfl.ch", false, "u1"), "u1~u2"), friendRequest("u1", "u2")),
+  );
+  await assertFails(
+    setDoc(friendshipRef(env.unauthenticatedContext().firestore(), "u1~u2"), friendRequest("u1", "u2")),
+  );
+});
+
+test("a deleted account can't send a friend request", async () => {
+  await seedFriendStudents();
+  await seedDeletedAccount("u1");
+
+  await assertFails(setDoc(friendshipRef(studentDb("u1"), "u1~u2"), friendRequest("u1", "u2")));
+});
+
+// Read
+
+test("both students of the pair can read their friendship, nobody else can", async () => {
+  await seedFriendStudents();
+  await seedPendingRequest();
+
+  await assertSucceeds(getDoc(friendshipRef(studentDb("u1"), "u1~u2")));
+  await assertSucceeds(getDoc(friendshipRef(studentDb("u2"), "u1~u2")));
+  await assertFails(getDoc(friendshipRef(studentDb("u3"), "u1~u2")));
+  await assertFails(getDoc(friendshipRef(associationDb("verifiedClub"), "u1~u2")));
+  await assertFails(getDoc(friendshipRef(env.unauthenticatedContext().firestore(), "u1~u2")));
+});
+
+test("a student can read a missing friendship only under their own pair ID", async () => {
+  await seedFriendStudents();
+
+  await assertSucceeds(getDoc(friendshipRef(studentDb("u1"), "u1~u2")));
+  await assertSucceeds(getDoc(friendshipRef(studentDb("u2"), "u1~u2")));
+  // A third student can't tell a missing friendship from one they may not read.
+  await assertFails(getDoc(friendshipRef(studentDb("u3"), "u1~u2")));
+  for (const id of ["u2~u1", "u1~u2~", "u1", "u1~u2~u3", "~u1", "u1~", "u1~u1"]) {
+    await assertFails(getDoc(friendshipRef(studentDb("u1"), id))).catch((error) => {
+      throw new Error(`Reading the missing ${id} was allowed: ${error.message}`);
+    });
+  }
+  await assertFails(getDoc(friendshipRef(associationDb("verifiedClub"), "u1~verifiedClub")));
+});
+
+test("a student lists friendships only with uids array-contains their own UID", async () => {
+  await seedFriendStudents();
+  await seedPendingRequest();
+  await seedFriendship("u2~u3", { uids: ["u2", "u3"], requestedBy: "u3", status: "pending", createdAt: FAR_FUTURE });
+  const db = studentDb("u1");
+
+  const mine = await assertSucceeds(
+    getDocs(query(collection(db, "friendships"), where("uids", "array-contains", "u1"))),
+  );
+  if (mine.docs.map((d) => d.id).join() !== "u1~u2") throw new Error(`Listed ${mine.docs.map((d) => d.id)}`);
+  await assertFails(getDocs(collection(db, "friendships")));
+  await assertFails(getDocs(query(collection(db, "friendships"), where("uids", "array-contains", "u3"))));
+  await assertFails(getDocs(query(collection(db, "friendships"), where("status", "==", "pending"))));
+  await assertFails(
+    getDocs(
+      query(collection(associationDb("verifiedClub"), "friendships"), where("uids", "array-contains", "verifiedClub")),
+    ),
+  );
+});
+
+test("a deleted account can't read or list its friendships", async () => {
+  await seedFriendStudents();
+  await seedPendingRequest();
+  await seedDeletedAccount("u1");
+  const db = studentDb("u1");
+
+  await assertFails(getDoc(friendshipRef(db, "u1~u2")));
+  await assertFails(getDoc(friendshipRef(db, "u1~u3")));
+  await assertFails(getDocs(query(collection(db, "friendships"), where("uids", "array-contains", "u1"))));
+  await assertSucceeds(getDoc(friendshipRef(studentDb("u2"), "u1~u2")));
+});
+
+// Update (accepting)
+
+test("the recipient accepts a request, at the server's time", async () => {
+  await seedFriendStudents();
+  await seedPendingRequest();
+
+  await assertSucceeds(updateDoc(friendshipRef(studentDb("u2"), "u1~u2"), acceptance()));
+  const stored = await storedFriendship("u1~u2");
+  if (stored.status !== "accepted" || stored.requestedBy !== "u1") {
+    throw new Error(`Unexpected friendship: ${JSON.stringify(stored)}`);
+  }
+});
+
+test("the recipient accepts as the app does: in a transaction that reads it again", async () => {
+  await seedFriendStudents();
+  await seedPendingRequest();
+  const db = studentDb("u2");
+
+  await assertSucceeds(
+    runTransaction(db, async (transaction) => {
+      const stored = await transaction.get(friendshipRef(db, "u1~u2"));
+      if (stored.get("status") !== "pending") throw new Error("Expected a pending request");
+      transaction.update(friendshipRef(db, "u1~u2"), acceptance());
+    }),
+  );
+});
+
+test("the sender can't accept their own request, nor can anyone else", async () => {
+  await seedFriendStudents();
+  await seedPendingRequest();
+
+  await assertFails(updateDoc(friendshipRef(studentDb("u1"), "u1~u2"), acceptance()));
+  await assertFails(updateDoc(friendshipRef(studentDb("u3"), "u1~u2"), acceptance()));
+  await assertFails(updateDoc(friendshipRef(associationDb("verifiedClub"), "u1~u2"), acceptance()));
+  if ((await storedFriendship("u1~u2")).status !== "pending") throw new Error("The request changed");
+});
+
+test("accepting changes only status to accepted and sets acceptedAt to the server's time", async () => {
+  await seedFriendStudents();
+  await seedPendingRequest();
+  const ref = friendshipRef(studentDb("u2"), "u1~u2");
+
+  await assertFails(updateDoc(ref, acceptance({ acceptedAt: Timestamp.fromDate(new Date()) })));
+  await assertFails(updateDoc(ref, { status: "accepted" }));
+  await assertFails(updateDoc(ref, acceptance({ status: "pending" })));
+  await assertFails(updateDoc(ref, acceptance({ status: "blocked" })));
+  await assertFails(updateDoc(ref, acceptance({ requestedBy: "u2" })));
+  await assertFails(updateDoc(ref, acceptance({ uids: ["u2", "u3"] })));
+  await assertFails(updateDoc(ref, acceptance({ createdAt: serverTimestamp() })));
+  await assertFails(updateDoc(ref, acceptance({ note: "Hi" })));
+});
+
+test("an accepted friendship can't be updated again", async () => {
+  await seedFriendStudents();
+  await seedPendingRequest({ status: "accepted", acceptedAt: FAR_FUTURE });
+  const ref = friendshipRef(studentDb("u2"), "u1~u2");
+
+  await assertFails(updateDoc(ref, acceptance()));
+  await assertFails(updateDoc(ref, { status: "pending", acceptedAt: deleteField() }));
+  await assertFails(updateDoc(friendshipRef(studentDb("u1"), "u1~u2"), { status: "pending", acceptedAt: deleteField() }));
+});
+
+test("accepting is denied when either student's account was deleted", async () => {
+  await seedFriendStudents();
+  await seedPendingRequest();
+  await seedDeletedAccount("u1");
+
+  await assertFails(updateDoc(friendshipRef(studentDb("u2"), "u1~u2"), acceptance()));
+
+  await env.clearFirestore();
+  await seedFriendStudents();
+  await seedPendingRequest();
+  await seedDeletedAccount("u2");
+
+  await assertFails(updateDoc(friendshipRef(studentDb("u2"), "u1~u2"), acceptance()));
+});
+
+// Delete (declining, cancelling, removing)
+
+test("either student can delete their request or friendship", async () => {
+  await seedFriendStudents();
+  await seedPendingRequest();
+  await assertSucceeds(deleteDoc(friendshipRef(studentDb("u2"), "u1~u2")));
+
+  await seedPendingRequest();
+  await assertSucceeds(deleteDoc(friendshipRef(studentDb("u1"), "u1~u2")));
+
+  await seedPendingRequest({ status: "accepted", acceptedAt: FAR_FUTURE });
+  await assertSucceeds(deleteDoc(friendshipRef(studentDb("u2"), "u1~u2")));
+  if ((await storedFriendship("u1~u2")) !== null) throw new Error("The friendship is still there");
+});
+
+test("a student deletes as the app does: in a transaction that reads it again", async () => {
+  await seedFriendStudents();
+  await seedPendingRequest();
+  const db = studentDb("u1");
+
+  await assertSucceeds(
+    runTransaction(db, async (transaction) => {
+      await transaction.get(friendshipRef(db, "u1~u2"));
+      transaction.delete(friendshipRef(db, "u1~u2"));
+    }),
+  );
+});
+
+test("nobody outside the pair can delete a friendship", async () => {
+  await seedFriendStudents();
+  await seedPendingRequest();
+
+  await assertFails(deleteDoc(friendshipRef(studentDb("u3"), "u1~u2")));
+  await assertFails(deleteDoc(friendshipRef(associationDb("verifiedClub"), "u1~u2")));
+  await assertFails(deleteDoc(friendshipRef(env.unauthenticatedContext().firestore(), "u1~u2")));
+  if ((await storedFriendship("u1~u2")) === null) throw new Error("The friendship was deleted");
+});
+
+test("a deleted account can't delete its friendships", async () => {
+  await seedFriendStudents();
+  await seedPendingRequest();
+  await seedDeletedAccount("u1");
+
+  await assertFails(deleteDoc(friendshipRef(studentDb("u1"), "u1~u2")));
+});
