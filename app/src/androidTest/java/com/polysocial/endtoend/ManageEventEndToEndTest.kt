@@ -6,6 +6,8 @@
 // Contributors: Claude (shared fakes and dateDigits instead of private copies, #276).
 // Contributors: OpenAI Codex (scoped the chat fake to this Hilt test, #238).
 // Contributors: Claude Fable 5.2 (the organizer's own name on the detail, #281).
+// Contributors: Claude (Opus 5.5, Anthropic) typed through typeText, which closes the keyboard
+// before the next tap, the date picker's included, #427.
 package com.polysocial.endtoend
 
 import androidx.compose.ui.test.SemanticsMatcher
@@ -21,7 +23,6 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextClearance
-import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.MainActivity
 import com.polysocial.R
@@ -86,6 +87,7 @@ import com.polysocial.model.user.UserProfile
 import com.polysocial.model.user.UserProfileModule
 import com.polysocial.model.user.UserProfileRepository
 import com.polysocial.resources.C
+import com.polysocial.typeText
 import com.polysocial.ui.event.create.LocationPickerTags
 import com.polysocial.ui.event.detail.EventDetailTags
 import com.polysocial.ui.event.list.EventsTags
@@ -281,9 +283,10 @@ class ManageEventEndToEndTest {
   private fun pickDate(date: LocalDate) {
     node(C.Tag.create_event_date).performScrollTo().performClick()
     compose.onNode(hasContentDescription("text input mode", substring = true)).performClick()
-    compose
-        .onNode(hasSetTextAction() and hasAnyAncestor(isDialog()))
-        .performTextInput(dateDigits(date))
+    compose.typeText(
+        compose.onNode(hasSetTextAction() and hasAnyAncestor(isDialog())),
+        dateDigits(date),
+    )
     node(C.Tag.create_event_dialog_confirm).performClick()
     node(C.Tag.create_event_date).assertTextContains(date.dayOfMonth.toString(), substring = true)
   }
@@ -291,7 +294,7 @@ class ManageEventEndToEndTest {
   private fun pickRolexWithTheSearch() {
     node(C.Tag.create_event_location).performScrollTo().performClick()
     await(LocationPickerTags.SCREEN)
-    node(LocationPickerTags.QUERY).performTextInput("Rolex")
+    compose.typeText(node(LocationPickerTags.QUERY), "Rolex")
     node(LocationPickerTags.SEARCH).performClick()
     await(LocationPickerTags.result(0))
     node(LocationPickerTags.result(0)).performClick()
@@ -302,7 +305,9 @@ class ManageEventEndToEndTest {
 
   private fun node(tag: String) = compose.onNodeWithTag(tag)
 
-  private fun type(tag: String, text: String) = node(tag).performScrollTo().performTextInput(text)
+  // Typing ends with the keyboard closed: it opens late and would move what the next tap aims at
+  // (see CONTEXT.md, Traps).
+  private fun type(tag: String, text: String) = compose.typeText(node(tag).performScrollTo(), text)
 
   private fun count(tag: String) = compose.onAllNodes(hasTestTag(tag)).fetchSemanticsNodes().size
 

@@ -1,6 +1,7 @@
 // Contributors: Claude (Fable 5.2, Anthropic) wrote this end-to-end test of going to an event,
 // joining a group and sending a chat message, #380; Claude (Opus 5.5, Anthropic) reordered its
 // group fixtures.
+// Contributors: Claude (Opus 5.5, Anthropic) typed the message through typeText, #427.
 package com.polysocial.endtoend
 
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -18,11 +19,9 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
-import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.MainActivity
 import com.polysocial.auth.MemoryVerificationStore
-import com.polysocial.closeKeyboard
 import com.polysocial.model.account.AccountDeletionModule
 import com.polysocial.model.account.AccountDeletionRepository
 import com.polysocial.model.account.FakeAccountDeletionRepository
@@ -83,6 +82,7 @@ import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.UserProfile
 import com.polysocial.model.user.UserProfileModule
 import com.polysocial.model.user.UserProfileRepository
+import com.polysocial.typeText
 import com.polysocial.ui.chat.ChatTags
 import com.polysocial.ui.event.detail.EventDetailTags
 import com.polysocial.ui.event.list.EventsTags
@@ -354,9 +354,8 @@ class FindGroupAndChatEndToEndTest {
     val earlier = listOf("Today", "Julia Example", "JE", GREETING)
     assertEquals(earlier, textsIn(ChatTags.TIMELINE))
 
-    node(ChatTags.INPUT).performTextInput(MESSAGE)
-    // The keyboard opens late and would move Send after the tap is aimed (#314).
-    compose.closeKeyboard()
+    // Typing closes the keyboard, which opens late and would move Send after the tap is aimed.
+    compose.typeText(node(ChatTags.INPUT), MESSAGE)
     node(ChatTags.SEND).assertIsEnabled().performClick()
 
     awaitMatch(textIn(ChatTags.TIMELINE, MESSAGE))
