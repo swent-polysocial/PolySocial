@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the deletion of registrations with their event
-// and account, #275; kept for an event written again, after review.
+// and account, #275; kept for an event written again, after review; deleteAllMatching shared with
+// the friendships, #357).
 "use strict";
 
 /**
@@ -84,6 +85,7 @@ async function deleteRegistrationsOfDeletedEvent({ eventId, db, logger }) {
 
 module.exports = {
   MAX_BATCH_WRITES,
+  deleteAllMatching,
   TRIGGER_REGION,
   deleteRegistrationsOfDeletedEvent,
   deleteUserRegistrations,

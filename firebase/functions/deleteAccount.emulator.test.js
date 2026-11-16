@@ -1,6 +1,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the deleteAccount emulator test, #206; Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (the public profile deleted with the account, #229; profiles can't be saved
-// again once deleted, after review, #229; the user's registrations, #275).
+// again once deleted, after review, #229; the user's registrations, #275; the user's
+// friendships, #357).
 "use strict";
 // Contributors: OpenAI Codex (real membership cleanup and retryable message anonymisation, #241).
 
@@ -175,6 +176,30 @@ test("a student's registrations are deleted, other students' are kept", async ()
     left.docs.map((document) => document.ref.path),
     [`events/event-of-${other}/attendees/${other}`],
   );
+});
+
+test("a student's friendships are deleted, other students' are kept (#357)", async () => {
+  const uid = await seedUser("student@epfl.ch", { accountType: "student" });
+  const other = await seedUser("other@epfl.ch", { accountType: "student" });
+  const sorted = (a, b) => [a, b].sort();
+  const pair = (a, b) => sorted(a, b).join("~");
+  await db.doc(`friendships/${pair(uid, other)}`).set({
+    uids: sorted(uid, other), requestedBy: other, status: "accepted",
+    createdAt: new Date(), acceptedAt: new Date(),
+  });
+  await db.doc(`friendships/${pair(uid, "fictional-1")}`).set({
+    uids: sorted(uid, "fictional-1"), requestedBy: uid, status: "pending", createdAt: new Date(),
+  });
+  await db.doc(`friendships/${pair(other, "fictional-2")}`).set({
+    uids: sorted(other, "fictional-2"), requestedBy: other, status: "pending", createdAt: new Date(),
+  });
+  const idToken = await signIn("student@epfl.ch");
+
+  const { status } = await callDeleteAccount(idToken);
+
+  assert.equal(status, 200);
+  const left = await db.collection("friendships").get();
+  assert.deepEqual(left.docs.map((document) => document.id), [pair(other, "fictional-2")]);
 });
 
 test("an account without a profile is deleted", async () => {

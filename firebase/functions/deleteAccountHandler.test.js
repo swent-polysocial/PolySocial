@@ -3,6 +3,8 @@
 // the deletion marker, test-first, after review, #229; the user's registrations, #275).
 "use strict";
 // Contributors: OpenAI Codex (group cleanup, partial failure and retry regression tests, #241).
+// Contributors: Claude Opus 5.5 (the user's friendships, written test-first, #357); Konstantinos
+// Perdikeas (directed, reviewed and owns them).
 
 // Unit tests with fakes, no emulator: node firebase/functions/deleteAccountHandler.test.js
 const { test } = require("node:test");
@@ -26,6 +28,14 @@ const REGISTRATION_CALLS = [
   `commit:events/e1/attendees/${UID},events/e2/attendees/${UID}`,
   `query:attendees uid == ${UID}`,
 ];
+/** Another pair's friendship, which deleting the student must keep. */
+const OTHER_FRIENDSHIP = "friendships/student-uid-2~student-uid-3";
+/** The calls deleting the student's two friendships, as the default fake backend holds them. */
+const FRIENDSHIP_CALLS = [
+  `query:friendships uids array-contains ${UID}`,
+  `commit:friendships/student-uid-0~${UID},friendships/${UID}~student-uid-2`,
+  `query:friendships uids array-contains ${UID}`,
+];
 
 /** An error as the Admin SDK reports it: a gRPC status code for Firestore, a string for Auth. */
 function backendError(code) {
@@ -48,6 +58,12 @@ function fakeBackend({
   messages = {},
   beforeGroupRead = () => {},
   registrations = [`events/e1/attendees/${UID}`, `events/e2/attendees/${UID}`, OTHER_REGISTRATION],
+  // Friendships by path, with their uids: a request the student sent, a friend, another pair's.
+  friendships = {
+    [`friendships/student-uid-0~${UID}`]: ["student-uid-0", UID],
+    [`friendships/${UID}~student-uid-2`]: [UID, "student-uid-2"],
+    [OTHER_FRIENDSHIP]: ["student-uid-2", "student-uid-3"],
+  },
 } = {}) {
   const calls = [];
   const fail = {};
@@ -58,6 +74,7 @@ function fakeBackend({
     deletionMarker: null,
     authUserExists,
     registrations: new Set(registrations),
+    friendships: { ...friendships },
   };
   const failIfAsked = (operation) => {
     const error = fail[operation];
@@ -75,6 +92,27 @@ function fakeBackend({
       return {
         doc(id) {
           return { path: `${path}/${id}` };
+        },
+        // The query `friendships where uids array-contains <uid>`, with a limit.
+        where(field, op, value) {
+          assert.equal(path, "friendships");
+          assert.equal(field, "uids");
+          assert.equal(op, "array-contains");
+          const query = {
+            limit(size) {
+              assert.equal(size, 500);
+              return query;
+            },
+            async get() {
+              calls.push(`query:${path} ${field} ${op} ${value}`);
+              failIfAsked("friendships-query");
+              const docs = Object.entries(state.friendships)
+                .filter(([, uids]) => uids.includes(value))
+                .map(([friendshipPath]) => ({ ref: { path: friendshipPath } }));
+              return { empty: docs.length === 0, docs };
+            },
+          };
+          return query;
         },
       };
     },
@@ -142,8 +180,11 @@ function fakeBackend({
             return;
           }
           calls.push(`commit:${deletes.join(",")}`);
-          failIfAsked("commit");
-          for (const path of deletes) state.registrations.delete(path);
+          failIfAsked(deletes[0].startsWith("friendships/") ? "friendships-commit" : "commit");
+          for (const path of deletes) {
+            state.registrations.delete(path);
+            delete state.friendships[path];
+          }
         },
       };
     },
@@ -286,7 +327,7 @@ test("an association is refused and keeps its profile and Auth user", async () =
   }
 });
 
-test("profiles deleted and marked deleted, then registrations, then the Auth user", async () => {
+test("profiles deleted and marked deleted, then registrations and friendships, then Auth", async () => {
   const backend = fakeBackend();
   assert.deepEqual(await call(backend), { deleted: true });
   assert.deepEqual(backend.calls, [
@@ -298,6 +339,8 @@ test("profiles deleted and marked deleted, then registrations, then the Auth use
     `delete:users/${UID}`,
     `delete:publicProfiles/${UID}`,
     ...REGISTRATION_CALLS,
+    "collection:friendships",
+    ...FRIENDSHIP_CALLS,
     "query:messages",
     "query:memberships",
     `deleteUser:${UID}`,
@@ -316,8 +359,43 @@ test("only the student's registrations are deleted, other students' are kept", a
 test("a student without registrations is deleted too", async () => {
   const backend = fakeBackend({ registrations: [OTHER_REGISTRATION] });
   assert.deepEqual(await call(backend), { deleted: true });
-  assert.ok(!backend.calls.some((c) => c.startsWith("commit:")));
+  assert.ok(!backend.calls.some((c) => c.startsWith("commit:events/")));
   assert.equal(backend.state.authUserExists, false);
+});
+
+// The marker is written in the profile transaction, before this step, so the Security Rules refuse
+// a new request from the deleted user's still-valid token: none can be left behind (#357).
+test("the student's friendships are deleted, sent, received or accepted; others' are kept", async () => {
+  const backend = fakeBackend();
+  await call(backend);
+  assert.deepEqual(Object.keys(backend.state.friendships), [OTHER_FRIENDSHIP]);
+  const steps = backend.calls.filter((c) => c.startsWith("set:deletedAccounts") || c.startsWith("query:friendships") || c.startsWith("deleteUser"));
+  assert.deepEqual(steps, [`set:deletedAccounts/${UID}`, FRIENDSHIP_CALLS[0], FRIENDSHIP_CALLS[2], `deleteUser:${UID}`]);
+});
+
+test("a student without friendships is deleted too", async () => {
+  const backend = fakeBackend({ friendships: { [OTHER_FRIENDSHIP]: ["student-uid-2", "student-uid-3"] } });
+  assert.deepEqual(await call(backend), { deleted: true });
+  assert.ok(!backend.calls.some((c) => c.startsWith("commit:friendships/")));
+  assert.deepEqual(Object.keys(backend.state.friendships), [OTHER_FRIENDSHIP]);
+  assert.equal(backend.state.authUserExists, false);
+});
+
+test("a failed friendship deletion keeps the Auth user, and a retry finishes", async () => {
+  for (const operation of ["friendships-query", "friendships-commit"]) {
+    const backend = fakeBackend();
+    backend.fail[operation] = { error: backendError(14), once: true };
+    await assertHttpsError(call(backend), "unavailable", undefined);
+    assert.equal(Object.keys(backend.state.friendships).length, 3);
+    assert.equal(backend.state.authUserExists, true);
+    assert.deepEqual(backend.logs, [
+      ["error", "deleteAccount step failed", { step: "delete-friendships", code: 14 }],
+    ]);
+
+    assert.deepEqual(await call(backend), { deleted: true });
+    assert.deepEqual(Object.keys(backend.state.friendships), [OTHER_FRIENDSHIP]);
+    assert.equal(backend.state.authUserExists, false);
+  }
 });
 
 // The marker is written first, so the Security Rules refuse a new registration from the deleted
@@ -388,7 +466,7 @@ test("an account without a profile (never verified) can delete itself", async ()
   assert.equal(backend.state.authUserExists, false);
 });
 
-test("only the user's profiles, marker and registrations are touched, never events", async () => {
+test("only the user's profiles, marker, registrations and friendships are touched", async () => {
   const backend = fakeBackend();
   await call(backend);
   const collections = backend.calls.filter((c) => c.startsWith("collection"));
@@ -397,6 +475,7 @@ test("only the user's profiles, marker and registrations are touched, never even
     "collection:deletedAccounts",
     "collection:publicProfiles",
     "collectionGroup:attendees",
+    "collection:friendships",
   ]);
   // Event paths appear only in the deleted registrations.
   const eventCalls = backend.calls.filter((c) => c.includes("events"));

@@ -5,9 +5,11 @@
 
 // Contributors: OpenAI Codex (retryable membership cleanup and message author removal before Auth deletion, #241).
 // Contributors: Claude (Fable 5.2, Anthropic) (errorCode shared with the unverified accounts cleanup, and REGION's KDoc for it, #226).
+// Contributors: Claude Opus 5.5 (the user's friendships, #357); Konstantinos Perdikeas (directed, reviewed and owns it).
 
 const { HttpsError } = require("firebase-functions/v2/https");
 const { deleteUserRegistrations, MAX_BATCH_WRITES } = require("./registrations");
+const { deleteUserFriendships } = require("./friendships");
 
 /**
  * Region (Zurich) of the deleteAccount callable and of the scheduled deleteUnverifiedAccounts
@@ -47,14 +49,15 @@ const TRANSIENT_CODES = new Set([
 /**
  * Deletes the signed-in user's account: first their private profile `users/{uid}` and their public
  * profile `publicProfiles/{uid}` (#229), together, then their registrations for events (#275), then
- * their messages' author links and group memberships (#241), then their Firebase Auth user.
+ * their friend requests and friendships (#357), then their messages' author links and group
+ * memberships (#241), then their Firebase Auth user.
  * Returns `{ deleted: true }` only once all are gone. The same
  * transaction writes the deletion marker `deletedAccounts/{uid}`: the deleted user's ID token stays
  * valid until it expires (up to an hour), and the Security Rules refuse to recreate either profile
  * under a marked UID, so another of the user's devices can't bring the public profile back after
  * the deletion (#229 review). They refuse a new registration under a marked UID too, which is why
  * the registrations are deleted after the marker is written: none can be added once they are
- * deleted.
+ * deleted. The same holds for friendships: the rules refuse a request from a marked UID.
  *
  * Refuses, before deleting anything:
  * - a call without a signed-in user (`unauthenticated`);
@@ -102,6 +105,7 @@ async function deleteAccountHandler({ auth, db, adminAuth, now, logger }) {
 
   await callBackend("delete-profile", logger, () => deleteStudentProfile(db, uid));
   await callBackend("delete-registrations", logger, () => deleteUserRegistrations(db, uid));
+  await callBackend("delete-friendships", logger, () => deleteUserFriendships(db, uid));
   await callBackend("anonymise-messages", logger, () => anonymiseMessages(db, uid));
   await callBackend("delete-group-memberships", logger, () => deleteGroupMemberships(db, uid, logger));
   await callBackend("delete-auth-user", logger, () => deleteAuthUser(adminAuth, uid));
