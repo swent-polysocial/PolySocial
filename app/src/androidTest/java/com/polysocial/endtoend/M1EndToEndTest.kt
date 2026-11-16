@@ -18,6 +18,8 @@
 // reviewed and owns it).
 // Contributors: OpenAI Codex (scoped the chat fake to this Hilt test, #238).
 // Contributors: Claude Fable 5.2 (the organizer's name on an event the student is going to, #281).
+// Contributors: Claude (Opus 5.5, Anthropic) typed through typeText, which closes the keyboard
+// before the next tap, in every step, the date picker and Delete account included, #427.
 package com.polysocial.endtoend
 
 import androidx.activity.compose.setContent
@@ -46,12 +48,10 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
-import androidx.compose.ui.test.performTextInput
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.MainActivity
 import com.polysocial.auth.MemoryVerificationStore
-import com.polysocial.closeKeyboard
 import com.polysocial.model.account.AccountDeletionModule
 import com.polysocial.model.account.AccountDeletionRepository
 import com.polysocial.model.account.FakeAccountDeletionRepository
@@ -113,6 +113,7 @@ import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.UserProfileModule
 import com.polysocial.model.user.UserProfileRepository
 import com.polysocial.resources.C
+import com.polysocial.typeText
 import com.polysocial.ui.auth.AuthFlow
 import com.polysocial.ui.auth.SignUpTags
 import com.polysocial.ui.auth.SignUpViewModel
@@ -277,8 +278,6 @@ class M1EndToEndTest {
     type(SignUpTags.input(SignUpField.Email), EMAIL)
     type(SignUpTags.input(SignUpField.Password), PASSWORD)
     type(SignUpTags.input(SignUpField.ConfirmPassword), PASSWORD)
-    // The keyboard opens late and would move Submit after the scroll (#314).
-    compose.closeKeyboard()
     node(SignUpTags.Submit).performScrollTo().performClick()
 
     await(VerifyEmailTags.Screen)
@@ -380,9 +379,10 @@ class M1EndToEndTest {
   private fun pickDate(date: LocalDate) {
     node(C.Tag.create_event_date).performScrollTo().performClick()
     compose.onNode(hasContentDescription("text input mode", substring = true)).performClick()
-    compose
-        .onNode(hasSetTextAction() and hasAnyAncestor(isDialog()))
-        .performTextInput(dateDigits(date))
+    compose.typeText(
+        compose.onNode(hasSetTextAction() and hasAnyAncestor(isDialog())),
+        dateDigits(date),
+    )
     node(C.Tag.create_event_dialog_confirm).performClick()
     node(C.Tag.create_event_date).assertTextContains(date.dayOfMonth.toString(), substring = true)
   }
@@ -390,7 +390,7 @@ class M1EndToEndTest {
   private fun pickRolexWithTheSearch() {
     node(C.Tag.create_event_location).performScrollTo().performClick()
     await(LocationPickerTags.SCREEN)
-    node(LocationPickerTags.QUERY).performTextInput("Rolex")
+    compose.typeText(node(LocationPickerTags.QUERY), "Rolex")
     node(LocationPickerTags.SEARCH).performClick()
     await(LocationPickerTags.result(0))
     node(LocationPickerTags.result(0)).performClick()
@@ -485,7 +485,9 @@ class M1EndToEndTest {
 
   private fun node(tag: String) = compose.onNodeWithTag(tag)
 
-  private fun type(tag: String, text: String) = node(tag).performScrollTo().performTextInput(text)
+  // Typing ends with the keyboard closed: it opens late and would move what the next tap aims at
+  // (see CONTEXT.md, Traps).
+  private fun type(tag: String, text: String) = compose.typeText(node(tag).performScrollTo(), text)
 
   private fun count(tag: String) = compose.onAllNodes(hasTestTag(tag)).fetchSemanticsNodes().size
 
