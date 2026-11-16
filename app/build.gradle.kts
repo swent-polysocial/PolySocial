@@ -197,6 +197,12 @@ dependencies {
   implementation(libs.compose.navigation)
   // Draws the student's friend QR code (#339); pure Java, no Android or network code
   implementation(libs.zxing.core)
+  // Scans a friend's QR code (#359): CameraX shows the camera and hands frames to ML Kit's bundled
+  // barcode model, which reads them on the device (no image leaves it, works offline)
+  implementation(libs.camera.camera2)
+  implementation(libs.camera.lifecycle)
+  implementation(libs.camera.view)
+  implementation(libs.mlkit.barcode.scanning)
   // Android Studio Preview support
   implementation(libs.compose.preview)
   debugImplementation(libs.compose.tooling)
