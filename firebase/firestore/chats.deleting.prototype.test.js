@@ -1,6 +1,7 @@
-// Contributors: Claude (Fable 5.2 and Opus 5.5, Anthropic) (prototype of the #365 chat rules, never merged).
+// Contributors: Claude (Fable 5.2 and Opus 5.5, Anthropic) (prototype of the #365 chat rules, never merged;
+// Opus 5.5: a chat deleted for me comes back once friends again, decided on 2026-11-16).
 // PROTOTYPE for #365, never merged: unsend and delete for me in one-to-one chats, from
-// docs/Architecture-Diagram.md section 3.8 (38 cases). The helpers are copied from
+// docs/Architecture-Diagram.md section 3.8 (40 cases). The helpers are copied from
 // chats.prototype.test.js. From the repository root (firebase/firestore/PROTOTYPE-365.md):
 //   firebase emulators:exec --project demo-polysocial --only firestore "node firebase/firestore/chats.deleting.prototype.test.js"
 const { after, before, beforeEach, test } = require("node:test");
@@ -280,13 +281,35 @@ function isNewer(a, b) {
 }
 
 /**
- * The Chats tab's rule for a one-to-one chat, from its latest message and the student's marker:
- * listed once it has a message, unless that message is no newer than the marker's hiddenUpTo.
+ * The Chats tab's rule for a one-to-one chat, from its latest message, the student's marker and
+ * the pair's friendship as the tab's friendships listener (#357) holds it, if any: listed once it
+ * has a message, unless that message and an accepted friendship's acceptedAt are both no newer
+ * than the marker's hiddenUpTo (decided on 2026-11-16: friends again, the chat is back).
  */
-function isListed(latest, marker) {
+function isListed(latest, marker, friendship = null) {
   if (!latest) return false;
   if (!marker) return true;
-  return isNewer(latest.createdAt, marker.hiddenUpTo);
+  return isNewer(latest.createdAt, marker.hiddenUpTo)
+      || (acceptedAtOf(friendship) !== null && isNewer(acceptedAtOf(friendship), marker.hiddenUpTo));
+}
+
+function acceptedAtOf(friendship) {
+  return friendship?.status === "accepted" && friendship.acceptedAt ? friendship.acceptedAt : null;
+}
+
+/** What delete for me writes: the later of the row's latest message time and acceptedAt. */
+function hideUpToOf(latest, friendship) {
+  const acceptedAt = acceptedAtOf(friendship);
+  return acceptedAt !== null && isNewer(acceptedAt, latest.createdAt) ? acceptedAt : latest.createdAt;
+}
+
+/** The pair's friendship from the student's friendships listener (#357's query), or null. */
+async function friendshipFor(db, uid, pairId) {
+  const snapshot = await assertSucceeds(
+    getDocs(query(collection(db, "friendships"), where("uids", "array-contains", uid))),
+  );
+  const found = snapshot.docs.find((d) => d.id === pairId);
+  return found ? found.data() : null;
 }
 
 async function latestFor(db, pairId) {
@@ -524,6 +547,50 @@ test("[hide] a newer message from either student brings the chat back; an unsend
   expectEqual(isListed(await latestFor(mine, "u1~u2"), await markerFor(mine, "u1", "u1~u2")), true, "after mine");
 });
 
+test("[hide] deleted for me, unfriended, then friends again: back at once with no new message; a pending request isn't enough", async () => {
+  await seedPairWithMessages();
+  const mine = studentDb("u1");
+  const listed = async () => isListed(
+    await latestFor(mine, "u1~u2"), await markerFor(mine, "u1", "u1~u2"), await friendshipFor(mine, "u1", "u1~u2"),
+  );
+  const upTo = hideUpToOf(await latestFor(mine, "u1~u2"), await friendshipFor(mine, "u1", "u1~u2"));
+  expectEqual(upTo.toMillis(), T3, "the latest message, newer than acceptedAt");
+  await assertSucceeds(hideAs(mine, "u1", "u1~u2", upTo));
+  expectEqual(await listed(), false, "hidden");
+  await assertSucceeds(removeFriendAs("u2", "u1"));
+  expectEqual(await listed(), false, "unfriended");
+  await assertSucceeds(requestAs("u1", "u2"));
+  expectEqual(await listed(), false, "pending");
+  await assertSucceeds(acceptAs("u2", "u1"));
+  expectEqual(await listed(), true, "friends again");
+  expectEqual((await latestFor(mine, "u1~u2")).createdAt.toMillis(), T3, "no new message");
+});
+
+test("[hide] friends again, then deleted for me with no new message: hiddenUpTo is the friendship's acceptedAt", async () => {
+  await seedPairWithMessages();
+  const mine = studentDb("u1");
+  await assertSucceeds(hideAs(mine, "u1", "u1~u2", Timestamp.fromMillis(T3)));
+  await assertSucceeds(removeFriendAs("u1", "u2"));
+  await assertSucceeds(requestAs("u2", "u1"));
+  await assertSucceeds(acceptAs("u1", "u2"));
+  const latest = await latestFor(mine, "u1~u2");
+  const friendship = await friendshipFor(mine, "u1", "u1~u2");
+  expectEqual(isListed(latest, await markerFor(mine, "u1", "u1~u2"), friendship), true, "back");
+  // The latest message's time alone writes nothing: the marker already holds it.
+  expectEqual(await assertSucceeds(hideAs(mine, "u1", "u1~u2", latest.createdAt)), "kept", "message time");
+  expectEqual(isListed(latest, await markerFor(mine, "u1", "u1~u2"), friendship), true, "still listed");
+  // The later of the two is acceptedAt, a server time no later than now: the rules accept it.
+  const upTo = hideUpToOf(latest, friendship);
+  expectEqual(upTo.toMillis(), friendship.acceptedAt.toMillis(), "acceptedAt");
+  expectEqual(await assertSucceeds(hideAs(mine, "u1", "u1~u2", upTo)), "hidden", "hide");
+  expectEqual(isListed(latest, await markerFor(mine, "u1", "u1~u2"), friendship), false, "hidden");
+  // A second device whose row predates the friendship writes nothing.
+  expectEqual(await assertSucceeds(hideAs(mine, "u1", "u1~u2", hideUpToOf(latest, null))), "kept", "stale device");
+  // A new message still brings it back.
+  await assertSucceeds(sendAs(studentDb("u2"), "u1~u2", newMessage("u2", "Hi again"), "m4"));
+  expectEqual(isListed(await latestFor(mine, "u1~u2"), await markerFor(mine, "u1", "u1~u2"), friendship), true, "new message");
+});
+
 test("[hide] another student's marker reads as denied whether it exists or not", async () => {
   await seedPairWithMessages();
   const other = studentDb("u2");
@@ -606,6 +673,13 @@ test("[hide] a read-only chat and a chat with a deleted account can be hidden", 
   await assertSucceeds(hideAs(db, "u1", "u1~u2", Timestamp.fromMillis(T1)));
   await assertSucceeds(hideAs(db, "u1", "u1~u3", Timestamp.fromMillis(T2)));
   expectEqual(ids(await assertSucceeds(getDocs(myMarkers(db, "u1")))), "u1~u2,u1~u3", "markers");
+  // No friendship: hidden up to the latest message, and nothing but a message brings them back.
+  for (const pairId of ["u1~u2", "u1~u3"]) {
+    const latest = await latestFor(db, pairId);
+    const friendship = await friendshipFor(db, "u1", pairId);
+    expectEqual(hideUpToOf(latest, friendship).toMillis(), latest.createdAt.toMillis(), `${pairId} up to`);
+    expectEqual(isListed(latest, await markerFor(db, "u1", pairId), friendship), false, pairId);
+  }
 });
 
 test("[hide] under a deletion marker, a student reads and writes none of their markers", async () => {
