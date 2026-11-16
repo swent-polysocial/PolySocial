@@ -27,6 +27,7 @@
 <!-- Contributors: Claude (Fable 5.2, Anthropic) (the event capacity decision, its rule sketch with the allowed and denied cases, and what each operation does to the counter, #372). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the event capacity decision's second-review corrections: the refusal's classification, where the rules tests go, the split into three issues and a Figma task, the counter at 1 and stored as a decimal, what only the emulator shows; from the PR review, the listeners' read estimate and the tables' replacement by #373's tests, #372). -->
 <!-- Contributors: Claude (Fable 5.2, Anthropic) drafted the one-to-one chat model, its rules design (run against the Firestore emulator first), its account-deletion rows and open questions (#365); Claude (Opus 5.5, Anthropic) recorded the decisions of 2026-11-14 and designed unsending a message and delete for me in one-to-one and group chats, with their rules (run against the Firestore emulator first) and account-deletion step, and recorded the decisions of 2026-11-16: leaving a group deletes its delete-for-me marker, with its rule (run against the Firestore emulator first), and a one-to-one chat deleted for me is back once its students are friends again (#365). -->
+<!-- Contributors: Claude Opus 5.5 (the friend repository contract and pair ID marked as built, #357); Konstantinos Perdikeas (directed, reviewed and owns it). -->
 
 How PolySocial is built, as we currently envision it. The page follows the [Android App Architecture guide](https://developer.android.com/topic/architecture/intro): a **UI layer** (Compose screens and ViewModels), a **domain layer** of pure Kotlin logic, and a **data layer** of repositories in front of Firebase, the map and geocoding services, and the device sensors.
 
@@ -304,15 +305,16 @@ flowchart TB
   scan["Scan a QR code<br/>camera, #336 frames"]:::pb --> scanVM["<b>Scan ViewModel</b><br/>friend card · Send request"]:::pb
   scanVM --> qr["<b>parseQrPayload</b><br/><i>domain</i>, pure Kotlin, #337"]:::pb
   scanVM --> pub["<b>PublicProfileRepository</b><br/>by UID only, built, #229"]:::s1
-  scanVM --> friendRepo["<b>FriendRepository</b><br/>observeFriendships · sendRequest<br/>accept · remove"]:::pb
+  scanVM --> friendRepo["<b>FriendRepository</b><br/>observeFriendships · sendRequest<br/>accept · remove<br/>contract, pair ID and fake built, #357"]:::s1
   friendsUi["Friends · requests list"]:::pb --> friendsVM["<b>Friends ViewModel</b><br/>friends · incoming · sent"]:::pb
   friendsVM --> friendRepo
   friendsVM --> pub
-  friendRepo --> fs[("Firestore<br/>friendships/{pairId}")]:::ext
+  friendRepo --> fsRepo["<b>FirestoreFriendRepository</b><br/>transactions · offline check<br/>#357, second PR"]:::pb
+  fsRepo --> fs[("Firestore<br/>friendships/{pairId}")]:::ext
   delFn["<b>deleteAccount</b><br/>Cloud Function, built, #206"]:::s1 -. "deletes the UID's friendships" .-> fs
 ```
 
-- **One document per pair of students:** `friendships/{pairId}`, where `pairId` is the two UIDs sorted and joined by `~` (`{lowerUid}~{higherUid}`; no UID contains `~`). It holds `uids` (the two UIDs, sorted), `requestedBy` (the sender's UID), `status` (`pending` or `accepted`), server-set `createdAt` and, once accepted, server-set `acceptedAt`. Only UIDs, no names or emails: names come from each student's public profile.
+- **One document per pair of students:** `friendships/{pairId}`, where `pairId` is the two UIDs sorted and joined by `~` (`{lowerUid}~{higherUid}`; no UID contains `~`). It holds `uids` (the two UIDs, sorted), `requestedBy` (the sender's UID), `status` (`pending` or `accepted`), server-set `createdAt` and, once accepted, server-set `acceptedAt`. Only UIDs, no names or emails: names come from each student's public profile. **Built (#357, first PR):** `friendshipId` (the only place the ID is built; it returns null for the same UID twice or a UID that isn't a valid QR ID, so no `~` or `/` gets in) and `Friendship` in `model/friend/Friendship.kt`, the `FriendRepository` contract and `FakeFriendRepository` for tests. The Firestore repository, its Hilt binding, the rules and the `deleteAccount` cleanup follow in #357's second PR.
 - **The whole lifecycle in that document.** Sending a request creates it as `pending`. Accepting is the recipient's update to `accepted`. Declining (by the recipient), cancelling (by the sender) and removing a friend (by either) all delete it, so the pair can start again later.
 - **An action applies only to the request the screen showed.** Accept, decline, cancel and remove each run in a transaction that reads the document again and compares its `status` and `createdAt` with what the screen showed. If the document is gone or either changed, nothing is written and the repository returns `Gone`, so the app says the request changed and shows the current state (#361). A stale Cancel tapped after the recipient accepted can't remove the new friendship, and a stale tap can't act on a request that was cancelled and sent again under the same ID. The rules can't tell a cancel from a removal (a delete has no new data), so this check is the repository's; either student may still remove the friendship on purpose.
 - **At most one request between two students, by construction.** A → B and B → A have the same ID, so a second request finds the document already there and the create is refused. When both send at the same time, the second one sees the first request and is offered Accept instead.
@@ -1296,7 +1298,7 @@ Every Scrum Board item mapped to the components it touches.
 | #28 Real-time list of matches | Groups & Matchmaking | Profile matches list, snapshot listener | 🟦 |
 | #15 Ping friends | Groups & Matchmaking | FriendRepository, notifications | ⬜ |
 | #25 Chat | Chat | Chats tab (#364), `ChatsRepository` (built, #363), group chat with `GroupChatViewModel` and `MessageRepository` (built, #237, #238; `messages` under the group), one-to-one chat (`chats/{pairId}`, decided in #365) | 🟦 |
-| #16 Adding friends | Groups & Matchmaking | Friends screen, Friends ViewModel, FriendRepository, `friendships/{pairId}`, rules, `deleteAccount` cleanup; usernames an open question | 🟦 decided in #338 |
+| #16 Adding friends | Groups & Matchmaking | Friends screen, Friends ViewModel, FriendRepository (contract built, #357), `friendships/{pairId}`, rules, `deleteAccount` cleanup; usernames an open question | 🟦 decided in #338 |
 | #17 Meeting people by QR | Groups & Matchmaking | QrScanner, QR payload parsing (built, #337), My friend code (built, #339), FriendRepository | 🟦 S5 #336, #337, #339 |
 | #22 Automatic check-in | — | check-in policy, LocationService, QR fallback, GroupRepository | 🟦 |
 | #20 Find my group | — | group venue map, `events/{e}/groups/{g}/locations` | 🟦 |
