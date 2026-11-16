@@ -5,6 +5,8 @@ package com.polysocial.model.friend
 import java.time.Instant
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -270,5 +272,87 @@ class FakeFriendRepositoryTest {
     assertEquals(SendFriendRequestResult.NetworkError, repository.sendRequest("bob"))
     assertEquals(FriendshipActionResult.NetworkError, repository.accept(accepted()))
     assertEquals(FriendshipActionResult.NetworkError, repository.remove(accepted()))
+  }
+
+  @Test
+  fun aRemovedRequest_canBeSentAgain_asANewRequest() = runTest {
+    repository.sendRequest("bob")
+    repository.remove(pending(requestedBy = "alice"))
+    repository.now = later
+
+    assertEquals(SendFriendRequestResult.Sent, repository.sendRequest("bob"))
+    assertEquals(
+        pending(requestedBy = "alice", createdAt = later),
+        repository.friendship("alice~bob"),
+    )
+  }
+
+  @Test
+  fun accept_ofAStaleRequest_isGoneBeforeCheckingWhoSentItOrItsStatus() = runTest {
+    // The document is read again first, so a request that changed is Gone even if accepting the
+    // shown one would have been refused.
+    assertEquals(FriendshipActionResult.Gone, repository.accept(accepted()))
+    assertEquals(FriendshipActionResult.Gone, repository.accept(pending(requestedBy = "alice")))
+
+    val resentByMe = pending(requestedBy = "alice", createdAt = later)
+    repository.seedFriendship(resentByMe)
+    assertEquals(FriendshipActionResult.Gone, repository.accept(pending(requestedBy = "alice")))
+    assertEquals(resentByMe, repository.friendship("alice~bob"))
+  }
+
+  @Test
+  fun observeFriendships_oneCollectorGetsEveryChangeWithTheCurrentCacheFlag() = runTest {
+    val emissions = mutableListOf<FriendshipsResult>()
+    backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+      repository.observeFriendships().toList(emissions)
+    }
+
+    repository.sendRequest("bob")
+    repository.readFromCache = true
+    repository.remove(pending(requestedBy = "alice"))
+
+    assertEquals(
+        listOf(
+            FriendshipsResult.Success(emptyList(), false),
+            FriendshipsResult.Success(listOf(pending(requestedBy = "alice")), false),
+            FriendshipsResult.Success(emptyList(), true),
+        ),
+        emissions,
+    )
+  }
+
+  @Test
+  fun nobodySignedIn_comesBeforeAFailedWrite() = runTest {
+    repository.seedFriendship(pending())
+    repository.currentUid = null
+    repository.sendFailure = SendFriendRequestResult.NetworkError
+    repository.acceptFailure = FriendshipActionResult.NetworkError
+    repository.removeFailure = FriendshipActionResult.NetworkError
+
+    assertEquals(SendFriendRequestResult.UnexpectedError, repository.sendRequest("bob"))
+    assertEquals(FriendshipActionResult.UnexpectedError, repository.accept(pending()))
+    assertEquals(FriendshipActionResult.UnexpectedError, repository.remove(pending()))
+  }
+
+  @Test
+  fun anOwnOrInvalidUid_comesBeforeAFailedSend() = runTest {
+    repository.sendFailure = SendFriendRequestResult.NetworkError
+
+    assertEquals(SendFriendRequestResult.UnexpectedError, repository.sendRequest("alice"))
+    assertEquals(SendFriendRequestResult.UnexpectedError, repository.sendRequest("b~ob"))
+  }
+
+  @Test
+  fun aFailedWrite_comesBeforeTheCheckThatTheStudentIsInThePair() = runTest {
+    // Offline is checked before the document is read, and a student outside the pair is refused
+    // only when reading it.
+    repository.seedFriendship(pending())
+    repository.currentUid = "carol"
+    repository.acceptFailure = FriendshipActionResult.NetworkError
+    repository.removeFailure = FriendshipActionResult.NetworkError
+
+    assertEquals(FriendshipActionResult.NetworkError, repository.accept(pending()))
+    assertEquals(FriendshipActionResult.NetworkError, repository.remove(pending()))
+    assertEquals(pending(), repository.friendship("alice~bob"))
   }
 }
