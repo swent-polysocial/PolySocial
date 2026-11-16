@@ -30,12 +30,15 @@ import com.polysocial.model.event.OrganizerChanges
 import com.polysocial.model.event.withCreator
 import com.polysocial.model.registration.AttendeesResult
 import com.polysocial.model.registration.FakeRegistrationRepository
+import com.polysocial.model.registration.RegistrationRepository
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.PublicProfile
+import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.resources.C
 import com.polysocial.ui.event.detail.EventDetailViewModel
 import java.time.Clock
+import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -80,7 +83,12 @@ class EditEventCoOrganizersScreenTest {
 
   private fun string(id: Int, vararg args: Any) = context.getString(id, *args)
 
-  private fun show(me: String = "creator", event: Event = stored) {
+  private fun show(
+      me: String = "creator",
+      event: Event = stored,
+      attendees: RegistrationRepository = registrations,
+      profiles: PublicProfileRepository = publicProfiles,
+  ) {
     events.currentUid = me
     events.seed(event)
     val viewModel =
@@ -91,8 +99,8 @@ class EditEventCoOrganizersScreenTest {
             FakeAuthRepository(AuthUser(me, "$me@epfl.ch", true)),
             FakeUserProfileRepository(),
             FakeAssociationRepository(),
-            registrations,
-            publicProfiles,
+            attendees,
+            profiles,
         )
     composeTestRule.setContent {
       EditEventScreen(
@@ -183,6 +191,49 @@ class EditEventCoOrganizersScreenTest {
         .performScrollTo()
         .assertTextEquals(context.resources.getQuantityString(R.plurals.co_organizers_full, 5, 5))
     node(CoOrganizerTags.HINT).assertDoesNotExist()
+  }
+
+  @Test
+  fun whileTheProfilesLoad_theRowsShowPlaceholders_thenTheNames() {
+    val answer = CompletableDeferred<Unit>()
+    show(
+        profiles =
+            object : PublicProfileRepository by publicProfiles {
+              override suspend fun getPublicProfiles(uids: Collection<String>) =
+                  answer.await().let { publicProfiles.getPublicProfiles(uids) }
+            }
+    )
+
+    node(CoOrganizerTags.organizer("lea")).performScrollTo()
+    composeTestRule.onNode(hasText("Léa Martin").and(hasParentRow("lea"))).assertDoesNotExist()
+    composeTestRule
+        .onNode(hasText(string(R.string.co_organizers_unknown)).and(hasParentRow("lea")))
+        .assertDoesNotExist()
+    answer.complete(Unit)
+    composeTestRule.waitForIdle()
+
+    assertRow("lea", "Léa Martin", "IN · BA3 · Co-organizer")
+  }
+
+  @Test
+  fun theSheet_showsLoadingUntilTheStudentsGoingAnswer() {
+    val answer = CompletableDeferred<Unit>()
+    show(
+        attendees =
+            object : RegistrationRepository by registrations {
+              override suspend fun getAttendeeUids(eventId: String) =
+                  answer.await().let { registrations.getAttendeeUids(eventId) }
+            }
+    )
+
+    click(CoOrganizerTags.ADD)
+    node(CoOrganizerTags.SHEET_LOADING).assertIsDisplayed()
+    node(CoOrganizerTags.student("tom")).assertDoesNotExist()
+    answer.complete(Unit)
+    composeTestRule.waitForIdle()
+
+    node(CoOrganizerTags.SHEET_LOADING).assertDoesNotExist()
+    node(CoOrganizerTags.student("tom")).assertIsDisplayed()
   }
 
   @Test
