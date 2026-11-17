@@ -15,6 +15,9 @@ import kotlinx.coroutines.flow.flow
  * [friendshipId], then [sendFailure], [acceptFailure] or [removeFailure] (like an offline device),
  * then the stored friendship, as the transaction and the Security Rules would.
  *
+ * Each call checks and writes in one atomic step, like the repository's transactions, so concurrent
+ * calls see each other's writes.
+ *
  * Unlike the Security Rules, it doesn't check that the other student has a public profile, so any
  * valid UID can be sent a request.
  *
@@ -27,6 +30,9 @@ class FakeFriendRepository(
 ) : FriendRepository {
   /** The stored friendships, by ID. */
   private val friendships = MutableStateFlow<Map<String, Friendship>>(emptyMap())
+
+  /** Held for each check-and-write, so a call is atomic like a transaction. */
+  private val lock = Any()
 
   /** When set, [sendRequest] returns this result instead of sending, like a failed write. */
   var sendFailure: SendFriendRequestResult? = null
@@ -54,7 +60,7 @@ class FakeFriendRepository(
 
   /** Stores [friendship] directly under its ID, like a request another student sent. */
   fun seedFriendship(friendship: Friendship) {
-    friendships.value += friendship.id to friendship
+    synchronized(lock) { friendships.value += friendship.id to friendship }
   }
 
   /** The stored friendship with this [id], or null when there is none. */
@@ -73,7 +79,16 @@ class FakeFriendRepository(
         })
   }
 
-  override suspend fun sendRequest(otherUid: String): SendFriendRequestResult {
+  override suspend fun sendRequest(otherUid: String): SendFriendRequestResult =
+      synchronized(lock) { send(otherUid) }
+
+  override suspend fun accept(shown: Friendship): FriendshipActionResult =
+      synchronized(lock) { acceptNow(shown) }
+
+  override suspend fun remove(shown: Friendship): FriendshipActionResult =
+      synchronized(lock) { removeNow(shown) }
+
+  private fun send(otherUid: String): SendFriendRequestResult {
     val uid = currentUid ?: return SendFriendRequestResult.UnexpectedError
     val id = friendshipId(uid, otherUid) ?: return SendFriendRequestResult.UnexpectedError
     sendFailure?.let {
@@ -92,7 +107,7 @@ class FakeFriendRepository(
     return SendFriendRequestResult.Sent
   }
 
-  override suspend fun accept(shown: Friendship): FriendshipActionResult {
+  private fun acceptNow(shown: Friendship): FriendshipActionResult {
     val uid = currentUid ?: return FriendshipActionResult.UnexpectedError
     acceptFailure?.let {
       return it
@@ -108,7 +123,7 @@ class FakeFriendRepository(
     return FriendshipActionResult.Done
   }
 
-  override suspend fun remove(shown: Friendship): FriendshipActionResult {
+  private fun removeNow(shown: Friendship): FriendshipActionResult {
     val uid = currentUid ?: return FriendshipActionResult.UnexpectedError
     removeFailure?.let {
       return it
