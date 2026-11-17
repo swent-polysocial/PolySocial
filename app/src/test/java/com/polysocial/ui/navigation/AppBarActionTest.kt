@@ -1,5 +1,6 @@
 // Contributors: OpenAI Codex (inject Profile placeholder after logout rebase, #109).
 // Contributors: Claude (UI tests for the app bar actions, #84).
+// Contributors: Claude (Opus 5.5, Anthropic) (the Chats tab's stand-in, #364).
 package com.polysocial.ui.navigation
 
 import androidx.activity.ComponentActivity
@@ -36,6 +37,7 @@ class AppBarActionTest {
         AppShell(
             eventsContent = { TabRootScreen(Tab.EVENTS) },
             profileContent = { TabRootScreen(Tab.PROFILE) },
+            chatsContent = { TabRootScreen(Tab.CHATS) },
             mapContent = { _, _ -> TabRootScreen(Tab.MAP) },
         )
       }

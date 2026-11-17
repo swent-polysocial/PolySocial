@@ -22,6 +22,7 @@
 // Contributors: Claude Opus 5.5 (the My friend code route, students only after review, #339);
 // Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: OpenAI Codex (wired group chat above the roster in the student graph, #238).
+// Contributors: Claude (Opus 5.5, Anthropic) (the Chats tab's list, opening each group chat, #364).
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.layout.Box
@@ -82,6 +83,7 @@ import com.polysocial.ui.association.AssociationShell
 import com.polysocial.ui.association.AssociationTab
 import com.polysocial.ui.association.AssociationTabHeader
 import com.polysocial.ui.association.OrganizationRoute
+import com.polysocial.ui.chat.ChatsRoute
 import com.polysocial.ui.chat.GroupChatRoute
 import com.polysocial.ui.chat.GroupChatViewModel
 import com.polysocial.ui.event.create.CreateEventButton
@@ -143,8 +145,8 @@ data class EventDetailNavigation(
  * action (see [TabAction]), the current tab's screen, and the bottom navigation bar. The Events tab
  * shows the upcoming events (a verified association's own events instead, #132) and the Map tab the
  * event map, both with the "+" button that opens Create Event inside the tab, full screen; the
- * Profile provides logout and Chats shows a loading state, then a placeholder until their feature
- * is built. The map uses floating overlays instead of the app bar.
+ * Profile provides logout, and Chats lists the student's group chats (#364), each opening its group
+ * chat inside the tab. The map uses floating overlays instead of the app bar.
  *
  * Each tab's graph also holds the event detail ([Tab.eventDetailRoute]), so an event opened from a
  * tab keeps that tab selected and Back returns to it. The detail has its own header and action bar
@@ -164,6 +166,8 @@ data class EventDetailNavigation(
  * @param associationHeader the verified association's header on its Events and Map tabs, given the
  *   tab's title (#322). Its ViewModels belong to the Events graph, so logout clears them. Tests
  *   replace it, because the real one needs Hilt.
+ * @param chatsContent the Chats tab's root, given what opens a group chat (its event and group).
+ *   Tests replace it, because the real one needs Hilt.
  * @param pendingEventId an event to open on top of the start destination, once the graph is ready
  *   (a reminder notification tap, second PR of #123's review). Consumed once through
  *   [onPendingEventIdConsumed], so it is not applied again on recomposition or rotation; null for
@@ -225,6 +229,10 @@ fun AppShell(
           YourGroupRoute(onBack, onLeft, onOpenChat = onOpenChat)
         },
     groupChatContent: @Composable (() -> Unit) -> Unit = { GroupChatRoute(it) },
+    chatsContent: @Composable (onOpenChat: (eventId: String, groupId: String) -> Unit) -> Unit =
+        { onOpenChat ->
+          ChatsRoute(onOpenChat)
+        },
 ) {
   val association = accountType == AccountType.ASSOCIATION
   val tabs = if (association) listOf(Tab.EVENTS, Tab.MAP, Tab.PROFILE) else Tab.entries
@@ -315,7 +323,11 @@ fun AppShell(
                     )
                 else profileContent(loggedOut)
               }
-              else -> TabRootScreen(tab)
+              Tab.CHATS ->
+                  chatsContent { eventId, groupId ->
+                    if (entry.isResumed)
+                        navController.navigate(tab.groupChatRoute(eventId, groupId))
+                  }
             }
           }
         }

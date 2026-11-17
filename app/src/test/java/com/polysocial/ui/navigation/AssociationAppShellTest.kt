@@ -6,6 +6,7 @@
 // Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: Claude Opus 5.5 (a pending reminder notification's event never navigates for an
 // association, #123's second PR review).
+// Contributors: Claude (Opus 5.5, Anthropic) (the Chats tab's stand-in, #364).
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.layout.Column
@@ -66,6 +67,7 @@ class AssociationAppShellTest {
             accountType = type,
             navController = nav,
             pendingEventId = pendingEventId,
+            chatsContent = { TabRootScreen(Tab.CHATS) },
             eventsContent = { open ->
               TextButton({ open("fixture-event") }, Modifier.testTag("open_event")) {
                 Text("Fixture event")
