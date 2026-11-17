@@ -1,4 +1,6 @@
 // Contributors: Claude (loading then placeholder state for the tab root screens, #43).
+// Contributors: Claude (Opus 5.5, Anthropic) (moved to the shared tests: no tab root uses it since
+// the Chats tab, #364).
 package com.polysocial.ui.navigation
 
 import androidx.lifecycle.ViewModel
