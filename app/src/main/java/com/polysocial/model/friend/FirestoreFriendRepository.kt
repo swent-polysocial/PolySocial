@@ -171,9 +171,13 @@ class FirestoreFriendRepository(
 
   private companion object {
     /**
-     * Firestore's default number of attempts, kept explicit: a retry after a concurrent change
-     * reads the document again, so it returns `AlreadyExists` or `Gone` instead of failing.
+     * Firestore's default number of transaction attempts, named because the retries matter here: a
+     * retry after a concurrent change reads the document again, so it returns `AlreadyExists` or
+     * `Gone` instead of failing.
      */
-    val RETRIED: TransactionOptions = TransactionOptions.Builder().setMaxAttempts(5).build()
+    const val MAX_ATTEMPTS = 5
+
+    val RETRIED: TransactionOptions =
+        TransactionOptions.Builder().setMaxAttempts(MAX_ATTEMPTS).build()
   }
 }
