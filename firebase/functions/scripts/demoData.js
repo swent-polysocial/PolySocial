@@ -1,4 +1,5 @@
 // Contributors: Claude (the fictional demo data for the M2 review, #243).
+// Contributors: Claude (Opus 5.5, Anthropic) (each demo event's attendeeCount, #405).
 "use strict";
 
 // The fictional data seedDemo.js writes for a demo: a verified association, eight public events
@@ -144,6 +145,10 @@ function buildDemoData({ now, geoPoint, timestamp, serverTime }) {
       },
     });
   }
+  // The demo's registrations are its group members' (one group per student and event), so each
+  // event counts them as #373's attendeeCount, a whole number (#405).
+  const going = new Map(EVENTS.map((event) => [event.id, new Set()]));
+  for (const group of GROUPS) for (const uid of group.members) going.get(group.event).add(uid);
   for (const event of EVENTS) {
     docs.push({
       path: `events/${event.id}`,
@@ -161,6 +166,7 @@ function buildDemoData({ now, geoPoint, timestamp, serverTime }) {
         organizerIds: [event.by],
         allowedUids: [event.by],
         isAssociationEvent: event.by === ASSOCIATION,
+        attendeeCount: going.get(event.id).size,
       },
     });
   }

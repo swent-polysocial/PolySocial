@@ -1,5 +1,6 @@
 // Contributors: Claude (the fictional demo data's tests, written test-first, #243; trimmed to the
 // safety and date checks after review).
+// Contributors: Claude (Opus 5.5, Anthropic) (the demo events' attendeeCount, #405).
 "use strict";
 
 // Unit tests, no emulator: node firebase/functions/scripts/demoData.test.js
@@ -75,5 +76,16 @@ test("public profiles use the section, year and interest codes the app offers", 
     // Known codes, each once, in the app's order, as the rules require.
     assert.deepEqual(data.interests, interests.filter((code) => data.interests.includes(code)), path);
     assert.equal(new Set(data.interests).size, data.interests.length, path);
+  }
+});
+
+test("each event's attendeeCount is the whole number of registrations seeded under it", () => {
+  const docs = build();
+  const events = docsIn("events");
+  assert.ok(events.some(({ data }) => data.attendeeCount > 0), "no demo event has anyone going");
+  for (const { path, data } of events) {
+    const registrations = docs.filter((doc) => doc.path.startsWith(`${path}/attendees/`));
+    assert.ok(Number.isInteger(data.attendeeCount), `${path}: ${data.attendeeCount}`);
+    assert.equal(data.attendeeCount, registrations.length, path);
   }
 });
