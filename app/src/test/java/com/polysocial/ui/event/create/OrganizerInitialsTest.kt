@@ -54,7 +54,21 @@ class OrganizerInitialsTest {
   fun aCharacterOutsideTheBasicPlane_isNeverCutInHalf() {
     // An emoji is two UTF-16 units: taking two units would leave half of it.
     assertEquals("🎉P", organizerInitialsOf("🎉Party"))
-    assertEquals("🎉🎵", organizerInitialsOf("🎉 🎵"))
+  }
+
+  @Test
+  fun aFlagOrAnEmojiWord_isSkipped_andNeverCut() {
+    // A flag is two code points, a family emoji five: neither is cut, and neither is an initial.
+    assertEquals("CL", organizerInitialsOf("🇨🇭 Club"))
+    assertEquals("CA", organizerInitialsOf("Club 👨‍👩‍👧 Alpin"))
+    assertEquals("🇨🇭", organizerInitialsOf("🇨🇭 🎉"))
+    assertEquals("🎉", organizerInitialsOf("🎉 🎵"))
+  }
+
+  @Test
+  fun aLetterWithACombiningAccent_staysWhole() {
+    // "e" followed by U+0301, the combining acute accent.
+    assertEquals("E\u0301C", organizerInitialsOf("e\u0301cole Club"))
   }
 
   @Test

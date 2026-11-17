@@ -1,6 +1,7 @@
 // Contributors: Claude (the Create Event organizer row and its association variant, built from the
 // Figma "Create event · association" frame, #134; large font sizes and TalkBack after a test
 // audit, #134).
+// Contributors: Claude (Opus 5.5, Anthropic) (initials by grapheme, #249 in #371).
 package com.polysocial.ui.event.create
 
 import androidx.compose.foundation.Image
@@ -42,6 +43,7 @@ import com.polysocial.ui.theme.Info
 import com.polysocial.ui.theme.InfoSoft
 import com.polysocial.ui.theme.Ink2
 import com.polysocial.ui.theme.exact
+import java.text.BreakIterator
 
 /** The row's height, the avatar's and the badge's in Figma, whatever the organizer. */
 private val ROW_HEIGHT = 24.dp
@@ -177,19 +179,46 @@ private val VERIFIED_STYLE
 /**
  * The initials of an association's [name], as in Figma ("AGEPoly" → "AG"): the first two letters of
  * a one-word name, otherwise the first letters of its first and last words ("Fréquence Banane" →
- * "FB"), in capitals. Letters are whole characters (code points), so an emoji is never cut in half,
- * and each is capitalized on its own, so a letter without a one-letter capital ("ß") stays as is. A
- * character built from several code points (a flag, a family emoji) can still be cut: unlikely in
- * an association's name.
+ * "FB"), in capitals. Letters are whole characters as people see them (grapheme clusters), so an
+ * emoji, a flag or a letter with combining accents is never cut. Words without any letter or digit
+ * (a flag, an emoji on its own) are skipped, so "🇨🇭 Club" gives "CL" (#249); a name with no such
+ * word keeps its first character ("🎉 🎵" → "🎉").
  */
 internal fun organizerInitialsOf(name: String): String {
   // Any Unicode space separates words, a non-breaking one included.
   val words = name.split(Regex("[\\s\\p{Z}]+")).filter { it.isNotEmpty() }
+  val named = words.filter { word -> word.codePoints().anyMatch(Character::isLetterOrDigit) }
   val letters =
-      when (words.size) {
-        0 -> emptyList()
-        1 -> words.single().codePoints().limit(2).toArray().toList()
-        else -> listOf(words.first().codePointAt(0), words.last().codePointAt(0))
+      when (named.size) {
+        0 -> words.firstOrNull()?.let { graphemes(it).take(1) }.orEmpty()
+        1 -> graphemes(named.single()).take(2)
+        else -> listOf(graphemes(named.first()).first(), graphemes(named.last()).first())
       }
-  return letters.joinToString("") { String(Character.toChars(Character.toUpperCase(it))) }
+  return letters.joinToString("", transform = ::capitalized)
+}
+
+/**
+ * [character] with its first code point in capitals ("é" → "É", "e" + a combining accent → "E" +
+ * the accent), using the one-letter capital only, so "ß" stays as is; an emoji or a flag has no
+ * capital and doesn't change.
+ */
+private fun capitalized(character: String): String {
+  val first = character.codePointAt(0)
+  return String(Character.toChars(Character.toUpperCase(first))) +
+      character.substring(Character.charCount(first))
+}
+
+/** [text] split into the characters people see (grapheme clusters). */
+private fun graphemes(text: String): List<String> {
+  val breaks = BreakIterator.getCharacterInstance()
+  breaks.setText(text)
+  var start = breaks.first()
+  val characters = mutableListOf<String>()
+  var end = breaks.next()
+  while (end != BreakIterator.DONE) {
+    characters += text.substring(start, end)
+    start = end
+    end = breaks.next()
+  }
+  return characters
 }
