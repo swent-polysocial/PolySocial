@@ -1,5 +1,5 @@
-// Contributors: Claude Opus 5.5 (wrote these tests, #368); Konstantinos Perdikeas (directed,
-// reviewed and owns them).
+// Contributors: Claude Opus 5.5 (wrote these tests, #368, and the cached-profile tests after
+// review); Konstantinos Perdikeas (directed, reviewed and owns them).
 package com.polysocial.ui.profile
 
 import androidx.lifecycle.SavedStateHandle
@@ -141,6 +141,60 @@ class StudentProfileViewModelTest {
         assertEquals(StudentProfileUiState.Found(lea), vm.uiState.value)
       }
 
+  @Test
+  fun aStalledConnection_withTheProfileCached_showsTheCachedProfileAtTheTimeout() =
+      runTest(main.dispatcher) {
+        // The group just read Léa's profile, then the connection stalled: the server read hangs
+        // until Firestore notices it is offline, so the screen falls back to the cache.
+        val stalled = Stalled(cached = PublicProfileResult.Found(lea))
+        val vm = viewModel(repository = stalled)
+        runCurrent()
+        assertEquals(emptyList<String>(), stalled.cacheReads)
+
+        advanceTimeBy(StudentProfileViewModel.TIMEOUT_MILLIS)
+        runCurrent()
+
+        assertEquals(StudentProfileUiState.Found(lea), vm.uiState.value)
+        assertEquals(listOf("lea"), stalled.cacheReads)
+      }
+
+  @Test
+  fun aStalledConnection_withNothingCached_couldNotLoad() =
+      runTest(main.dispatcher) {
+        for (cached in
+            listOf(
+                PublicProfileResult.NetworkError,
+                PublicProfileResult.UnexpectedError,
+                // Only the server can confirm a miss: a cached one may be out of date.
+                PublicProfileResult.NotFound,
+            )) {
+          val vm = viewModel(repository = Stalled(cached))
+          runCurrent()
+
+          advanceTimeBy(StudentProfileViewModel.TIMEOUT_MILLIS)
+          runCurrent()
+
+          assertEquals("$cached", StudentProfileUiState.CouldNotLoad, vm.uiState.value)
+        }
+      }
+
+  @Test
+  fun aMissTheServerConfirms_isNotFound_withoutReadingTheCache() =
+      runTest(main.dispatcher) {
+        val answer = CompletableDeferred<PublicProfileResult>()
+        val repository = Answers(answer, cached = PublicProfileResult.Found(lea))
+        val vm = viewModel(repository = repository)
+        runCurrent()
+
+        answer.complete(PublicProfileResult.NotFound)
+        runCurrent()
+        advanceTimeBy(StudentProfileViewModel.TIMEOUT_MILLIS)
+        runCurrent()
+
+        assertEquals(StudentProfileUiState.NotFound, vm.uiState.value)
+        assertEquals(emptyList<String>(), repository.cacheReads)
+      }
+
   /** A read that never answers, like a request stuck on a bad network. */
   private object NeverAnswers : PublicProfileRepository {
     override suspend fun getPublicProfile(uid: String): PublicProfileResult = awaitCancellation()
@@ -149,10 +203,37 @@ class StudentProfileViewModelTest {
         awaitCancellation()
   }
 
-  /** A read that answers whatever [answer] completes with, when the test completes it. */
-  private class Answers(private val answer: CompletableDeferred<PublicProfileResult>) :
-      PublicProfileRepository {
+  /**
+   * A read that answers whatever [answer] completes with, when the test completes it; the cache
+   * holds [cached].
+   */
+  private class Answers(
+      private val answer: CompletableDeferred<PublicProfileResult>,
+      private val cached: PublicProfileResult = PublicProfileResult.NetworkError,
+  ) : PublicProfileRepository {
+    val cacheReads = mutableListOf<String>()
+
     override suspend fun getPublicProfile(uid: String): PublicProfileResult = answer.await()
+
+    override suspend fun getCachedPublicProfile(uid: String): PublicProfileResult {
+      cacheReads += uid
+      return cached
+    }
+
+    override suspend fun getPublicProfiles(uids: Collection<String>): PublicProfilesResult =
+        awaitCancellation()
+  }
+
+  /** A server read stuck on a stalled connection, with [cached] in the device's cache. */
+  private class Stalled(private val cached: PublicProfileResult) : PublicProfileRepository {
+    val cacheReads = mutableListOf<String>()
+
+    override suspend fun getPublicProfile(uid: String): PublicProfileResult = awaitCancellation()
+
+    override suspend fun getCachedPublicProfile(uid: String): PublicProfileResult {
+      cacheReads += uid
+      return cached
+    }
 
     override suspend fun getPublicProfiles(uids: Collection<String>): PublicProfilesResult =
         awaitCancellation()

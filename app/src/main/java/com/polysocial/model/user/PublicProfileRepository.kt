@@ -1,5 +1,6 @@
 // Contributors: Claude (public profile model and repository contract, #229; reads by UID only and
-// what a missing profile means, after review, #229; interests, #230).
+// what a missing profile means, after review, #229; interests, #230); Claude Opus 5.5 (the
+// cache-only read, #368 review); Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.model.user
 
 /**
@@ -65,6 +66,16 @@ sealed interface PublicProfilesResult {
 interface PublicProfileRepository {
   /** The public profile of [uid], or [PublicProfileResult.NotFound] if it has none. */
   suspend fun getPublicProfile(uid: String): PublicProfileResult
+
+  /**
+   * The public profile of [uid] as this device last saved it, without asking the server: for a
+   * screen whose server read stalled on a bad connection, before Firestore notices it is offline.
+   * [PublicProfileResult.NetworkError] when it isn't saved. A [PublicProfileResult.NotFound] here
+   * only means the device last saw no profile, which the server may no longer confirm. A repository
+   * without an offline cache has nothing saved.
+   */
+  suspend fun getCachedPublicProfile(uid: String): PublicProfileResult =
+      PublicProfileResult.NetworkError
 
   /**
    * The public profiles of [uids] (duplicates count once), one document read per UID, in parallel:
