@@ -1,6 +1,8 @@
 // Contributors: Claude (wrote these tests for the shared loading and error states, #74; scrolling
 // and heading after review; the spinner's Figma drawing); Claude (optional Log out link and its
 // touch area, #208).
+// Contributors: Claude Opus 5.5 (an error state without Retry, #368); Konstantinos Perdikeas
+// (directed, reviewed and owns it).
 package com.polysocial.ui.common
 
 import android.app.Application
@@ -17,6 +19,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertTextEquals
@@ -27,6 +30,7 @@ import androidx.compose.ui.test.hasProgressBarRangeInfo
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -121,6 +125,23 @@ class StateScreensTest {
         .assertTextEquals(string(R.string.retry))
         .performClick()
     assertEquals(1, retries)
+  }
+
+  @Test
+  fun errorState_withoutRetry_showsItsTextsAndNoButton() {
+    composeTestRule.setContent {
+      PolySocialTheme {
+        ErrorState(
+            title = "Can't find this student",
+            message = "This student isn't on PolySocial anymore.",
+            onRetry = null,
+        )
+      }
+    }
+
+    composeTestRule.onNode(hasText("Can't find this student") and isHeading()).assertIsDisplayed()
+    composeTestRule.onNodeWithText("This student isn't on PolySocial anymore.").assertIsDisplayed()
+    composeTestRule.onAllNodesWithTag(C.Tag.error_retry).assertCountEquals(0)
   }
 
   @Test
