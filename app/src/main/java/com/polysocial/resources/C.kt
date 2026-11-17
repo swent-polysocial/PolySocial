@@ -8,6 +8,8 @@
 // Contributors: Claude Opus 5.5 (My friend code tags, #339); Konstantinos Perdikeas (directed,
 // reviewed and owns them).
 // Contributors: OpenAI Codex (group and chat privacy notice tags, #241).
+// Contributors: Claude Opus 5.5 (student profile tags, #368); Konstantinos Perdikeas (directed,
+// reviewed and owns them).
 package com.polysocial.resources
 
 // Like R, but C
@@ -48,11 +50,11 @@ object C {
     const val scan_friend_problem_title = "scan_friend_problem_title"
     const val scan_friend_scan_again = "scan_friend_scan_again"
     const val scan_friend_card = "scan_friend_card"
-    const val scan_friend_name = "scan_friend_name"
-    const val scan_friend_details = "scan_friend_details"
-    const val scan_friend_interest = "scan_friend_interest"
     const val scan_friend_button = "scan_friend_button"
     const val scan_friend_note = "scan_friend_note"
+    const val student_profile_name = "student_profile_name"
+    const val student_profile_details = "student_profile_details"
+    const val student_profile_interest = "student_profile_interest"
     const val friend_code_back_to_profile = "friend_code_back_to_profile"
     const val privacy_screen = "privacy_screen"
     const val privacy_heading = "privacy_heading"

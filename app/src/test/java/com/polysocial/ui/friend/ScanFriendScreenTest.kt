@@ -1,6 +1,6 @@
-// Contributors: Claude Opus 5.5 (wrote these tests, #359, and the review fixes' tests);
-// Konstantinos
-// Perdikeas (directed, reviewed and owns them).
+// Contributors: Claude Opus 5.5 (wrote these tests, #359, and the review fixes' tests; the card's
+// tags renamed when it was shared, #368); Konstantinos Perdikeas (directed, reviewed and owns
+// them).
 package com.polysocial.ui.friend
 
 import androidx.activity.ComponentActivity
@@ -253,10 +253,10 @@ class ScanFriendScreenTest {
 
     compose.onNodeWithTag(C.Tag.scan_friend_card).assertIsDisplayed()
     compose.onNodeWithText("Public profile").assertIsDisplayed()
-    compose.onNodeWithTag(C.Tag.scan_friend_name).assertTextEquals("Léa Martin")
-    compose.onNodeWithTag(C.Tag.scan_friend_details).assertTextEquals("IN · BA3")
+    compose.onNodeWithTag(C.Tag.student_profile_name).assertTextEquals("Léa Martin")
+    compose.onNodeWithTag(C.Tag.student_profile_details).assertTextEquals("IN · BA3")
     compose.onNodeWithText("LM").assertIsDisplayed()
-    compose.onAllNodesWithTag(C.Tag.scan_friend_interest).assertCountEquals(2)
+    compose.onAllNodesWithTag(C.Tag.student_profile_interest).assertCountEquals(2)
     compose.onNodeWithText("Sports").assertIsDisplayed()
     compose.onNodeWithText("Cinema").assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.scan_friend_camera).assertDoesNotExist()
