@@ -1,5 +1,5 @@
-// Contributors: Claude Opus 5.5 (a group member's public profile, #368); Konstantinos Perdikeas
-// (directed, reviewed and owns it).
+// Contributors: Claude Opus 5.5 (a group member's public profile, #368, and the cached fallback
+// after review); Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.profile
 
 import androidx.lifecycle.SavedStateHandle
@@ -22,7 +22,10 @@ sealed interface StudentProfileUiState {
 
   data class Found(val profile: PublicProfile) : StudentProfileUiState
 
-  /** The student has no public profile: their account was deleted, or the UID is wrong. */
+  /**
+   * The server confirmed there is no public profile: a deleted account, a wrong UID, or a profile
+   * saved before #229 and not since (#291), so the screen doesn't say the account is gone.
+   */
   data object NotFound : StudentProfileUiState
 
   /** The read failed or didn't answer in time; Retry reads it again. */
@@ -34,8 +37,10 @@ sealed interface StudentProfileUiState {
  * route argument [UID_ARG]. It reads only `publicProfiles/{uid}` through [PublicProfileRepository]
  * (name, section, year and interests, never the email), once when the screen opens and again on
  * [retry]. Firestore's cache answers offline when the profile was read before (the group just read
- * it). A read that doesn't answer within [TIMEOUT_MILLIS] counts as failed, so the screen never
- * stays loading.
+ * it). On a connection that stalls, Firestore waits about ten seconds before it treats the device
+ * as offline, so a read that doesn't answer within [TIMEOUT_MILLIS] falls back to the cached
+ * profile; without one the screen shows Couldn't load, so it never stays loading. Only the server
+ * can say a profile is missing: a cached miss may be out of date.
  */
 @HiltViewModel
 class StudentProfileViewModel
@@ -64,7 +69,9 @@ constructor(savedStateHandle: SavedStateHandle, private val profiles: PublicProf
             }
     state.value = StudentProfileUiState.Loading
     viewModelScope.launch {
-      val result = withTimeoutOrNull(TIMEOUT_MILLIS) { profiles.getPublicProfile(uid) }
+      val result =
+          withTimeoutOrNull(TIMEOUT_MILLIS) { profiles.getPublicProfile(uid) }
+              ?: profiles.getCachedPublicProfile(uid).takeIf { it is PublicProfileResult.Found }
       state.value =
           when (result) {
             is PublicProfileResult.Found -> StudentProfileUiState.Found(result.profile)
@@ -80,7 +87,9 @@ constructor(savedStateHandle: SavedStateHandle, private val profiles: PublicProf
     /** The route argument holding the student's UID. */
     const val UID_ARG = "studentUid"
 
-    /** How long a read may take before the screen shows Couldn't load, like the group roster. */
-    const val TIMEOUT_MILLIS = 10_000L
+    /**
+     * How long the server may take before the screen shows the cached profile, or Couldn't load.
+     */
+    const val TIMEOUT_MILLIS = 5_000L
   }
 }

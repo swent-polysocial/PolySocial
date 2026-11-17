@@ -1,7 +1,8 @@
 // Contributors: Claude (wrote these tests, written test-first, #229; unreadable documents in a
 // batch, tests added in the test audit, #229; several profiles read one document each, in
 // parallel, one failing read failing them all, after review, #229; unknown interest codes left
-// out, after review, #230).
+// out, after review, #230); Claude Opus 5.5 (the cache-only read, #368 review); Konstantinos
+// Perdikeas (directed, reviewed and owns it).
 package com.polysocial.model.user
 
 import com.google.android.gms.tasks.TaskCompletionSource
@@ -12,6 +13,7 @@ import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FieldPath
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.Source
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -82,6 +84,43 @@ class FirestorePublicProfileRepositoryTest {
   private fun documentsSee(vararg uids: String, stored: Map<String, Map<String, Any?>>) {
     for (uid in uids) every { refFor(uid).get() } returns
         Tasks.forResult(snapshot(uid, stored[uid]))
+  }
+
+  // ---- getCachedPublicProfile ----
+
+  @Test
+  fun getCachedPublicProfile_readsOnlyTheDevicesCache() = runTest {
+    every { ref.get(Source.CACHE) } returns Tasks.forResult(snapshot())
+
+    assertEquals(PublicProfileResult.Found(profile), repository.getCachedPublicProfile("u1"))
+    verify(exactly = 0) { ref.get() }
+    verify(exactly = 0) { ref.get(Source.SERVER) }
+    verify(exactly = 0) { ref.get(Source.DEFAULT) }
+  }
+
+  @Test
+  fun getCachedPublicProfile_notCached_returnsNetworkError() = runTest {
+    // Firestore answers UNAVAILABLE when the document isn't in the cache.
+    every { ref.get(Source.CACHE) } returns Tasks.forException(offline())
+
+    assertEquals(PublicProfileResult.NetworkError, repository.getCachedPublicProfile("u1"))
+  }
+
+  @Test
+  fun getCachedPublicProfile_aCachedMiss_returnsNotFound() = runTest {
+    every { ref.get(Source.CACHE) } returns Tasks.forResult(snapshot(fields = null))
+
+    assertEquals(PublicProfileResult.NotFound, repository.getCachedPublicProfile("u1"))
+  }
+
+  @Test
+  fun getCachedPublicProfile_aMalformedOrFailedRead_returnsUnexpectedError() = runTest {
+    every { ref.get(Source.CACHE) } returns
+        Tasks.forResult(snapshot(fields = storedFields - "section"))
+    assertEquals(PublicProfileResult.UnexpectedError, repository.getCachedPublicProfile("u1"))
+
+    every { ref.get(Source.CACHE) } throws terminated()
+    assertEquals(PublicProfileResult.UnexpectedError, repository.getCachedPublicProfile("u1"))
   }
 
   // ---- getPublicProfile ----

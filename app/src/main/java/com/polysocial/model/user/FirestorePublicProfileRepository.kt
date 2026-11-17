@@ -1,10 +1,14 @@
 // Contributors: Claude (Firestore public profile repository and its stored fields, #229; several
 // profiles read one document each, in parallel, after review, #229; interests, and unknown codes
-// left out after review, #230).
+// left out after review, #230); Claude Opus 5.5 (the cache-only read, #368 review); Konstantinos
+// Perdikeas (directed, reviewed and owns it).
 package com.polysocial.model.user
 
+import com.google.android.gms.tasks.Task
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.Source
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -27,9 +31,19 @@ class FirestorePublicProfileRepository(private val database: () -> FirebaseFires
   private val collection
     get() = database().collection(PUBLIC_PROFILES_COLLECTION)
 
-  override suspend fun getPublicProfile(uid: String): PublicProfileResult =
+  override suspend fun getPublicProfile(uid: String): PublicProfileResult = read(uid) { it.get() }
+
+  /** Firestore's offline cache only; a document it doesn't hold fails with UNAVAILABLE. */
+  override suspend fun getCachedPublicProfile(uid: String): PublicProfileResult =
+      read(uid) { it.get(Source.CACHE) }
+
+  /** Reads `publicProfiles/[uid]` with [get]: from the server or cache, or from the cache only. */
+  private suspend fun read(
+      uid: String,
+      get: (DocumentReference) -> Task<DocumentSnapshot>,
+  ): PublicProfileResult =
       reportFailures(PublicProfileResult.NetworkError, PublicProfileResult.UnexpectedError) {
-        val snapshot = collection.document(uid).get().await()
+        val snapshot = get(collection.document(uid)).await()
         if (!snapshot.exists()) PublicProfileResult.NotFound
         else
             snapshot.toPublicProfile()?.let { PublicProfileResult.Found(it) }
