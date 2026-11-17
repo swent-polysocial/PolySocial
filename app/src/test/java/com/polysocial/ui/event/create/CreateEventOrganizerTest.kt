@@ -1,4 +1,7 @@
 // Contributors: Claude (wrote these tests, #134; additional tests from a test audit, #134).
+// Contributors: Claude (Opus 5.5, Anthropic) (a co-organizer's row and the organizer read's
+// timeout,
+// #249 in #371).
 // Contributors: Claude (Opus 5.5, Anthropic) (the co-organizer repositories, #370).
 package com.polysocial.ui.event.create
 
@@ -19,6 +22,7 @@ import com.polysocial.model.registration.FakeRegistrationRepository
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.ProfileResult
+import com.polysocial.model.user.PublicProfile
 import com.polysocial.ui.event.detail.EventDetailViewModel
 import com.polysocial.utils.MainDispatcherRule
 import java.time.Clock
@@ -44,6 +48,10 @@ class CreateEventOrganizerTest {
   private val profiles =
       FakeUserProfileRepository(ProfileResult.Found(verifiedAssociationProfile()))
   private val associations = FakeAssociationRepository(AssociationResult.Found(TEST_CLUB))
+  private val publicProfiles =
+      FakePublicProfileRepository(
+          mutableMapOf(CREATOR_UID to PublicProfile(CREATOR_UID, "Léa Martin", "IN", "BA3"))
+      )
 
   private fun viewModel(savedState: SavedStateHandle = SavedStateHandle()) =
       CreateEventViewModel(
@@ -54,10 +62,16 @@ class CreateEventOrganizerTest {
           profiles,
           associations,
           FakeRegistrationRepository(),
-          FakePublicProfileRepository(),
+          publicProfiles,
       )
 
-  private fun runPending() = mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
+  /** Runs what is ready, without moving the clock past [CreateEventViewModel.ORGANIZER_TIMEOUT]. */
+  private fun runPending() = mainDispatcherRule.dispatcher.scheduler.runCurrent()
+
+  private fun passTheOrganizerTimeout() =
+      mainDispatcherRule.dispatcher.scheduler.advanceTimeBy(
+          CreateEventViewModel.ORGANIZER_TIMEOUT.inWholeMilliseconds + 1
+      )
 
   /** Fills in every field of [form] through the ViewModel, as the organizer would. */
   private fun CreateEventViewModel.fill(form: CreateEventForm) {
@@ -167,6 +181,75 @@ class CreateEventOrganizerTest {
     assertTrue(associations.requestedUids.isEmpty())
   }
 
+  /** A student's event created by [creator] and co-organized by the signed-in account. */
+  private fun editStudentEvent(creator: String = CREATOR_UID): CreateEventViewModel {
+    events.seed(
+        completeForm()
+            .toEvent(ZURICH)!!
+            .withCreator(creator, isVerifiedAssociation = false)
+            .copy(
+                id = "event-1",
+                organizerIds = listOf(creator, ORGANIZER_UID).distinct(),
+                allowedUids = listOf(creator, ORGANIZER_UID).distinct(),
+            )
+    )
+    return viewModel(SavedStateHandle(mapOf(EventDetailViewModel.EVENT_ID_ARG to "event-1")))
+  }
+
+  @Test
+  fun aCoOrganizerEditing_seesTheStudentWhoCreatedTheEvent() {
+    assertEquals(Organizer.Student("Léa Martin"), organizerOf(editStudentEvent()))
+  }
+
+  @Test
+  fun theCreatorEditing_seesOrganizedByYou_withoutReadingAProfile() {
+    profiles.getProfileResult = ProfileResult.Found(studentProfile())
+
+    assertEquals(Organizer.You, organizerOf(editStudentEvent(creator = ORGANIZER_UID)))
+    // Only the organizers block reads public profiles; the row reads none.
+    assertEquals(listOf(listOf(ORGANIZER_UID)), publicProfiles.requestedUids)
+  }
+
+  @Test
+  fun aCreatorWhoseProfileCantBeRead_givesOrganizedByYou() {
+    publicProfiles.failure = FakePublicProfileRepository.Failure.Offline
+
+    assertEquals(Organizer.You, organizerOf(editStudentEvent()))
+  }
+
+  @Test
+  fun aHangingOrganizerRead_givesOrganizedByYou_afterTheTimeout() {
+    profiles.gate = CompletableDeferred()
+    val viewModel = viewModel()
+    assertEquals(Organizer.Loading, organizerOf(viewModel))
+
+    passTheOrganizerTimeout()
+
+    assertEquals(Organizer.You, viewModel.uiState.value.organizer)
+    // A late answer doesn't change it any more.
+    profiles.gate!!.complete(Unit)
+    assertEquals(Organizer.You, organizerOf(viewModel))
+  }
+
+  @Test
+  fun editingWithAHangingAssociationRead_givesOrganizedByYou_afterTheTimeout() {
+    associations.gate = CompletableDeferred()
+    events.seed(
+        completeForm()
+            .toEvent(ZURICH)!!
+            .withCreator(ORGANIZER_UID, isVerifiedAssociation = true)
+            .copy(id = "event-1")
+    )
+    val viewModel =
+        viewModel(SavedStateHandle(mapOf(EventDetailViewModel.EVENT_ID_ARG to "event-1")))
+    assertEquals(Organizer.Loading, organizerOf(viewModel))
+
+    passTheOrganizerTimeout()
+
+    assertEquals(Organizer.You, viewModel.uiState.value.organizer)
+    assertEquals(CreateEventStatus.Editing, viewModel.uiState.value.status)
+  }
+
   @Test
   fun theOrganizer_isLoadingUntilTheProfileAnswers() {
     profiles.gate = CompletableDeferred()
@@ -254,7 +337,8 @@ class CreateEventOrganizerTest {
 
   @Test
   fun editingAnEvent_whenTheEventIsReadBeforeTheOrganizer_keepsTheFormAndTheOrganizer() {
-    profiles.gate = CompletableDeferred()
+    // Edit event reads the event's own association (#249), not the signed-in profile.
+    associations.gate = CompletableDeferred()
     events.seed(
         completeForm()
             .toEvent(ZURICH)!!
@@ -268,7 +352,7 @@ class CreateEventOrganizerTest {
     assertEquals("Study together", viewModel.uiState.value.form.title)
     assertEquals(CreateEventStatus.Editing, viewModel.uiState.value.status)
 
-    profiles.gate!!.complete(Unit)
+    associations.gate!!.complete(Unit)
 
     assertEquals(Organizer.Association("Test Club"), organizerOf(viewModel))
     assertEquals("Study together", viewModel.uiState.value.form.title)
@@ -368,3 +452,5 @@ class CreateEventOrganizerTest {
     assertEquals(Organizer.Loading, viewModel.uiState.value.organizer)
   }
 }
+
+private const val CREATOR_UID = "creator-uid"

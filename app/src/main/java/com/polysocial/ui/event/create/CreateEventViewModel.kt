@@ -2,6 +2,8 @@
 // (editing an event, #131; the repository's errors, #131 review; the organizer row, #134).
 // Contributors: Claude (Opus 5.5, Anthropic) (refused organizer changes; Edit event's organizers
 // and the "Add a co-organizer" sheet, #370).
+// Contributors: Claude (Opus 5.5, Anthropic) (Edit event's own organizer and the organizer read's
+// timeout, #249 in #371).
 package com.polysocial.ui.event.create
 
 import androidx.lifecycle.SavedStateHandle
@@ -23,6 +25,7 @@ import com.polysocial.model.registration.RegistrationRepository
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileRepository
+import com.polysocial.model.user.PublicProfileResult
 import com.polysocial.model.user.PublicProfilesResult
 import com.polysocial.model.user.UserProfileRepository
 import com.polysocial.ui.event.detail.EventDetailViewModel
@@ -31,6 +34,8 @@ import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalTime
 import javax.inject.Inject
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -38,6 +43,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Where the Create Event screen (or Edit event, see [CreateEventUiState.isEditing]) is in its flow.
@@ -82,13 +88,19 @@ sealed interface Organizer {
 
   /**
    * "Organized by you": a student, an association an admin hasn't verified yet, nobody signed in,
-   * or an account whose profile or association can't be read (offline, missing): the form works the
-   * same.
+   * or an account whose profile or association can't be read (offline, missing), or not within
+   * [CreateEventViewModel.ORGANIZER_TIMEOUT] (#249): the form works the same.
    */
   data object You : Organizer
 
   /** A verified association, which publishes under its [name] with the Verified badge. */
   data class Association(val name: String) : Organizer
+
+  /**
+   * Edit event, for a co-organizer: the student who created the event, by their public [name]
+   * ("Organized by Léa Martin", #249), since the event is theirs, not the signed-in account's.
+   */
+  data class Student(val name: String) : Organizer
 }
 
 /**
@@ -132,8 +144,10 @@ data class CreateEventUiState(
  *
  * It also reads who organizes the event (#134): a verified association sees its name, from its
  * profile ([UserProfileRepository]) and its association ([AssociationRepository]); everyone else,
- * and an account whose profile or association can't be read, sees "Organized by you". The form
- * never waits for it.
+ * and an account whose profile or association can't be read, sees "Organized by you". Edit event
+ * shows the event's own organizer instead: a co-organizer sees the student who created it (#249).
+ * The form never waits for it, and a read that takes more than [ORGANIZER_TIMEOUT] gives "Organized
+ * by you".
  *
  * Editing a student's event, it also manages its organizers (#370): the block lists them with their
  * public profiles ([PublicProfileRepository]), and the "Add a co-organizer" sheet offers the
@@ -204,11 +218,40 @@ constructor(
   private var sheetJob: Job? = null
 
   init {
-    viewModelScope.launch {
-      val organizer = readOrganizer()
-      _uiState.update { it.copy(organizer = organizer) }
-    }
+    // Edit event shows the event's own organizer once the event is read (#249).
+    if (editedId == null) viewModelScope.launch { showOrganizer { readOrganizer() } }
     editedId?.let { id -> viewModelScope.launch { load(id) } }
+  }
+
+  /**
+   * Shows the organizer [read] gives, or "Organized by you" if it hasn't answered within
+   * [ORGANIZER_TIMEOUT]: a hanging read would otherwise leave the row empty until Firestore notices
+   * it is offline (#249).
+   */
+  private suspend fun showOrganizer(read: suspend () -> Organizer) {
+    val organizer = withTimeoutOrNull(ORGANIZER_TIMEOUT) { read() } ?: Organizer.You
+    _uiState.update { it.copy(organizer = organizer) }
+  }
+
+  /**
+   * The organizer row of the edited [event] (#249): its association, its creator by public name
+   * when that is another student (the signed-in account co-organizes it), or "Organized by you".
+   * Any failure gives [Organizer.You], as for a new event.
+   */
+  private suspend fun eventOrganizer(event: Event): Organizer {
+    if (event.isAssociationEvent) {
+      val name =
+          (associations.getAssociation(event.createdBy) as? AssociationResult.Found)
+              ?.association
+              ?.name
+      return if (name.isNullOrBlank()) Organizer.You else Organizer.Association(name)
+    }
+    if (event.createdBy == auth.currentUser()?.uid) return Organizer.You
+    val name =
+        (publicProfiles.getPublicProfile(event.createdBy) as? PublicProfileResult.Found)
+            ?.profile
+            ?.displayName
+    return if (name.isNullOrBlank()) Organizer.You else Organizer.Student(name)
   }
 
   /**
@@ -227,6 +270,7 @@ constructor(
     when (val result = repository.getEvent(id).first()) {
       is EventResult.Found -> {
         stored = result.event
+        viewModelScope.launch { showOrganizer { eventOrganizer(result.event) } }
         profilesLoading = !result.event.isAssociationEvent
         publish(result.event.toForm(clock.zone), CreateEventStatus.Editing)
         if (profilesLoading) readOrganizerProfiles(result.event.organizerIds)
@@ -458,6 +502,11 @@ constructor(
           CreateEventStatus.Saved,
           CreateEventStatus.Unavailable -> true
         }
+
+  companion object {
+    /** How long the organizer row waits for its reads before "Organized by you" (#249). */
+    val ORGANIZER_TIMEOUT: Duration = 5.seconds
+  }
 
   /** The form field an error is shown under. */
   private enum class Field {

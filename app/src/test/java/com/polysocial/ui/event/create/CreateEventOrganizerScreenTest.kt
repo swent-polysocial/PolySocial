@@ -1,6 +1,7 @@
 // Contributors: Claude (wrote these tests, #134; additional tests from a test audit, #134; large
 // font sizes and TalkBack, #134).
 // Contributors: Claude (Opus 5.5, Anthropic) (the co-organizer repositories, #370).
+// Contributors: Claude (Opus 5.5, Anthropic) (a co-organizer's row, #249 in #371).
 package com.polysocial.ui.event.create
 
 import android.app.Application
@@ -38,6 +39,7 @@ import com.polysocial.model.registration.FakeRegistrationRepository
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.ProfileResult
+import com.polysocial.model.user.PublicProfile
 import com.polysocial.resources.C
 import com.polysocial.ui.event.detail.EventDetailViewModel
 import com.polysocial.ui.theme.Bg
@@ -80,7 +82,9 @@ class CreateEventOrganizerScreenTest {
           profiles,
           associations,
           FakeRegistrationRepository(),
-          FakePublicProfileRepository(),
+          FakePublicProfileRepository(
+              mutableMapOf("creator-uid" to PublicProfile("creator-uid", "Léa Martin", "IN", "BA3"))
+          ),
       )
 
   private fun showCreateEvent(): CreateEventViewModel {
@@ -98,12 +102,20 @@ class CreateEventOrganizerScreenTest {
     return viewModel
   }
 
-  private fun showEditEvent() {
+  /**
+   * Edit event on an event created by [creator]: an association's by default, a student's when
+   * [isAssociation] is false, co-organized by the signed-in account when [creator] is someone else.
+   */
+  private fun showEditEvent(creator: String = ORGANIZER_UID, isAssociation: Boolean = true) {
     events.seed(
         completeForm()
             .toEvent(ZURICH)!!
-            .withCreator(ORGANIZER_UID, isVerifiedAssociation = true)
-            .copy(id = "event-1")
+            .withCreator(creator, isVerifiedAssociation = isAssociation)
+            .copy(
+                id = "event-1",
+                organizerIds = listOf(creator, ORGANIZER_UID).distinct(),
+                allowedUids = listOf(creator, ORGANIZER_UID).distinct(),
+            )
     )
     val viewModel =
         viewModel(SavedStateHandle(mapOf(EventDetailViewModel.EVENT_ID_ARG to "event-1")))
@@ -350,9 +362,22 @@ class CreateEventOrganizerScreenTest {
   fun editingAnEvent_aStudentSeesOrganizedByYou() {
     profiles.getProfileResult = ProfileResult.Found(studentProfile())
 
-    showEditEvent()
+    showEditEvent(isAssociation = false)
 
     assertStudentRow()
+  }
+
+  @Test
+  fun editingAnEvent_aCoOrganizerSeesTheStudentWhoCreatedIt() {
+    profiles.getProfileResult = ProfileResult.Found(studentProfile())
+
+    showEditEvent(creator = "creator-uid", isAssociation = false)
+
+    node(C.Tag.create_event_organized_by)
+        .assertIsDisplayed()
+        .assertTextEquals("Organized by Léa Martin")
+    assertMissing(C.Tag.create_event_organizer_avatar)
+    assertMissing(C.Tag.create_event_verified_badge)
   }
 
   /** Where the title field starts, to check that nothing above it moves. */

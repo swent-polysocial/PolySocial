@@ -1,7 +1,8 @@
 // Contributors: Claude (the Create Event organizer row and its association variant, built from the
 // Figma "Create event · association" frame, #134; large font sizes and TalkBack after a test
 // audit, #134).
-// Contributors: Claude (Opus 5.5, Anthropic) (initials by grapheme, #249 in #371).
+// Contributors: Claude (Opus 5.5, Anthropic) (a co-organizer's row with the creator's name, and
+// initials by grapheme, #249 in #371).
 package com.polysocial.ui.event.create
 
 import androidx.compose.foundation.Image
@@ -70,6 +71,19 @@ internal fun OrganizerRow(organizer: Organizer) {
             }
         )
     Organizer.You -> OrganizedByYou(Modifier.testTag(C.Tag.create_event_organized_by))
+    // A co-organizer's Edit event: the creator, as plain text like "Organized by you" (#249).
+    is Organizer.Student ->
+        Text(
+            stringResource(R.string.create_event_organized_by, organizer.name),
+            style = MaterialTheme.typography.labelMedium,
+            color = Ink2,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier =
+                Modifier.heightIn(min = ROW_HEIGHT)
+                    .padding(top = 3.dp)
+                    .testTag(C.Tag.create_event_organized_by),
+        )
     is Organizer.Association ->
         Row(Modifier.fillMaxWidth().heightIn(min = ROW_HEIGHT)) {
           Avatar(organizerInitialsOf(organizer.name))
