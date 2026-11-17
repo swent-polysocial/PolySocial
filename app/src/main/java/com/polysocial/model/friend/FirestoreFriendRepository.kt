@@ -1,10 +1,13 @@
-// Contributors: Claude Opus 5.5 (drafted the Firestore friend repository, #357); Konstantinos
+// Contributors: Claude Opus 5.5 (drafted the Firestore friend repository, #357; a request that
+// changed after the transaction's read is Gone, from Lucas Pinto Ricardo's review); Konstantinos
 // Perdikeas (directed, reviewed and owns it).
 package com.polysocial.model.friend
 
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.MetadataChanges
+import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.Transaction
 import com.google.firebase.firestore.TransactionOptions
 import com.polysocial.model.auth.AuthRepository
@@ -141,6 +144,12 @@ class FirestoreFriendRepository(
    * [Friendship.id] (checked here, as the rules would refuse the read), then a missing document or
    * one whose status or `createdAt` changed ([FriendshipActionResult.Gone]), then [change] on the
    * document as stored. A stored document that can't be read is an `UnexpectedError`.
+   *
+   * The rules check the write against the document as it is when the transaction commits, before
+   * Firestore's own conflict check, so a request the other student cancels or accepts between the
+   * read and the commit makes the write `PERMISSION_DENIED`, which Firestore doesn't retry (see
+   * CONTEXT.md). After that denial the pair is read once more, from the server: changed or gone, it
+   * is [FriendshipActionResult.Gone]; unchanged, the denial stands as an `UnexpectedError`.
    */
   private suspend fun actOn(
       shown: Friendship,
@@ -154,20 +163,31 @@ class FirestoreFriendRepository(
         failed = FriendshipActionResult.UnexpectedError,
     ) {
       val pair = friendships().document(shown.id)
-      db.runTransaction(RETRIED) { transaction ->
-            val snapshot = transaction.get(pair)
-            val stored = friendshipFromFirestore(shown.id, snapshot.data)
-            when {
-              !snapshot.exists() -> FriendshipActionResult.Gone
-              stored == null -> FriendshipActionResult.UnexpectedError
-              stored.status != shown.status || stored.createdAt != shown.createdAt ->
-                  FriendshipActionResult.Gone
-              else -> change(transaction, pair, stored, user.uid)
+      try {
+        db.runTransaction(RETRIED) { transaction ->
+              val snapshot = transaction.get(pair)
+              val stored = friendshipFromFirestore(shown.id, snapshot.data)
+              when {
+                !snapshot.exists() -> FriendshipActionResult.Gone
+                stored == null -> FriendshipActionResult.UnexpectedError
+                stored.differsFrom(shown) -> FriendshipActionResult.Gone
+                else -> change(transaction, pair, stored, user.uid)
+              }
             }
-          }
-          .await()
+            .await()
+      } catch (e: FirebaseFirestoreException) {
+        if (e.code != FirebaseFirestoreException.Code.PERMISSION_DENIED) throw e
+        val now = pair.get(Source.SERVER).await()
+        val stored = friendshipFromFirestore(shown.id, now.data)
+        if (!now.exists() || stored?.differsFrom(shown) == true) FriendshipActionResult.Gone
+        else throw e
+      }
     }
   }
+
+  /** Whether the screen's [shown] request is no longer this one: answered, or sent again. */
+  private fun Friendship.differsFrom(shown: Friendship) =
+      status != shown.status || createdAt != shown.createdAt
 
   private companion object {
     /**

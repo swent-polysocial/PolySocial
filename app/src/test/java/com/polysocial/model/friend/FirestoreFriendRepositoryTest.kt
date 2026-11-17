@@ -1,5 +1,6 @@
-// Contributors: Claude Opus 5.5 (wrote these tests, #357); Konstantinos Perdikeas (directed,
-// reviewed and owns them).
+// Contributors: Claude Opus 5.5 (wrote these tests, #357; a request changed between the read and
+// the commit, from Lucas Pinto Ricardo's review); Konstantinos Perdikeas (directed, reviewed and
+// owns them).
 package com.polysocial.model.friend
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -17,6 +18,7 @@ import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
 import com.google.firebase.firestore.SnapshotMetadata
+import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.Transaction
 import com.google.firebase.firestore.TransactionOptions
 import com.polysocial.model.auth.AuthUser
@@ -89,9 +91,18 @@ class FirestoreFriendRepositoryTest {
         every { it.data } returns stored
       }
 
-  /** What the transaction reads under `friendships/alice~bob`; null for a missing document. */
+  /**
+   * What the transaction reads under `friendships/alice~bob`; null for a missing document. A read
+   * from the server after the transaction finds the same, unless [stubServer] says otherwise.
+   */
   private fun stubStored(stored: Map<String, Any>?) {
     every { transaction.get(pair) } returns snapshot(stored)
+    stubServer(stored)
+  }
+
+  /** What a read of `friendships/alice~bob` from the server finds, after the transaction. */
+  private fun stubServer(stored: Map<String, Any>?) {
+    every { pair.get(Source.SERVER) } returns Tasks.forResult(snapshot(stored))
   }
 
   @Before
@@ -371,6 +382,54 @@ class FirestoreFriendRepositoryTest {
   }
 
   @Test
+  fun accept_deniedBecauseTheRequestChangedAfterTheRead_isGone() = runTest {
+    // The transaction reads bob's request as shown; before it commits, bob cancels it, or sends it
+    // again, or alice's other phone accepts it. The rules then deny the write, which Firestore
+    // doesn't retry, so the repository reads the pair again from the server.
+    stubStored(data(fromBob))
+    failTheCommitWith(FirebaseFirestoreException.Code.PERMISSION_DENIED)
+    for (now in
+        listOf(
+            null,
+            data(fromBob.copy(createdAt = later)),
+            data(fromBob.copy(status = FriendshipStatus.ACCEPTED, acceptedAt = later)),
+        )) {
+      stubServer(now)
+
+      assertEquals("$now", FriendshipActionResult.Gone, repository.accept(fromBob))
+    }
+    verify(exactly = 3) { pair.get(Source.SERVER) }
+  }
+
+  @Test
+  fun accept_deniedWhileTheRequestIsUnchanged_isUnexpected() = runTest {
+    stubStored(data(fromBob))
+    failTheCommitWith(FirebaseFirestoreException.Code.PERMISSION_DENIED)
+
+    assertEquals(FriendshipActionResult.UnexpectedError, repository.accept(fromBob))
+    verify(exactly = 1) { pair.get(Source.SERVER) }
+  }
+
+  @Test
+  fun accept_deniedThenTheServerCannotBeReached_isANetworkError() = runTest {
+    stubStored(data(fromBob))
+    failTheCommitWith(FirebaseFirestoreException.Code.PERMISSION_DENIED)
+    every { pair.get(Source.SERVER) } returns
+        Tasks.forException(failed(FirebaseFirestoreException.Code.UNAVAILABLE))
+
+    assertEquals(FriendshipActionResult.NetworkError, repository.accept(fromBob))
+  }
+
+  @Test
+  fun accept_otherFailures_areNotReadAgain() = runTest {
+    stubStored(data(fromBob))
+    failTheCommitWith(FirebaseFirestoreException.Code.UNAVAILABLE)
+
+    assertEquals(FriendshipActionResult.NetworkError, repository.accept(fromBob))
+    verify(exactly = 0) { pair.get(Source.SERVER) }
+  }
+
+  @Test
   fun accept_anUnexpectedException_isUnexpected() = runTest {
     every { db.collection(FRIENDSHIPS_COLLECTION) } throws IllegalStateException("terminated")
 
@@ -456,6 +515,16 @@ class FirestoreFriendRepositoryTest {
 
     failTheCommitWith(FirebaseFirestoreException.Code.PERMISSION_DENIED)
     assertEquals(FriendshipActionResult.UnexpectedError, repository.remove(fromBob))
+  }
+
+  @Test
+  fun remove_deniedBecauseTheOtherStudentDeletedItAfterTheRead_isGone() = runTest {
+    // A decline and a cancel at the same moment: the second delete is denied on a missing document.
+    stubStored(data(fromBob))
+    failTheCommitWith(FirebaseFirestoreException.Code.PERMISSION_DENIED)
+    stubServer(null)
+
+    assertEquals(FriendshipActionResult.Gone, repository.remove(fromBob))
   }
 
   // observeFriendships
