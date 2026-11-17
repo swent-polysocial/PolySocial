@@ -1,6 +1,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the deleteAccount handler, #206; Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (the public profile deleted with the account, #229; the deletion marker,
 // after review, #229; the user's registrations, #275).
+// Contributors: Claude (Opus 5.5, Anthropic) (the events' attendeeCount, documented, #405).
 "use strict";
 
 // Contributors: OpenAI Codex (retryable membership cleanup and message author removal before Auth deletion, #241).
@@ -70,7 +71,8 @@ const TRANSIENT_CODES = new Set([
  * Each step is idempotent, so the client can simply call again after a failure: a profile already
  * deleted is not an error, and neither is an Auth user that no longer exists. The association check
  * and the profile deletion run in one transaction, so a profile created in between can't escape the
- * check. Events the user created are never touched (the deletion policy, #201, keeps them).
+ * check. Events the user created are kept (the deletion policy, #201); each event the user was
+ * going to only counts one student less, its `attendeeCount` lowered with the registration (#405).
  * Group membership cleanup mirrors leaveGroup; the deletion marker prevents rejoining while it
  * runs. Message text and time are retained, with an empty senderId instead of the account link.
  * Cleanup of further personal data is added here by the issues that store it.

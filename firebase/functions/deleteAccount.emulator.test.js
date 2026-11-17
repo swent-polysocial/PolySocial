@@ -2,6 +2,7 @@
 // Contributors: Claude (the public profile deleted with the account, #229; profiles can't be saved
 // again once deleted, after review, #229; the user's registrations, #275; the user's
 // friendships, #357).
+// Contributors: Claude (Opus 5.5, Anthropic) (the attendeeCount the deletion lowers, #405).
 "use strict";
 // Contributors: OpenAI Codex (real membership cleanup and retryable message anonymisation, #241).
 
@@ -200,6 +201,25 @@ test("a student's friendships are deleted, other students' are kept (#357)", asy
   assert.equal(status, 200);
   const left = await db.collection("friendships").get();
   assert.deepEqual(left.docs.map((document) => document.id), [pair(other, "fictional-2")]);
+});
+
+test("each event the student was going to counts one student less (#405)", async () => {
+  const uid = await seedUser("student@epfl.ch", { accountType: "student" });
+  const other = await seedUser("other@epfl.ch", { accountType: "student" });
+  await db.doc("events/shared").set({ title: "Shared", attendeeCount: 2 });
+  await seedRegistration("shared", uid);
+  await seedRegistration("shared", other);
+  await db.doc("events/legacy").set({ title: "Before the counter" });
+  await seedRegistration("legacy", uid);
+  const idToken = await signIn("student@epfl.ch");
+
+  const { status } = await callDeleteAccount(idToken);
+
+  assert.equal(status, 200);
+  assert.equal((await db.doc("events/shared").get()).get("attendeeCount"), 1);
+  assert.equal((await db.doc("events/legacy").get()).get("attendeeCount"), undefined);
+  const left = await db.collectionGroup("attendees").get();
+  assert.deepEqual(left.docs.map((document) => document.ref.path), [`events/shared/attendees/${other}`]);
 });
 
 test("an account without a profile is deleted", async () => {

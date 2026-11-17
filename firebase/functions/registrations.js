@@ -1,6 +1,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the deletion of registrations with their event
 // and account, #275; kept for an event written again, after review; deleteAllMatching shared with
 // the friendships, #357).
+// Contributors: Claude (Opus 5.5, Anthropic) lowered the event's attendeeCount with each
+// registration an account deletion removes, from #372's prototype, #405.
 "use strict";
 
 /**
@@ -51,11 +53,44 @@ async function deleteEventRegistrations(db, eventId) {
 }
 
 /**
- * Deletes every registration of the user `uid`, across events: the collection-group query
- * `attendees where uid == <uid>`, which the app's own-registrations query already indexes.
+ * Deletes every registration of the user `uid`, across events (the collection-group query
+ * `attendees where uid == <uid>`, which the app's own-registrations query already indexes), each
+ * with [deleteCountedRegistration], so every event's `attendeeCount` goes down with it (#372,
+ * decision 21). It reads again until none is left, so a registration written in between is
+ * deleted too. A student has one registration per event at most, so one transaction each is cheap.
  */
-function deleteUserRegistrations(db, uid) {
-  return deleteAllMatching(db, db.collectionGroup("attendees").where("uid", "==", uid));
+async function deleteUserRegistrations(db, uid) {
+  const registrations = db
+      .collectionGroup("attendees")
+      .where("uid", "==", uid)
+      .limit(MAX_BATCH_WRITES);
+  for (;;) {
+    const snapshot = await registrations.get();
+    if (snapshot.empty) return;
+    for (const registration of snapshot.docs) await deleteCountedRegistration(db, registration.ref);
+  }
+}
+
+/**
+ * Deletes the registration [ref] (`events/{eventId}/attendees/{uid}`) and lowers its event's
+ * `attendeeCount` by one, in one transaction, as the app's cancellation does through the Security
+ * Rules (#372). The counter goes down only if the registration still exists when the transaction
+ * reads it, and the event exists with a whole count above 0. So a retry after a failure, the
+ * student's own cancellation or the deleted event's `deleteEventRegistrations` trigger getting
+ * there first never lowers a counter twice; an event without a counter (written before #373) or
+ * at 0 keeps it as it is, and a registration whose event is gone is simply deleted.
+ */
+async function deleteCountedRegistration(db, ref) {
+  const event = ref.parent.parent;
+  await db.runTransaction(async (transaction) => {
+    const [registration, stored] = await transaction.getAll(ref, event);
+    if (!registration.exists) return;
+    transaction.delete(ref);
+    const count = stored.exists ? stored.get("attendeeCount") : undefined;
+    if (Number.isInteger(count) && count > 0) {
+      transaction.update(event, { attendeeCount: count - 1 });
+    }
+  });
 }
 
 /**
@@ -87,6 +122,7 @@ module.exports = {
   MAX_BATCH_WRITES,
   deleteAllMatching,
   TRIGGER_REGION,
+  deleteCountedRegistration,
   deleteRegistrationsOfDeletedEvent,
   deleteUserRegistrations,
 };
