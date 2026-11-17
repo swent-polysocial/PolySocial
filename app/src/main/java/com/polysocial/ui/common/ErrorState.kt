@@ -1,8 +1,11 @@
 // Contributors: Claude (shared error state from the Figma "Tab · couldn't load" and "App start ·
 // couldn't load profile" frames, #74; scrolling and heading after review; its Retry button moved to
 // the shared StateButton, #194); Claude (optional secondary link, for Log out at app start, #208).
+// Contributors: Claude Opus 5.5 (an optional icon, and no Retry when retrying can't help, #368);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.common
 
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -51,15 +54,18 @@ data class ErrorAction(val label: String, val onClick: () -> Unit)
  * [title], a [message] and a Retry button that calls [onRetry]. Centred and sized as in the Figma
  * "Tab · couldn't load" and "App start · couldn't load profile" frames. It scrolls when the screen
  * is too short (landscape with large text), so Retry stays reachable. A [secondaryAction] adds a
- * text link under Retry (app start's Log out, #208).
+ * text link under Retry (app start's Log out, #208). Without [onRetry] there is no Retry button,
+ * for a state retrying can't change (a student who isn't on PolySocial any more, #368); [icon]
+ * replaces the offline icon there.
  */
 @Composable
 fun ErrorState(
     title: String,
     message: String,
-    onRetry: () -> Unit,
+    onRetry: (() -> Unit)?,
     modifier: Modifier = Modifier,
     secondaryAction: ErrorAction? = null,
+    @DrawableRes icon: Int = R.drawable.ic_couldnt_load,
 ) {
   // Figma's texts use the font's own line height ("auto"), not the type scale's fixed one.
   val typography = MaterialTheme.typography
@@ -79,7 +85,7 @@ fun ErrorState(
           contentAlignment = Alignment.Center,
       ) {
         Icon(
-            painterResource(R.drawable.ic_couldnt_load),
+            painterResource(icon),
             contentDescription = null,
             tint = AccentText,
             modifier = Modifier.size(30.dp),
@@ -99,11 +105,9 @@ fun ErrorState(
           textAlign = TextAlign.Center,
           modifier = Modifier.widthIn(max = MAX_TEXT_WIDTH),
       )
-      StateButton(
-          stringResource(R.string.retry),
-          onRetry,
-          Modifier.testTag(C.Tag.error_retry),
-      )
+      onRetry?.let { retry ->
+        StateButton(stringResource(R.string.retry), retry, Modifier.testTag(C.Tag.error_retry))
+      }
       secondaryAction?.let { action ->
         // A 48 dp touch target whose text still sits the stack's 10 dp under Retry (Figma 490:26):
         // the padding above the text is exactly that gap, so the target stops at Retry's edge.
