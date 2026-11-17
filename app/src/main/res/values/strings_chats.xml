@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (the Chats list, from #362's Figma section 16,
+     #364). -->
+<resources>
+    <string name="chats_empty_title">Join a group to chat</string>
+    <string name="chats_empty_body">Find a group on an event you\'re going to. Its chat appears here, to plan the outing together.</string>
+    <string name="chats_error_title">Couldn\'t load your chats</string>
+    <string name="chats_error_body">Check your connection and try again.</string>
+    <string name="chats_offline">You\'re offline. Chats saved on this device still open; messages can\'t be sent.</string>
+    <!-- The other members' first names, then "and you", for example "Léa, Tom and you". -->
+    <string name="chats_members">%1$s and you</string>
+    <string name="chats_only_you">Just you</string>
+    <string name="chats_no_messages">No messages yet</string>
+    <!-- The latest message's sender, then its text, for example "Léa: I\'m at the entrance". -->
+    <string name="chats_latest">%1$s: %2$s</string>
+    <string name="chats_you">You</string>
+    <string name="chats_yesterday">Yesterday</string>
+</resources>
