@@ -52,6 +52,24 @@ service cloud.firestore {
       return exists(/databases/$(database)/documents/deletedAccounts/$(uid));
     }
 
+    // An ID of exactly two non-empty parts joined by one '~'. split('~') drops trailing empty parts
+    // ("u1~u2~" splits as "u1~u2" does), so the ID is also compared with its two parts joined
+    // again. Shared with the chat rules prototype (#365).
+    function isTwoPartId(id) {
+      let parts = id.split('~');
+      return parts.size() == 2
+          && parts[0] != ''
+          && id == parts[0] + '~' + parts[1];
+    }
+
+    // The pair ID of #338 for member: two different UIDs, sorted, one of them member's.
+    function isPairIdOf(id, member) {
+      let pair = id.split('~');
+      return isTwoPartId(id)
+          && pair[0] < pair[1]
+          && pair.hasAny([member]);
+    }
+
     // The interest codes the app offers (#230): keep them equal to INTERESTS in
     // app/src/main/java/com/polysocial/model/user/ProfileOptions.kt. The rules tests read that file
     // and fail if the two lists differ.
@@ -513,24 +531,14 @@ service cloud.firestore {
         return isStudent() && !isDeletedAccount(request.auth.uid);
       }
 
-      // pairId is exactly two different UIDs, sorted, joined by one '~', and one of them is the
-      // caller's. split('~') drops trailing empty parts ("u1~u2~" splits as "u1~u2" does), so
-      // the ID is also compared with its parts joined again (#357 review, from #365).
-      function isOwnPairId() {
-        let parts = pairId.split('~');
-        return parts.size() == 2
-            && parts[0] != ''
-            && pairId == parts[0] + '~' + parts[1]
-            && parts[0] < parts[1]
-            && parts.hasAny([request.auth.uid]);
-      }
-
       // A student reads their own pair's document, or the missing one under their own pair ID:
       // the app's transactions read it before sending, accepting or removing, and a missing
       // document has no uids to check. A third student is refused either way, so nobody can
       // tell whether two others are friends.
       allow get: if isActiveStudent()
-          && (resource == null ? isOwnPairId() : request.auth.uid in resource.data.uids);
+          && (resource == null
+              ? isPairIdOf(pairId, request.auth.uid)
+              : request.auth.uid in resource.data.uids);
 
       // Only the query uids array-contains <own UID>, so nobody lists other students' friendships.
       allow list: if isActiveStudent() && request.auth.uid in resource.data.uids;
