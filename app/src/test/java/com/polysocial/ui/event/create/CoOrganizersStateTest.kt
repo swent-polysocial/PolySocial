@@ -76,20 +76,18 @@ class CoOrganizersStateTest {
   }
 
   @Test
-  fun addableStudents_leaveOutOrganizersYouAndStudentsWithoutAProfile_byName() {
+  fun addableStudents_leaveOutOrganizersAndStudentsWithoutAProfile_byName() {
     val profiles =
         mapOf(
             "zoe" to profile("zoe", "zoé Rossi"),
             "ana" to profile("ana", "Ana Silva"),
             "co" to profile("co", "Léa Martin"),
-            "me" to profile("me", "Me"),
         )
 
     val students =
         addableStudents(
-            attendees = listOf("zoe", "co", "me", "ghost", "ana"),
+            attendees = listOf("zoe", "co", "ghost", "ana"),
             organizers = listOf("creator", "co"),
-            me = "me",
             profiles = profiles,
         )
 
