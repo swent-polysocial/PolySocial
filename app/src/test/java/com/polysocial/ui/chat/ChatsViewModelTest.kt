@@ -234,6 +234,23 @@ class ChatsViewModelTest {
   }
 
   @Test
+  fun offlineWithNoChatSaved_saysSo_insteadOfNoGroup_andRetryReadsAgain() {
+    groups.readFromCache = true
+    network.online = false
+    val viewModel = viewModel()
+    runPending()
+    assertEquals(ChatsUiState.OfflineNothingSaved, viewModel.state.value)
+
+    groups.readFromCache = false
+    network.online = true
+    groups.seedGroup("party", listOf(ME))
+    viewModel.retry()
+    runPending()
+
+    assertEquals(1, viewModel.rows().size)
+  }
+
+  @Test
   fun eachStudentsProfile_isReadOnce_andAgainOnlyAfterAFailure() {
     val party = groups.seedGroup("party", listOf(ME, "lea"))
     profiles.failure = FakePublicProfileRepository.Failure.Offline
