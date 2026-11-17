@@ -12,7 +12,8 @@
 // register, #275); Claude (Opus 5.5, Anthropic) (event groups and their groupMembers markers,
 // #232, with fixes after review; group chat messages, #237, and no messages from a deleted
 // account, after review); Claude Opus 5.5 (friendships, written test-first and adapted from
-// Mohamed Khellaf's #365 prototype, #357; Konstantinos Perdikeas directed, reviewed and owns it).
+// Mohamed Khellaf's #365 prototype, #357, and no association in a request after Lucas Pinto
+// Ricardo's review; Konstantinos Perdikeas directed, reviewed and owns it).
 rules_version = '2';
 // Contributors: OpenAI Codex (prevent deleted tokens recreating group membership, #241).
 // Contributors: Claude (Opus 5.5, Anthropic) (co-organizers, written test-first, #370).
@@ -531,6 +532,26 @@ service cloud.firestore {
         return isStudent() && !isDeletedAccount(request.auth.uid);
       }
 
+      // Whether users/[uid] is an association's, as stored now.
+      function isAssociationAccount(uid) {
+        let profile = /databases/$(database)/documents/users/$(uid);
+        return exists(profile) && get(profile).data.get('accountType', 'student') == 'association';
+      }
+
+      // Whether the caller's users/{uid} is an association's once this write is applied: isStudent()
+      // reads it before the write, so a batch that creates an association's profile would still
+      // pass as a student's (#416 review).
+      function becomesAssociation() {
+        let profile = getAfter(/databases/$(database)/documents/users/$(request.auth.uid));
+        return profile != null && profile.data.get('accountType', 'student') == 'association';
+      }
+
+      // The UID of the request's other student.
+      function recipient() {
+        let uids = request.resource.data.uids;
+        return uids[0] == request.auth.uid ? uids[1] : uids[0];
+      }
+
       // A student reads their own pair's document, or the missing one under their own pair ID:
       // the app's transactions read it before sending, accepting or removing, and a missing
       // document has no uids to check. A third student is refused either way, so nobody can
@@ -545,8 +566,11 @@ service cloud.firestore {
 
       // Sending a request: as yourself, to a student with a public profile (so never to an
       // association, a deleted account or a made-up UID), pending, at the server's time, with
-      // exactly these four fields, under the pair's exact ID.
+      // exactly these four fields, under the pair's exact ID. Neither student may be an
+      // association: not the recipient as stored now (an old public profile alone isn't enough),
+      // nor the sender after this write (not in the batch that creates its association profile).
       allow create: if isActiveStudent()
+          && !becomesAssociation()
           && request.resource.data.keys().hasOnly(['uids', 'requestedBy', 'status', 'createdAt'])
           && request.resource.data.uids is list
           && request.resource.data.uids.size() == 2
@@ -556,10 +580,8 @@ service cloud.firestore {
           && request.auth.uid in request.resource.data.uids
           && request.resource.data.status == 'pending'
           && request.resource.data.createdAt == request.time
-          && exists(/databases/$(database)/documents/publicProfiles/$(
-              request.resource.data.uids[0] == request.auth.uid
-                  ? request.resource.data.uids[1]
-                  : request.resource.data.uids[0]));
+          && exists(/databases/$(database)/documents/publicProfiles/$(recipient()))
+          && !isAssociationAccount(recipient());
 
       // Accepting: only the recipient (one of the pair, not requestedBy), only a pending request,
       // changing only status to 'accepted' and acceptedAt to the server's time, and only while
