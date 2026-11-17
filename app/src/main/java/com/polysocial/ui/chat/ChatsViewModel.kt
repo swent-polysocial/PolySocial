@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.chat.ChatPreview
 import com.polysocial.model.chat.ChatsRepository
+import com.polysocial.model.chat.DELETED_MESSAGE_SENDER
 import com.polysocial.model.chat.MyChatsResult
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.EventRepository
@@ -209,7 +210,7 @@ constructor(
     val uids =
         previews
             .flatMap { it.group.memberUids + listOfNotNull(it.latestMessage?.senderId) }
-            .filter { it.isNotEmpty() && it != me && requested.add(it) }
+            .filter { it != DELETED_MESSAGE_SENDER && it != me && requested.add(it) }
     if (uids.isEmpty()) return
     launch {
       when (val result = profiles.getPublicProfiles(uids)) {
@@ -247,7 +248,7 @@ constructor(
               LatestMessage(
                   sender =
                       when {
-                        message.senderId.isEmpty() -> Sender.DeletedAccount
+                        message.senderId == DELETED_MESSAGE_SENDER -> Sender.DeletedAccount
                         message.senderId == me -> Sender.You
                         else ->
                             profilesById[message.senderId]?.firstName()?.let(Sender::Named)
