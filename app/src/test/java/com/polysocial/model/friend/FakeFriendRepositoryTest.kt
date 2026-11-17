@@ -14,6 +14,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
@@ -395,6 +396,20 @@ class FakeFriendRepositoryTest {
     assertEquals(FriendshipActionResult.NetworkError, repository.accept(pending()))
     assertEquals(FriendshipActionResult.NetworkError, repository.remove(pending()))
     assertEquals(pending(), repository.friendship("alice~bob"))
+  }
+
+  @Test
+  fun aStaleCancel_ofARequestSentAgain_isGoneAndKeepsTheNewRequest() = runTest {
+    // Without changing now: each write gets a later server time, so the resent request differs.
+    repository.sendRequest("bob")
+    val shown = repository.friendship("alice~bob")!!
+    assertEquals(FriendshipActionResult.Done, repository.remove(shown))
+    repository.sendRequest("bob")
+    val resent = repository.friendship("alice~bob")!!
+
+    assertNotEquals(shown.createdAt, resent.createdAt)
+    assertEquals(FriendshipActionResult.Gone, repository.remove(shown))
+    assertEquals(resent, repository.friendship("alice~bob"))
   }
 
   @Test
