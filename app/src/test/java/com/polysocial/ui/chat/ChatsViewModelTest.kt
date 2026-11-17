@@ -195,6 +195,21 @@ class ChatsViewModelTest {
   }
 
   @Test
+  fun anUnexpectedFailure_showsTheErrorToo_andStopsReadingTheEvents() {
+    groups.seedGroup("party", listOf(ME))
+    groups.readFailure = FakeGroupRepository.ReadFailure.UNEXPECTED
+
+    val viewModel = viewModel()
+    runPending()
+
+    assertEquals(ChatsUiState.Error, viewModel.state.value)
+    // A later event change doesn't bring a list back.
+    events.remove("party")
+    runPending()
+    assertEquals(ChatsUiState.Error, viewModel.state.value)
+  }
+
+  @Test
   fun retry_doesNothingWhileTheListShows() {
     groups.seedGroup("party", listOf(ME, "lea"))
     val viewModel = viewModel()
