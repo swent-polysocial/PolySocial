@@ -81,7 +81,8 @@ fun ChatsRoute(
 
 /**
  * The Chats list from [state] alone (Figma section 16): loading, couldn't load with [onRetry],
- * "Join a group to chat", or the chats with the offline banner above them when offline.
+ * offline with nothing saved (also with [onRetry]), "Join a group to chat", or the chats with the
+ * offline banner above them when offline.
  */
 @Composable
 fun ChatsScreen(
@@ -96,6 +97,13 @@ fun ChatsScreen(
         ErrorState(
             stringResource(R.string.chats_error_title),
             stringResource(R.string.chats_error_body),
+            onRetry,
+            modifier,
+        )
+    ChatsUiState.OfflineNothingSaved ->
+        ErrorState(
+            stringResource(R.string.chats_offline_title),
+            stringResource(R.string.chats_offline_nothing_saved),
             onRetry,
             modifier,
         )

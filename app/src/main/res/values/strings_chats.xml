@@ -6,6 +6,9 @@
     <string name="chats_empty_body">Find a group on an event you\'re going to. Its chat appears here, to plan the outing together.</string>
     <string name="chats_error_title">Couldn\'t load your chats</string>
     <string name="chats_error_body">Check your connection and try again.</string>
+    <!-- Offline with no chat saved on this phone, as My events says it. -->
+    <string name="chats_offline_title">You\'re offline</string>
+    <string name="chats_offline_nothing_saved">Your chats show up here once you have opened Chats with a connection.</string>
     <string name="chats_offline">You\'re offline. Chats saved on this device still open; messages can\'t be sent.</string>
     <!-- The other members' first names, then "and you", for example "Léa, Tom and you". -->
     <string name="chats_members">%1$s and you</string>

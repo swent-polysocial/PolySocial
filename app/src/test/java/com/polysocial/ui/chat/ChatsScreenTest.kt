@@ -170,6 +170,17 @@ class ChatsScreenTest {
   }
 
   @Test
+  fun offlineWithNothingSaved_saysSo_withRetry() {
+    show(ChatsUiState.OfflineNothingSaved)
+
+    composeTestRule.onNodeWithText("You're offline").assertIsDisplayed()
+    composeTestRule.onNodeWithText("Join a group to chat").assertDoesNotExist()
+    composeTestRule.onNodeWithTag(C.Tag.error_retry).performClick()
+
+    assertEquals(1, retries)
+  }
+
+  @Test
   fun whileLoading_itSaysSo() {
     show(ChatsUiState.Loading)
 

@@ -40,8 +40,15 @@ sealed interface ChatsUiState {
   data object Error : ChatsUiState
 
   /**
+   * Offline with no chat saved on this device: "You're offline" and Retry, rather than "Join a
+   * group to chat", which a student in groups would read as having none (#444 review, as My
+   * events).
+   */
+  data object OfflineNothingSaved : ChatsUiState
+
+  /**
    * The student's chats, newest activity first, as [ChatsRepository] orders them; empty when they
-   * are in no group ("Join a group to chat").
+   * are in no group ("Join a group to chat"). Offline with none saved is [OfflineNothingSaved].
    *
    * @property isOffline true when the list comes from the cache and the device is offline: the
    *   screen shows its offline banner above the chats.
@@ -143,9 +150,10 @@ constructor(
     observe()
   }
 
-  /** Reads the chats again, after the error state. Does nothing otherwise. */
+  /** Reads the chats again, after the error or offline state. Does nothing otherwise. */
   fun retry() {
-    if (_state.value != ChatsUiState.Error) return
+    val state = _state.value
+    if (state != ChatsUiState.Error && state != ChatsUiState.OfflineNothingSaved) return
     _state.value = ChatsUiState.Loading
     observe()
   }
@@ -243,11 +251,10 @@ constructor(
   private fun show() {
     val result = latest ?: return
     val now = clock.instant()
+    val isOffline = result.fromCache && !network.isOnline()
     _state.value =
-        ChatsUiState.Chats(
-            rows = result.chats.map { row(it, now) },
-            isOffline = result.fromCache && !network.isOnline(),
-        )
+        if (result.chats.isEmpty() && isOffline) ChatsUiState.OfflineNothingSaved
+        else ChatsUiState.Chats(rows = result.chats.map { row(it, now) }, isOffline = isOffline)
   }
 
   private fun row(preview: ChatPreview, now: Instant): ChatRow {
