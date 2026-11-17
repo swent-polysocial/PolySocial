@@ -1,3 +1,4 @@
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (the Chats tab built, #364). -->
 <!-- Contributors: Claude Fable 5.2 (decision 22, who sees a student organizer's name and its accepted limit, and its open question, #281). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the creator's own name recorded in decision 22, and its open question left with private events only, #281's review). -->
 <!-- Contributors: OpenAI Codex (group/chat account cleanup, explicit deleted authors and access restrictions, #241). -->
@@ -251,7 +252,7 @@ flowchart TB
   detailVM["<b>EventDetailViewModel</b><br/>group card: yourGroup, #233"]:::pb --> groups
   detailVM --> pub
   chat["Group chat<br/>#238"]:::s1 --> chatVM["<b>GroupChatViewModel</b>"]:::s1 --> msgs["<b>MessageRepository</b><br/>observeMessages · sendMessage, built, #237<br/>observeLatestMessage, built, #363"]:::s1
-  chatsTab["Chats tab<br/>#364"]:::pb --> chatList["<b>ChatsRepository</b><br/>observeMyChats, built, #363"]:::s1
+  chatsTab["Chats tab<br/>#364"]:::s1 --> chatsVM["<b>ChatsViewModel</b><br/>event titles and first names, #364"]:::s1 --> chatList["<b>ChatsRepository</b><br/>observeMyChats, built, #363"]:::s1
   chatList --> groups
   chatList --> msgs
   groups --> fs[("Firestore<br/>events/{e}/groups · groupMembers")]:::ext
@@ -1297,7 +1298,7 @@ Every Scrum Board item mapped to the components it touches.
 | #27 Match with other students | Groups & Matchmaking | Match button, MatchRepository | 🟦 |
 | #28 Real-time list of matches | Groups & Matchmaking | Profile matches list, snapshot listener | 🟦 |
 | #15 Ping friends | Groups & Matchmaking | FriendRepository, notifications | ⬜ |
-| #25 Chat | Chat | Chats tab (#364), `ChatsRepository` (built, #363), group chat with `GroupChatViewModel` and `MessageRepository` (built, #237, #238; `messages` under the group), one-to-one chat (`chats/{pairId}`, decided in #365) | 🟦 |
+| #25 Chat | Chat | Chats tab with `ChatsViewModel` (built, #364), `ChatsRepository` (built, #363), group chat with `GroupChatViewModel` and `MessageRepository` (built, #237, #238; `messages` under the group), one-to-one chat (`chats/{pairId}`, decided in #365) | 🟦 |
 | #16 Adding friends | Groups & Matchmaking | Friends screen, Friends ViewModel, FriendRepository (contract built, #357), `friendships/{pairId}`, rules, `deleteAccount` cleanup; usernames an open question | 🟦 decided in #338 |
 | #17 Meeting people by QR | Groups & Matchmaking | QrScanner, QR payload parsing (built, #337), My friend code (built, #339), FriendRepository | 🟦 S5 #336, #337, #339 |
 | #22 Automatic check-in | — | check-in policy, LocationService, QR fallback, GroupRepository | 🟦 |
