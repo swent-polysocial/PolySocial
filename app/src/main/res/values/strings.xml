@@ -264,7 +264,7 @@
     <string name="student_profile_error_title">Couldn\'t load this profile</string>
     <string name="student_profile_error_body">Check your connection and try again.</string>
     <string name="student_profile_not_found_title">Can\'t find this student</string>
-    <string name="student_profile_not_found_body">This student isn\'t on PolySocial anymore.</string>
+    <string name="student_profile_not_found_body">This student’s public profile is unavailable.</string>
     <string name="scan_friend_add">Add friend</string>
     <string name="scan_friend_sent">Request sent</string>
     <string name="scan_friend_accept">Accept request</string>
