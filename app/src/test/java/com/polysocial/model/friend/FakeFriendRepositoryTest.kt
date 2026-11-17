@@ -3,11 +3,16 @@
 package com.polysocial.model.friend
 
 import java.time.Instant
+import java.util.concurrent.CyclicBarrier
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -390,5 +395,58 @@ class FakeFriendRepositoryTest {
     assertEquals(FriendshipActionResult.NetworkError, repository.accept(pending()))
     assertEquals(FriendshipActionResult.NetworkError, repository.remove(pending()))
     assertEquals(pending(), repository.friendship("alice~bob"))
+  }
+
+  @Test
+  fun twoConcurrentSends_sendOnlyOneRequest() = runTest {
+    // Two taps on two threads at the same moment; like the transaction, only one sends.
+    repeat(RACES) {
+      val fake = FakeFriendRepository(currentUid = "alice", now = now)
+      val results = race({ fake.sendRequest("bob") }, { fake.sendRequest("bob") })
+
+      assertEquals(
+          setOf(SendFriendRequestResult.Sent, SendFriendRequestResult.AlreadyExists),
+          results.toSet(),
+      )
+      assertEquals(pending(requestedBy = "alice"), fake.friendship("alice~bob"))
+    }
+  }
+
+  @Test
+  fun aConcurrentAcceptAndRemove_oneWinsAndTheOtherIsGone_neverACrash() = runTest {
+    repeat(RACES) {
+      val fake = FakeFriendRepository(currentUid = "alice", now = later)
+      fake.seedFriendship(pending())
+      val (accepted, removed) = race({ fake.accept(pending()) }, { fake.remove(pending()) })
+
+      if (accepted == FriendshipActionResult.Done) {
+        assertEquals(FriendshipActionResult.Gone, removed)
+        assertEquals(accepted(), fake.friendship("alice~bob"))
+      } else {
+        assertEquals(FriendshipActionResult.Gone, accepted)
+        assertEquals(FriendshipActionResult.Done, removed)
+        assertNull(fake.friendship("alice~bob"))
+      }
+    }
+  }
+
+  /** Runs [first] and [second] on two threads, started at the same moment, and returns both. */
+  private suspend fun <T> race(first: suspend () -> T, second: suspend () -> T): List<T> {
+    val start = CyclicBarrier(2)
+    return withContext(Dispatchers.Default) {
+      listOf(first, second)
+          .map { action ->
+            async {
+              start.await()
+              action()
+            }
+          }
+          .awaitAll()
+    }
+  }
+
+  private companion object {
+    /** Enough races that an unsynchronized fake loses at least one. */
+    const val RACES = 2_000
   }
 }
