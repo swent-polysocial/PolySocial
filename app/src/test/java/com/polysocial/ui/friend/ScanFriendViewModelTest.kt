@@ -14,6 +14,7 @@ import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.utils.MainDispatcherRule
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import org.junit.Assert.assertEquals
@@ -28,7 +29,8 @@ class ScanFriendViewModelTest {
   private val created = Instant.parse("2026-11-16T10:00:00Z")
 
   private val auth = FakeAuthRepository(AuthUser("alice", "alice@epfl.ch", true))
-  private val profiles = FakePublicProfileRepository(mutableMapOf("lea" to lea))
+  private val bob = PublicProfile("bob", "Bob Keller", "SC", "MA1", emptySet())
+  private val profiles = FakePublicProfileRepository(mutableMapOf("lea" to lea, "bob" to bob))
   private val friends = FakeFriendRepository(currentUid = "alice", now = created)
 
   private fun viewModel() = ScanFriendViewModel(auth, profiles, friends)
@@ -209,6 +211,78 @@ class ScanFriendViewModelTest {
 
     assertEquals(card(FriendButton.ADD), vm.uiState.value)
     assertEquals("lea", friends.friendship("alice~lea")?.requestedBy)
+  }
+
+  @Test
+  fun addFriend_aLateSentResponse_keepsFriendsWhenTheyAcceptedMeanwhile() {
+    // The server stores the request, Léa accepts it and the listener shows Friends, all before
+    // the send call returns: its Sent is older than what the listener shows.
+    val vm = viewModel()
+    vm.onCodeScanned(code("lea"))
+    val response = CompletableDeferred<Unit>()
+    friends.sendResponseGate = response
+
+    vm.onButton()
+    friends.seedFriendship(request(from = "alice", status = FriendshipStatus.ACCEPTED))
+    response.complete(Unit)
+
+    assertEquals(card(FriendButton.FRIENDS), vm.uiState.value)
+  }
+
+  @Test
+  fun addFriend_aLateSentResponse_keepsAddFriendWhenTheyDeclinedMeanwhile() {
+    val vm = viewModel()
+    vm.onCodeScanned(code("lea"))
+    val response = CompletableDeferred<Unit>()
+    friends.sendResponseGate = response
+
+    vm.onButton()
+    friends.deleteFriendship("alice~lea")
+    response.complete(Unit)
+
+    assertEquals(card(FriendButton.ADD), vm.uiState.value)
+  }
+
+  @Test
+  fun addFriend_withoutTheListener_showsRequestSentFromTheResponse() {
+    // The listener never shows the request, so the response is the newest news.
+    friends.readFailure = true
+    val vm = viewModel()
+    vm.onCodeScanned(code("lea"))
+
+    vm.onButton()
+
+    assertEquals(card(FriendButton.SENT), vm.uiState.value)
+  }
+
+  @Test
+  fun accept_aLateDoneResponse_keepsAddFriendWhenTheyRemovedThemMeanwhile() {
+    friends.seedFriendship(request(from = "lea"))
+    val vm = viewModel()
+    vm.onCodeScanned(code("lea"))
+    val response = CompletableDeferred<Unit>()
+    friends.acceptResponseGate = response
+
+    vm.onButton()
+    friends.deleteFriendship("alice~lea")
+    response.complete(Unit)
+
+    assertEquals(card(FriendButton.ADD), vm.uiState.value)
+  }
+
+  @Test
+  fun aLateResponse_forAStudentNoLongerShown_leavesTheNewCardAlone() {
+    val vm = viewModel()
+    vm.onCodeScanned(code("lea"))
+    val response = CompletableDeferred<Unit>()
+    friends.sendResponseGate = response
+    vm.onButton()
+
+    vm.onScanAgain()
+    vm.onCodeScanned(code("bob"))
+    response.complete(Unit)
+
+    assertEquals(ScanFriendUiState.Card(bob, FriendButton.ADD), vm.uiState.value)
   }
 
   @Test

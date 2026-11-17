@@ -1,5 +1,5 @@
-// Contributors: Claude Opus 5.5 (drafted the scan-a-friend ViewModel, #359); Konstantinos
-// Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude Opus 5.5 (drafted the scan-a-friend ViewModel, #359, and its review
+// fixes); Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.friend
 
 import androidx.lifecycle.ViewModel
@@ -110,13 +110,23 @@ constructor(
   /** The student's friendships, as last delivered by the listener; empty until it delivers. */
   private var friendships: List<Friendship> = emptyList()
 
+  /**
+   * How many times the listener changed the friendship with the student on the card. A tap's
+   * response that arrives after such a change is older than what the listener shows, so the
+   * listener's button wins over it.
+   */
+  private var cardFriendshipChanges = 0
+
   init {
     viewModelScope.launch {
       friends.observeFriendships().collect { result ->
         // A failed listener leaves the last known friendships: Add friend still works, and a
         // request that already exists comes back as AlreadyExists.
         if (result is FriendshipsResult.Success) {
+          val cardUid = (state.value as? ScanFriendUiState.Card)?.profile?.uid
+          val before = cardUid?.let(::friendshipWith)
           friendships = result.friendships
+          if (cardUid != null && friendshipWith(cardUid) != before) cardFriendshipChanges++
           state.update { if (it is ScanFriendUiState.Card) it.copy(button = buttonFor(it)) else it }
         }
       }
@@ -170,18 +180,22 @@ constructor(
     }
   }
 
-  /** Runs [call] with the card busy, then shows the button and error it returns. */
+  /**
+   * Runs [call] with the card busy, then shows the button and error it returns, on the same
+   * student's card only. The button it proves is kept only if the listener changed nothing
+   * meanwhile: otherwise the listener's is newer (accepted or declined before the response came).
+   */
   private fun act(card: ScanFriendUiState.Card, call: suspend () -> Outcome) {
     state.value = card.copy(busy = true, error = null)
+    val changesAtTap = cardFriendshipChanges
     viewModelScope.launch {
       val outcome = call()
       state.update { current ->
-        if (current !is ScanFriendUiState.Card) return@update current
-        current.copy(
-            busy = false,
-            button = outcome.button ?: buttonFor(current),
-            error = outcome.error,
-        )
+        if (current !is ScanFriendUiState.Card || current.profile.uid != card.profile.uid) {
+          return@update current
+        }
+        val proven = outcome.button.takeIf { cardFriendshipChanges == changesAtTap }
+        current.copy(busy = false, button = proven ?: buttonFor(current), error = outcome.error)
       }
     }
   }

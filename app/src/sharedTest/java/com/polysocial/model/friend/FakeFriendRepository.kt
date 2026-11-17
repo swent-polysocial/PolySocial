@@ -1,8 +1,10 @@
 // Contributors: Claude Opus 5.5 (wrote this fake for tests, #357; the shared pair check, second
-// PR); Konstantinos Perdikeas (directed, reviewed and owns it).
+// PR; the response gates and deleteFriendship, #359); Konstantinos Perdikeas (directed, reviewed
+// and owns it).
 package com.polysocial.model.friend
 
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
@@ -45,6 +47,15 @@ class FakeFriendRepository(
   /** When set, [remove] returns this result instead of deleting, like a failed write. */
   var removeFailure: FriendshipActionResult? = null
 
+  /**
+   * When set, [sendRequest] writes (or refuses) as usual, then waits for this before returning:
+   * a response the server sends late, after the listener may already show newer changes.
+   */
+  var sendResponseGate: CompletableDeferred<Unit>? = null
+
+  /** Like [sendResponseGate], for [accept]. */
+  var acceptResponseGate: CompletableDeferred<Unit>? = null
+
   /** When true, [observeFriendships] emits [FriendshipsResult.Error], like a failed query. */
   var readFailure = false
 
@@ -65,6 +76,11 @@ class FakeFriendRepository(
     synchronized(lock) { friendships.value += friendship.id to friendship }
   }
 
+  /** Deletes the friendship with this [id] directly, like the other student declining it. */
+  fun deleteFriendship(id: String) {
+    synchronized(lock) { friendships.value -= id }
+  }
+
   /** The stored friendship with this [id], or null when there is none. */
   fun friendship(id: String): Friendship? = friendships.value[id]
 
@@ -81,11 +97,17 @@ class FakeFriendRepository(
         })
   }
 
-  override suspend fun sendRequest(otherUid: String): SendFriendRequestResult =
-      synchronized(lock) { send(otherUid) }
+  override suspend fun sendRequest(otherUid: String): SendFriendRequestResult {
+    val result = synchronized(lock) { send(otherUid) }
+    sendResponseGate?.await()
+    return result
+  }
 
-  override suspend fun accept(shown: Friendship): FriendshipActionResult =
-      synchronized(lock) { acceptNow(shown) }
+  override suspend fun accept(shown: Friendship): FriendshipActionResult {
+    val result = synchronized(lock) { acceptNow(shown) }
+    acceptResponseGate?.await()
+    return result
+  }
 
   override suspend fun remove(shown: Friendship): FriendshipActionResult =
       synchronized(lock) { removeNow(shown) }
