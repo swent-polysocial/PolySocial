@@ -2,6 +2,8 @@
 // taps during the transition, after review; Edit event above the detail, #131; Edit event closing
 // during its enter transition, #131 review; the detail's Edit and Cancel event, #131).
 // Contributors: Claude (Opus 5.5, Anthropic) tested opening and leaving Find a group, #233.
+// Contributors: Claude Opus 5.5 (tested opening a group member's profile, #368); Konstantinos
+// Perdikeas (directed, reviewed and owns it).
 // Contributors: OpenAI Codex (tested the group roster route and return after leaving, #234).
 // Contributors: OpenAI Codex (updated the roster navigation seam for chat, #238).
 package com.polysocial.ui.navigation
@@ -36,6 +38,7 @@ import com.polysocial.ui.event.list.EventsScreen
 import com.polysocial.ui.event.list.EventsTags
 import com.polysocial.ui.event.list.EventsUiState
 import com.polysocial.ui.group.FindGroupDone
+import com.polysocial.ui.profile.StudentProfileViewModel
 import com.polysocial.ui.theme.PolySocialTheme
 import java.time.LocalDate
 import java.time.ZoneId
@@ -162,7 +165,7 @@ class EventDetailNavigationTest {
                 ) {}
               }
             },
-            yourGroupContent = { _, onLeft, openChat ->
+            yourGroupContent = { _, onLeft, openChat, openMember ->
               Column {
                 Button(onClick = onLeft, modifier = Modifier.testTag("finish_leave_group")) {
                   Text(
@@ -176,6 +179,20 @@ class EventDetailNavigationTest {
                     onClick = { openChat("group 1/2") },
                     modifier = Modifier.testTag("open_chat"),
                 ) {}
+                Button(
+                    onClick = { openMember("student 1/2") },
+                    modifier = Modifier.testTag("open_member"),
+                ) {}
+              }
+            },
+            studentProfileContent = { onBack ->
+              Button(onClick = onBack, modifier = Modifier.testTag("student_back")) {
+                Text(
+                    navController.currentBackStackEntry
+                        ?.arguments
+                        ?.getString(StudentProfileViewModel.UID_ARG)
+                        .orEmpty()
+                )
               }
             },
             groupChatContent = { onBack ->
@@ -203,6 +220,22 @@ class EventDetailNavigationTest {
     composeTestRule.onNodeWithTag("finish_leave_group").performClick()
 
     composeTestRule.onNodeWithTag(DETAIL_ID, useUnmergedTree = true).assertTextEquals(trickyId)
+  }
+
+  @Test
+  fun aMembersProfileOpensFullScreenWithTheirUid_andBackReturnsToTheRoster() {
+    composeTestRule.onNodeWithTag(EventsTags.card(trickyId)).performClick()
+    composeTestRule.onNodeWithTag("open_group_roster").performClick()
+
+    composeTestRule.onNodeWithTag("open_member").performClick()
+    composeTestRule.onNodeWithTag("student_back").assertTextEquals("student 1/2")
+    assertBarsHidden()
+    composeTestRule.onNodeWithTag("student_back").performClick()
+
+    composeTestRule.onNodeWithTag("finish_leave_group").assertTextEquals(trickyId)
+    composeTestRule.onNodeWithTag("open_member").performClick()
+    pressBack()
+    composeTestRule.onNodeWithTag("finish_leave_group").assertTextEquals(trickyId)
   }
 
   private fun pressBack() {

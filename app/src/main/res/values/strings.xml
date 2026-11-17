@@ -22,6 +22,7 @@
      built, instead of "not available yet", #123's second PR review). -->
 <!-- Contributors: Claude (Fable 5.2, Anthropic) (unverified sign-ups deleted after 7 days in the privacy notice, #226). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (moved that sentence to the notice's deletion section, after review, #226). -->
+<!-- Contributors: Claude Opus 5.5 (a group member's public profile copy, #368); Konstantinos Perdikeas (directed, reviewed and owns it). -->
 <resources>
     <string name="app_start_loading">Loading your profile…</string>
     <string name="app_start_error_title">Couldn\'t load your profile</string>
@@ -258,6 +259,12 @@
     <string name="scan_friend_try_again">Try again</string>
     <string name="scan_friend_profile_title">Public profile</string>
     <string name="scan_friend_interests">Interests</string>
+    <string name="student_profile_title">Public profile</string>
+    <string name="student_profile_loading">Loading profile…</string>
+    <string name="student_profile_error_title">Couldn\'t load this profile</string>
+    <string name="student_profile_error_body">Check your connection and try again.</string>
+    <string name="student_profile_not_found_title">Can\'t find this student</string>
+    <string name="student_profile_not_found_body">This student isn\'t on PolySocial anymore.</string>
     <string name="scan_friend_add">Add friend</string>
     <string name="scan_friend_sent">Request sent</string>
     <string name="scan_friend_accept">Accept request</string>

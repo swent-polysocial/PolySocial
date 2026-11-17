@@ -1,3 +1,5 @@
+// Contributors: Claude Opus 5.5 (a group member's public profile opened from Your group, #368);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: Claude Opus 5.5 (Scan a friend's code opened from My friend code, #359);
 // Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: Claude Opus 5.5 (opened a pending reminder notification's event, #123's second PR
@@ -104,6 +106,8 @@ import com.polysocial.ui.profile.FriendCodeRoute
 import com.polysocial.ui.profile.FullPrivacyNoticeRoute
 import com.polysocial.ui.profile.PrivacyRoute
 import com.polysocial.ui.profile.ProfileRoute
+import com.polysocial.ui.profile.StudentProfileRoute
+import com.polysocial.ui.profile.StudentProfileViewModel
 import com.polysocial.ui.theme.Ink
 import com.polysocial.ui.theme.Ink3
 import kotlinx.coroutines.launch
@@ -227,15 +231,18 @@ fun AppShell(
               dropUnlessResumed { navController.navigate(Tab.PROFILE.friendCodeRoute) },
       )
     },
-    yourGroupContent: @Composable (() -> Unit, () -> Unit, (String) -> Unit) -> Unit =
-        { onBack, onLeft, onOpenChat ->
-          YourGroupRoute(onBack, onLeft, onOpenChat = onOpenChat)
+    yourGroupContent:
+        @Composable
+        (() -> Unit, () -> Unit, (String) -> Unit, (String) -> Unit) -> Unit =
+        { onBack, onLeft, onOpenChat, onOpenMember ->
+          YourGroupRoute(onBack, onLeft, onOpenChat = onOpenChat, onOpenMember = onOpenMember)
         },
     groupChatContent: @Composable (() -> Unit) -> Unit = { GroupChatRoute(it) },
     chatsContent: @Composable (onOpenChat: (eventId: String, groupId: String) -> Unit) -> Unit =
         { onOpenChat ->
           ChatsRoute(onOpenChat)
         },
+    studentProfileContent: @Composable (() -> Unit) -> Unit = { StudentProfileRoute(it) },
 ) {
   val association = accountType == AccountType.ASSOCIATION
   val tabs = if (association) listOf(Tab.EVENTS, Tab.MAP, Tab.PROFILE) else Tab.entries
@@ -258,6 +265,7 @@ fun AppShell(
           destination?.route != currentTab.findGroupRoute &&
           destination?.route != currentTab.yourGroupRoute &&
           destination?.route != currentTab.groupChatRoute &&
+          destination?.route != currentTab.studentProfileRoute &&
           !profileRowScreen
   // The app bar action (TabAction, set per tab in Tab.action) shows only on the current tab's root
   // screen: it is hidden on the screens opened from there, including the one the action opens.
@@ -456,7 +464,19 @@ fun AppShell(
                     navController.navigate(tab.groupChatRoute(eventId, groupId))
                   }
                 },
+                { uid ->
+                  if (entry.isResumed) navController.navigate(tab.studentProfileRoute(uid))
+                },
             )
+          }
+          composable(
+              tab.studentProfileRoute,
+              arguments =
+                  listOf(
+                      navArgument(StudentProfileViewModel.UID_ARG) { type = NavType.StringType }
+                  ),
+          ) { entry ->
+            studentProfileContent { if (entry.isResumed) navController.popBackStack() }
           }
           composable(
               tab.groupChatRoute,

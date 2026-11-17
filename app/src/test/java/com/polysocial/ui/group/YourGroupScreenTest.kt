@@ -1,9 +1,13 @@
 // Contributors: OpenAI Codex (roster, confirmation and connectivity tests, #234; chat route wiring,
 // #238).
+// Contributors: Claude Opus 5.5 (tested opening a member's profile from their row, #368);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.group
 
 import android.content.Context
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHasClickAction
+import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -64,6 +68,7 @@ class YourGroupScreenTest {
   private val network = FakeNetworkMonitor()
   private var left = 0
   private var backs = 0
+  private val opened = mutableListOf<String>()
 
   @Test
   fun rosterShowsPublicDetailsAndUpdatesAsMembersJoinAndLeave() {
@@ -85,6 +90,22 @@ class YourGroupScreenTest {
 
     compose.onNodeWithText("Test Peer").assertDoesNotExist()
     compose.onNodeWithText("Members · 3 of 4").assertIsDisplayed()
+  }
+
+  @Test
+  fun tappingAnotherMember_opensTheirProfile_butNotYourOwnRowOrAMissingProfile() {
+    val group = groups.seedGroup(EVENT, listOf(ME, "peer"))
+    show()
+    asStudent("missing") { groups.joinGroup(EVENT, group.id) }
+
+    compose.onNodeWithTag(YourGroupTags.member("peer")).assertHasClickAction()
+    compose.onNodeWithTag(YourGroupTags.member(ME)).assertHasNoClickAction()
+    compose.onNodeWithTag(YourGroupTags.member("missing")).assertHasNoClickAction()
+    tap(YourGroupTags.member(ME))
+    tap(YourGroupTags.member("missing"))
+    tap(YourGroupTags.member("peer"))
+
+    assertEquals(listOf("peer"), opened)
   }
 
   @Test
@@ -300,7 +321,14 @@ class YourGroupScreenTest {
             Clock.fixed(Instant.parse("2030-01-01T10:00:00Z"), ZoneId.of("Europe/Zurich")),
         )
     compose.setContent {
-      PolySocialTheme { YourGroupRoute({ backs++ }, { left++ }, viewModel = viewModel) }
+      PolySocialTheme {
+        YourGroupRoute(
+            { backs++ },
+            { left++ },
+            onOpenMember = { opened += it },
+            viewModel = viewModel,
+        )
+      }
     }
     settle()
     return viewModel
