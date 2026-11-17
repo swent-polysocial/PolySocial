@@ -5,6 +5,8 @@
 // Contributors: OpenAI Codex (group cleanup, partial failure and retry regression tests, #241).
 // Contributors: Claude Opus 5.5 (the user's friendships, written test-first, #357); Konstantinos
 // Perdikeas (directed, reviewed and owns them).
+// Contributors: Claude (Opus 5.5, Anthropic) (the attendeeCount each deleted registration lowers,
+// #405).
 
 // Unit tests with fakes, no emulator: node firebase/functions/deleteAccountHandler.test.js
 const { test } = require("node:test");
@@ -21,11 +23,20 @@ const UID = "student-uid-1";
 const NOW = Date.UTC(2026, 9, 28, 12, 0, 0);
 const RECENT_AUTH_TIME = NOW / 1000 - 60;
 const OTHER_REGISTRATION = "events/e1/attendees/student-uid-2";
-/** The calls deleting the student's two registrations, as the default fake backend holds them. */
+/**
+ * The calls deleting the student's two registrations, as the default fake backend holds them: each
+ * in its own transaction, which reads the registration and its event, deletes the registration and
+ * lowers the event's attendeeCount (#405).
+ */
 const REGISTRATION_CALLS = [
   "collectionGroup:attendees",
   `query:attendees uid == ${UID}`,
-  `commit:events/e1/attendees/${UID},events/e2/attendees/${UID}`,
+  `getAll:events/e1/attendees/${UID},events/e1`,
+  `delete:events/e1/attendees/${UID}`,
+  "update:events/e1",
+  `getAll:events/e2/attendees/${UID},events/e2`,
+  `delete:events/e2/attendees/${UID}`,
+  "update:events/e2",
   `query:attendees uid == ${UID}`,
 ];
 /** Another pair's friendship, which deleting the student must keep. */
@@ -44,7 +55,8 @@ function backendError(code) {
 
 /**
  * A fake Firestore holding at most the user's private and public profiles, deletion marker and
- * registrations (paths `events/{eventId}/attendees/{uid}`, also other students'), and a fake Auth.
+ * registrations (paths `events/{eventId}/attendees/{uid}`, also other students') with their events'
+ * `attendeeCount` (`events`, by path), and a fake Auth.
  * A transaction's writes are applied together at its end, or none of them when one fails, as in
  * Firestore. `calls` records every operation in order; a failure set in `fail`
  * makes that operation throw (once, when `once`).
@@ -64,6 +76,7 @@ function fakeBackend({
     [`friendships/${UID}~student-uid-2`]: [UID, "student-uid-2"],
     [OTHER_FRIENDSHIP]: ["student-uid-2", "student-uid-3"],
   },
+  events = { "events/e1": { attendeeCount: 2 }, "events/e2": { attendeeCount: 1 } },
 } = {}) {
   const calls = [];
   const fail = {};
@@ -75,6 +88,7 @@ function fakeBackend({
     authUserExists,
     registrations: new Set(registrations),
     friendships: { ...friendships },
+    events,
   };
   const failIfAsked = (operation) => {
     const error = fail[operation];
@@ -159,7 +173,7 @@ function fakeBackend({
               failIfAsked("query");
               const docs = [...state.registrations]
                 .filter((path) => path.split("/")[3] === value)
-                .map((path) => ({ ref: { path } }));
+                .map((path) => ({ ref: db.doc(path) }));
               return { empty: docs.length === 0, docs };
             },
           };
@@ -191,6 +205,17 @@ function fakeBackend({
     async runTransaction(updateFunction) {
       const writes = [];
       await updateFunction({
+        // A registration and its event, read together by the registration deletion (#405).
+        async getAll(...refs) {
+          calls.push(`getAll:${refs.map((ref) => ref.path).join(",")}`);
+          failIfAsked("get");
+          return refs.map(({ path }) => {
+            const data = path.includes("/attendees/")
+              ? (state.registrations.has(path) ? {} : null)
+              : state.events[path] ?? null;
+            return { exists: data !== null, get: (field) => data?.[field] };
+          });
+        },
         async get(ref) {
           calls.push(`get:${ref.path}`);
           failIfAsked("get");
@@ -213,14 +238,22 @@ function fakeBackend({
       });
       for (const write of writes) {
         calls.push(`${write.kind}:${write.ref.path}`);
-        failIfAsked(write.kind);
-        if (write.ref.path.startsWith("events/")) failIfAsked("group-write");
+        // A registration's transaction fails at its commit, as the batch it replaces did.
+        const registration =
+            write.ref.path.includes("/attendees/") || /^events\/[^/]+$/.test(write.ref.path);
+        failIfAsked(registration ? "commit" : write.kind);
+        if (write.ref.path.startsWith("events/") && !registration) failIfAsked("group-write");
       }
       for (const { kind, ref, data } of writes) {
         if (kind === "set" && ref.path.startsWith("deletedAccounts/")) state.deletionMarker = data;
         if (kind === "delete" && ref.path.startsWith("users/")) state.profile = null;
         if (kind === "delete" && ref.path.startsWith("publicProfiles/")) state.publicProfile = null;
-        if (kind === "update") Object.assign(state.groups[ref.path], data);
+        if (kind === "delete" && ref.path.includes("/attendees/")) {
+          state.registrations.delete(ref.path);
+        }
+        if (kind === "update" && /^events\/[^/]+$/.test(ref.path)) {
+          Object.assign(state.events[ref.path], data);
+        } else if (kind === "update") Object.assign(state.groups[ref.path], data);
         if (kind === "delete" && ref.path.includes("/groups/")) delete state.groups[ref.path];
         if (kind === "delete" && ref.path.includes("/groupMembers/")) delete state.markers[ref.path];
       }
@@ -356,10 +389,19 @@ test("only the student's registrations are deleted, other students' are kept", a
   assert.deepEqual([...backend.state.registrations], [OTHER_REGISTRATION]);
 });
 
+test("each event the student was going to counts one student less (#405)", async () => {
+  const backend = fakeBackend();
+  await call(backend);
+  assert.deepEqual(backend.state.events, {
+    "events/e1": { attendeeCount: 1 },
+    "events/e2": { attendeeCount: 0 },
+  });
+});
+
 test("a student without registrations is deleted too", async () => {
   const backend = fakeBackend({ registrations: [OTHER_REGISTRATION] });
   assert.deepEqual(await call(backend), { deleted: true });
-  assert.ok(!backend.calls.some((c) => c.startsWith("commit:events/")));
+  assert.ok(!backend.calls.some((c) => c.startsWith("getAll:")));
   assert.equal(backend.state.authUserExists, false);
 });
 
@@ -414,6 +456,11 @@ test("a failed registration deletion keeps the Auth user, and a retry finishes",
     assert.deepEqual(await call(backend), { deleted: true });
     assert.deepEqual([...backend.state.registrations], [OTHER_REGISTRATION]);
     assert.equal(backend.state.authUserExists, false);
+    // The retry lowered each counter once.
+    assert.deepEqual(backend.state.events, {
+      "events/e1": { attendeeCount: 1 },
+      "events/e2": { attendeeCount: 0 },
+    });
   }
 });
 
@@ -466,7 +513,7 @@ test("an account without a profile (never verified) can delete itself", async ()
   assert.equal(backend.state.authUserExists, false);
 });
 
-test("only the user's profiles, marker, registrations and friendships are touched", async () => {
+test("only the user's profiles, marker, registrations and friendships are touched, and events' counters", async () => {
   const backend = fakeBackend();
   await call(backend);
   const collections = backend.calls.filter((c) => c.startsWith("collection"));
@@ -477,9 +524,9 @@ test("only the user's profiles, marker, registrations and friendships are touche
     "collectionGroup:attendees",
     "collection:friendships",
   ]);
-  // Event paths appear only in the deleted registrations.
+  // Events are read and written only by the registrations' transactions, for their attendeeCount.
   const eventCalls = backend.calls.filter((c) => c.includes("events"));
-  assert.deepEqual(eventCalls, [REGISTRATION_CALLS[2]]);
+  assert.deepEqual(eventCalls, REGISTRATION_CALLS.slice(2, 8));
 });
 
 test("account deletion leaves other members and removes empty groups and own markers", async () => {
