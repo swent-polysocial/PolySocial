@@ -1,6 +1,6 @@
 // Contributors: Claude Opus 5.5 (wrote this fake for tests, #357; the shared pair check, second
-// PR; the response gates and deleteFriendship, #359); Konstantinos Perdikeas (directed, reviewed
-// and owns it).
+// PR; the response gates, deleteFriendship and failListeners, #359); Konstantinos Perdikeas
+// (directed, reviewed and owns it).
 package com.polysocial.model.friend
 
 import java.time.Instant
@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.transformWhile
 
 /**
  * In-memory [FriendRepository] for tests. It follows the [FriendRepository] contracts and checks in
@@ -61,6 +62,17 @@ class FakeFriendRepository(
 
   private val fromCache = MutableStateFlow(false)
 
+  /** Bumped by [failListeners]; a listener started before a bump fails. */
+  private val listenerFailures = MutableStateFlow(0)
+
+  /**
+   * Makes every listener running now emit [FriendshipsResult.Error] and end, like a query that
+   * fails after it delivered. Listeners started later work again, unless [readFailure] is set.
+   */
+  fun failListeners() {
+    listenerFailures.value++
+  }
+
   /**
    * The `fromCache` flag [observeFriendships] reports, to simulate being offline. Changing it
    * emits a new result, like a listener that includes metadata changes.
@@ -91,10 +103,16 @@ class FakeFriendRepository(
       emit(FriendshipsResult.Error)
       return@flow
     }
+    val started = listenerFailures.value
     emitAll(
-        combine(friendships, fromCache) { stored, cached ->
-          FriendshipsResult.Success(stored.values.filter { uid in it.uids }, cached)
-        })
+        combine(friendships, fromCache, listenerFailures) { stored, cached, failures ->
+              if (failures != started) FriendshipsResult.Error
+              else FriendshipsResult.Success(stored.values.filter { uid in it.uids }, cached)
+            }
+            .transformWhile {
+              emit(it)
+              it is FriendshipsResult.Success
+            })
   }
 
   override suspend fun sendRequest(otherUid: String): SendFriendRequestResult {
