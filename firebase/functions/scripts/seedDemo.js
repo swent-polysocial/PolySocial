@@ -1,4 +1,5 @@
 // Contributors: Claude (the demo seed script for the M2 review, #243).
+// Contributors: Claude (Opus 5.5, Anthropic) (its options shared through projectArgs.js, #405).
 "use strict";
 
 // Writes (or, with --remove, deletes) the fictional demo data from demoData.js. Usage and the
@@ -8,40 +9,15 @@
 // uses the person's own Google Cloud sign-in (gcloud auth application-default login).
 const { FieldValue, GeoPoint, Timestamp } = require("firebase-admin/firestore");
 const { buildDemoData, demoPaths } = require("./demoData");
+const { parseProjectArgs } = require("./projectArgs");
 
 /**
- * The options in [argv]: `--project <id>` (always required, never guessed), `--remove`, and on a
- * real project an explicit `--yes`. Under the emulator (FIRESTORE_EMULATOR_HOST in [env]) only a
- * `demo-` project is accepted, and outside it a `demo-` project is refused, so the two can't be
- * mixed up. Throws an Error explaining what's wrong.
+ * The options in [argv]: `--project <id>`, `--remove`, and on a real project `--yes`, as
+ * [parseProjectArgs] checks them. Throws an Error explaining what's wrong.
  */
 function parseArgs(argv, env) {
-  let project = null;
-  let remove = false;
-  let yes = false;
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg === "--project") {
-      const value = argv[i + 1];
-      if (!value || value.startsWith("--")) throw new Error("--project needs a project ID");
-      project = value;
-      i++;
-    } else if (arg === "--remove") remove = true;
-    else if (arg === "--yes") yes = true;
-    else throw new Error(`Unknown option ${arg}`);
-  }
-  if (!project) throw new Error("Pass the Firebase project explicitly with --project <id>");
-  const emulator = Boolean(env.FIRESTORE_EMULATOR_HOST);
-  if (emulator && !project.startsWith("demo-")) {
-    throw new Error("Under the emulator, use a demo- project (for example demo-polysocial)");
-  }
-  if (!emulator && project.startsWith("demo-")) {
-    throw new Error("A demo- project only exists in the emulator: start it with firebase emulators:exec");
-  }
-  if (!emulator && !yes) {
-    throw new Error(`This writes to the real project ${project}: add --yes to confirm`);
-  }
-  return { project, remove };
+  const { project, flags } = parseProjectArgs(argv, env, ["remove"]);
+  return { project, remove: flags.remove };
 }
 
 /**
