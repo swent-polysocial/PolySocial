@@ -49,7 +49,7 @@ class ChatsViewModelTest {
   private val network = FakeNetworkMonitor()
 
   /** 2030-01-02, 12:00 in Lausanne, a day after the fake groups' creation times. */
-  private val clock = Clock.fixed(Instant.parse("2030-01-02T11:00:00Z"), ZoneId.of("Europe/Zurich"))
+  private val clock = SettableClock(Instant.parse("2030-01-02T11:00:00Z"))
 
   init {
     events.seed(
@@ -267,6 +267,38 @@ class ChatsViewModelTest {
         ChatEvent.Known("Balélec after-party", EventCategory.PARTY),
         viewModel.rows().single().event,
     )
+  }
+
+  @Test
+  fun atMidnight_todaysTimeTurnsIntoYesterday() {
+    // 23:00 in Lausanne; the message was sent at 22:58.
+    clock.now = Instant.parse("2030-01-02T22:00:00Z")
+    val party = groups.seedGroup("party", listOf(ME))
+    messages.seedMessage(
+        "party",
+        party.id,
+        "m1",
+        ME,
+        "Good night",
+        Instant.parse("2030-01-02T21:58:00Z"),
+    )
+    val viewModel = viewModel()
+    runPending()
+    assertEquals(ChatTime.Today(LocalTime.of(22, 58)), viewModel.rows().single().latest?.time)
+
+    clock.now = Instant.parse("2030-01-02T23:00:01Z")
+    mainDispatcherRule.dispatcher.scheduler.advanceTimeBy(60 * 60 * 1000L + 1)
+
+    assertEquals(ChatTime.Yesterday, viewModel.rows().single().latest?.time)
+  }
+
+  /** A clock tests move by hand, in Lausanne. */
+  private class SettableClock(var now: Instant) : Clock() {
+    override fun getZone(): ZoneId = ZoneId.of("Europe/Zurich")
+
+    override fun withZone(zone: ZoneId): Clock = this
+
+    override fun instant(): Instant = now
   }
 
   private companion object {

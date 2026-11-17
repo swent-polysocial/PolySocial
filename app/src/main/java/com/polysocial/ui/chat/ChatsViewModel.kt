@@ -17,6 +17,7 @@ import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.PublicProfilesResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
+import java.time.Duration as JavaDuration
 import java.time.Instant
 import javax.inject.Inject
 import kotlin.time.Duration
@@ -109,7 +110,8 @@ sealed interface Sender {
  * The list shows as soon as the chats answer; titles and names fill in as their own reads answer.
  * If the chats don't answer within [LOAD_TIMEOUT], or can't be read, it shows the error state, and
  * [retry] reads them again. A name that can't be read leaves its member unnamed; an event that
- * can't be read gives the row "Group chat". Times are taken when each list is built, from [clock].
+ * can't be read gives the row "Group chat". Times are taken from [clock] when each list is built,
+ * and again at midnight, so "23:58" turns into "Yesterday".
  */
 @HiltViewModel
 class ChatsViewModel
@@ -159,6 +161,13 @@ constructor(
       launch {
         delay(LOAD_TIMEOUT)
         if (latest == null) _state.value = ChatsUiState.Error
+      }
+      // At midnight "23:58" becomes "Yesterday", as the group chat's days turn (#444 review).
+      launch {
+        while (true) {
+          delay(untilMidnight())
+          show()
+        }
       }
       chats.observeMyChats().collect { result ->
         when (result) {
@@ -222,6 +231,13 @@ constructor(
         PublicProfilesResult.UnexpectedError -> requested.removeAll(uids.toSet())
       }
     }
+  }
+
+  /** The time left until the next midnight in [clock]'s zone, at least 1 ms. */
+  private fun untilMidnight(): Long {
+    val now = clock.instant()
+    val midnight = now.atZone(clock.zone).toLocalDate().plusDays(1).atStartOfDay(clock.zone)
+    return JavaDuration.between(now, midnight.toInstant()).toMillis().coerceAtLeast(1)
   }
 
   private fun show() {
