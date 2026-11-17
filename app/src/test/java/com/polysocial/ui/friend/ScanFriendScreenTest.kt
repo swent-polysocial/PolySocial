@@ -1,5 +1,6 @@
-// Contributors: Claude Opus 5.5 (wrote these tests, #359); Konstantinos Perdikeas (directed,
-// reviewed and owns them).
+// Contributors: Claude Opus 5.5 (wrote these tests, #359, and the review fixes' tests);
+// Konstantinos
+// Perdikeas (directed, reviewed and owns them).
 package com.polysocial.ui.friend
 
 import androidx.activity.ComponentActivity
@@ -19,6 +20,7 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.resources.C
@@ -110,6 +112,29 @@ class ScanFriendScreenTest {
     state = ScanFriendUiState.Scanning
     compose.waitForIdle()
     assertEquals(true, scanner.scanning)
+  }
+
+  @Test
+  @Config(qualifiers = "w640dp-h360dp-land")
+  fun aShortWindow_keepsTheTorchOnScreen_andScrollsTheRest() {
+    // In landscape the frame and its text no longer fit above the torch: they scroll, and the
+    // torch stays at the bottom where it can be tapped.
+    show(ScanFriendUiState.Scanning)
+
+    compose.onNodeWithTag(C.Tag.scan_friend_torch).assertIsDisplayed().performClick()
+    compose.waitForIdle()
+    assertEquals(true, scanner.torchOn)
+    compose.onNodeWithText("Fit their PolySocial friend code inside the frame.").performScrollTo()
+    compose.onNodeWithText("Fit their PolySocial friend code inside the frame.").assertIsDisplayed()
+  }
+
+  @Test
+  @Config(qualifiers = "w640dp-h360dp-land")
+  fun aShortWindow_keepsAProblemsButtonsOnScreen() {
+    show(ScanFriendUiState.Problem(ScanProblem.INVALID_CODE))
+
+    compose.onNodeWithTag(C.Tag.scan_friend_scan_again).assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.scan_friend_back_to_my_code).assertIsDisplayed()
   }
 
   @Test

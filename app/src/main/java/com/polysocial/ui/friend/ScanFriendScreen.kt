@@ -182,40 +182,46 @@ private fun CameraView(
       horizontalAlignment = Alignment.CenterHorizontally,
   ) {
     ScanHeader(R.string.scan_friend_title, onClose, dark = true)
-    Spacer(Modifier.height(128.dp))
-    Box(Modifier.size(240.dp), contentAlignment = Alignment.Center) {
-      if (granted) {
-        scanner.Camera(
-            scanning = state == ScanFriendUiState.Scanning,
-            torchOn = torchOn,
-            onCode = onCode,
-            modifier =
-                Modifier.fillMaxSize()
-                    .clip(RoundedCornerShape(24.dp))
-                    .testTag(C.Tag.scan_friend_camera),
-        )
-      } else {
-        Box(Modifier.fillMaxSize().background(CameraSurface, RoundedCornerShape(24.dp)))
+    // Scrolls in a short window (landscape), so the torch below always stays on screen.
+    Column(
+        Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+      Spacer(Modifier.height(128.dp))
+      Box(Modifier.size(240.dp), contentAlignment = Alignment.Center) {
+        if (granted) {
+          scanner.Camera(
+              scanning = state == ScanFriendUiState.Scanning,
+              torchOn = torchOn,
+              onCode = onCode,
+              modifier =
+                  Modifier.fillMaxSize()
+                      .clip(RoundedCornerShape(24.dp))
+                      .testTag(C.Tag.scan_friend_camera),
+          )
+        } else {
+          Box(Modifier.fillMaxSize().background(CameraSurface, RoundedCornerShape(24.dp)))
+        }
+        ViewfinderCorners()
+        if (state == ScanFriendUiState.Loading) LoadingOverlay()
       }
-      ViewfinderCorners()
-      if (state == ScanFriendUiState.Loading) LoadingOverlay()
+      Spacer(Modifier.height(27.dp))
+      Text(
+          stringResource(R.string.scan_friend_heading),
+          color = Bg,
+          style = privacyTextStyle(20, 25.2f, FontWeight.ExtraBold),
+          modifier = Modifier.semantics { heading() },
+      )
+      Spacer(Modifier.height(12.dp))
+      Text(
+          stringResource(R.string.scan_friend_hint),
+          color = CameraHint,
+          textAlign = TextAlign.Center,
+          style = privacyTextStyle(14, 21f),
+          modifier = Modifier.padding(horizontal = 30.dp),
+      )
     }
-    Spacer(Modifier.height(27.dp))
-    Text(
-        stringResource(R.string.scan_friend_heading),
-        color = Bg,
-        style = privacyTextStyle(20, 25.2f, FontWeight.ExtraBold),
-        modifier = Modifier.semantics { heading() },
-    )
-    Spacer(Modifier.height(12.dp))
-    Text(
-        stringResource(R.string.scan_friend_hint),
-        color = CameraHint,
-        textAlign = TextAlign.Center,
-        style = privacyTextStyle(14, 21f),
-        modifier = Modifier.padding(horizontal = 30.dp),
-    )
-    Spacer(Modifier.weight(1f))
+    Spacer(Modifier.height(16.dp))
     TorchButton(torchOn) { torchOn = !torchOn }
     Spacer(Modifier.height(31.dp))
   }
