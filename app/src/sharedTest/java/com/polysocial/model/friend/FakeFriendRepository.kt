@@ -22,7 +22,9 @@ import kotlinx.coroutines.flow.flow
  * valid UID can be sent a request.
  *
  * @property currentUid the signed-in student, or null when nobody is signed in.
- * @property now the server time the fake stores as `createdAt` and `acceptedAt`.
+ * @property now the server time the next write stores as `createdAt` or `acceptedAt`. Each such
+ *   write then moves it one millisecond on, so a request sent again after a cancel gets a new
+ *   `createdAt`, as it would on the server.
  */
 class FakeFriendRepository(
     var currentUid: String? = "test-student",
@@ -88,6 +90,9 @@ class FakeFriendRepository(
   override suspend fun remove(shown: Friendship): FriendshipActionResult =
       synchronized(lock) { removeNow(shown) }
 
+  /** The server time for this write; the next one gets a millisecond later. */
+  private fun serverTime(): Instant = now.also { now = it.plusMillis(1) }
+
   private fun send(otherUid: String): SendFriendRequestResult {
     val uid = currentUid ?: return SendFriendRequestResult.UnexpectedError
     val id = friendshipId(uid, otherUid) ?: return SendFriendRequestResult.UnexpectedError
@@ -101,7 +106,7 @@ class FakeFriendRepository(
             uids = listOf(uid, otherUid).sorted(),
             requestedBy = uid,
             status = FriendshipStatus.PENDING,
-            createdAt = now,
+            createdAt = serverTime(),
             acceptedAt = null,
         ))
     return SendFriendRequestResult.Sent
@@ -119,7 +124,7 @@ class FakeFriendRepository(
     if (stored.requestedBy == uid || stored.status != FriendshipStatus.PENDING) {
       return FriendshipActionResult.UnexpectedError
     }
-    seedFriendship(stored.copy(status = FriendshipStatus.ACCEPTED, acceptedAt = now))
+    seedFriendship(stored.copy(status = FriendshipStatus.ACCEPTED, acceptedAt = serverTime()))
     return FriendshipActionResult.Done
   }
 
