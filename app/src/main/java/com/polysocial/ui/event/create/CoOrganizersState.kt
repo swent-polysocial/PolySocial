@@ -1,5 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (Edit event's organizers and the "Add a co-organizer"
-// sheet, #370).
+// sheet, #370; a co-organizer can add themselves back, #418 review).
 package com.polysocial.ui.event.create
 
 import com.polysocial.model.event.Event
@@ -94,15 +94,16 @@ internal fun organizerEntries(
     }
 
 /**
- * The students the sheet offers: those going ([attendees]) who aren't [organizers] or [me], with a
- * public profile, by name. A student without one can't be told apart, so they aren't offered.
+ * The students the sheet offers: those going ([attendees]) who aren't [organizers], with a public
+ * profile, by name. A student without one can't be told apart, so they aren't offered. The
+ * signed-in user is an organizer, so they are offered only after removing themselves in the form,
+ * which lets them undo it (#418 review).
  */
 internal fun addableStudents(
     attendees: List<String>,
     organizers: List<String>,
-    me: String?,
     profiles: Map<String, PublicProfile>,
 ): List<PublicProfile> =
-    (attendees - organizers.toSet() - setOfNotNull(me))
+    (attendees - organizers.toSet())
         .mapNotNull(profiles::get)
         .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER, PublicProfile::displayName))

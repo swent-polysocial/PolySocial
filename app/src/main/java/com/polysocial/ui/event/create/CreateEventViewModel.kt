@@ -298,16 +298,15 @@ constructor(
           AttendeesResult.NetworkError,
           AttendeesResult.UnexpectedError -> return AddCoOrganizerSheet.Failed
         }
-    val me = auth.currentUser()?.uid
     val organizers = _uiState.value.coOrganizers?.organizers.orEmpty().map { it.uid }
-    val candidates = attendees - organizers.toSet() - setOfNotNull(me)
+    val candidates = attendees - organizers.toSet()
     if (candidates.isEmpty()) return AddCoOrganizerSheet.NobodyGoing
     when (val result = publicProfiles.getPublicProfiles(candidates)) {
       is PublicProfilesResult.Found -> knownProfiles = knownProfiles + result.profiles
       PublicProfilesResult.NetworkError,
       PublicProfilesResult.UnexpectedError -> return AddCoOrganizerSheet.Failed
     }
-    val students = addableStudents(candidates, organizers, me, knownProfiles)
+    val students = addableStudents(candidates, organizers, knownProfiles)
     return if (students.isEmpty()) AddCoOrganizerSheet.NobodyGoing
     else AddCoOrganizerSheet.Students(students)
   }

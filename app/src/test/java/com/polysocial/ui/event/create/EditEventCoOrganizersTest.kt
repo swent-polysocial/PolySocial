@@ -1,4 +1,5 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #370).
+// Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #370, and the undo of a
+// self-removal, #418 review).
 package com.polysocial.ui.event.create
 
 import androidx.lifecycle.SavedStateHandle
@@ -299,6 +300,24 @@ class EditEventCoOrganizersTest {
 
     assertEquals(listOf("creator"), events.events.single().organizerIds)
     assertEquals(CreateEventStatus.Saved, viewModel.uiState.value.status)
+  }
+
+  @Test
+  fun aCoOrganizerWhoRemovedThemselves_canAddThemselvesBack_keepingTheirOtherEdits() {
+    val viewModel = opened(me = "lea")
+    viewModel.onTitleChange("Exam review")
+    viewModel.onRemoveOrganizer("lea")
+
+    viewModel.onOpenAddCoOrganizer()
+    runPending()
+    assertEquals(AddCoOrganizerSheet.Students(listOf(arnav, lea, tom)), viewModel.block().sheet)
+    viewModel.onAddCoOrganizer("lea")
+    viewModel.onSubmit()
+    runPending()
+
+    assertEquals(OrganizerChanges.NONE, events.organizerRequests.single())
+    assertEquals(stored.organizerIds, events.events.single().organizerIds)
+    assertEquals("Exam review", events.events.single().title)
   }
 
   @Test
