@@ -5,6 +5,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (co-organizer tests, written test-first, #370).
 const { after, before, beforeEach, test } = require("node:test");
 // Contributors: OpenAI Codex (deleted-token membership creation/join regression, #241).
+// Contributors: Claude Opus 5.5 (friend requests involving an association, written test-first from the #416 review); Konstantinos Perdikeas (directed, reviewed and owns it).
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
 const { appInterests, appProfileOptions } = require("../appProfileOptions");
@@ -3611,6 +3612,32 @@ test("an association can't send a friend request", async () => {
       friendRequest("epflClub", "u1"),
     ),
   );
+});
+
+test("a request to an account that is now an association's is denied, even with a public profile left", async () => {
+  await seedFriendStudents();
+  // u4 still has a public profile, but its users/{uid} is now an association's (#416 review).
+  await seedStudentWithPublicProfile("u4");
+  await storeUserAsAdmin("u4", { uid: "u4", accountType: "association" });
+
+  await assertFails(setDoc(friendshipRef(studentDb("u1"), "u1~u4"), friendRequest("u1", "u4")));
+  await assertSucceeds(setDoc(friendshipRef(studentDb("u1"), "u1~u2"), friendRequest("u1", "u2")));
+});
+
+test("an EPFL account can't send a request in the batch that makes it an association", async () => {
+  await seedFriendStudents();
+  // A new @epfl.ch account without a profile counts as a student until its profile exists.
+  const db = firestoreAs("club@epfl.ch", true, "aNewClub");
+  const batch = writeBatch(db);
+  batch.set(doc(db, "users/aNewClub"), { uid: "aNewClub", accountType: "association" });
+  batch.set(friendshipRef(db, "aNewClub~u1"), friendRequest("aNewClub", "u1"));
+
+  await assertFails(batch.commit());
+  if ((await storedFriendship("aNewClub~u1")) !== null) throw new Error("The request was stored");
+  // Each write alone is allowed: the association profile, and a request before any profile.
+  await assertSucceeds(setDoc(doc(db, "users/aNewClub"), { uid: "aNewClub", accountType: "association" }));
+  const other = firestoreAs("other@epfl.ch", true, "aNewStudent");
+  await assertSucceeds(setDoc(friendshipRef(other, "aNewStudent~u1"), friendRequest("aNewStudent", "u1")));
 });
 
 test("an unverified or signed-out account can't send a friend request", async () => {
