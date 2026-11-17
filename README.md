@@ -1,4 +1,5 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (JDK 21 in the prerequisites, #456 review). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (the attendee recount and the capacity deploy order, #405). -->
 <!-- Contributors: OpenAI Codex (group membership account-deletion cleanup and deploy order, #241). -->
 <!-- Contributors: OpenAI Codex (manual association verification guide and PR #245 review revisions, #135). -->
 <!-- Contributors: OpenAI Codex (association onboarding integration notes, #125). -->
@@ -213,7 +214,7 @@ For friendships (#357), deploy **`deleteAccount` first, then the rules**. Once t
 
 Server code lives in `firebase/functions` (plain JavaScript, Node.js 22). It has three functions:
 
-- the callable **`deleteAccount`** (region `europe-west6`): it deletes the signed-in user's private profile `users/{uid}` and public profile `publicProfiles/{uid}` together, with an empty `deletedAccounts/{uid}` marker that stops the user's still-valid ID token from recreating them or registering for an event, then their registrations for events and messages' sender account links and group memberships, then their Firebase Auth user, and returns `{ deleted: true }` only once all are gone. It refuses a sign-in older than 5 minutes (`failed-precondition`, details `recent-login-required`) and association accounts (`failed-precondition`, details `association`: they ask the PolySocial team through the privacy contact). Each step can be retried safely. Events the user created are kept. The Admin SDK bypasses the Security Rules, so the function itself checks who may delete what.
+- the callable **`deleteAccount`** (region `europe-west6`): it deletes the signed-in user's private profile `users/{uid}` and public profile `publicProfiles/{uid}` together, with an empty `deletedAccounts/{uid}` marker that stops the user's still-valid ID token from recreating them or registering for an event, then their registrations for events (each lowering its event's `attendeeCount` by one, #405) and messages' sender account links and group memberships, then their Firebase Auth user, and returns `{ deleted: true }` only once all are gone. It refuses a sign-in older than 5 minutes (`failed-precondition`, details `recent-login-required`) and association accounts (`failed-precondition`, details `association`: they ask the PolySocial team through the privacy contact). Each step can be retried safely. Events the user created are kept. The Admin SDK bypasses the Security Rules, so the function itself checks who may delete what.
 - the Firestore trigger **`deleteEventRegistrations`** (region `europe-west1`, because Eventarc delivers the `eur3` database's events only to `europe-west1` or `europe-west4`): when `events/{eventId}` is deleted, it deletes the event's registrations `events/{eventId}/attendees/*`. It stops as soon as the event exists again, since the registrations then belong to the new event: the demo seed script deletes its events and writes them back under the same IDs. It is deployed with retries, so a failed run is retried until it succeeds.
 - the scheduled **`deleteUnverifiedAccounts`** (region `europe-west6`, every day at 03:00 `Europe/Zurich`, #226): it deletes the email/password sign-ups (Firebase Auth accounts with an email and the `password` provider) whose email is still unverified more than **7 days** after they were created, so a mistyped or abandoned sign-up stops reserving an address its real owner may need. The period is one constant, `UNVERIFIED_ACCOUNT_RETENTION_DAYS` in `firebase/functions/deleteUnverifiedAccountsHandler.js`; the app's privacy notice states it too, under "Deleting your account" (`privacy_notice_deletion_body`), so change both together. It lists every Auth user in pages and never touches a verified account, an unverified one that is 7 days old or younger, or an account of another kind: the Admin SDK reports an account without any email as unverified too, so one without an email or without the `password` provider (Google, phone, anonymous, made by hand without a password, or of a provider added later) is kept, as is one whose email, providers or creation time can't be read. The accounts found are deleted in batches of 500: first any `users/{uid}` document stored for them, then the accounts (`deleteUsers`). An account that never verified can't have written anything (every Security Rule requires a verified email), so there is nothing else to clean up and no `deletedAccounts/{uid}` marker. "Unverified" is about the email only: an association whose email is verified but whose review is pending is never deleted. A failure doesn't stop the run: a page that can't be listed ends the listing, since the next page's token comes with the page, but the accounts found on the pages before it are still deleted, and a batch whose documents or accounts can't be deleted is counted and the next batch is tried. The run logs only counts and error codes, never an email or a UID, and ends as failed so that Cloud Scheduler and the function's logs show it. It isn't retried: the next day's run deletes what is left.
 
@@ -224,7 +225,7 @@ npm ci --prefix firebase/functions
 node --test firebase/functions/deleteAccountHandler.test.js firebase/functions/registrations.test.js firebase/functions/deleteUnverifiedAccountsHandler.test.js
 ```
 
-The emulator tests call `deleteAccount` over HTTP, like the app, delete events to run the trigger, and run the cleanup of unverified accounts on accounts imported with their creation time, with the Auth, Firestore and Functions emulators (one file at a time, since each clears the emulators). The Functions emulator runs a scheduled function only through the Pub/Sub emulator, so it lists `deleteUnverifiedAccounts` as ignored: the tests call the cleanup's handler directly, and one calls the exported function in the test's own process, as Cloud Scheduler's HTTP request reaches it.
+The emulator tests call `deleteAccount` over HTTP, like the app, delete events to run the trigger, check the `attendeeCount` that deleting registrations lowers (#405), and run the cleanup of unverified accounts on accounts imported with their creation time, with the Auth, Firestore and Functions emulators (one file at a time, since each clears the emulators). The Functions emulator runs a scheduled function only through the Pub/Sub emulator, so it lists `deleteUnverifiedAccounts` as ignored: the tests call the cleanup's handler directly, and one calls the exported function in the test's own process, as Cloud Scheduler's HTTP request reaches it.
 
 ```bash
 firebase emulators:exec --project demo-polysocial --only firestore,auth,functions "node --test --test-concurrency=1 firebase/functions/*.emulator.test.js"
@@ -275,6 +276,34 @@ firebase emulators:exec --project demo-polysocial --only firestore "node firebas
 ```
 
 The `scripts` folder is excluded from the Cloud Functions deploy in `firebase.json`.
+
+## Recounting attendees
+
+Every event keeps `attendeeCount`, the number of students going, which the app's register and cancel transactions change by one and the Security Rules check against the event's `capacity` (#372, built by #373). **Nobody edits `attendeeCount` by hand** (Firebase console included): a wrong value lets an event take too many students or refuses them too early, and a value stored as a decimal (`3.0`, which the console or a non-JavaScript client can write) locks the event until it is recounted. Code that writes registrations with the Admin SDK keeps it itself: `deleteAccount` lowers it with each registration it deletes, and the demo seed writes it (#405).
+
+`firebase/functions/scripts/recountAttendees.js` sets every event's `attendeeCount` to the number of its registrations, each event in one transaction, and always writes it as a whole number. It prints how many events it recounted and how many had another count (it never prints an event or a student), and running it again changes nothing. Run it yourself (never from CI or an agent), with your own Google sign-in, like the demo seed:
+
+```bash
+npm ci --prefix firebase/functions                     # once
+gcloud auth application-default login                  # once; needs the Google Cloud CLI
+node firebase/functions/scripts/recountAttendees.js --project <project-id> --yes
+```
+
+It refuses to run without an explicit `--project` and `--yes`, and refuses a `demo-` project outside the emulator. **When to run it:** once, right after #373's Security Rules are deployed, so the events that already had registrations start from their real count, and again whenever a counter looks wrong.
+
+**Deploy order of the capacity work** (Architecture Diagram, decision 21, "Rollout"):
+
+1. After #405 is merged: deploy the functions (`deleteAccount` then lowers the counter; without a counter it lowers nothing, so this works with the current rules).
+2. Right after #373 is merged, in the same sitting: deploy its Security Rules, then run this recount once. CI publishes the new APK at the merge, and its "I'm going" is refused until the rules are deployed.
+3. Then students update the app: an app from before #373 can no longer register once its rules are deployed.
+
+Tests (CI doesn't run them; paste their output in a PR that changes the script):
+
+```bash
+node --test firebase/functions/scripts/recountAttendees.test.js
+firebase emulators:exec --project demo-polysocial --only firestore "node firebase/functions/scripts/recountAttendees.emulator.test.js"
+```
+
 
 ## Verifying an association
 
