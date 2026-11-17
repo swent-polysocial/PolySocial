@@ -134,6 +134,15 @@ class ChatsScreenTest {
   }
 
   @Test
+  fun anEventStillLoading_hasNoTitleYet_butTheRestOfTheRow() {
+    show(ChatsUiState.Chats(listOf(row("g1", event = ChatEvent.Loading)), false))
+
+    composeTestRule.onNodeWithTag(ChatsTags.row("party", "g1")).assert(hasText("Léa, Tom and you"))
+    composeTestRule.onNodeWithText("Balélec warm-up").assertDoesNotExist()
+    composeTestRule.onNodeWithText("Group chat").assertDoesNotExist()
+  }
+
+  @Test
   fun offline_showsTheBannerAboveTheChats() {
     show(ChatsUiState.Chats(listOf(row("g1")), isOffline = true))
 
