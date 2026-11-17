@@ -117,19 +117,43 @@ constructor(
    */
   private var cardFriendshipChanges = 0
 
+  /** True once the listener ended on [FriendshipsResult.Error]: it shows no change after that. */
+  private var listenerStopped = false
+
   init {
+    listen()
+  }
+
+  /**
+   * Follows the student's friendships until the listener ends on an error. A failed listener keeps
+   * the last known friendships, so Add friend still works; a response it can't explain then says it
+   * failed and calls this again (see [act]).
+   */
+  private fun listen() {
+    listenerStopped = false
     viewModelScope.launch {
       friends.observeFriendships().collect { result ->
-        // A failed listener leaves the last known friendships: Add friend still works, and a
-        // request that already exists comes back as AlreadyExists.
-        if (result is FriendshipsResult.Success) {
-          val cardUid = (state.value as? ScanFriendUiState.Card)?.profile?.uid
-          val before = cardUid?.let(::friendshipWith)
-          friendships = result.friendships
-          if (cardUid != null && friendshipWith(cardUid) != before) cardFriendshipChanges++
-          state.update { if (it is ScanFriendUiState.Card) it.copy(button = buttonFor(it)) else it }
+        when (result) {
+          is FriendshipsResult.Success -> onFriendships(result.friendships)
+          FriendshipsResult.Error -> listenerStopped = true
         }
       }
+    }
+  }
+
+  /**
+   * Shows the card's button from [latest]. When the friendship with the card's student changed, an
+   * earlier tap's error is cleared too: it was about a state that no longer holds.
+   */
+  private fun onFriendships(latest: List<Friendship>) {
+    val cardUid = (state.value as? ScanFriendUiState.Card)?.profile?.uid
+    val before = cardUid?.let(::friendshipWith)
+    friendships = latest
+    val changed = cardUid != null && friendshipWith(cardUid) != before
+    if (changed) cardFriendshipChanges++
+    state.update {
+      if (it !is ScanFriendUiState.Card) return@update it
+      it.copy(button = buttonFor(it), error = if (changed) null else it.error)
     }
   }
 
@@ -184,30 +208,48 @@ constructor(
    * Runs [call] with the card busy, then shows the button and error it returns, on the same
    * student's card only. The button it proves is kept only if the listener changed nothing
    * meanwhile: otherwise the listener's is newer (accepted or declined before the response came).
+   *
+   * A response that leaves the current state to the listener ([Outcome.fromListener]) can't be
+   * shown while the listener is stopped: it says it failed, and listening starts again, so the
+   * listener's next delivery shows the current button (or tapping again retries).
    */
   private fun act(card: ScanFriendUiState.Card, call: suspend () -> Outcome) {
     state.value = card.copy(busy = true, error = null)
     val changesAtTap = cardFriendshipChanges
     viewModelScope.launch {
       val outcome = call()
+      val unseen = outcome.fromListener && listenerStopped
       state.update { current ->
         if (current !is ScanFriendUiState.Card || current.profile.uid != card.profile.uid) {
           return@update current
         }
         val proven = outcome.button.takeIf { cardFriendshipChanges == changesAtTap }
-        current.copy(busy = false, button = proven ?: buttonFor(current), error = outcome.error)
+        current.copy(
+            busy = false,
+            button = proven ?: buttonFor(current),
+            error = if (unseen) FriendActionError.FAILED else outcome.error,
+        )
       }
+      if (unseen) listen()
     }
   }
 
-  /** A tap's result: the button it proves (null to keep the listener's) and its error. */
-  private data class Outcome(val button: FriendButton?, val error: FriendActionError? = null)
+  /**
+   * A tap's result: the button it proves (null to keep the listener's) and its error.
+   * [fromListener] when the call changed nothing and only the listener can show the current state
+   * (`AlreadyExists`, `Gone`).
+   */
+  private data class Outcome(
+      val button: FriendButton?,
+      val error: FriendActionError? = null,
+      val fromListener: Boolean = false,
+  )
 
   private fun sent(result: SendFriendRequestResult) =
       when (result) {
         // Shown at once: the listener confirms it a moment later.
         SendFriendRequestResult.Sent -> Outcome(FriendButton.SENT)
-        SendFriendRequestResult.AlreadyExists -> Outcome(null)
+        SendFriendRequestResult.AlreadyExists -> Outcome(null, fromListener = true)
         SendFriendRequestResult.NetworkError -> Outcome(null, FriendActionError.OFFLINE)
         SendFriendRequestResult.UnexpectedError -> Outcome(null, FriendActionError.FAILED)
       }
@@ -216,7 +258,7 @@ constructor(
       when (result) {
         FriendshipActionResult.Done -> Outcome(FriendButton.FRIENDS)
         // Cancelled or changed since: the listener shows what it is now.
-        FriendshipActionResult.Gone -> Outcome(null)
+        FriendshipActionResult.Gone -> Outcome(null, fromListener = true)
         FriendshipActionResult.NetworkError -> Outcome(null, FriendActionError.OFFLINE)
         FriendshipActionResult.UnexpectedError -> Outcome(null, FriendActionError.FAILED)
       }

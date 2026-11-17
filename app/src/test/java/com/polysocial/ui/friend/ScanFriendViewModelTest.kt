@@ -200,17 +200,65 @@ class ScanFriendViewModelTest {
 
   @Test
   fun addFriend_whenARequestAlreadyExists_writesNothingAndKeepsTheListenersButton() {
-    // Their request isn't on screen yet (the listener hasn't delivered it): the send is
-    // AlreadyExists, nothing is written, and the button stays what the listener last said.
+    // Their request isn't on screen yet (the listener runs but hasn't delivered it): the send is
+    // AlreadyExists, nothing is written, and the listener shows the request a moment later.
+    val vm = viewModel()
+    vm.onCodeScanned(code("lea"))
+    friends.sendFailure = SendFriendRequestResult.AlreadyExists
+
+    vm.onButton()
+
+    assertEquals(card(FriendButton.ADD), vm.uiState.value)
+    assertEquals(null, friends.friendship("alice~lea"))
+  }
+
+  @Test
+  fun aStoppedListener_anExistingRequest_saysItFailedAndListensAgain() {
+    // The listener ended on an error, so it will never show Léa's request: tapping says it failed
+    // instead of doing nothing, and starts listening again, which shows the request.
+    friends.readFailure = true
+    val vm = viewModel()
+    vm.onCodeScanned(code("lea"))
+    friends.seedFriendship(request(from = "lea"))
+    friends.readFailure = false
+
+    vm.onButton()
+
+    assertEquals(card(FriendButton.ACCEPT), vm.uiState.value)
+    assertEquals("lea", friends.friendship("alice~lea")?.requestedBy)
+  }
+
+  @Test
+  fun aStoppedListener_thatFailsAgain_keepsSayingItFailed_untilATapWorks() {
     friends.readFailure = true
     val vm = viewModel()
     vm.onCodeScanned(code("lea"))
     friends.seedFriendship(request(from = "lea"))
 
     vm.onButton()
+    assertEquals(card(FriendButton.ADD, FriendActionError.FAILED), vm.uiState.value)
 
+    friends.readFailure = false
+    vm.onButton()
+    assertEquals(card(FriendButton.ACCEPT), vm.uiState.value)
+  }
+
+  @Test
+  fun aStoppedListener_aRequestCancelledBeforeAccept_saysItFailedAndListensAgain() {
+    friends.seedFriendship(request(from = "lea"))
+    val vm = viewModel()
+    vm.onCodeScanned(code("lea"))
+    // The listener delivered Léa's request, then stopped; she cancels it, unseen.
+    friends.failListeners()
+    friends.deleteFriendship("alice~lea")
+    friends.readFailure = true
+
+    vm.onButton()
+    assertEquals(card(FriendButton.ACCEPT, FriendActionError.FAILED), vm.uiState.value)
+
+    friends.readFailure = false
+    vm.onButton()
     assertEquals(card(FriendButton.ADD), vm.uiState.value)
-    assertEquals("lea", friends.friendship("alice~lea")?.requestedBy)
   }
 
   @Test
