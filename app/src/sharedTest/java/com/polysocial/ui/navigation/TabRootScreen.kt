@@ -1,4 +1,6 @@
 // Contributors: Claude (tab root screen switching between loading and placeholder, #43).
+// Contributors: Claude (Opus 5.5, Anthropic) (moved to the shared tests: no tab root uses it since
+// the Chats tab, #364).
 package com.polysocial.ui.navigation
 
 import androidx.compose.runtime.Composable
