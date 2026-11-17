@@ -37,6 +37,7 @@ class ScanFriendViewfinderTest {
             scanning: Boolean,
             torchOn: Boolean,
             onCode: (String) -> Unit,
+            onError: () -> Unit,
             modifier: Modifier,
         ) = Box(modifier)
       }
@@ -49,6 +50,7 @@ class ScanFriendViewfinderTest {
             ScanFriendUiState.Scanning,
             CameraAccess.GRANTED,
             scanner,
+            {},
             {},
             {},
             {},

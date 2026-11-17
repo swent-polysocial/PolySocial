@@ -1,5 +1,5 @@
-// Contributors: Claude Opus 5.5 (wrote these tests, #359); Konstantinos Perdikeas (directed,
-// reviewed and owns them).
+// Contributors: Claude Opus 5.5 (wrote these tests, #359, and the camera failure test);
+// Konstantinos Perdikeas (directed, reviewed and owns them).
 package com.polysocial.ui.friend
 
 import android.Manifest
@@ -12,10 +12,13 @@ import androidx.activity.result.contract.ActivityResultContract
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.core.app.ActivityOptionsCompat
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -45,6 +48,10 @@ class ScanFriendRouteTest {
 
   private val requested = mutableListOf<Any?>()
 
+  /** How many cameras were started, and whether the next one fails to start. */
+  private var starts = 0
+  private var failNextStart = false
+
   private val scanner =
       object : QrScanner {
         @Composable
@@ -52,8 +59,18 @@ class ScanFriendRouteTest {
             scanning: Boolean,
             torchOn: Boolean,
             onCode: (String) -> Unit,
+            onError: () -> Unit,
             modifier: Modifier,
-        ) = Box(modifier)
+        ) {
+          LaunchedEffect(Unit) {
+            starts++
+            if (failNextStart) {
+              failNextStart = false
+              onError()
+            }
+          }
+          Box(modifier)
+        }
       }
 
   /** A permission dialog that answers [granted] at once. */
@@ -115,5 +132,22 @@ class ScanFriendRouteTest {
 
     compose.onNodeWithTag(C.Tag.scan_friend_camera).assertIsDisplayed()
     assertEquals(emptyList<Any?>(), requested)
+  }
+
+  @Test
+  fun aCameraThatFailsToStart_saysSo_andTryAgainStartsANewOne() {
+    shadowOf(ApplicationProvider.getApplicationContext<Application>())
+        .grantPermissions(Manifest.permission.CAMERA)
+    failNextStart = true
+
+    show(answering(granted = true))
+    compose.onNodeWithText("Camera couldn’t start").assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.scan_friend_camera).assertDoesNotExist()
+
+    compose.onNodeWithTag(C.Tag.scan_friend_scan_again).performClick()
+
+    compose.onNodeWithTag(C.Tag.scan_friend_camera).assertIsDisplayed()
+    compose.onNodeWithText("Camera couldn’t start").assertDoesNotExist()
+    assertEquals(2, starts)
   }
 }

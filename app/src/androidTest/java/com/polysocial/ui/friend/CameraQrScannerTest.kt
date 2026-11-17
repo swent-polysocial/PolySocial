@@ -42,6 +42,7 @@ class CameraQrScannerTest {
             scanning = scanning,
             torchOn = torchOn,
             onCode = {},
+            onError = {},
             modifier = Modifier.size(240.dp).testTag(TAG),
         )
       }

@@ -135,6 +135,28 @@ class ScanFriendViewModelTest {
   }
 
   @Test
+  fun aCameraThatFailsToStart_isAProblem_untilTryAgain() {
+    val vm = viewModel()
+
+    vm.onCameraError()
+    assertEquals(ScanFriendUiState.Problem(ScanProblem.CAMERA_FAILED), vm.uiState.value)
+
+    vm.onScanAgain()
+    assertEquals(ScanFriendUiState.Scanning, vm.uiState.value)
+  }
+
+  @Test
+  fun aCameraError_onceTheScanMovedOn_changesNothing() {
+    // The camera stops once a code is read; a late error from it must not hide the card.
+    val vm = viewModel()
+    vm.onCodeScanned(code("lea"))
+
+    vm.onCameraError()
+
+    assertEquals(card(FriendButton.ADD), vm.uiState.value)
+  }
+
+  @Test
   fun theButtonFollowsTheLiveFriendship() {
     val vm = viewModel()
     vm.onCodeScanned(code("lea"))

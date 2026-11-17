@@ -1,5 +1,5 @@
-// Contributors: Claude Opus 5.5 (drafted the camera QR scanner behind an interface, #359);
-// Konstantinos Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude Opus 5.5 (drafted the camera QR scanner behind an interface, #359, and its
+// start-up failures); Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.friend
 
 import androidx.annotation.OptIn
@@ -17,12 +17,16 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.google.common.util.concurrent.ListenableFuture
 import com.google.mlkit.vision.barcode.BarcodeScanner
 import com.google.mlkit.vision.barcode.BarcodeScannerOptions
 import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 
 /**
@@ -34,10 +38,17 @@ interface QrScanner {
   /**
    * Shows the camera and calls [onCode] on the main thread with each QR code's raw text, while
    * [scanning]; with the torch on while [torchOn]. The camera runs only while this is shown and the
-   * screen is in the foreground.
+   * screen is in the foreground. [onError] is called on the main thread when the camera can't start
+   * (none on the device, or another app holds it); showing this again tries again.
    */
   @Composable
-  fun Camera(scanning: Boolean, torchOn: Boolean, onCode: (String) -> Unit, modifier: Modifier)
+  fun Camera(
+      scanning: Boolean,
+      torchOn: Boolean,
+      onCode: (String) -> Unit,
+      onError: () -> Unit,
+      modifier: Modifier,
+  )
 }
 
 /**
@@ -51,12 +62,14 @@ object CameraQrScanner : QrScanner {
       scanning: Boolean,
       torchOn: Boolean,
       onCode: (String) -> Unit,
+      onError: () -> Unit,
       modifier: Modifier,
   ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val isScanning by rememberUpdatedState(scanning)
     val report by rememberUpdatedState(onCode)
+    val reportError by rememberUpdatedState(onError)
     val controller = remember { LifecycleCameraController(context) }
     DisposableEffect(lifecycleOwner) {
       val reader =
@@ -68,7 +81,10 @@ object CameraQrScanner : QrScanner {
         readFrame(frame, reader, isScanning) { code -> report(code) }
       }
       controller.imageAnalysisBackpressureStrategy = ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST
-      controller.bindToLifecycle(lifecycleOwner)
+      reportFailure(controller.initializationFuture, ContextCompat.getMainExecutor(context)) {
+        reportError()
+      }
+      bindOrReport({ controller.bindToLifecycle(lifecycleOwner) }) { reportError() }
       onDispose {
         controller.unbind()
         controller.clearImageAnalysisAnalyzer()
@@ -82,6 +98,41 @@ object CameraQrScanner : QrScanner {
         modifier = modifier,
     )
   }
+}
+
+/**
+ * Runs [bind], CameraX's binding of the camera to the screen, and calls [onError] when it throws
+ * one of its documented failures: no camera matching the selector, or a camera that can't be used
+ * now. Anything else is a bug and still crashes.
+ */
+internal fun bindOrReport(bind: () -> Unit, onError: () -> Unit) {
+  try {
+    bind()
+  } catch (_: IllegalStateException) {
+    onError()
+  } catch (_: IllegalArgumentException) {
+    onError()
+  }
+}
+
+/**
+ * Calls [onError] on [executor] if CameraX's start-up [future] fails (for example no camera
+ * service, or the camera already in use). A future cancelled because the screen closed is no
+ * failure.
+ */
+internal fun reportFailure(future: ListenableFuture<*>, executor: Executor, onError: () -> Unit) {
+  future.addListener(
+      {
+        if (!future.isCancelled) {
+          try {
+            future.get()
+          } catch (_: ExecutionException) {
+            onError()
+          }
+        }
+      },
+      executor,
+  )
 }
 
 /**

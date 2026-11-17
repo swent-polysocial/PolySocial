@@ -1,5 +1,5 @@
 // Contributors: Claude Opus 5.5 (drafted Scan a friend's code from Figma section 15 and its #359
-// states); Konstantinos Perdikeas (directed, reviewed and owns it).
+// states, and the review fixes); Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.friend
 
 import android.Manifest
@@ -132,6 +132,7 @@ fun ScanFriendRoute(
       onScanAgain = viewModel::onScanAgain,
       onButton = viewModel::onButton,
       onOpenSettings = { context.openAppSettings() },
+      onCameraError = viewModel::onCameraError,
   )
 }
 
@@ -154,12 +155,21 @@ fun ScanFriendScreen(
     onScanAgain: () -> Unit,
     onButton: () -> Unit,
     onOpenSettings: () -> Unit,
+    onCameraError: () -> Unit,
 ) {
   Box(Modifier.fillMaxSize().testTag(C.Tag.scan_friend_screen)) {
     when {
       state is ScanFriendUiState.Card -> FriendCard(state, onClose, onButton)
       access == CameraAccess.DENIED -> CameraOff(onClose, onOpenSettings)
-      else -> CameraView(state, access == CameraAccess.GRANTED, scanner, onClose, onCode)
+      else ->
+          CameraView(
+              state,
+              access == CameraAccess.GRANTED,
+              scanner,
+              onClose,
+              onCode,
+              onCameraError,
+          )
     }
     if (state is ScanFriendUiState.Problem && access != CameraAccess.DENIED) {
       ProblemSheet(state.problem, onScanAgain, onClose)
@@ -175,8 +185,11 @@ private fun CameraView(
     scanner: QrScanner,
     onClose: () -> Unit,
     onCode: (String) -> Unit,
+    onCameraError: () -> Unit,
 ) {
   var torchOn by rememberSaveable { mutableStateOf(false) }
+  // A camera that failed to start is left out, so Try again starts a new one.
+  val cameraFailed = state == ScanFriendUiState.Problem(ScanProblem.CAMERA_FAILED)
   Column(
       Modifier.fillMaxSize().background(Ink),
       horizontalAlignment = Alignment.CenterHorizontally,
@@ -189,11 +202,12 @@ private fun CameraView(
     ) {
       Spacer(Modifier.height(128.dp))
       Box(Modifier.size(240.dp), contentAlignment = Alignment.Center) {
-        if (granted) {
+        if (granted && !cameraFailed) {
           scanner.Camera(
               scanning = state == ScanFriendUiState.Scanning,
               torchOn = torchOn,
               onCode = onCode,
+              onError = onCameraError,
               modifier =
                   Modifier.fillMaxSize()
                       .clip(RoundedCornerShape(24.dp))
@@ -438,7 +452,8 @@ private fun BoxScope.ProblemSheet(
       Body(stringResource(problem.body), TextAlign.Start)
     }
     Actions(
-        R.string.scan_friend_scan_again,
+        if (problem == ScanProblem.CAMERA_FAILED) R.string.scan_friend_try_again
+        else R.string.scan_friend_scan_again,
         C.Tag.scan_friend_scan_again,
         onScanAgain,
         onBack,
@@ -454,6 +469,7 @@ private val ScanProblem.title: Int
         ScanProblem.OWN_CODE -> R.string.scan_friend_own_title
         ScanProblem.NOT_FOUND -> R.string.scan_friend_not_found_title
         ScanProblem.COULD_NOT_LOAD -> R.string.scan_friend_not_loaded_title
+        ScanProblem.CAMERA_FAILED -> R.string.scan_friend_camera_failed_title
       }
 
 private val ScanProblem.body: Int
@@ -463,6 +479,7 @@ private val ScanProblem.body: Int
         ScanProblem.OWN_CODE -> R.string.scan_friend_own_body
         ScanProblem.NOT_FOUND -> R.string.scan_friend_not_found_body
         ScanProblem.COULD_NOT_LOAD -> R.string.scan_friend_not_loaded_body
+        ScanProblem.CAMERA_FAILED -> R.string.scan_friend_camera_failed_body
       }
 
 /** Figma's two stacked buttons: a dark primary one, then "Back to my code" outlined. */
