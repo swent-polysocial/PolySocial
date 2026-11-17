@@ -253,6 +253,9 @@
     <string name="scan_friend_not_found_body">This code doesn’t belong to a student on PolySocial anymore.</string>
     <string name="scan_friend_not_loaded_title">Couldn’t load this profile</string>
     <string name="scan_friend_not_loaded_body">Check your connection, then scan the code again.</string>
+    <string name="scan_friend_camera_failed_title">Camera couldn’t start</string>
+    <string name="scan_friend_camera_failed_body">Another app may be using the camera. Close it, then try again.</string>
+    <string name="scan_friend_try_again">Try again</string>
     <string name="scan_friend_profile_title">Public profile</string>
     <string name="scan_friend_interests">Interests</string>
     <string name="scan_friend_add">Add friend</string>

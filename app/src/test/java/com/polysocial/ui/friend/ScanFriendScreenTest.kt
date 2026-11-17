@@ -36,17 +36,20 @@ private class FakeQrScanner : QrScanner {
   var scanning: Boolean? = null
   var torchOn: Boolean? = null
   var onCode: ((String) -> Unit)? = null
+  var onError: (() -> Unit)? = null
 
   @Composable
   override fun Camera(
       scanning: Boolean,
       torchOn: Boolean,
       onCode: (String) -> Unit,
+      onError: () -> Unit,
       modifier: Modifier,
   ) {
     this.scanning = scanning
     this.torchOn = torchOn
     this.onCode = onCode
+    this.onError = onError
     // The screen tags the camera it shows (C.Tag.scan_friend_camera).
     Box(modifier)
   }
@@ -73,6 +76,7 @@ class ScanFriendScreenTest {
             onScanAgain = { calls += "again" },
             onButton = { calls += "button" },
             onOpenSettings = { calls += "settings" },
+            onCameraError = { calls += "camera error" },
         )
       }
     }
@@ -100,7 +104,9 @@ class ScanFriendScreenTest {
   fun theCameraStopsScanningWhileAProfileLoadsOrAProblemShows() {
     var state by mutableStateOf<ScanFriendUiState>(ScanFriendUiState.Loading)
     compose.setContent {
-      PolySocialTheme { ScanFriendScreen(state, CameraAccess.GRANTED, scanner, {}, {}, {}, {}, {}) }
+      PolySocialTheme {
+        ScanFriendScreen(state, CameraAccess.GRANTED, scanner, {}, {}, {}, {}, {}, {})
+      }
     }
     compose.onNodeWithTag(C.Tag.scan_friend_loading).assertIsDisplayed()
     assertEquals(false, scanner.scanning)
@@ -135,6 +141,31 @@ class ScanFriendScreenTest {
 
     compose.onNodeWithTag(C.Tag.scan_friend_scan_again).assertIsDisplayed()
     compose.onNodeWithTag(C.Tag.scan_friend_back_to_my_code).assertIsDisplayed()
+  }
+
+  @Test
+  fun aCameraError_isPassedOn() {
+    show(ScanFriendUiState.Scanning)
+
+    scanner.onError!!.invoke()
+
+    assertEquals(listOf("camera error"), calls)
+  }
+
+  @Test
+  fun aCameraThatFailedToStart_saysSo_withoutTheCamera_andTriesAgain() {
+    show(ScanFriendUiState.Problem(ScanProblem.CAMERA_FAILED))
+
+    compose.onNodeWithText("Camera couldn’t start").assertIsDisplayed()
+    compose
+        .onNodeWithText("Another app may be using the camera. Close it, then try again.")
+        .assertIsDisplayed()
+    // Left out, so Try again starts a new camera rather than the failed one.
+    compose.onNodeWithTag(C.Tag.scan_friend_camera).assertDoesNotExist()
+    compose.onNodeWithTag(C.Tag.scan_friend_scan_again).assertTextEquals("Try again").performClick()
+    compose.onNodeWithTag(C.Tag.scan_friend_back_to_my_code).performClick()
+
+    assertEquals(listOf("again", "close"), calls)
   }
 
   @Test
@@ -182,6 +213,7 @@ class ScanFriendScreenTest {
             ScanProblem.OWN_CODE to "That’s your own code",
             ScanProblem.NOT_FOUND to "Can’t find this student",
             ScanProblem.COULD_NOT_LOAD to "Couldn’t load this profile",
+            ScanProblem.CAMERA_FAILED to "Camera couldn’t start",
         )
     var state by mutableStateOf<ScanFriendUiState>(ScanFriendUiState.Scanning)
     compose.setContent {
@@ -193,6 +225,7 @@ class ScanFriendScreenTest {
             { calls += "close" },
             {},
             { calls += "again" },
+            {},
             {},
             {},
         )
@@ -255,7 +288,9 @@ class ScanFriendScreenTest {
         )
     var state by mutableStateOf<ScanFriendUiState>(card(FriendButton.ADD))
     compose.setContent {
-      PolySocialTheme { ScanFriendScreen(state, CameraAccess.GRANTED, scanner, {}, {}, {}, {}, {}) }
+      PolySocialTheme {
+        ScanFriendScreen(state, CameraAccess.GRANTED, scanner, {}, {}, {}, {}, {}, {})
+      }
     }
     for ((button, label, note) in expected) {
       state = card(button)
@@ -274,7 +309,9 @@ class ScanFriendScreenTest {
     var state by
         mutableStateOf<ScanFriendUiState>(card(FriendButton.ADD, error = FriendActionError.OFFLINE))
     compose.setContent {
-      PolySocialTheme { ScanFriendScreen(state, CameraAccess.GRANTED, scanner, {}, {}, {}, {}, {}) }
+      PolySocialTheme {
+        ScanFriendScreen(state, CameraAccess.GRANTED, scanner, {}, {}, {}, {}, {}, {})
+      }
     }
     compose
         .onNodeWithTag(C.Tag.scan_friend_note)
@@ -300,7 +337,17 @@ class ScanFriendScreenTest {
     var state by mutableStateOf<ScanFriendUiState>(ScanFriendUiState.Scanning)
     compose.setContent {
       PolySocialTheme {
-        ScanFriendScreen(state, CameraAccess.GRANTED, scanner, { calls += "close" }, {}, {}, {}, {})
+        ScanFriendScreen(
+            state,
+            CameraAccess.GRANTED,
+            scanner,
+            { calls += "close" },
+            {},
+            {},
+            {},
+            {},
+            {},
+        )
       }
     }
     compose.onNodeWithTag(C.Tag.scan_friend_close).performClick()

@@ -52,6 +52,9 @@ enum class ScanProblem {
 
   /** The profile couldn't be read: offline and not cached, or another failure. */
   COULD_NOT_LOAD,
+
+  /** The camera couldn't start: none on the device, or another app holds it. */
+  CAMERA_FAILED,
 }
 
 /** Why the card's button didn't work. Nothing was written or queued in either case. */
@@ -180,6 +183,16 @@ constructor(
             PublicProfileResult.UnexpectedError ->
                 ScanFriendUiState.Problem(ScanProblem.COULD_NOT_LOAD)
           }
+    }
+  }
+
+  /**
+   * The camera couldn't start. Shown only while scanning: once a code was read the camera is no
+   * longer needed, so a late error must not hide the profile or its sheet.
+   */
+  fun onCameraError() {
+    if (state.value == ScanFriendUiState.Scanning) {
+      state.value = ScanFriendUiState.Problem(ScanProblem.CAMERA_FAILED)
     }
   }
 
