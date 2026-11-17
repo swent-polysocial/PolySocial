@@ -1,6 +1,8 @@
 // Contributors: OpenAI Codex (group roster and leave UI, #234); PolySocial Figma #227
 // (design and group_open_place.png).
 // Contributors: OpenAI Codex (connected the roster chat row, #238).
+// Contributors: Claude Opus 5.5 (another member's row opens their public profile, #368);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.group
 
 import androidx.compose.foundation.BorderStroke
@@ -75,6 +77,8 @@ internal object YourGroupTags {
   const val RETRY = "your_group_retry"
   const val BACK_TO_EVENT = "your_group_back_to_event"
   const val CHAT = "your_group_chat"
+
+  fun member(uid: String) = "your_group_member_$uid"
 }
 
 @Composable
@@ -82,6 +86,7 @@ internal fun YourGroupRoute(
     onBack: () -> Unit,
     onLeft: () -> Unit,
     onOpenChat: (String) -> Unit = {},
+    onOpenMember: (String) -> Unit = {},
     viewModel: YourGroupViewModel = hiltViewModel(),
 ) {
   val state by viewModel.state.collectAsStateWithLifecycle()
@@ -98,7 +103,8 @@ internal fun YourGroupRoute(
       state.event?.let { GroupEventCard(it, YourGroupTags.EVENT) }
       when (val roster = state.roster) {
         GroupRoster.Loading -> LoadingRoster()
-        is GroupRoster.Members -> MemberRoster(roster, state.offline) { onOpenChat(roster.groupId) }
+        is GroupRoster.Members ->
+            MemberRoster(roster, state.offline, onOpenMember) { onOpenChat(roster.groupId) }
         is GroupRoster.Unavailable -> UnavailableRoster(roster)
       }
     }
@@ -131,7 +137,12 @@ internal fun YourGroupRoute(
 }
 
 @Composable
-private fun MemberRoster(roster: GroupRoster.Members, offline: Boolean, onOpenChat: () -> Unit) {
+private fun MemberRoster(
+    roster: GroupRoster.Members,
+    offline: Boolean,
+    onOpenMember: (String) -> Unit,
+    onOpenChat: () -> Unit,
+) {
   if (offline) {
     OfflineBanner(
         stringResource(R.string.group_saved_offline),
@@ -146,7 +157,12 @@ private fun MemberRoster(roster: GroupRoster.Members, offline: Boolean, onOpenCh
       modifier = Modifier.semantics { heading() },
   )
   roster.people.forEachIndexed { index, member ->
-    MemberRow(member, member.uid == roster.myUid, OTHERS_COLORS[index % OTHERS_COLORS.size])
+    MemberRow(
+        member,
+        member.uid == roster.myUid,
+        OTHERS_COLORS[index % OTHERS_COLORS.size],
+        onOpenMember,
+    )
   }
   val freePlaces = roster.capacity - roster.people.size
   if (freePlaces > 0) {
@@ -187,7 +203,12 @@ private fun MemberRoster(roster: GroupRoster.Members, offline: Boolean, onOpenCh
 }
 
 @Composable
-private fun MemberRow(member: GroupMember, isMe: Boolean, colorIndex: Int) {
+private fun MemberRow(
+    member: GroupMember,
+    isMe: Boolean,
+    colorIndex: Int,
+    onOpenMember: (String) -> Unit,
+) {
   val profile = member.profile
   val name = if (isMe) stringResource(R.string.your_group_you) else profile?.displayName
   val details =
@@ -199,10 +220,22 @@ private fun MemberRow(member: GroupMember, isMe: Boolean, colorIndex: Int) {
             .filter(String::isNotBlank)
             .joinToString(" · ")
       }
+  // Another member with a public profile opens it (#368); your own row and a missing profile don't.
+  val opens = !isMe && profile != null
   Row(
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(12.dp),
-      modifier = Modifier.heightIn(min = 40.dp),
+      modifier =
+          Modifier.fillMaxWidth()
+              .heightIn(min = 40.dp)
+              .then(
+                  if (opens) {
+                    Modifier.clip(RoundedCornerShape(12.dp)).clickable(role = Role.Button) {
+                      onOpenMember(member.uid)
+                    }
+                  } else Modifier
+              )
+              .testTag(YourGroupTags.member(member.uid)),
   ) {
     if (name == null) {
       Box(

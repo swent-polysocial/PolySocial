@@ -10,6 +10,8 @@
 // Contributors: Claude Opus 5.5 (the My friend code route, #339); Konstantinos Perdikeas
 // (directed, reviewed and owns it).
 // Contributors: OpenAI Codex (added the chat route beneath the roster, #238).
+// Contributors: Claude Opus 5.5 (a student's public profile route, #368); Konstantinos Perdikeas
+// (directed, reviewed and owns it).
 package com.polysocial.ui.navigation
 
 import android.net.Uri
@@ -19,6 +21,7 @@ import com.polysocial.R
 import com.polysocial.resources.C
 import com.polysocial.ui.chat.GroupChatViewModel
 import com.polysocial.ui.event.detail.EventDetailViewModel
+import com.polysocial.ui.profile.StudentProfileViewModel
 
 /**
  * The four top-level tabs of the app, in the order they appear in the bottom navigation bar.
@@ -157,6 +160,15 @@ enum class Tab(
 
   fun groupChatRoute(eventId: String, groupId: String): String =
       "${yourGroupRoute(eventId)}/chat/${Uri.encode(groupId)}"
+
+  /**
+   * A student's public profile (#368), by UID, in this tab's graph so Back returns to the screen
+   * that opened it: a group member's row now, a friend's row once the friends list exists.
+   */
+  val studentProfileRoute: String
+    get() = "$route/student/{${StudentProfileViewModel.UID_ARG}}"
+
+  fun studentProfileRoute(uid: String): String = "$route/student/${Uri.encode(uid)}"
 }
 
 /** Labels, icons and tags for a tab in the current account's shell. */
