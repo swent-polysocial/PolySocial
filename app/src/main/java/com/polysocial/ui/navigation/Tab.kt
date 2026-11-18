@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (6.2 Sol, high; Friends destination, #360).
 // Contributors: Claude Opus 5.5 (the Scan a friend's code route, #359); Konstantinos Perdikeas
 // (directed, reviewed and owns it).
 // Contributors: OpenAI Codex (account-specific tab presentation, #140).
@@ -106,6 +107,10 @@ enum class Tab(
   val privacyNoticeRoute: String
     get() = "$route/privacy/notice"
 
+  /** The student's friends and requests from Profile (#360). */
+  val friendsRoute: String
+    get() = "$route/friends"
+
   /** The student's own friend QR code in the Profile graph (#339). */
   val friendCodeRoute: String
     get() = "$route/friend-code"
@@ -163,7 +168,7 @@ enum class Tab(
 
   /**
    * A student's public profile (#368), by UID, in this tab's graph so Back returns to the screen
-   * that opened it: a group member's row now, a friend's row once the friends list exists.
+   * that opened it: a group member's row or a friend's row.
    */
   val studentProfileRoute: String
     get() = "$route/student/{${StudentProfileViewModel.UID_ARG}}"
