@@ -184,11 +184,12 @@ class FriendsScreenTest {
 
   @Test
   fun writingDisablesOtherActionsAndOfflineHidesThem() {
-    val content = FriendsContent.ListContent(listOf(incoming, sent), false)
+    val content = FriendsContent.ListContent(listOf(friend, incoming, sent), false)
     render(FriendsUiState(content, writing = true))
     tag(FriendsTags.accept("emma")).assertIsNotEnabled()
     tag(FriendsTags.decline("emma")).assertIsNotEnabled()
     tag(FriendsTags.cancel("tom")).assertIsNotEnabled()
+    tag(FriendsTags.options("lea")).assertIsNotEnabled()
 
     compose.runOnIdle { state.value = FriendsUiState(content.copy(offline = true)) }
     tag(FriendsTags.row("emma")).assertIsDisplayed()

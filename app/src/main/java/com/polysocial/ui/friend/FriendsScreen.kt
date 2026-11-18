@@ -310,21 +310,27 @@ private fun RequestActions(
           R.string.friends_decline,
           FriendsTags.decline(row.uid),
           enabled,
-      ) {
-        onAnswer(row, FriendListAction.DECLINE)
-      }
+          row,
+          FriendListAction.DECLINE,
+          onAnswer,
+      )
       RequestButton(
           R.string.friends_accept,
           FriendsTags.accept(row.uid),
           enabled,
-          filled = true,
-      ) {
-        onAnswer(row, FriendListAction.ACCEPT)
-      }
+          row,
+          FriendListAction.ACCEPT,
+          onAnswer,
+      )
     } else {
-      RequestButton(R.string.friends_cancel, FriendsTags.cancel(row.uid), enabled) {
-        onAnswer(row, FriendListAction.CANCEL)
-      }
+      RequestButton(
+          R.string.friends_cancel,
+          FriendsTags.cancel(row.uid),
+          enabled,
+          row,
+          FriendListAction.CANCEL,
+          onAnswer,
+      )
     }
   }
 }
@@ -334,9 +340,11 @@ private fun RequestButton(
     @StringRes text: Int,
     tag: String,
     enabled: Boolean,
-    filled: Boolean = false,
-    onClick: () -> Unit,
+    row: FriendRow,
+    action: FriendListAction,
+    onAnswer: (FriendRow, FriendListAction) -> Unit,
 ) {
+  val filled = action == FriendListAction.ACCEPT
   val background =
       when {
         !enabled -> Disabled
@@ -355,7 +363,7 @@ private fun RequestButton(
           .clip(CircleShape)
           .background(background)
           .then(if (filled) Modifier else Modifier.border(1.dp, Border, CircleShape))
-          .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+          .clickable(enabled = enabled, role = Role.Button) { onAnswer(row, action) }
           .testTag(tag)
           .padding(horizontal = 10.dp, vertical = 8.dp),
       contentAlignment = Alignment.Center,
