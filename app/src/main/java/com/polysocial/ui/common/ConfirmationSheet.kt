@@ -57,7 +57,7 @@ import kotlinx.coroutines.launch
  * Figma's confirmation bottom sheet (Cancel event, Delete account): white, expanded at once, with
  * 28 dp top corners over a 45% Ink scrim, and the handle at the start of [content] instead of
  * Material's. [content] is laid out in a scrolling column, 20 dp from the sides and 12 dp apart.
- * [centerHandle] centers the handle for sheets with centered content.
+ * [centerHandle] uses the centered 32 dp handle from the Friends design.
  *
  * While [locked] (a call runs), Back, a swipe and the scrim neither close it nor call
  * [onDismissRequest]; otherwise they call it. [content] gets `dismiss`, which slides the sheet away
