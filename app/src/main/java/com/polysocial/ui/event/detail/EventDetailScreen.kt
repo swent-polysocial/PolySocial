@@ -17,6 +17,8 @@
 // organizer's name, shown to the students going and the organizers, #281).
 // Contributors: Claude (Opus 5.5, Anthropic) (the organizer's row holds its place while the name is
 // read, at any font size, #281's review).
+// Contributors: Claude (Opus 5.5, Anthropic) (every organizer's name in the row, each in bold, from
+// the Figma "Organizers on the detail" frames, #371).
 package com.polysocial.ui.event.detail
 
 import android.Manifest
@@ -87,6 +89,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -95,6 +98,7 @@ import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextMotion
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
@@ -481,9 +485,9 @@ private fun EventContent(
           if (event.isAssociationEvent) {
             Spacer(Modifier.height(6.dp))
             AssociationRow(state.associationName)
-          } else if (state.organizerName != null || state.isReadingOrganizerName) {
+          } else if (state.organizerNames.isNotEmpty() || state.isReadingOrganizerNames) {
             Spacer(Modifier.height(6.dp))
-            OrganizerRow(state.organizerName)
+            OrganizerRow(state.organizerNames)
           }
           Spacer(Modifier.height(14.dp))
           InfoRow(
@@ -957,7 +961,10 @@ private fun AssociationRow(name: String?) {
     return
   }
   Row(verticalAlignment = Alignment.CenterVertically) {
-    ByName(name, Modifier.weight(1f, fill = false).testTag(EventDetailTags.ASSOCIATION_NAME))
+    ByNames(
+        listOf(name),
+        Modifier.weight(1f, fill = false).testTag(EventDetailTags.ASSOCIATION_NAME),
+    )
     Spacer(Modifier.width(9.dp))
     VerifiedPill(
         stringResource(R.string.event_verified_badge),
@@ -968,18 +975,19 @@ private fun AssociationRow(name: String?) {
 
 /**
  * Who organizes a student's event (#281), for the students going and its organizers: the
- * association row's "by <name>" without the Verified badge, in the same place. Figma has no frame
- * for it, so it keeps that row's height (the badge's), which leaves the rows below where they are
- * on an association's event. While the [name] is read (null), the row also holds the height of one
- * line of "by <name>", which grows with the font size, without drawing or saying it, so the rows
- * below don't move when the name arrives. A name that wraps onto a second line still moves them
- * once, by that line.
+ * association row's "by <name>" without the Verified badge, in the same place, with every
+ * organizer's name (#371, Figma "Organizers on the detail"). It keeps that row's height (the
+ * badge's), which leaves the rows below where they are on an association's event. While the [names]
+ * are read (empty), the row also holds the height of one line of "by <name>", which grows with the
+ * font size, without drawing or saying it, so the rows below don't move when the names arrive.
+ * Names that wrap onto a second line (often with five organizers) still move them once, by that
+ * line.
  */
 @Composable
-private fun OrganizerRow(name: String?) {
+private fun OrganizerRow(names: List<String>) {
   Box(Modifier.heightIn(min = VERIFIED_PILL_HEIGHT), contentAlignment = Alignment.CenterStart) {
-    if (name != null) {
-      ByName(name, Modifier.testTag(EventDetailTags.ORGANIZER_NAME))
+    if (names.isNotEmpty()) {
+      ByNames(names, Modifier.testTag(EventDetailTags.ORGANIZER_NAME))
     } else {
       // One line of "by <name>", invisible and silent, for its height (like Create Event's, #134).
       Text(
@@ -992,28 +1000,50 @@ private fun OrganizerRow(name: String?) {
   }
 }
 
-/** "by <name>" under the title, as Figma sets it: [name] in bold Ink after a regular "by". */
+/**
+ * "by <names>" under the title, as Figma sets it: each of [names] in bold Ink, in a regular "by A,
+ * B and C". The sentence is built from the string resources with a marker for each name
+ * ([nameMarker]), so each name is set in bold wherever a translation puts it, and a name that reads
+ * like "by" or "and" isn't mistaken for them.
+ */
 @Composable
-private fun ByName(name: String, modifier: Modifier = Modifier) {
-  val by = stringResource(R.string.event_detail_by, name)
-  val nameStart = by.lastIndexOf(name)
+private fun ByNames(names: List<String>, modifier: Modifier = Modifier) {
+  val markers = names.indices.map(::nameMarker)
+  var joined = markers.first()
+  for (marker in markers.drop(1).dropLast(1)) {
+    joined = stringResource(R.string.event_detail_names_list, joined, marker)
+  }
+  if (markers.size > 1) {
+    joined = stringResource(R.string.event_detail_names_and, joined, markers.last())
+  }
   Text(
-      text =
-          buildAnnotatedString {
-            append(by)
-            if (nameStart >= 0) {
-              addStyle(
-                  SpanStyle(fontWeight = FontWeight.Bold, color = Ink),
-                  nameStart,
-                  nameStart + name.length,
-              )
-            }
-          },
+      text = withBoldNames(stringResource(R.string.event_detail_by, joined), names),
       style = BY_STYLE,
       color = Ink2,
       modifier = modifier,
   )
 }
+
+/**
+ * The marker [ByNames] puts where the name at [index] goes: a character of Unicode's private use
+ * area.
+ */
+internal fun nameMarker(index: Int): String = (FIRST_NAME_MARKER + index).toString()
+
+private const val FIRST_NAME_MARKER = '\uE000'
+
+/**
+ * [text] with each name marker ([nameMarker]) replaced by its name from [names], in bold Ink. Other
+ * characters, and a marker without a name, are kept as they are.
+ */
+internal fun withBoldNames(text: String, names: List<String>): AnnotatedString =
+    buildAnnotatedString {
+      for (char in text) {
+        val name = names.getOrNull(char - FIRST_NAME_MARKER)
+        if (name == null) append(char)
+        else withStyle(SpanStyle(fontWeight = FontWeight.Bold, color = Ink)) { append(name) }
+      }
+    }
 
 /** Figma's "by <name>": 13 sp on a 16.4 sp line, glyphs placed like Figma's (see CONTEXT.md). */
 private val BY_STYLE =

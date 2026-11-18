@@ -6,6 +6,9 @@
 // no read again once back online unless the last one failed for the network; whether a read runs,
 // and from the first state of a student going; a return while the name was still read, #281's
 // review).
+// Contributors: Claude (Opus 5.5, Anthropic) (a co-organizer's own name after the creator's, and
+// the
+// names as a list, #371).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -48,7 +51,6 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -135,7 +137,7 @@ class EventDetailOrganizerNameTest {
     val vm = viewModel(profileRepository)
     val screen = show(vm)
     runCurrent()
-    assertEquals(nameBeforeLeaving, vm.loaded.organizerName)
+    assertEquals(listOfNotNull(nameBeforeLeaving), vm.loaded.organizerNames)
 
     screen.cancel()
     advanceTimeBy(EventDetailViewModel.STOP_TIMEOUT_MILLIS + 1_000)
@@ -199,7 +201,7 @@ class EventDetailOrganizerNameTest {
 
     val vm = open()
 
-    assertEquals(CREATOR_NAME, vm.loaded.organizerName)
+    assertEquals(listOf(CREATOR_NAME), vm.loaded.organizerNames)
     assertEquals(listOf(CREATOR), readUids)
   }
 
@@ -208,7 +210,7 @@ class EventDetailOrganizerNameTest {
     val vm = open()
 
     assertEquals(Attendance.NOT_GOING, vm.loaded.attendance)
-    assertNull(vm.loaded.organizerName)
+    assertEquals(emptyList<String>(), vm.loaded.organizerNames)
     assertTrue(profiles.requestedUids.isEmpty())
   }
 
@@ -219,17 +221,17 @@ class EventDetailOrganizerNameTest {
     val vm = open()
 
     assertTrue(vm.loaded.isOrganizer)
-    assertEquals(CREATOR_NAME, vm.loaded.organizerName)
+    assertEquals(listOf(CREATOR_NAME), vm.loaded.organizerNames)
   }
 
   @Test
-  fun anOrganizerWhoDidntCreateTheEvent_getsItsCreatorsName() = runTest {
-    // What a co-organizer will see (#371): the rules already allow several organizers.
+  fun anOrganizerWhoDidntCreateTheEvent_getsEveryOrganizersName() = runTest {
+    // A co-organizer (#371) sees the creator's name, then their own.
     val vm = open(event.copy(organizerIds = listOf(CREATOR, ME)))
 
     assertTrue(vm.loaded.isOrganizer)
-    assertEquals(CREATOR_NAME, vm.loaded.organizerName)
-    assertEquals(listOf(CREATOR), readUids)
+    assertEquals(listOf(CREATOR_NAME, MY_NAME), vm.loaded.organizerNames)
+    assertEquals(listOf(CREATOR, ME), readUids)
   }
 
   @Test
@@ -239,7 +241,7 @@ class EventDetailOrganizerNameTest {
     val vm = open(associationEvent(event, CREATOR))
 
     assertEquals(CLUB_NAME, vm.loaded.associationName)
-    assertNull(vm.loaded.organizerName)
+    assertEquals(emptyList<String>(), vm.loaded.organizerNames)
     assertTrue(profiles.requestedUids.isEmpty())
   }
 
@@ -250,7 +252,7 @@ class EventDetailOrganizerNameTest {
     val vm = open(event.copy(isPrivate = true, allowedUids = listOf(CREATOR, ME)))
 
     assertEquals(Attendance.GOING, vm.loaded.attendance)
-    assertNull(vm.loaded.organizerName)
+    assertEquals(emptyList<String>(), vm.loaded.organizerNames)
     assertTrue(profiles.requestedUids.isEmpty())
   }
 
@@ -262,7 +264,7 @@ class EventDetailOrganizerNameTest {
 
     val vm = open()
 
-    assertNull(vm.loaded.organizerName)
+    assertEquals(emptyList<String>(), vm.loaded.organizerNames)
     assertEquals(event.title, vm.loaded.details.event.title)
     assertEquals(listOf(CREATOR), readUids)
   }
@@ -275,7 +277,7 @@ class EventDetailOrganizerNameTest {
 
       val vm = open()
 
-      assertNull("After $failure", vm.loaded.organizerName)
+      assertEquals("After $failure", emptyList<String>(), vm.loaded.organizerNames)
       assertEquals(event.title, vm.loaded.details.event.title)
       assertEquals(Attendance.GOING, vm.loaded.attendance)
       events.events.clear()
@@ -287,17 +289,18 @@ class EventDetailOrganizerNameTest {
     registrations.seedRegistration(EVENT, ME)
     profiles.profiles[CREATOR] = PublicProfile(CREATOR, "  ", "IN", "BA3")
 
-    assertNull(open().loaded.organizerName)
+    assertEquals(emptyList<String>(), open().loaded.organizerNames)
   }
 
   @Test
   fun anEventWithoutACreator_readsNoProfile() = runTest {
-    // A stored event without `createdBy` reads as a blank UID, which has no profile to read.
+    // A stored event without `createdBy` reads as a blank UID, which has no profile to read; so
+    // does a blank UID among its organizers (#371).
     registrations.seedRegistration(EVENT, ME)
 
-    val vm = open(event.copy(createdBy = ""))
+    val vm = open(event.copy(createdBy = "", organizerIds = listOf("")))
 
-    assertNull(vm.loaded.organizerName)
+    assertEquals(emptyList<String>(), vm.loaded.organizerNames)
     assertTrue(profiles.requestedUids.isEmpty())
   }
 
@@ -308,12 +311,12 @@ class EventDetailOrganizerNameTest {
 
     val vm = open(profileRepository = slow)
     assertEquals(event.title, vm.loaded.details.event.title)
-    assertNull(vm.loaded.organizerName)
+    assertEquals(emptyList<String>(), vm.loaded.organizerNames)
 
     slow.answer.complete(Unit)
     runCurrent()
 
-    assertEquals(CREATOR_NAME, vm.loaded.organizerName)
+    assertEquals(listOf(CREATOR_NAME), vm.loaded.organizerNames)
   }
 
   @Test
@@ -322,14 +325,14 @@ class EventDetailOrganizerNameTest {
     val slow = SlowProfiles()
 
     val vm = open(profileRepository = slow)
-    assertTrue(vm.loaded.isReadingOrganizerName)
-    assertNull(vm.loaded.organizerName)
+    assertTrue(vm.loaded.isReadingOrganizerNames)
+    assertEquals(emptyList<String>(), vm.loaded.organizerNames)
 
     slow.answer.complete(Unit)
     runCurrent()
 
-    assertFalse(vm.loaded.isReadingOrganizerName)
-    assertEquals(CREATOR_NAME, vm.loaded.organizerName)
+    assertFalse(vm.loaded.isReadingOrganizerNames)
+    assertEquals(listOf(CREATOR_NAME), vm.loaded.organizerNames)
   }
 
   @Test
@@ -338,58 +341,58 @@ class EventDetailOrganizerNameTest {
     profiles.failure = FakePublicProfileRepository.Failure.Unexpected
     val slow = SlowProfiles()
     val vm = open(profileRepository = slow)
-    assertTrue(vm.loaded.isReadingOrganizerName)
+    assertTrue(vm.loaded.isReadingOrganizerNames)
 
     slow.answer.complete(Unit)
     runCurrent()
 
-    assertFalse(vm.loaded.isReadingOrganizerName)
-    assertNull(vm.loaded.organizerName)
+    assertFalse(vm.loaded.isReadingOrganizerNames)
+    assertEquals(emptyList<String>(), vm.loaded.organizerNames)
   }
 
   @Test
   fun cancellingWhileTheNameIsRead_stopsSayingItIsRead() = runTest {
     registrations.seedRegistration(EVENT, ME)
     val vm = open(profileRepository = SlowProfiles())
-    assertTrue(vm.loaded.isReadingOrganizerName)
+    assertTrue(vm.loaded.isReadingOrganizerNames)
 
     vm.onCancelRegistration()
     runCurrent()
 
     assertEquals(Attendance.NOT_GOING, vm.loaded.attendance)
-    assertFalse(vm.loaded.isReadingOrganizerName)
+    assertFalse(vm.loaded.isReadingOrganizerNames)
   }
 
   @Test
   fun registering_showsTheName_andCancelling_removesIt_withoutReopening() = runTest {
     val vm = open()
-    assertNull(vm.loaded.organizerName)
+    assertEquals(emptyList<String>(), vm.loaded.organizerNames)
 
     vm.onImGoing()
     runCurrent()
-    assertEquals(CREATOR_NAME, vm.loaded.organizerName)
+    assertEquals(listOf(CREATOR_NAME), vm.loaded.organizerNames)
 
     vm.onCancelRegistration()
     runCurrent()
     assertEquals(Attendance.NOT_GOING, vm.loaded.attendance)
-    assertNull(vm.loaded.organizerName)
+    assertEquals(emptyList<String>(), vm.loaded.organizerNames)
 
     vm.onImGoing()
     runCurrent()
-    assertEquals(CREATOR_NAME, vm.loaded.organizerName)
+    assertEquals(listOf(CREATOR_NAME), vm.loaded.organizerNames)
   }
 
   @Test
   fun aRegistrationCancelledElsewhere_removesTheName() = runTest {
     registrations.seedRegistration(EVENT, ME)
     val vm = open()
-    assertEquals(CREATOR_NAME, vm.loaded.organizerName)
+    assertEquals(listOf(CREATOR_NAME), vm.loaded.organizerNames)
 
     // From My events, for example: the detail observes the registrations live.
     registrations.cancel(EVENT)
     runCurrent()
 
-    assertNull(vm.loaded.organizerName)
+    assertEquals(emptyList<String>(), vm.loaded.organizerNames)
   }
 
   @Test
@@ -404,7 +407,7 @@ class EventDetailOrganizerNameTest {
     runCurrent()
 
     assertEquals(Attendance.NOT_GOING, vm.loaded.attendance)
-    assertNull(vm.loaded.organizerName)
+    assertEquals(emptyList<String>(), vm.loaded.organizerNames)
   }
 
   @Test
@@ -415,7 +418,7 @@ class EventDetailOrganizerNameTest {
     profiles.failure = FakePublicProfileRepository.Failure.Offline
     val vm = open()
     assertTrue(vm.loaded.isOffline)
-    assertNull(vm.loaded.organizerName)
+    assertEquals(emptyList<String>(), vm.loaded.organizerNames)
 
     // Back online: the server confirms the same event.
     network.online = true
@@ -424,7 +427,7 @@ class EventDetailOrganizerNameTest {
     events.seed()
     runCurrent()
 
-    assertEquals(CREATOR_NAME, vm.loaded.organizerName)
+    assertEquals(listOf(CREATOR_NAME), vm.loaded.organizerNames)
   }
 
   @Test
@@ -434,7 +437,7 @@ class EventDetailOrganizerNameTest {
     events.readFromCache = true
     val slow = SlowProfiles().apply { answer.complete(Unit) }
     val vm = open(profileRepository = slow)
-    assertEquals(CREATOR_NAME, vm.loaded.organizerName)
+    assertEquals(listOf(CREATOR_NAME), vm.loaded.organizerNames)
 
     // Back online, the name already read stays, with no server read (billed) to get it again.
     slow.answer = CompletableDeferred()
@@ -445,7 +448,7 @@ class EventDetailOrganizerNameTest {
 
     assertFalse(vm.loaded.isOffline)
     assertEquals(1, slow.reads)
-    assertEquals(CREATOR_NAME, vm.loaded.organizerName)
+    assertEquals(listOf(CREATOR_NAME), vm.loaded.organizerNames)
 
     // Nor when the connection is lost again.
     network.online = false
@@ -455,7 +458,7 @@ class EventDetailOrganizerNameTest {
 
     assertTrue(vm.loaded.isOffline)
     assertEquals(1, slow.reads)
-    assertEquals(CREATOR_NAME, vm.loaded.organizerName)
+    assertEquals(listOf(CREATOR_NAME), vm.loaded.organizerNames)
   }
 
   @Test
@@ -466,7 +469,7 @@ class EventDetailOrganizerNameTest {
     events.readFromCache = true
     profiles.failure = FakePublicProfileRepository.Failure.Unexpected
     val vm = open()
-    assertNull(vm.loaded.organizerName)
+    assertEquals(emptyList<String>(), vm.loaded.organizerNames)
 
     network.online = true
     events.readFromCache = false
@@ -474,7 +477,7 @@ class EventDetailOrganizerNameTest {
     runCurrent()
 
     assertFalse(vm.loaded.isOffline)
-    assertNull(vm.loaded.organizerName)
+    assertEquals(emptyList<String>(), vm.loaded.organizerNames)
     assertEquals(listOf(CREATOR), readUids)
   }
 
@@ -484,7 +487,7 @@ class EventDetailOrganizerNameTest {
     val vm = returnToTheDetail(away = { registrations.cancel(EVENT) })
 
     assertEquals(Attendance.NOT_GOING, vm.loaded.attendance)
-    assertNull(vm.loaded.organizerName)
+    assertEquals(emptyList<String>(), vm.loaded.organizerNames)
     assertEquals(emptyList<String>(), readUids)
   }
 
@@ -500,8 +503,8 @@ class EventDetailOrganizerNameTest {
         }
 
     assertEquals(Attendance.NOT_GOING, vm.loaded.attendance)
-    assertNull(vm.loaded.organizerName)
-    assertFalse(vm.loaded.isReadingOrganizerName)
+    assertEquals(emptyList<String>(), vm.loaded.organizerNames)
+    assertFalse(vm.loaded.isReadingOrganizerNames)
     // The read stopped with the screen, and none after the return.
     assertEquals(1, slow.reads)
   }
@@ -511,7 +514,7 @@ class EventDetailOrganizerNameTest {
     val vm = returnToTheDetail()
 
     assertEquals(Attendance.GOING, vm.loaded.attendance)
-    assertEquals(CREATOR_NAME, vm.loaded.organizerName)
+    assertEquals(listOf(CREATOR_NAME), vm.loaded.organizerNames)
     assertEquals(emptyList<String>(), readUids)
   }
 
@@ -528,7 +531,7 @@ class EventDetailOrganizerNameTest {
     assertTrue(going.isNotEmpty())
     assertEquals(
         emptyList<EventDetailUiState.Loaded>(),
-        going.filter { it.organizerName == null && !it.isReadingOrganizerName },
+        going.filter { it.organizerNames.isEmpty() && !it.isReadingOrganizerNames },
     )
   }
 
@@ -542,7 +545,7 @@ class EventDetailOrganizerNameTest {
     runCurrent()
 
     assertEquals("Study session, moved", vm.loaded.details.event.title)
-    assertEquals(CREATOR_NAME, vm.loaded.organizerName)
+    assertEquals(listOf(CREATOR_NAME), vm.loaded.organizerNames)
     assertEquals(listOf(CREATOR), readUids)
   }
 
@@ -554,7 +557,7 @@ class EventDetailOrganizerNameTest {
     val vm = open()
 
     assertFalse(vm.loaded.isOrganizer)
-    assertNull(vm.loaded.organizerName)
+    assertEquals(emptyList<String>(), vm.loaded.organizerNames)
     assertTrue(profiles.requestedUids.isEmpty())
   }
 
@@ -567,7 +570,7 @@ class EventDetailOrganizerNameTest {
     val vm = open()
 
     assertEquals(Attendance.NOT_GOING, vm.loaded.attendance)
-    assertNull(vm.loaded.organizerName)
+    assertEquals(emptyList<String>(), vm.loaded.organizerNames)
     assertTrue(profiles.requestedUids.isEmpty())
   }
 
@@ -578,13 +581,13 @@ class EventDetailOrganizerNameTest {
 
     val vm = open(registrationRepository = slow)
     assertEquals(Attendance.UNKNOWN, vm.loaded.attendance)
-    assertNull(vm.loaded.organizerName)
+    assertEquals(emptyList<String>(), vm.loaded.organizerNames)
     assertTrue(profiles.requestedUids.isEmpty())
 
     slow.answer.complete(Unit)
     runCurrent()
 
-    assertEquals(CREATOR_NAME, vm.loaded.organizerName)
+    assertEquals(listOf(CREATOR_NAME), vm.loaded.organizerNames)
     assertEquals(listOf(CREATOR), readUids)
   }
 
@@ -600,16 +603,16 @@ class EventDetailOrganizerNameTest {
     vm.onImGoing()
     runCurrent()
     assertEquals(2, queued.reads.size)
-    assertNull(vm.loaded.organizerName)
+    assertEquals(emptyList<String>(), vm.loaded.organizerNames)
 
     queued.reads[1].complete(named(NEW_NAME))
     runCurrent()
-    assertEquals(NEW_NAME, vm.loaded.organizerName)
+    assertEquals(listOf(NEW_NAME), vm.loaded.organizerNames)
 
     // The first read's late answer, an older copy of the profile, changes nothing.
     queued.reads[0].complete(named(CREATOR_NAME))
     runCurrent()
-    assertEquals(NEW_NAME, vm.loaded.organizerName)
+    assertEquals(listOf(NEW_NAME), vm.loaded.organizerNames)
   }
 
   @Test
@@ -629,12 +632,12 @@ class EventDetailOrganizerNameTest {
     assertEquals(2, queued.reads.size)
     queued.reads[1].complete(named(NEW_NAME))
     runCurrent()
-    assertEquals(NEW_NAME, vm.loaded.organizerName)
+    assertEquals(listOf(NEW_NAME), vm.loaded.organizerNames)
 
     // The offline read answers last, with the copy it had: it was replaced, so it changes nothing.
     queued.reads[0].complete(named(CREATOR_NAME))
     runCurrent()
-    assertEquals(NEW_NAME, vm.loaded.organizerName)
+    assertEquals(listOf(NEW_NAME), vm.loaded.organizerNames)
   }
 
   @Test
@@ -652,7 +655,7 @@ class EventDetailOrganizerNameTest {
     slow.answer.complete(Unit)
     runCurrent()
 
-    assertNull(vm.loaded.organizerName)
+    assertEquals(emptyList<String>(), vm.loaded.organizerNames)
     assertEquals(1, slow.reads)
   }
 
@@ -684,13 +687,15 @@ class EventDetailOrganizerNameTest {
     // Then registered and cancelled elsewhere: the detail observes the registrations live.
     registrations.seedRegistration(EVENT, ME)
     runCurrent()
-    assertEquals(CREATOR_NAME, vm.loaded.organizerName)
+    assertEquals(listOf(CREATOR_NAME), vm.loaded.organizerNames)
     registrations.cancel(EVENT)
     runCurrent()
 
     // Not even the state between the cancellation and the name's removal.
     val withAName =
-        shown.filterIsInstance<EventDetailUiState.Loaded>().filter { it.organizerName != null }
+        shown.filterIsInstance<EventDetailUiState.Loaded>().filter {
+          it.organizerNames.isNotEmpty()
+        }
     assertTrue(withAName.isNotEmpty())
     assertTrue(withAName.all { it.attendance == Attendance.GOING })
   }
