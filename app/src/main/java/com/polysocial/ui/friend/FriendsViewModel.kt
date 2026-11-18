@@ -262,11 +262,8 @@ constructor(
     state.value = state.value.copy(writing = true)
     viewModelScope.launch {
       val result =
-          when {
-            !network.isOnline() -> FriendshipActionResult.NetworkError
-            change.action == FriendListAction.ACCEPT -> friends.accept(shown)
-            else -> friends.remove(shown)
-          }
+          if (change.action == FriendListAction.ACCEPT) friends.accept(shown)
+          else friends.remove(shown)
       val notice =
           when (result) {
             FriendshipActionResult.Done -> null
