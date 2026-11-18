@@ -1,5 +1,5 @@
 // Contributors: Claude (the demo seed script's options, #243); Claude (Opus 5.5, Anthropic) (shared
-// with the attendee recount, #405).
+// with the attendee recount, #405; only its own flags accepted, after review).
 "use strict";
 
 /**
@@ -22,8 +22,10 @@ function parseProjectArgs(argv, env, flags = []) {
       project = value;
       i++;
     } else if (arg === "--yes") yes = true;
-    else if (arg.startsWith("--") && arg.slice(2) in passed) passed[arg.slice(2)] = true;
-    else throw new Error(`Unknown option ${arg}`);
+    // Object.hasOwn, not `in`: `in` also finds inherited names such as toString.
+    else if (arg.startsWith("--") && Object.hasOwn(passed, arg.slice(2))) {
+      passed[arg.slice(2)] = true;
+    } else throw new Error(`Unknown option ${arg}`);
   }
   if (!project) throw new Error("Pass the Firebase project explicitly with --project <id>");
   const emulator = Boolean(env.FIRESTORE_EMULATOR_HOST);

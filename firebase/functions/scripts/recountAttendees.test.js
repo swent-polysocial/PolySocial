@@ -1,4 +1,5 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (the attendee recount's unit tests, #405).
+// Contributors: Claude (Opus 5.5, Anthropic) (the attendee recount's unit tests, #405; inherited
+// option names refused, after review).
 "use strict";
 
 // Unit tests with fakes, no emulator: node --test firebase/functions/scripts/recountAttendees.test.js
@@ -142,4 +143,13 @@ test("the recount has no other option, and keeps demo- projects to the emulator"
     project: "demo-polysocial",
     flags: {},
   });
+});
+
+test("an option named like an object's built-in property is refused, not taken for a flag", () => {
+  for (const option of ["--toString", "--constructor", "--__proto__", "--hasOwnProperty"]) {
+    assert.throws(
+      () => parseProjectArgs(["--project", "demo-polysocial", option], EMULATOR),
+      new RegExp(`Unknown option ${option}`),
+    );
+  }
 });
