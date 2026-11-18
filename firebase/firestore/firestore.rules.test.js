@@ -3,10 +3,11 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (a non-EPFL association in allowedUids can't run My events' private query, #320).
 // Contributors: Claude (Fable 5.2, Anthropic) (other shapes and accounts denied the own-groups query, and the latest-message query of the chat list, #363; groups documents outside an event, and more accounts and membership changes on the latest-message query, from a test audit).
 // Contributors: Claude (Opus 5.5, Anthropic) (co-organizer tests, written test-first, #370).
-// Contributors: Claude (Opus 5.5, Anthropic) (the counted registration writes, #373, from #372's prototype by Claude (Fable 5.2 and Opus 5.5, Anthropic)).
+// Contributors: Claude (Opus 5.5, Anthropic) (attendeeCount rows and the counted registration writes, #373, from #372's prototype by Claude (Fable 5.2 and Opus 5.5, Anthropic)).
 const { after, before, beforeEach, test } = require("node:test");
 // Contributors: OpenAI Codex (deleted-token membership creation/join regression, #241).
 // Contributors: Claude Opus 5.5 (friend requests involving an association, written test-first from the #416 review); Konstantinos Perdikeas (directed, reviewed and owns it).
+const assert = require("node:assert/strict");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
 const { appInterests, appProfileOptions } = require("../appProfileOptions");
@@ -22,6 +23,7 @@ const {
   deleteField,
   doc,
   documentId,
+  getCountFromServer,
   getDoc,
   getDocs,
   increment,
@@ -2095,6 +2097,811 @@ test("a student can't list other students' registrations across events", async (
   const db = studentDb("u1");
   await assertFails(getDocs(collectionGroup(db, "attendees")));
   await assertFails(getDocs(query(collectionGroup(db, "attendees"), where("uid", "==", "u2"))));
+});
+
+// ---- events/{id}.attendeeCount (#373, decided in #372, decision 21) ----
+// One test per row of #372's tables (C1–C5, O1–O10, R1–R28, X1–X13, L1–L2), named after its row.
+// A counted registration is the caller's own attendees/{uid} created and the event's
+// attendeeCount raised by one in the same write; a counted cancellation deletes it and lowers the
+// counter by one. The app sends the change as increment(±1), and so do the rows unless they say
+// otherwise. C5, O10 and R24 need a decimal number, which the JS SDK never sends for a whole
+// one, so they go through the emulator's REST API (at the end of this section).
+
+/** An upcoming event created by [uid], with [overrides]. */
+function upcomingEventBy(uid, overrides = {}) {
+  return eventBy(uid, { startTime: FAR_FUTURE, ...overrides });
+}
+
+/** Stores [uid]'s registration for events/[eventId] without counting it, bypassing the rules. */
+async function seedUncountedAttendee(eventId, uid) {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), `events/${eventId}/attendees/${uid}`), {
+      uid, registeredAt: Timestamp.fromMillis(1_790_000_000_000),
+    });
+  });
+}
+
+/** An upcoming event by u2 with [count] registered students (u10, u11, …), counted. */
+async function seedEventWithCount(id, count, overrides = {}) {
+  await seedEvent(id, upcomingEventBy("u2", { attendeeCount: count, ...overrides }));
+  for (let i = 0; i < count; i++) await seedUncountedAttendee(id, `u${10 + i}`);
+}
+
+/** The stored event's attendeeCount ("no event" when it is missing) and its attendees, sorted. */
+async function storedCount(eventId) {
+  let result;
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    const event = await getDoc(doc(db, `events/${eventId}`));
+    const attendees = await getDocs(collection(db, `events/${eventId}/attendees`));
+    result = {
+      count: event.exists() ? event.data().attendeeCount : "no event",
+      attendees: attendees.docs.map((attendee) => attendee.id).sort(),
+    };
+  });
+  return result;
+}
+
+async function expectStored(eventId, count, attendees) {
+  assert.deepEqual(await storedCount(eventId), { count, attendees });
+}
+
+/**
+ * One batch as [uid]: optionally creates or deletes their registration (under [attendeeEvent],
+ * holding [attendeeData]), and applies [eventChange] to events/[eventId].
+ */
+function registrationWrite(db, eventId, uid, {
+  attendee = null, eventChange = null, attendeeEvent = eventId, attendeeData = registration(uid),
+}) {
+  const batch = writeBatch(db);
+  const own = doc(db, `events/${attendeeEvent}/attendees/${uid}`);
+  if (attendee === "create") batch.set(own, attendeeData);
+  if (attendee === "delete") batch.delete(own);
+  if (eventChange) batch.update(doc(db, `events/${eventId}`), eventChange);
+  return batch.commit();
+}
+
+/** Whether a write was allowed: true once committed, false when the rules refused it. */
+function committed(write) {
+  return write.then(() => true, (error) => {
+    if (error.code === "permission-denied") return false;
+    throw error;
+  });
+}
+
+/**
+ * [uid] registers as FirestoreRegistrationRepository.register does (#373): one transaction with
+ * no read, the registration and increment(1), with the SDK's default attempts.
+ */
+function registersAsApp(uid, eventId) {
+  const db = studentDb(uid);
+  return committed(runTransaction(db, async (transaction) => {
+    transaction.set(doc(db, `events/${eventId}/attendees/${uid}`), registration(uid));
+    transaction.update(doc(db, `events/${eventId}`), { attendeeCount: increment(1) });
+  }));
+}
+
+/** [uid] cancels as the repository does first: one transaction with no read, increment(-1). */
+function cancelsAsApp(uid, eventId) {
+  const db = studentDb(uid);
+  return committed(runTransaction(db, async (transaction) => {
+    transaction.delete(doc(db, `events/${eventId}/attendees/${uid}`));
+    transaction.update(doc(db, `events/${eventId}`), { attendeeCount: increment(-1) });
+  }));
+}
+
+/** The repository's fallback cancel: [uid]'s registration deleted alone, in a transaction. */
+function cancelsAloneAsApp(uid, eventId) {
+  const db = studentDb(uid);
+  return committed(runTransaction(db, async (transaction) => {
+    transaction.delete(doc(db, `events/${eventId}/attendees/${uid}`));
+  }));
+}
+
+// Creating an event
+
+test("C1 a student creates an event with attendeeCount 0", async () => {
+  await assertSucceeds(
+    setDoc(doc(studentDb("u1"), "events/new"), upcomingEventBy("u1", { attendeeCount: 0 })),
+  );
+});
+
+test("C2 an event created without attendeeCount is allowed (an app from before the counter)", async () => {
+  await assertSucceeds(setDoc(doc(studentDb("u1"), "events/new"), upcomingEventBy("u1")));
+});
+
+for (const [name, value] of [
+  ["1", 1], ["-1", -1], ["null", null], ['"0"', "0"], ["0.5", 0.5], ["a list", [0]],
+]) {
+  test(`C3 an event created with attendeeCount ${name} is denied`, async () => {
+    await assertFails(
+      setDoc(doc(studentDb("u1"), "events/new"), upcomingEventBy("u1", { attendeeCount: value })),
+    );
+  });
+}
+
+test("C4 a verified association creates its event with attendeeCount 0, not 3", async () => {
+  const db = associationDb("verifiedClub");
+  const event = upcomingEventBy("verifiedClub", { isAssociationEvent: true });
+  await assertFails(setDoc(doc(db, "events/club1"), { ...event, attendeeCount: 3 }));
+  await assertSucceeds(setDoc(doc(db, "events/club1"), { ...event, attendeeCount: 0 }));
+});
+
+// An organizer's edits
+
+test("O1 an organizer's edit keeps attendeeCount", async () => {
+  await seedEventWithCount("managed", 3, { capacity: 10 });
+  await assertSucceeds(updateDoc(doc(studentDb("u2"), "events/managed"), {
+    title: "Moved to Rolex", capacity: 12,
+  }));
+  await expectStored("managed", 3, ["u10", "u11", "u12"]);
+});
+
+for (const [name, change] of [
+  ["set attendeeCount", { attendeeCount: 0 }],
+  ["raise attendeeCount by one", { attendeeCount: 4 }],
+  ["lower attendeeCount by one", { attendeeCount: 2 }],
+  ["raise attendeeCount with increment(1)", { attendeeCount: increment(1) }],
+  ["change attendeeCount with another field", { title: "Renamed", attendeeCount: 4 }],
+  ["remove attendeeCount", { attendeeCount: deleteField() }],
+]) {
+  test(`O2 an organizer can't ${name}`, async () => {
+    await seedEventWithCount("managed", 3, { capacity: 10 });
+    await assertFails(updateDoc(doc(studentDb("u2"), "events/managed"), change));
+    await expectStored("managed", 3, ["u10", "u11", "u12"]);
+  });
+}
+
+test("O3 an organizer can't add attendeeCount to an event that has none", async () => {
+  await seedEvent("legacy", upcomingEventBy("u2"));
+  await assertFails(updateDoc(doc(studentDb("u2"), "events/legacy"), { attendeeCount: 0 }));
+  await assertFails(updateDoc(doc(studentDb("u2"), "events/legacy"), { attendeeCount: 5 }));
+});
+
+test("O4 an organizer overwriting the event without attendeeCount is denied; with the stored value, allowed", async () => {
+  await seedEventWithCount("managed", 3, { capacity: 10 });
+  const db = studentDb("u2");
+  await assertFails(setDoc(doc(db, "events/managed"), upcomingEventBy("u2", { title: "Rewritten" })));
+  await assertSucceeds(setDoc(
+    doc(db, "events/managed"), upcomingEventBy("u2", { title: "Rewritten", attendeeCount: 3 }),
+  ));
+});
+
+test("O5 an organizer may lower the capacity below the count: nobody new registers, students still cancel", async () => {
+  await seedEventWithCount("managed", 3, { capacity: 10 });
+  await assertSucceeds(updateDoc(doc(studentDb("u2"), "events/managed"), { capacity: 2 }));
+  assert.equal(await registersAsApp("u1", "managed"), false);
+  assert.equal(await cancelsAsApp("u10", "managed"), true);
+  await expectStored("managed", 2, ["u11", "u12"]);
+  // Still full at 2 of 2.
+  assert.equal(await registersAsApp("u1", "managed"), false);
+});
+
+test("O6 a verified association can't change its own event's attendeeCount", async () => {
+  await seedEvent(
+    "clubEvent", upcomingEventBy("verifiedClub", { isAssociationEvent: true, attendeeCount: 2 }),
+  );
+  const db = associationDb("verifiedClub");
+  await assertFails(updateDoc(doc(db, "events/clubEvent"), { attendeeCount: 3 }));
+  await assertFails(updateDoc(doc(db, "events/clubEvent"), { attendeeCount: 1 }));
+  await assertSucceeds(updateDoc(doc(db, "events/clubEvent"), { title: "Jam" }));
+});
+
+test("O7 an organizer who is a student registers for their own event like any student", async () => {
+  await seedEventWithCount("managed", 1, { capacity: 2 });
+  assert.equal(await registersAsApp("u2", "managed"), true);
+  await expectStored("managed", 2, ["u10", "u2"]);
+  // …but can't give themselves a second place, or free one, as an organizer.
+  await assertFails(updateDoc(doc(studentDb("u2"), "events/managed"), { attendeeCount: 1 }));
+});
+
+test("O8 an organizer can't register and edit the event in one write", async () => {
+  await seedEventWithCount("managed", 1, { capacity: 5 });
+  await assertFails(registrationWrite(studentDb("u2"), "managed", "u2", {
+    attendee: "create", eventChange: { attendeeCount: increment(1), title: "Renamed" },
+  }));
+  await expectStored("managed", 1, ["u10"]);
+});
+
+test("O9 an organizer deletes an event that has registrations: the counter goes with it", async () => {
+  await seedEventWithCount("managed", 3);
+  await assertSucceeds(deleteDoc(doc(studentDb("u2"), "events/managed")));
+  await expectStored("managed", "no event", ["u10", "u11", "u12"]);
+});
+
+// Registering
+
+test("R1 a student registers as the app does: a write-only transaction, registration and increment(1)", async () => {
+  await seedEventWithCount("open", 3, { capacity: 10 });
+  assert.equal(await registersAsApp("u1", "open"), true);
+  await expectStored("open", 4, ["u1", "u10", "u11", "u12"]);
+});
+
+test("R2 registering for an event without a counter (and without organizerIds) starts it at 1", async () => {
+  assert.equal(await registersAsApp("u1", "e1"), true);
+  await expectStored("e1", 1, ["u1"]);
+});
+
+test("R3 registering at capacity - 1 is allowed, and at capacity denied", async () => {
+  await seedEventWithCount("small", 1, { capacity: 2 });
+  await assertSucceeds(registerCounted(studentDb("u1"), "small", "u1"));
+  await expectStored("small", 2, ["u1", "u10"]);
+  await assertFails(registerCounted(studentDb("u3"), "small", "u3"));
+  await expectStored("small", 2, ["u1", "u10"]);
+});
+
+for (const [name, overrides] of [
+  ["a null capacity", { capacity: null }],
+  ["no capacity field", {}],
+]) {
+  test(`R4 an event with ${name} takes registrations whatever the count, and still counts them`, async () => {
+    const event = upcomingEventBy("u2", { attendeeCount: 1000, ...overrides });
+    if (!("capacity" in overrides)) delete event.capacity;
+    await seedEvent("unlimited", event);
+    assert.equal(await registersAsApp("u1", "unlimited"), true);
+    await expectStored("unlimited", 1001, ["u1"]);
+  });
+}
+
+for (const [name, capacity] of [['a string ("2")', "2"], ["a list", [2]], ["a boolean", true]]) {
+  test(`R5 a capacity that is ${name} is no limit`, async () => {
+    await seedEvent("odd", upcomingEventBy("u2", { attendeeCount: 5, capacity }));
+    await assertSucceeds(registerCounted(studentDb("u1"), "odd", "u1"));
+    await expectStored("odd", 6, ["u1"]);
+  });
+}
+
+test("R6 a decimal capacity (2.5) limits like a number: 2 fits, 3 doesn't", async () => {
+  await seedEvent("odd", upcomingEventBy("u2", { attendeeCount: 1, capacity: 2.5 }));
+  await assertSucceeds(registerCounted(studentDb("u1"), "odd", "u1"));
+  await assertFails(registerCounted(studentDb("u3"), "odd", "u3"));
+  await expectStored("odd", 2, ["u1"]);
+});
+
+for (const capacity of [0, -3, 1]) {
+  test(`R7 a capacity of ${capacity} (the form asks for at least 2) is still a limit`, async () => {
+    await seedEvent("odd", upcomingEventBy("u2", { attendeeCount: 1, capacity }));
+    await seedUncountedAttendee("odd", "u10");
+    await assertFails(registerCounted(studentDb("u1"), "odd", "u1"));
+    assert.equal(await cancelsAsApp("u10", "odd"), true);
+    await expectStored("odd", 0, []);
+  });
+}
+
+for (const [row, name, change] of [
+  ["R8", "raises the counter by 2", { attendeeCount: 5 }],
+  ["R8", "raises the counter by 2 with increment(2)", { attendeeCount: increment(2) }],
+  ["R8", "leaves the counter unchanged", { attendeeCount: 3 }],
+  ["R8", "lowers the counter", { attendeeCount: 2 }],
+  ["R8", "sets the counter to a string", { attendeeCount: "4" }],
+  ["R8", "removes the counter", { attendeeCount: deleteField() }],
+  ["R9", "also changes the title", { attendeeCount: increment(1), title: "Hijacked" }],
+  ["R9", "also raises the capacity", { attendeeCount: increment(1), capacity: 99 }],
+  ["R9", "also adds them to allowedUids", { attendeeCount: increment(1), allowedUids: ["u2", "u1"] }],
+  ["R9", "also makes them an organizer", {
+    attendeeCount: increment(1), organizerIds: ["u2", "u1"], allowedUids: ["u2", "u1"],
+  }],
+]) {
+  test(`${row} a registration whose event write ${name} is denied`, async () => {
+    await seedEventWithCount("open", 3, { capacity: 10 });
+    await assertFails(
+      registrationWrite(studentDb("u1"), "open", "u1", { attendee: "create", eventChange: change }),
+    );
+    await expectStored("open", 3, ["u10", "u11", "u12"]);
+  });
+}
+
+test("R10 raising the counter without creating the caller's registration is denied", async () => {
+  await seedEventWithCount("open", 3, { capacity: 10 });
+  const db = studentDb("u1");
+  await assertFails(updateDoc(doc(db, "events/open"), { attendeeCount: 4 }));
+  await assertFails(updateDoc(doc(db, "events/open"), { attendeeCount: increment(1) }));
+  // Another student's registration in the same write doesn't count (and can't be written anyway).
+  const batch = writeBatch(db);
+  batch.set(doc(db, "events/open/attendees/u3"), registration("u3"));
+  batch.update(doc(db, "events/open"), { attendeeCount: increment(1) });
+  await assertFails(batch.commit());
+  await expectStored("open", 3, ["u10", "u11", "u12"]);
+});
+
+test("R11 a student who writes the counter back unchanged, or any other field, is denied", async () => {
+  await seedEventWithCount("open", 3, { capacity: 10 });
+  const db = studentDb("u1");
+  await assertFails(updateDoc(doc(db, "events/open"), { attendeeCount: 3 }));
+  await assertFails(updateDoc(doc(db, "events/open"), { title: "Hijacked" }));
+  await assertFails(updateDoc(doc(db, "events/open"), { capacity: 99 }));
+  await assertFails(deleteDoc(doc(db, "events/open")));
+});
+
+test("R12 a registration without the counter is denied (an app from before the counter)", async () => {
+  await seedEventWithCount("open", 3, { capacity: 10 });
+  await assertFails(setDoc(doc(studentDb("u1"), "events/open/attendees/u1"), registration("u1")));
+  // Also on an event without the counter field.
+  await assertFails(setDoc(doc(studentDb("u1"), "events/e1/attendees/u1"), registration("u1")));
+});
+
+test("R13 already registered, also on a full event: a second registration is denied, nothing changes", async () => {
+  await seedEventWithCount("open", 3, { capacity: 10 });
+  assert.equal(await registersAsApp("u1", "open"), true);
+  assert.equal(await registersAsApp("u1", "open"), false);
+  await assertFails(updateDoc(doc(studentDb("u1"), "events/open"), { attendeeCount: increment(1) }));
+  await expectStored("open", 4, ["u1", "u10", "u11", "u12"]);
+
+  await seedEventWithCount("small", 2, { capacity: 2 });
+  assert.equal(await registersAsApp("u10", "small"), false);
+  await expectStored("small", 2, ["u10", "u11"]);
+});
+
+test("R14 two students at once for the last place: one gets it, the other is denied", async () => {
+  await seedEventWithCount("last", 1, { capacity: 2 });
+  const outcomes = await Promise.all([registersAsApp("u1", "last"), registersAsApp("u3", "last")]);
+  assert.deepEqual(outcomes.sort(), [false, true]);
+  const stored = await storedCount("last");
+  assert.equal(stored.count, 2);
+  assert.equal(stored.attendees.length, 2);
+});
+
+test("R14 a count that became stale can't take the last place either", async () => {
+  await seedEventWithCount("last", 1, { capacity: 2 });
+  await assertSucceeds(registerCounted(studentDb("u3"), "last", "u3"));
+  // u1 read 1 before u3 registered and writes 1 + 1.
+  await assertFails(registrationWrite(studentDb("u1"), "last", "u1", {
+    attendee: "create", eventChange: { attendeeCount: 2 },
+  }));
+  await assertFails(registerCounted(studentDb("u1"), "last", "u1"));
+  await expectStored("last", 2, ["u10", "u3"]);
+});
+
+test("R15 two students at once with places left both register; a count that became stale is denied", async () => {
+  await seedEventWithCount("roomy", 1, { capacity: 20 });
+  const outcomes = await Promise.all([registersAsApp("u1", "roomy"), registersAsApp("u3", "roomy")]);
+  assert.deepEqual(outcomes, [true, true]);
+  await expectStored("roomy", 3, ["u1", "u10", "u3"]);
+  // u4 read 1 before the two registered and writes 1 + 1.
+  await assertFails(registrationWrite(studentDb("u4"), "roomy", "u4", {
+    attendee: "create", eventChange: { attendeeCount: 2 },
+  }));
+  await expectStored("roomy", 3, ["u1", "u10", "u3"]);
+});
+
+test("R16 a counted registration that writes the stored count plus one, instead of increment(1), is allowed", async () => {
+  await seedEventWithCount("open", 3, { capacity: 10 });
+  await assertSucceeds(registrationWrite(studentDb("u1"), "open", "u1", {
+    attendee: "create", eventChange: { attendeeCount: 4 },
+  }));
+  await expectStored("open", 4, ["u1", "u10", "u11", "u12"]);
+});
+
+test("R17 a private event: an allowed student registers, another student can't", async () => {
+  await seedEvent("private", upcomingEventBy("u2", {
+    isPrivate: true, allowedUids: ["u2", "u3"], capacity: 5, attendeeCount: 0,
+  }));
+  assert.equal(await registersAsApp("u3", "private"), true);
+  await assertFails(registerCounted(studentDb("u1"), "private", "u1"));
+  await assertFails(
+    updateDoc(doc(studentDb("u1"), "events/private"), { attendeeCount: increment(1) }),
+  );
+  await expectStored("private", 1, ["u3"]);
+});
+
+test("R18 an ended event takes no registration, even counted", async () => {
+  await seedEvent("ended", upcomingEventBy("u2", {
+    startTime: minutesFromNow(-120), endTime: minutesFromNow(-1), attendeeCount: 0,
+  }));
+  await assertFails(registerCounted(studentDb("u1"), "ended", "u1"));
+  await expectStored("ended", 0, []);
+});
+
+test("R19 a deleted account can't register with its still-valid token, even counted", async () => {
+  await seedEventWithCount("open", 3, { capacity: 10 });
+  await seedDeletedAccount("u1");
+  await assertFails(registerCounted(studentDb("u1"), "open", "u1"));
+  await expectStored("open", 3, ["u10", "u11", "u12"]);
+});
+
+for (const [name, uid, db] of [
+  ["a verified association", "verifiedClub", () => associationDb("verifiedClub")],
+  ["an unverified association", "club", () => associationDb("club")],
+  ["an @epfl.ch association", "epflClub", () => epflAssociationDb("epflClub")],
+  ["an unverified @epfl.ch user", "u1", () => firestoreAs("student@epfl.ch", false, "u1")],
+  ["a verified non-EPFL user without a profile", "u7", () => firestoreAs("someone@gmail.com", true, "u7")],
+  ["a signed-out user", "u1", () => env.unauthenticatedContext().firestore()],
+]) {
+  test(`R20 ${name} can't change attendeeCount, with or without a registration`, async () => {
+    await seedEpflAssociation("epflClub", true);
+    await seedEventWithCount("open", 3, { capacity: 10 });
+    await assertFails(registerCounted(db(), "open", uid));
+    await assertFails(updateDoc(doc(db(), "events/open"), { attendeeCount: increment(1) }));
+    await assertFails(updateDoc(doc(db(), "events/open"), { attendeeCount: increment(-1) }));
+    // Even with a registration seeded under their UID.
+    await seedUncountedAttendee("open", uid);
+    await assertFails(cancelCounted(db(), "open", uid));
+    await expectStored("open", 3, ["u10", "u11", "u12", uid].sort());
+  });
+}
+
+test("R21 registering for an event that doesn't exist is denied", async () => {
+  const db = studentDb("u1");
+  const batch = writeBatch(db);
+  batch.set(doc(db, "events/missing/attendees/u1"), registration("u1"));
+  batch.set(doc(db, "events/missing"), { attendeeCount: 1 }, { merge: true });
+  await assertFails(batch.commit());
+  assert.equal(await registersAsApp("u1", "missing"), false);
+  await expectStored("missing", "no event", []);
+});
+
+test("R22 a registration for one event can't raise another event's counter", async () => {
+  await seedEventWithCount("open", 3, { capacity: 10 });
+  await seedEventWithCount("other", 0, { capacity: 10 });
+  // The registration is under "other", the counter change on "open".
+  await assertFails(registrationWrite(studentDb("u1"), "open", "u1", {
+    attendee: "create", attendeeEvent: "other", eventChange: { attendeeCount: increment(1) },
+  }));
+  await expectStored("open", 3, ["u10", "u11", "u12"]);
+  await expectStored("other", 0, []);
+});
+
+test("R23 a student registered before the counter existed can't register again: nothing changes", async () => {
+  await seedEvent("legacy", upcomingEventBy("u2", { capacity: 2 }));
+  await seedUncountedAttendee("legacy", "u1");
+  assert.equal(await registersAsApp("u1", "legacy"), false);
+  await expectStored("legacy", undefined, ["u1"]);
+});
+
+// R24 is with the REST rows below.
+
+test("R25 one counted place can't carry another student's registration as well", async () => {
+  await seedEventWithCount("open", 3, { capacity: 10 });
+  const db = studentDb("u1");
+  const batch = writeBatch(db);
+  batch.set(doc(db, "events/open/attendees/u1"), registration("u1"));
+  batch.set(doc(db, "events/open/attendees/u9"), registration("u9"));
+  batch.update(doc(db, "events/open"), { attendeeCount: increment(1) });
+  await assertFails(batch.commit());
+  await expectStored("open", 3, ["u10", "u11", "u12"]);
+});
+
+for (const [row, name, data] of [
+  ["R26", "an extra field", { ...registration("u1"), note: "x" }],
+  ["R27", "a registeredAt the client chose", { uid: "u1", registeredAt: Timestamp.fromMillis(0) }],
+  ["R27", "no registeredAt", { uid: "u1" }],
+  ["R28", "another student's UID in uid", registration("u9")],
+  ["R28", "no uid", { registeredAt: serverTimestamp() }],
+]) {
+  test(`${row} a counted registration with ${name} is denied`, async () => {
+    await seedEventWithCount("open", 3, { capacity: 10 });
+    await assertFails(registerCounted(studentDb("u1"), "open", "u1", data));
+    await expectStored("open", 3, ["u10", "u11", "u12"]);
+    // The same write with the two fields the app sends is allowed.
+    await assertSucceeds(registerCounted(studentDb("u1"), "open", "u1"));
+  });
+}
+
+// Cancelling
+
+test("X1 a student cancels as the app does: a write-only transaction, delete and increment(-1)", async () => {
+  await seedEventWithCount("open", 3, { capacity: 3 });
+  assert.equal(await cancelsAsApp("u10", "open"), true);
+  await expectStored("open", 2, ["u11", "u12"]);
+  // The place can be taken again.
+  assert.equal(await registersAsApp("u1", "open"), true);
+  await expectStored("open", 3, ["u1", "u11", "u12"]);
+  // Writing the stored count minus one is allowed too.
+  await assertSucceeds(registrationWrite(studentDb("u11"), "open", "u11", {
+    attendee: "delete", eventChange: { attendeeCount: 2 },
+  }));
+  await expectStored("open", 2, ["u1", "u12"]);
+});
+
+test("X2 cancelling after the event ended still lowers the counter", async () => {
+  await seedEventWithCount("ended", 2, {
+    startTime: minutesFromNow(-120), endTime: minutesFromNow(-1),
+  });
+  assert.equal(await cancelsAsApp("u10", "ended"), true);
+  await expectStored("ended", 1, ["u11"]);
+});
+
+test("X3 deleting a counted registration without lowering the counter is denied", async () => {
+  await seedEventWithCount("open", 3, { capacity: 3 });
+  await assertFails(deleteDoc(doc(studentDb("u10"), "events/open/attendees/u10")));
+  await assertFails(registrationWrite(studentDb("u10"), "open", "u10", {
+    attendee: "delete", eventChange: { attendeeCount: 3 },
+  }));
+  await expectStored("open", 3, ["u10", "u11", "u12"]);
+});
+
+test("X3 the only counted registration (counter 1) deleted without lowering the counter is denied", async () => {
+  // The boundary of the delete rule's `countBefore() == 0`: at 1 the place is still counted.
+  await seedEventWithCount("one", 1, { capacity: 3 });
+  await assertFails(deleteDoc(doc(studentDb("u10"), "events/one/attendees/u10")));
+  await expectStored("one", 1, ["u10"]);
+  // Counted, the same cancellation is allowed and leaves 0.
+  await assertSucceeds(cancelCounted(studentDb("u10"), "one", "u10"));
+  await expectStored("one", 0, []);
+});
+
+for (const [name, change] of [
+  ["lowers the counter by 2", { attendeeCount: 1 }],
+  ["lowers the counter by 2 with increment(-2)", { attendeeCount: increment(-2) }],
+  ["raises the counter", { attendeeCount: increment(1) }],
+  ["also changes the title", { attendeeCount: increment(-1), title: "Hijacked" }],
+  ["also lowers the capacity", { attendeeCount: increment(-1), capacity: 2 }],
+  ["removes the counter", { attendeeCount: deleteField() }],
+]) {
+  test(`X4 a cancellation whose event write ${name} is denied`, async () => {
+    await seedEventWithCount("open", 3, { capacity: 3 });
+    await assertFails(
+      registrationWrite(studentDb("u10"), "open", "u10", { attendee: "delete", eventChange: change }),
+    );
+    await expectStored("open", 3, ["u10", "u11", "u12"]);
+  });
+}
+
+test("X5 lowering the counter without deleting the caller's registration is denied", async () => {
+  await seedEventWithCount("open", 3, { capacity: 3 });
+  // Registered, but keeps the registration.
+  await assertFails(updateDoc(doc(studentDb("u10"), "events/open"), { attendeeCount: 2 }));
+  await assertFails(
+    updateDoc(doc(studentDb("u10"), "events/open"), { attendeeCount: increment(-1) }),
+  );
+  // Not registered at all (deleting a missing registration frees no place).
+  await assertFails(updateDoc(doc(studentDb("u1"), "events/open"), { attendeeCount: increment(-1) }));
+  await assertFails(cancelCounted(studentDb("u1"), "open", "u1"));
+  await expectStored("open", 3, ["u10", "u11", "u12"]);
+});
+
+for (const [name, count] of [["absent", undefined], ["0", 0]]) {
+  test(`X6 with the counter ${name}, a registration from before the counter is deleted alone, never below 0`, async () => {
+    const event = upcomingEventBy("u2", count === undefined ? {} : { attendeeCount: count });
+    await seedEvent("legacy", event);
+    await seedUncountedAttendee("legacy", "u1");
+    const db = studentDb("u1");
+    await assertFails(registrationWrite(db, "legacy", "u1", {
+      attendee: "delete", eventChange: { attendeeCount: -1 },
+    }));
+    await assertFails(cancelCounted(db, "legacy", "u1"));
+    // Nor may the write that deletes it set the counter to anything else.
+    await assertFails(registrationWrite(db, "legacy", "u1", {
+      attendee: "delete", eventChange: { attendeeCount: 5 },
+    }));
+    await assertFails(registrationWrite(db, "legacy", "u1", {
+      attendee: "delete", eventChange: { attendeeCount: increment(1) },
+    }));
+    assert.equal(await cancelsAloneAsApp("u1", "legacy"), true);
+    await expectStored("legacy", count, []);
+  });
+}
+
+test("X7 a registration for a deleted event is deleted alone", async () => {
+  await seedUncountedAttendee("gone", "u1");
+  assert.equal(await cancelsAsApp("u1", "gone"), false);
+  assert.equal(await cancelsAloneAsApp("u1", "gone"), true);
+  await expectStored("gone", "no event", []);
+});
+
+test("X8 a student who can no longer read the event deletes the registration alone; the counter stays", async () => {
+  await seedEvent("closed", upcomingEventBy("u2", {
+    isPrivate: true, allowedUids: ["u2"], attendeeCount: 1,
+  }));
+  await seedUncountedAttendee("closed", "u1");
+  // They can't write an event they can't read, even only to lower the counter.
+  await assertFails(registrationWrite(studentDb("u1"), "closed", "u1", {
+    attendee: "delete", eventChange: { attendeeCount: 0 },
+  }));
+  assert.equal(await cancelsAsApp("u1", "closed"), false);
+  assert.equal(await cancelsAloneAsApp("u1", "closed"), true);
+  await expectStored("closed", 1, []);
+});
+
+test("X9 cancelling without a registration on a counted event: only the delete alone is allowed, and counts nothing", async () => {
+  await seedEventWithCount("open", 3, { capacity: 3 });
+  assert.equal(await cancelsAsApp("u1", "open"), false);
+  assert.equal(await cancelsAloneAsApp("u1", "open"), true);
+  await expectStored("open", 3, ["u10", "u11", "u12"]);
+});
+
+test("X10 a deleted account can still cancel with its still-valid token", async () => {
+  await seedEventWithCount("open", 3, { capacity: 3 });
+  await seedDeletedAccount("u10");
+  assert.equal(await cancelsAsApp("u10", "open"), true);
+  await expectStored("open", 2, ["u11", "u12"]);
+});
+
+test("X11 nobody cancels for another student, not even an organizer", async () => {
+  await seedEventWithCount("open", 3, { capacity: 3 });
+  for (const uid of ["u2", "u11"]) {
+    const db = studentDb(uid);
+    const batch = writeBatch(db);
+    batch.delete(doc(db, "events/open/attendees/u10"));
+    batch.update(doc(db, "events/open"), { attendeeCount: increment(-1) });
+    await assertFails(batch.commit());
+    await assertFails(deleteDoc(doc(db, "events/open/attendees/u10")));
+  }
+  await expectStored("open", 3, ["u10", "u11", "u12"]);
+});
+
+test("X12 two students cancelling at once both cancel; a count that became stale is denied", async () => {
+  await seedEventWithCount("open", 3, { capacity: 3 });
+  const outcomes = await Promise.all([cancelsAsApp("u10", "open"), cancelsAsApp("u11", "open")]);
+  assert.deepEqual(outcomes, [true, true]);
+  await expectStored("open", 1, ["u12"]);
+  // u12 read 3 before the two cancelled and writes 3 - 1.
+  await assertFails(registrationWrite(studentDb("u12"), "open", "u12", {
+    attendee: "delete", eventChange: { attendeeCount: 2 },
+  }));
+  await expectStored("open", 1, ["u12"]);
+});
+
+test("X13 a student can't free a place by deleting and creating their registration in one write", async () => {
+  await seedEventWithCount("open", 3, { capacity: 3 });
+  const db = studentDb("u10");
+  const batch = writeBatch(db);
+  batch.delete(doc(db, "events/open/attendees/u10"));
+  batch.set(doc(db, "events/open/attendees/u10"), registration("u10"));
+  batch.update(doc(db, "events/open"), { attendeeCount: increment(-1) });
+  await assertFails(batch.commit());
+  await expectStored("open", 3, ["u10", "u11", "u12"]);
+});
+
+// Reads, unchanged
+
+test("L1 an organizer still lists and counts the attendees; a student still doesn't", async () => {
+  await seedEventWithCount("open", 3, { capacity: 3 });
+  const attendees = collection(studentDb("u2"), "events/open/attendees");
+  const count = await assertSucceeds(getCountFromServer(attendees));
+  assert.equal(count.data().count, 3);
+  await assertSucceeds(getDocs(attendees));
+  await assertFails(getCountFromServer(collection(studentDb("u1"), "events/open/attendees")));
+});
+
+test("L2 any student who can read the event reads its attendeeCount", async () => {
+  await seedEventWithCount("open", 3, { capacity: 3 });
+  const event = await assertSucceeds(getDoc(doc(studentDb("u1"), "events/open")));
+  assert.equal(event.data().attendeeCount, 3);
+});
+
+// The rows that need a decimal number (C5, O10, R24), through the emulator's REST API with the
+// unsigned token the emulator accepts: the JS SDK always sends a whole number as an integer.
+
+const REST_ROOT = `projects/${PROJECT_ID}/databases/(default)/documents`;
+
+/** An unsigned ID token for the verified EPFL student [uid], which only the emulator accepts. */
+function emulatorToken(uid) {
+  const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  const now = Math.floor(Date.now() / 1000);
+  return `${encode({ alg: "none", typ: "JWT" })}.${encode({
+    iss: `https://securetoken.google.com/${PROJECT_ID}`, aud: PROJECT_ID, sub: uid, user_id: uid,
+    email: "student@epfl.ch", email_verified: true, iat: now, exp: now + 3600, auth_time: now,
+    firebase: { sign_in_provider: "password", identities: {} },
+  })}.`;
+}
+
+/** Commits [writes] (REST writes) as the student [uid]; true if the rules allowed them. */
+async function restCommitted(uid, writes) {
+  const host = process.env.FIRESTORE_EMULATOR_HOST;
+  if (!host) throw new Error("FIRESTORE_EMULATOR_HOST isn't set: run inside emulators:exec");
+  const response = await fetch(`http://${host}/v1/${REST_ROOT}:commit`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${emulatorToken(uid)}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ writes }),
+  });
+  await response.text();
+  if (response.status !== 200 && response.status !== 403) {
+    throw new Error(`Unexpected HTTP ${response.status} from the emulator`);
+  }
+  return response.status === 200;
+}
+
+/** A field of a stored document as the REST API returns it, with its type. */
+async function restField(documentPath, field) {
+  const response = await fetch(
+    `http://${process.env.FIRESTORE_EMULATOR_HOST}/v1/${REST_ROOT}/${documentPath}`,
+    { headers: { Authorization: "Bearer owner" } },
+  );
+  return ((await response.json()).fields || {})[field];
+}
+
+const restInt = (value) => ({ integerValue: String(value) });
+const restDouble = (value) => ({ doubleValue: value });
+
+/** The REST fields of an upcoming event created by [uid], with [overrides] (REST values too). */
+function restEventFields(uid, overrides = {}) {
+  const string = (value) => ({ stringValue: value });
+  return {
+    title: string("Study session"), description: string(""), category: string("STUDY"),
+    location: { geoPointValue: { latitude: 46.5191, longitude: 6.5668 } },
+    startTime: { timestampValue: "2099-01-01T18:00:00Z" }, endTime: { nullValue: null },
+    capacity: restInt(10), isPrivate: { booleanValue: false }, createdBy: string(uid),
+    organizerIds: { arrayValue: { values: [string(uid)] } },
+    allowedUids: { arrayValue: { values: [string(uid)] } },
+    isAssociationEvent: { booleanValue: false }, ...overrides,
+  };
+}
+
+const restSetEvent = (eventId, fields, precondition) => ({
+  update: { name: `${REST_ROOT}/events/${eventId}`, fields }, currentDocument: precondition,
+});
+const restRegistration = (eventId, uid) => ({
+  update: { name: `${REST_ROOT}/events/${eventId}/attendees/${uid}`, fields: { uid: { stringValue: uid } } },
+  updateTransforms: [{ fieldPath: "registeredAt", setToServerValue: "REQUEST_TIME" }],
+  currentDocument: { exists: false },
+});
+const restSetCount = (eventId, value) => ({
+  update: { name: `${REST_ROOT}/events/${eventId}`, fields: { attendeeCount: value } },
+  updateMask: { fieldPaths: ["attendeeCount"] },
+  currentDocument: { exists: true },
+});
+const restIncrementCount = (eventId, value) => ({
+  update: { name: `${REST_ROOT}/events/${eventId}`, fields: {} },
+  updateMask: { fieldPaths: [] },
+  updateTransforms: [{ fieldPath: "attendeeCount", increment: value }],
+  currentDocument: { exists: true },
+});
+
+test("C5 an event created with attendeeCount 0.0 is denied; with the integer 0, allowed", async () => {
+  const create = (id, count) => restCommitted("u1", [
+    restSetEvent(id, restEventFields("u1", { attendeeCount: count }), { exists: false }),
+  ]);
+  assert.equal(await create("decimal", restDouble(0.0)), false);
+  assert.equal(await create("whole", restInt(0)), true);
+  assert.deepEqual(await restField("events/whole", "attendeeCount"), restInt(0));
+});
+
+test("O10 an organizer overwriting the event with attendeeCount 3.0 for 3 is denied; with 3, allowed", async () => {
+  await seedEventWithCount("open", 3, { capacity: 10 });
+  const overwrite = (count) => restCommitted("u2", [restSetEvent(
+    "open",
+    restEventFields("u2", { title: { stringValue: "Rewritten" }, attendeeCount: count }),
+    { exists: true },
+  )]);
+  assert.equal(await overwrite(restDouble(3.0)), false);
+  assert.deepEqual(await restField("events/open", "attendeeCount"), restInt(3));
+  assert.equal(await overwrite(restInt(3)), true);
+  assert.deepEqual(await restField("events/open", "attendeeCount"), restInt(3));
+});
+
+test("R24 a counted registration whose counter is a decimal (4.0, or increment(1.0)) is denied", async () => {
+  await seedEventWithCount("open", 3, { capacity: 10 });
+  const register = (uid, change) => restCommitted(uid, [restRegistration("open", uid), change]);
+  assert.equal(await register("u1", restSetCount("open", restDouble(4.0))), false);
+  assert.equal(await register("u1", restIncrementCount("open", restDouble(1.0))), false);
+  await expectStored("open", 3, ["u10", "u11", "u12"]);
+  assert.deepEqual(await restField("events/open", "attendeeCount"), restInt(3));
+  // The same commits with integers are allowed.
+  assert.equal(await register("u1", restSetCount("open", restInt(4))), true);
+  assert.equal(await register("u3", restIncrementCount("open", restInt(1))), true);
+  assert.deepEqual(await restField("events/open", "attendeeCount"), restInt(5));
+});
+
+test("R24 a counted cancellation whose counter is a decimal (2.0, or increment(-1.0)) is denied", async () => {
+  await seedEventWithCount("open", 3, { capacity: 10 });
+  const remove = { delete: `${REST_ROOT}/events/open/attendees/u10` };
+  assert.equal(await restCommitted("u10", [remove, restSetCount("open", restDouble(2.0))]), false);
+  assert.equal(
+    await restCommitted("u10", [remove, restIncrementCount("open", restDouble(-1.0))]), false,
+  );
+  assert.deepEqual(await restField("events/open", "attendeeCount"), restInt(3));
+  assert.equal(await restCommitted("u10", [remove, restIncrementCount("open", restInt(-1))]), true);
+  assert.deepEqual(await restField("events/open", "attendeeCount"), restInt(2));
+});
+
+// Numbers compare by value, so a counted registration may send the stored capacity back as 10.0.
+// The rules take any number as the capacity and the app reads it as a Number, so nothing depends
+// on its type; a different value is still a change, and denied.
+test("a counted registration may send the stored capacity back as 10.0, not another value", async () => {
+  await seedEventWithCount("open", 3, { capacity: 10 });
+  const resend = restSetEvent(
+    "open", restEventFields("u2", { capacity: restDouble(10.0), attendeeCount: restInt(4) }),
+    { exists: true },
+  );
+  assert.equal(await restCommitted("u1", [restRegistration("open", "u1"), resend]), true);
+  assert.deepEqual(await restField("events/open", "capacity"), restDouble(10));
+  const raise = restSetEvent(
+    "open", restEventFields("u2", { capacity: restDouble(10.5), attendeeCount: restInt(5) }),
+    { exists: true },
+  );
+  assert.equal(await restCommitted("u3", [restRegistration("open", "u3"), raise]), false);
+  assert.deepEqual(await restField("events/open", "attendeeCount"), restInt(4));
 });
 
 // ---- publicProfiles/{uid} (#229) ----
