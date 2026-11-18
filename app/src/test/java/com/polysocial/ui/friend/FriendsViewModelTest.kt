@@ -212,6 +212,39 @@ class FriendsViewModelTest {
   }
 
   @Test
+  fun offlineRetryReplacesAListenerThatNeverDeliveredCacheData() = runTest {
+    network.online = false
+    friends.readFromCache = true
+    var attempts = 0
+    val repository =
+        object : FriendRepository by friends {
+          override fun observeFriendships(): Flow<FriendshipsResult> = flow {
+            if (attempts++ == 0) awaitCancellation()
+            emitAll(friends.observeFriendships())
+          }
+        }
+    val vm = create(repository)
+    runCurrent()
+    assertEquals(FriendsContent.Loading, vm.uiState.value.content)
+
+    advanceTimeBy(2_500)
+    network.online = true
+    runCurrent()
+    network.online = false
+    runCurrent()
+    advanceTimeBy(2_500)
+    runCurrent()
+    assertEquals(FriendsContent.OfflineWithoutSavedData, vm.uiState.value.content)
+
+    friends.seedFriendship(accepted)
+    vm.retryLoad()
+    runCurrent()
+    assertEquals(2, attempts)
+    assertTrue(vm.list().offline)
+    assertEquals(accepted, vm.list().rows.single().friendship)
+  }
+
+  @Test
   fun stalledListenerShowsErrorAndRetryCanRecover() = runTest {
     val unblock = CompletableDeferred<Unit>()
     val repository =
@@ -361,6 +394,46 @@ class FriendsViewModelTest {
   }
 
   @Test
+  fun lateRemovalReplyKeepsTheReplacementFriendshipAndRejectsStaleActions() = runTest {
+    friends.seedFriendship(accepted)
+    friends.seedFriendship(incoming)
+    val reply = CompletableDeferred<Unit>()
+    val repository =
+        object : FriendRepository by friends {
+          override suspend fun remove(shown: Friendship): FriendshipActionResult {
+            val result = friends.remove(shown)
+            reply.await()
+            return result
+          }
+        }
+    val vm = create(repository)
+    runCurrent()
+    val shown = vm.list().rows.single { it.uid == "lea" }
+    vm.requestRemoval(vm.list().rows.single { it.uid == "emma" })
+    assertNull(vm.uiState.value.removal)
+
+    vm.requestRemoval(shown)
+    vm.confirmRemoval()
+    runCurrent()
+    assertTrue(vm.uiState.value.writing)
+    assertEquals(listOf(incoming), vm.list().rows.map { it.friendship })
+
+    val replacement = accepted.copy(createdAt = accepted.createdAt.plusSeconds(1))
+    friends.seedFriendship(replacement)
+    runCurrent()
+    vm.requestRemoval(vm.list().rows.single { it.uid == "lea" })
+    assertNull(vm.uiState.value.removal)
+
+    reply.complete(Unit)
+    runCurrent()
+    vm.requestRemoval(shown)
+    assertNull(vm.uiState.value.removal)
+    assertFalse(vm.uiState.value.writing)
+    assertEquals(replacement, vm.list().rows.single { it.uid == "lea" }.friendship)
+    assertEquals(replacement, friends.friendship(accepted.id))
+  }
+
+  @Test
   fun goneResultHidesOnlyTheVersionShownWithoutWaitingForTheListener() = runTest {
     friends.seedFriendship(accepted)
     friends.removeFailure = FriendshipActionResult.Gone
@@ -372,10 +445,14 @@ class FriendsViewModelTest {
     assertEquals(FriendsNotice.FRIENDSHIP_CHANGED, vm.uiState.value.notice)
     assertTrue(vm.list().rows.isEmpty())
 
+    friends.seedFriendship(incoming)
+    runCurrent()
+    assertEquals(listOf(incoming), vm.list().rows.map { it.friendship })
+
     val replacement = accepted.copy(createdAt = accepted.createdAt.plusSeconds(1))
     friends.seedFriendship(replacement)
     runCurrent()
-    assertEquals(replacement, vm.list().rows.single().friendship)
+    assertEquals(replacement, vm.list().rows.single { it.uid == "lea" }.friendship)
   }
 
   private fun friendship(peer: String, sender: String, status: FriendshipStatus) =
