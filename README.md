@@ -1,5 +1,5 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (JDK 21 in the prerequisites, #456 review). -->
-<!-- Contributors: Claude (Opus 5.5, Anthropic) (the attendee recount and the capacity deploy order, #405). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (the attendee recount and the capacity deploy order, #405; the functions' deploy noted, #373). -->
 <!-- Contributors: OpenAI Codex (group membership account-deletion cleanup and deploy order, #241). -->
 <!-- Contributors: OpenAI Codex (manual association verification guide and PR #245 review revisions, #135). -->
 <!-- Contributors: OpenAI Codex (association onboarding integration notes, #125). -->
@@ -293,7 +293,7 @@ It refuses to run without an explicit `--project` and `--yes`, and refuses a `de
 
 **Deploy order of the capacity work** (Architecture Diagram, decision 21, "Rollout"):
 
-1. After #405 is merged: deploy the functions (`deleteAccount` then lowers the counter; without a counter it lowers nothing, so this works with the current rules).
+1. After #405 is merged: deploy the functions (`deleteAccount` then lowers the counter; without a counter it lowers nothing, so this works with the current rules). Deployed on 2026-11-18.
 2. Right after #373 is merged, in the same sitting: deploy its Security Rules, then run this recount once. CI publishes the new APK at the merge, and its "I'm going" is refused until the rules are deployed.
 3. Then students update the app: an app from before #373 can no longer register once its rules are deployed.
 
