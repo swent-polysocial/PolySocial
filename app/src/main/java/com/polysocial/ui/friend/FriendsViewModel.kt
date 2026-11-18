@@ -116,40 +116,26 @@ constructor(
   private fun observeFriendships() {
     listener?.cancel()
     timeout?.cancel()
+    timeout = null
     clearProfileReads()
-    readFailed = false
+    readFailed = me == null
     listenerEnded = false
     render()
-    if (me == null) {
-      readFailed = true
-      render()
-      return
-    }
-    timeout = viewModelScope.launch {
-      delay(FRIENDS_TIMEOUT_MILLIS)
-      readFailed = true
-      render()
-    }
+    if (me == null) return
     listener = viewModelScope.launch {
       friends.observeFriendships().collect { result ->
         when (result) {
           FriendshipsResult.Error -> {
-            timeout?.cancel()
             readFailed = true
             listenerEnded = true
           }
           is FriendshipsResult.Success -> {
             snapshot = result
-            val savedOrConfirmed = result.friendships.isNotEmpty() || !result.fromCache
-            if (savedOrConfirmed) {
-              timeout?.cancel()
-              readFailed = false
-            }
             hidden.entries.removeAll { (_, shown) -> shown !in result.friendships }
-            readMissingProfiles()
+            readMissingProfiles(retryFailed = !result.fromCache)
           }
         }
-        render()
+        render(receivedSnapshot = result is FriendshipsResult.Success)
       }
     }
   }
@@ -159,20 +145,22 @@ constructor(
     profileReads.clear()
   }
 
-  private fun readMissingProfiles() {
+  private fun readMissingProfiles(retryFailed: Boolean = false) {
     val uid = me ?: return
     val peers = snapshot?.friendships.orEmpty().mapNotNull { it.otherUid(uid) }.toSet()
     (profileReads.keys - peers).forEach { profileReads.remove(it)?.cancel() }
     profiles.keys.retainAll(peers)
+    if (retryFailed) profileReads.values.removeAll { it.isCompleted }
     for (peer in peers - profileReads.keys - profiles.keys) {
       profileReads[peer] = viewModelScope.launch {
+        val onlineResult =
+            if (online)
+                withTimeoutOrNull(FRIENDS_TIMEOUT_MILLIS) { publicProfiles.getPublicProfile(peer) }
+            else null
         val result =
-            if (online) {
-              withTimeoutOrNull(FRIENDS_TIMEOUT_MILLIS) { publicProfiles.getPublicProfile(peer) }
-                  ?: publicProfiles.getCachedPublicProfile(peer)
-            } else {
+            if (onlineResult == null || onlineResult == PublicProfileResult.NetworkError) {
               publicProfiles.getCachedPublicProfile(peer)
-            }
+            } else onlineResult
         if (result is PublicProfileResult.Found) {
           profiles[peer] = result.profile
           render()
@@ -200,18 +188,32 @@ constructor(
         }
   }
 
-  private fun render() {
+  private fun render(receivedSnapshot: Boolean = false) {
     val rows = rows()
+    val usable = rows.isNotEmpty() || snapshot?.fromCache == false
+    if (receivedSnapshot && usable) readFailed = false
     val content =
         when {
           !online && rows.isNotEmpty() -> FriendsContent.ListContent(rows, offline = true)
           !online && (snapshot != null || readFailed) -> FriendsContent.OfflineWithoutSavedData
           listenerEnded || readFailed -> FriendsContent.Error
-          rows.isNotEmpty() || snapshot?.fromCache == false ->
-              FriendsContent.ListContent(rows, offline = false)
+          usable -> FriendsContent.ListContent(rows, offline = false)
           else -> FriendsContent.Loading
         }
     state.value = state.value.copy(content = content)
+    if (content == FriendsContent.Loading) {
+      // A cached list can become unresolved again when its last shown row disappears.
+      if (timeout == null) {
+        timeout = viewModelScope.launch {
+          delay(FRIENDS_TIMEOUT_MILLIS)
+          readFailed = true
+          render()
+        }
+      }
+    } else {
+      timeout?.cancel()
+      timeout = null
+    }
   }
 
   internal fun requestRemoval(row: FriendRow) {
