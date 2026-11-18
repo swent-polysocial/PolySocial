@@ -1,6 +1,8 @@
 // Contributors: Claude (wrote these tests of opening an event's detail from a tab, #112; double
 // taps during the transition, after review; Edit event above the detail, #131; Edit event closing
-// during its enter transition, #131 review; the detail's Edit and Cancel event, #131).
+// during its enter transition, #131 review; the detail's Edit and Cancel event, #131); Claude Opus
+// 5.5
+// (a member's profile and its double taps, #368).
 // Contributors: Claude (Opus 5.5, Anthropic) tested opening and leaving Find a group, #233.
 // Contributors: Claude Opus 5.5 (tested opening a group member's profile, #368); Konstantinos
 // Perdikeas (directed, reviewed and owns it).
@@ -183,16 +185,33 @@ class EventDetailNavigationTest {
                     onClick = { openMember("student 1/2") },
                     modifier = Modifier.testTag("open_member"),
                 ) {}
+                // Two taps that land before the next frame.
+                Button(
+                    onClick = {
+                      openMember("student 1/2")
+                      openMember("student 1/2")
+                    },
+                    modifier = Modifier.testTag("open_member_twice"),
+                ) {}
               }
             },
             studentProfileContent = { onBack ->
-              Button(onClick = onBack, modifier = Modifier.testTag("student_back")) {
-                Text(
-                    navController.currentBackStackEntry
-                        ?.arguments
-                        ?.getString(StudentProfileViewModel.UID_ARG)
-                        .orEmpty()
-                )
+              Column {
+                Button(onClick = onBack, modifier = Modifier.testTag("student_back")) {
+                  Text(
+                      navController.currentBackStackEntry
+                          ?.arguments
+                          ?.getString(StudentProfileViewModel.UID_ARG)
+                          .orEmpty()
+                  )
+                }
+                Button(
+                    onClick = {
+                      onBack()
+                      onBack()
+                    },
+                    modifier = Modifier.testTag("student_back_twice"),
+                ) {}
               }
             },
             groupChatContent = { onBack ->
@@ -235,6 +254,30 @@ class EventDetailNavigationTest {
     composeTestRule.onNodeWithTag("finish_leave_group").assertTextEquals(trickyId)
     composeTestRule.onNodeWithTag("open_member").performClick()
     pressBack()
+    composeTestRule.onNodeWithTag("finish_leave_group").assertTextEquals(trickyId)
+  }
+
+  @Test
+  fun aDoubleTapOnAMember_opensTheirProfileOnce() {
+    composeTestRule.onNodeWithTag(EventsTags.card(trickyId)).performClick()
+    composeTestRule.onNodeWithTag("open_group_roster").performClick()
+
+    composeTestRule.onNodeWithTag("open_member_twice").performClick()
+    composeTestRule.onNodeWithTag("student_back").assertTextEquals("student 1/2")
+
+    // One Back is enough: only one profile was opened.
+    pressBack()
+    composeTestRule.onNodeWithTag("finish_leave_group").assertTextEquals(trickyId)
+  }
+
+  @Test
+  fun aDoubleTapOnTheProfilesBack_returnsOnlyToTheRoster() {
+    composeTestRule.onNodeWithTag(EventsTags.card(trickyId)).performClick()
+    composeTestRule.onNodeWithTag("open_group_roster").performClick()
+    composeTestRule.onNodeWithTag("open_member").performClick()
+
+    composeTestRule.onNodeWithTag("student_back_twice").performClick()
+
     composeTestRule.onNodeWithTag("finish_leave_group").assertTextEquals(trickyId)
   }
 

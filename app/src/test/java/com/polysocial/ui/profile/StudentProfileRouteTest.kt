@@ -1,0 +1,62 @@
+// Contributors: Claude Opus 5.5 (wrote these tests, #368 review); Konstantinos Perdikeas
+// (directed, reviewed and owns them).
+package com.polysocial.ui.profile
+
+import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
+import androidx.lifecycle.SavedStateHandle
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.polysocial.model.user.FakePublicProfileRepository
+import com.polysocial.model.user.PublicProfile
+import com.polysocial.resources.C
+import com.polysocial.ui.theme.PolySocialTheme
+import org.junit.Assert.assertEquals
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
+
+/** The route wires the real ViewModel to the screen: its state, Retry and Back. */
+@RunWith(AndroidJUnit4::class)
+@Config(qualifiers = "w360dp-h800dp")
+class StudentProfileRouteTest {
+  @get:Rule val compose = createAndroidComposeRule<ComponentActivity>()
+
+  private val lea = PublicProfile("lea", "Léa Martin", "IN", "BA3", setOf("sports"))
+  private val profiles = FakePublicProfileRepository(mutableMapOf("lea" to lea))
+  private var backs = 0
+
+  private fun show() {
+    val viewModel =
+        StudentProfileViewModel(
+            SavedStateHandle(mapOf(StudentProfileViewModel.UID_ARG to "lea")),
+            profiles,
+        )
+    compose.setContent { PolySocialTheme { StudentProfileRoute({ backs++ }, viewModel) } }
+  }
+
+  @Test
+  fun showsTheProfileTheViewModelRead_andBackLeaves() {
+    show()
+
+    compose.onNodeWithTag(C.Tag.student_profile_name).assertTextEquals("Léa Martin")
+    compose.onNodeWithTag(C.Tag.student_profile_back).performClick()
+    assertEquals(1, backs)
+  }
+
+  @Test
+  fun retry_afterAFailedRead_readsAgainAndShowsTheProfile() {
+    profiles.failure = FakePublicProfileRepository.Failure.Offline
+    show()
+    compose.onNodeWithTag(C.Tag.student_profile_error).assertExists()
+
+    profiles.failure = null
+    compose.onNodeWithTag(C.Tag.error_retry).performClick()
+
+    compose.onNodeWithTag(C.Tag.student_profile_name).assertTextEquals("Léa Martin")
+    assertEquals(listOf(listOf("lea"), listOf("lea")), profiles.requestedUids)
+  }
+}

@@ -1,5 +1,6 @@
-// Contributors: Claude Opus 5.5 (a fake FriendRepository for the scanner's ViewModel, #359);
-// Konstantinos Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude Opus 5.5 (a fake FriendRepository for the scanner's ViewModel, #359; the
+// real member profile from the roster, #368); Konstantinos Perdikeas (directed, reviewed and owns
+// it).
 // Contributors: Claude (UI test for the real Map and Create Event screens inside AppShell, #110;
 // the real Edit event screen, #131; a fake association repository for the association names, #128;
 // which map each account's Map tab reads, #133).
@@ -17,6 +18,7 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -303,6 +305,34 @@ class AppShellDefaultScreensTest {
     node(YourGroupTags.BACK).performClick()
     node(EventDetailTags.YOUR_GROUP).performScrollTo().assertIsDisplayed()
     assertGone(YourGroupTags.SCREEN)
+  }
+
+  @OptIn(ExperimentalTestApi::class)
+  @Test
+  fun theRealMemberProfileOpensFromTheRoster_andBackReturnsToIt() {
+    showMap()
+    composeTestRule.runOnIdle {
+      val eventId = "group-event"
+      val student = "test-student"
+      auth.user = AuthUser(student, "fictional@epfl.ch", true)
+      events.seed(
+          completeForm().toEvent(ZURICH)!!.withCreator("organizer", false).copy(id = eventId)
+      )
+      groups.seedGroup(eventId, listOf(student, "peer"))
+      navController.navigate(Tab.MAP.eventDetailRoute(eventId))
+    }
+    composeTestRule.waitUntilAtLeastOneExists(hasTestTag(EventDetailTags.YOUR_GROUP), 10_000)
+    node(EventDetailTags.YOUR_GROUP).performScrollTo().performClick()
+
+    node(YourGroupTags.member("peer")).performClick()
+
+    // The real route, with its Hilt ViewModel reading the peer's public profile by UID.
+    node(C.Tag.student_profile_name).assertTextEquals("Test Peer")
+    node(C.Tag.student_profile_details).assertTextEquals("SC · BA4")
+    assertGone(C.Tag.bottom_nav)
+    node(C.Tag.student_profile_back).performClick()
+    node(YourGroupTags.SCREEN).assertIsDisplayed()
+    assertGone(C.Tag.student_profile_screen)
   }
 
   @Test
