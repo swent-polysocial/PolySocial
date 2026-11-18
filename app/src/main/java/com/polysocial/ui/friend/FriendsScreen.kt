@@ -1,5 +1,5 @@
 // Contributors: OpenAI Codex (6.2 Sol, high; Compose Friends screen from Figma #358, #360,
-// and profile-link modifier).
+// profile-link modifier, and review fixes for fallback copy and confirmation).
 package com.polysocial.ui.friend
 
 import androidx.annotation.DrawableRes
@@ -267,7 +267,7 @@ private fun FriendCard(
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-      FriendIdentity(row)
+      FriendIdentity(row, offline)
     }
     if (accepted && !offline) FriendOptions(row, enabled = !writing, actions.onRemove)
   }
@@ -279,7 +279,7 @@ private fun Modifier.profileLink(row: FriendRow, onOpenProfile: (String) -> Unit
     } else this
 
 @Composable
-private fun FriendIdentity(row: FriendRow) {
+private fun FriendIdentity(row: FriendRow, offline: Boolean) {
   val profile = row.profile
   Box(
       Modifier.size(40.dp).background(row.section.avatarColor, CircleShape),
@@ -297,16 +297,14 @@ private fun FriendIdentity(row: FriendRow) {
         style = privacyTextStyle(15, 19f, FontWeight.Bold),
         color = Ink,
     )
-    Text(
-        if (profile != null) profileDetails(profile.section, profile.year)
-        else
-            stringResource(
-                if (row.section == FriendsSection.FRIENDS) R.string.friends_saved_friendship
-                else R.string.friends_saved_request
-            ),
-        style = privacyTextStyle(12, 15f),
-        color = Ink3,
-    )
+    val details =
+        when {
+          profile != null -> profileDetails(profile.section, profile.year)
+          !offline -> null
+          row.section == FriendsSection.FRIENDS -> stringResource(R.string.friends_saved_friendship)
+          else -> stringResource(R.string.friends_saved_request)
+        }
+    if (details != null) Text(details, style = privacyTextStyle(12, 15f), color = Ink3)
   }
 }
 
@@ -427,13 +425,17 @@ private fun OfflineFriendsBanner() {
 
 @Composable
 private fun RemoveFriendSheet(row: FriendRow, actions: FriendsActions) {
+  var confirming by remember { mutableStateOf(false) }
   val firstName =
       row.profile?.displayName?.let { it.trim().substringBefore(' ').takeIf(String::isNotEmpty) }
   val title =
       if (firstName != null) stringResource(R.string.friends_remove_named, firstName)
       else stringResource(R.string.friends_remove_unnamed)
-  ConfirmationSheet(locked = false, onDismissRequest = actions.onKeep, centerHandle = true) {
-      dismiss ->
+  ConfirmationSheet(
+      locked = false,
+      onDismissRequest = { if (confirming) actions.onConfirm() else actions.onKeep() },
+      centerHandle = true,
+  ) { dismiss ->
     Column(
         Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -456,11 +458,14 @@ private fun RemoveFriendSheet(row: FriendRow, actions: FriendsActions) {
       )
       PrimaryButton(
           stringResource(R.string.friends_remove),
-          enabled = true,
+          enabled = !confirming,
           tag = FriendsTags.CONFIRM,
           color = AccentText,
           textStyle = privacyTextStyle(13, 17f, FontWeight.Bold),
-          onClick = actions.onConfirm,
+          onClick = {
+            confirming = true
+            dismiss()
+          },
       )
       OutlinePill(R.string.friends_keep, FriendsTags.KEEP, dismiss)
     }

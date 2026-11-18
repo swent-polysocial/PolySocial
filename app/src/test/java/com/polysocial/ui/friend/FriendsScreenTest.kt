@@ -48,7 +48,10 @@ class FriendsScreenTest {
                 onRetryLoad = { calls += "reload" },
                 onRemove = { state.value = state.value.copy(removal = it) },
                 onKeep = { state.value = state.value.copy(removal = null) },
-                onConfirm = { calls += "confirm" },
+                onConfirm = {
+                  calls += "confirm"
+                  state.value = state.value.copy(removal = null)
+                },
                 onRetryAction = { calls += "retry" },
                 onDismissNotice = { calls += "dismiss" },
             ),
@@ -80,7 +83,12 @@ class FriendsScreenTest {
     tag(FriendsTags.CONFIRM).assertDoesNotExist()
     tag(FriendsTags.options("lea")).performClick()
     tag(FriendsTags.REMOVE).performClick()
+    tag(FriendsTags.CONFIRM).assertIsDisplayed()
+    compose.mainClock.autoAdvance = false
     tag(FriendsTags.CONFIRM).performClick()
+    assertEquals(emptyList<String>(), calls)
+    compose.mainClock.autoAdvance = true
+    tag(FriendsTags.CONFIRM).assertDoesNotExist()
     assertEquals(listOf("confirm"), calls)
   }
 
@@ -88,7 +96,8 @@ class FriendsScreenTest {
   fun unavailableFriendCanOpenAndRemoveAfterActionControlsRecover() {
     val content = FriendsContent.ListContent(listOf(friend.copy(profile = null)), false)
     render(FriendsUiState(content))
-    compose.onNodeWithText("Saved friendship").assertIsDisplayed()
+    compose.onNodeWithText("Profile unavailable").assertIsDisplayed()
+    compose.onNodeWithText("Saved friendship").assertDoesNotExist()
     tag(FriendsTags.row("lea")).performClick()
     tag(FriendsTags.options("lea")).performClick()
     tag(FriendsTags.REMOVE).assertIsDisplayed()
@@ -103,6 +112,7 @@ class FriendsScreenTest {
     tag(FriendsTags.REMOVE).performClick()
     compose.onNodeWithText("Remove this friend?").assertIsDisplayed()
     tag(FriendsTags.CONFIRM).performClick()
+    tag(FriendsTags.CONFIRM).assertDoesNotExist()
     assertEquals(listOf("profile:lea", "confirm"), calls)
   }
 
@@ -110,12 +120,14 @@ class FriendsScreenTest {
   fun offlineListKeepsTheRowsAndShowsTheActionRetry() {
     render(
         FriendsUiState(
-            FriendsContent.ListContent(listOf(friend, sent), true),
+            FriendsContent.ListContent(listOf(friend.copy(profile = null), sent), true),
             notice = FriendsNotice.OFFLINE,
         )
     )
     tag(FriendsTags.OFFLINE).assertIsDisplayed()
     tag(FriendsTags.row("lea")).assertIsDisplayed()
+    compose.onNodeWithText("Saved friendship").assertIsDisplayed()
+    compose.onNodeWithText("Saved request").assertIsDisplayed()
     tag(FriendsTags.options("lea")).assertDoesNotExist()
     tag(FriendsTags.SCAN).assertIsNotEnabled()
     tag(FriendsTags.NOTICE_ACTION).performClick()
