@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (6.2 Sol, high; accept, decline and cancel requests, #361).
 // Contributors: OpenAI Codex (6.2 Sol, high; friends list state, public profile reads and removal,
 // #360).
 package com.polysocial.ui.friend
@@ -53,18 +54,28 @@ internal enum class FriendsNotice {
   FRIENDSHIP_CHANGED,
 }
 
+internal enum class FriendListAction(val section: FriendsSection) {
+  REMOVE(FriendsSection.FRIENDS),
+  ACCEPT(FriendsSection.INCOMING),
+  DECLINE(FriendsSection.INCOMING),
+  CANCEL(FriendsSection.SENT),
+}
+
+private data class FriendshipChange(val action: FriendListAction, val shown: Friendship)
+
 internal data class FriendsUiState(
     val content: FriendsContent = FriendsContent.Loading,
     val removal: FriendRow? = null,
     val writing: Boolean = false,
     val notice: FriendsNotice? = null,
+    val noticeAction: FriendListAction? = null,
 )
 
 /**
  * Observes the student's friendships once per load and looks up each peer independently. List
  * updates are immediate, even when a name can't be loaded; successful cached names stay usable
  * across a connection change. Names for peers still on the list are kept until the screen is
- * reopened. A removal always targets the version shown at confirmation.
+ * reopened. Each action targets the version displayed when tapped or confirmed, including on retry.
  */
 @HiltViewModel
 class FriendsViewModel
@@ -88,7 +99,7 @@ constructor(
   private val profiles = mutableMapOf<String, PublicProfile>()
   private val profileReads = mutableMapOf<String, Job>()
   private val hidden = mutableMapOf<String, Friendship>()
-  private var retryTarget: Friendship? = null
+  private var retryTarget: FriendshipChange? = null
 
   init {
     observeFriendships()
@@ -216,31 +227,46 @@ constructor(
   fun confirmRemoval() {
     val target = state.value.removal?.friendship ?: return
     keepFriend()
-    remove(target)
+    submit(FriendshipChange(FriendListAction.REMOVE, target))
+  }
+
+  /**
+   * Runs an action from the applicable request section. Removing a friend requires confirmation.
+   */
+  internal fun answerRequest(row: FriendRow, action: FriendListAction) {
+    if (action == FriendListAction.REMOVE || row.section != action.section) return
+    submit(FriendshipChange(action, row.friendship))
   }
 
   fun retryAction() {
-    retryTarget?.let(::remove)
+    retryTarget?.let(::submit)
   }
 
   fun dismissNotice() {
     retryTarget = null
-    state.value = state.value.copy(notice = null)
+    state.value = state.value.copy(notice = null, noticeAction = null)
   }
 
   private fun isCurrent(shown: Friendship): Boolean =
       shown in snapshot?.friendships.orEmpty() && hidden[shown.id] != shown
 
-  private fun remove(shown: Friendship) {
+  private fun submit(change: FriendshipChange) {
+    val shown = change.shown
     if (state.value.writing) return
     dismissNotice()
     if (!isCurrent(shown)) {
-      state.value = state.value.copy(notice = FriendsNotice.FRIENDSHIP_CHANGED)
+      state.value =
+          state.value.copy(notice = FriendsNotice.FRIENDSHIP_CHANGED, noticeAction = change.action)
       return
     }
     state.value = state.value.copy(writing = true)
     viewModelScope.launch {
-      val result = friends.remove(shown)
+      val result =
+          when {
+            !network.isOnline() -> FriendshipActionResult.NetworkError
+            change.action == FriendListAction.ACCEPT -> friends.accept(shown)
+            else -> friends.remove(shown)
+          }
       val notice =
           when (result) {
             FriendshipActionResult.Done -> null
@@ -253,9 +279,14 @@ constructor(
         if (isCurrent(shown)) hidden[shown.id] = shown
         render()
       } else {
-        retryTarget = shown
+        retryTarget = change
       }
-      state.value = state.value.copy(writing = false, notice = notice)
+      state.value =
+          state.value.copy(
+              writing = false,
+              notice = notice,
+              noticeAction = change.action.takeIf { notice != null },
+          )
     }
   }
 }
