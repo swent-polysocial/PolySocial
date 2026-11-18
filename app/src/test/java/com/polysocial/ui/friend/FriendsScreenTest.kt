@@ -5,6 +5,7 @@ package com.polysocial.ui.friend
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
@@ -173,9 +174,18 @@ class FriendsScreenTest {
   @Test
   fun incomingAndSentRequestsOfferOnlyTheirOwnActions() {
     render(FriendsUiState(FriendsContent.ListContent(listOf(incoming, sent), false)))
-    tag(FriendsTags.accept("emma")).performClick()
-    tag(FriendsTags.decline("emma")).performClick()
-    tag(FriendsTags.cancel("tom")).performClick()
+    tag(FriendsTags.accept("emma"))
+        .assertContentDescriptionEquals("Accept Emma Sample’s request")
+        .performClick()
+    tag(FriendsTags.decline("emma"))
+        .assertContentDescriptionEquals("Decline Emma Sample’s request")
+        .performClick()
+    tag(FriendsTags.cancel("tom")).assertContentDescriptionEquals("Cancel").performClick()
+    compose.runOnIdle {
+      val knownSent = sent.copy(profile = PublicProfile("tom", "Tom Sample", "SC", "BA3"))
+      state.value = FriendsUiState(FriendsContent.ListContent(listOf(incoming, knownSent), false))
+    }
+    tag(FriendsTags.cancel("tom")).assertContentDescriptionEquals("Cancel request to Tom Sample")
     tag(FriendsTags.cancel("emma")).assertDoesNotExist()
     tag(FriendsTags.accept("tom")).assertDoesNotExist()
     tag(FriendsTags.decline("tom")).assertDoesNotExist()
