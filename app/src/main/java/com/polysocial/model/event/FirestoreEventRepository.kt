@@ -5,6 +5,8 @@
 // association's own events, #132); Franciszek Najda (reviewed #130).
 // Contributors: Claude (Opus 5.5, Anthropic) added the readable private events query, #320.
 // Contributors: Claude (Opus 5.5, Anthropic) saved co-organizer changes with an update, #370.
+// Contributors: Claude (Opus 5.5, Anthropic) (a new event's attendee count, and organizer writes
+// with the SDK's default attempts, #373).
 package com.polysocial.model.event
 
 import com.google.firebase.FirebaseException
@@ -51,7 +53,8 @@ const val EVENTS_COLLECTION = "events"
  * error.
  *
  * Updates and deletes follow the same pattern: after the same offline check, one transaction reads
- * the stored event, checks that the user is one of its organizers, and writes.
+ * the stored event, checks that the user is one of its organizers, and writes. That one runs with
+ * the SDK's default attempts, since every registration also writes the event (#373).
  *
  * @param clock the current time, used to reject events that start in the past and to place the
  *   upcoming-events window.
@@ -89,7 +92,9 @@ class FirestoreEventRepository(
 
     return try {
       val document = db.collection(EVENTS_COLLECTION).document()
-      val fields = event.withCreator(user.uid, isVerifiedAssociation).toFirestoreMap()
+      val created = event.withCreator(user.uid, isVerifiedAssociation)
+      // Nobody is registered yet: the rules accept 0 or no count, and the app writes 0 (#372).
+      val fields = created.toFirestoreMap() + (ATTENDEE_COUNT_FIELD to created.attendeeCount)
       db.runTransaction(SINGLE_ATTEMPT) { it.set(document, fields) }.await()
       CreateEventResult.Created(document.id)
     } catch (e: FirebaseException) {
@@ -203,8 +208,15 @@ class FirestoreEventRepository(
   /**
    * In one transaction, reads `events/[id]` and, if [uid] is one of its organizers, runs [write]
    * with the stored event. [write] returns false, without writing, to refuse the stored event
-   * ([OrganizerWrite.REFUSED]). Like [createEvent]'s, the transaction runs only against the server
-   * and is tried once, so it fails offline instead of being queued.
+   * ([OrganizerWrite.REFUSED]). Like [createEvent]'s, the transaction runs only against the server,
+   * so it fails offline instead of being queued.
+   *
+   * Unlike [createEvent]'s, it runs with the SDK's default attempts: every registration and
+   * cancellation also writes the event (its `attendeeCount`, #372), and one that commits between
+   * this transaction's read and its commit fails the commit. The SDK then reads and writes again,
+   * which a transaction tried once couldn't (decision 21, "Known limits"). It never writes the
+   * count, which the rules keep for registrations. [write] runs again on each attempt, so what it
+   * records must be set anew each time.
    *
    * A missing or malformed document is [OrganizerWrite.NOT_FOUND], like in [getEvent]. A read the
    * Security Rules deny is also [OrganizerWrite.NOT_FOUND]: #52's read rule checks the document's
@@ -221,7 +233,7 @@ class FirestoreEventRepository(
     val wasRead = AtomicBoolean(false)
     return try {
       val document = db.collection(EVENTS_COLLECTION).document(id)
-      db.runTransaction(SINGLE_ATTEMPT) { transaction ->
+      db.runTransaction(DEFAULT_ATTEMPTS) { transaction ->
             val snapshot = transaction.get(document)
             wasRead.set(true)
             val stored =
@@ -434,5 +446,8 @@ class FirestoreEventRepository(
 
   private companion object {
     val SINGLE_ATTEMPT: TransactionOptions = TransactionOptions.Builder().setMaxAttempts(1).build()
+
+    /** The SDK's own number of attempts, which retries a commit another write overtook. */
+    val DEFAULT_ATTEMPTS: TransactionOptions = TransactionOptions.Builder().build()
   }
 }
