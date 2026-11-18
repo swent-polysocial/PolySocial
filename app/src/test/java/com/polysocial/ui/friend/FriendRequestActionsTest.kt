@@ -128,6 +128,8 @@ class FriendRequestActionsTest {
       val row = vm.row(target)
 
       network.online = false
+      friends.acceptFailure = FriendshipActionResult.NetworkError
+      friends.removeFailure = FriendshipActionResult.NetworkError
       vm.answerRequest(row, action)
       runCurrent()
       assertEquals(FriendsNotice.OFFLINE, vm.uiState.value.notice)
@@ -137,6 +139,8 @@ class FriendRequestActionsTest {
       assertEquals(FriendsNotice.OFFLINE, vm.uiState.value.notice)
 
       network.online = true
+      friends.acceptFailure = null
+      friends.removeFailure = null
       vm.retryAction()
       runCurrent()
       if (action == FriendListAction.ACCEPT) {
