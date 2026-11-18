@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (6.2 Sol, high; Compose Friends screen from Figma #358, #360).
+// Contributors: OpenAI Codex (6.2 Sol, high; Compose Friends screen from Figma #358, #360,
+// and profile-link modifier).
 package com.polysocial.ui.friend
 
 import androidx.annotation.DrawableRes
@@ -260,7 +261,7 @@ private fun FriendCard(
   ) {
     Row(
         Modifier.weight(1f)
-            .then(profileLink(row, actions.onOpenProfile))
+            .profileLink(row, actions.onOpenProfile)
             .testTag(FriendsTags.row(row.uid))
             .padding(vertical = if (accepted && !offline) 15.dp else 13.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -272,10 +273,10 @@ private fun FriendCard(
   }
 }
 
-private fun profileLink(row: FriendRow, onOpenProfile: (String) -> Unit): Modifier =
+private fun Modifier.profileLink(row: FriendRow, onOpenProfile: (String) -> Unit): Modifier =
     if (row.section == FriendsSection.FRIENDS) {
-      Modifier.clickable(role = Role.Button) { onOpenProfile(row.uid) }
-    } else Modifier
+      clickable(role = Role.Button) { onOpenProfile(row.uid) }
+    } else this
 
 @Composable
 private fun FriendIdentity(row: FriendRow) {
