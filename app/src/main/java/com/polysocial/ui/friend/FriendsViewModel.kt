@@ -15,6 +15,7 @@ import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.PublicProfileResult
+import com.polysocial.model.user.getPublicProfileWithCache
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -22,7 +23,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 
 internal enum class FriendsSection {
   INCOMING,
@@ -63,7 +63,8 @@ internal data class FriendsUiState(
 /**
  * Observes the student's friendships once per load and looks up each peer independently. List
  * updates are immediate, even when a name can't be loaded; successful cached names stay usable
- * across a connection change. A removal always targets the version shown at confirmation.
+ * across a connection change. Names for peers still on the list are kept until the screen is
+ * reopened. A removal always targets the version shown at confirmation.
  */
 @HiltViewModel
 class FriendsViewModel
@@ -153,14 +154,7 @@ constructor(
     if (retryFailed) profileReads.values.removeAll { it.isCompleted }
     for (peer in peers - profileReads.keys - profiles.keys) {
       profileReads[peer] = viewModelScope.launch {
-        val onlineResult =
-            if (online)
-                withTimeoutOrNull(FRIENDS_TIMEOUT_MILLIS) { publicProfiles.getPublicProfile(peer) }
-            else null
-        val result =
-            if (onlineResult == null || onlineResult == PublicProfileResult.NetworkError) {
-              publicProfiles.getCachedPublicProfile(peer)
-            } else onlineResult
+        val result = publicProfiles.getPublicProfileWithCache(peer, FRIENDS_TIMEOUT_MILLIS, online)
         if (result is PublicProfileResult.Found) {
           profiles[peer] = result.profile
           render()
@@ -192,14 +186,7 @@ constructor(
     val rows = rows()
     val usable = rows.isNotEmpty() || snapshot?.fromCache == false
     if (receivedSnapshot && usable) readFailed = false
-    val content =
-        when {
-          !online && rows.isNotEmpty() -> FriendsContent.ListContent(rows, offline = true)
-          !online && (snapshot != null || readFailed) -> FriendsContent.OfflineWithoutSavedData
-          listenerEnded || readFailed -> FriendsContent.Error
-          usable -> FriendsContent.ListContent(rows, offline = false)
-          else -> FriendsContent.Loading
-        }
+    val content = friendsContent(online, rows, snapshot, readFailed, listenerEnded)
     state.value = state.value.copy(content = content)
     if (content == FriendsContent.Loading) {
       // A cached list can become unresolved again when its last shown row disappears.
@@ -253,8 +240,7 @@ constructor(
     }
     state.value = state.value.copy(writing = true)
     viewModelScope.launch {
-      val result =
-          if (network.isOnline()) friends.remove(shown) else FriendshipActionResult.NetworkError
+      val result = friends.remove(shown)
       val notice =
           when (result) {
             FriendshipActionResult.Done -> null
@@ -273,5 +259,24 @@ constructor(
     }
   }
 }
+
+private fun friendsContent(
+    online: Boolean,
+    rows: List<FriendRow>,
+    snapshot: FriendshipsResult.Success?,
+    readFailed: Boolean,
+    listenerEnded: Boolean,
+): FriendsContent =
+    when {
+      // On a known offline connection, saved rows stay usable.
+      !online && rows.isNotEmpty() -> FriendsContent.ListContent(rows, offline = true)
+      // With no rows, a snapshot or failure confirms there is nothing to show offline.
+      !online && (snapshot != null || readFailed) -> FriendsContent.OfflineWithoutSavedData
+      // An online listener failure offers Retry instead of actions based on a stale list.
+      listenerEnded || readFailed -> FriendsContent.Error
+      // Only the server can confirm that an empty list is current.
+      rows.isNotEmpty() || snapshot?.fromCache == false -> FriendsContent.ListContent(rows, false)
+      else -> FriendsContent.Loading
+    }
 
 private const val FRIENDS_TIMEOUT_MILLIS = 5_000L

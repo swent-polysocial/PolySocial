@@ -332,6 +332,7 @@ class FriendsViewModelTest {
     val repository =
         object : FriendRepository by friends {
           override suspend fun remove(shown: Friendship): FriendshipActionResult {
+            if (!network.isOnline()) return FriendshipActionResult.NetworkError
             removals++
             unblock.await()
             return friends.remove(shown)
