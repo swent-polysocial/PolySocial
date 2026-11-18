@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (6.2 Sol, high; Friends route and association visibility tests, #360).
 // Contributors: Claude Opus 5.5 (a fake FriendRepository for the scanner's ViewModel, #359; the
 // real member profile from the roster, #368); Konstantinos Perdikeas (directed, reviewed and owns
 // it).
@@ -60,6 +61,9 @@ import com.polysocial.model.firebase.SessionOwnerStore
 import com.polysocial.model.friend.FakeFriendRepository
 import com.polysocial.model.friend.FriendModule
 import com.polysocial.model.friend.FriendRepository
+import com.polysocial.model.friend.Friendship
+import com.polysocial.model.friend.FriendshipStatus
+import com.polysocial.model.friend.friendshipId
 import com.polysocial.model.group.FakeGroupRepository
 import com.polysocial.model.group.GroupModule
 import com.polysocial.model.group.GroupRepository
@@ -87,6 +91,7 @@ import com.polysocial.ui.event.create.ZURICH
 import com.polysocial.ui.event.create.completeForm
 import com.polysocial.ui.event.create.toEvent
 import com.polysocial.ui.event.detail.EventDetailTags
+import com.polysocial.ui.friend.FriendsTags
 import com.polysocial.ui.group.YourGroupTags
 import com.polysocial.ui.map.MapTags
 import com.polysocial.ui.theme.PolySocialTheme
@@ -99,6 +104,7 @@ import dagger.hilt.android.testing.UninstallModules
 import io.mockk.every
 import io.mockk.spyk
 import java.time.Clock
+import java.time.Instant
 import kotlinx.coroutines.flow.flowOf
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -167,7 +173,9 @@ class AppShellDefaultScreensTest {
   @BindValue @JvmField val signupStore: AssociationSignupStore = EmptyAssociationSignupStore
   @BindValue @JvmField val groupRepository: GroupRepository = groups
   @BindValue @JvmField val network: NetworkMonitor = FakeNetworkMonitor()
-  @BindValue @JvmField val friends: FriendRepository = FakeFriendRepository()
+  private val fakeFriends = FakeFriendRepository()
+
+  @BindValue @JvmField val friends: FriendRepository = fakeFriends
 
   @BindValue @JvmField val registrations: RegistrationRepository = FakeRegistrationRepository()
 
@@ -333,6 +341,49 @@ class AppShellDefaultScreensTest {
     node(C.Tag.student_profile_back).performClick()
     node(YourGroupTags.SCREEN).assertIsDisplayed()
     assertGone(C.Tag.student_profile_screen)
+  }
+
+  @Test
+  fun profileOpensFriendsAndBackFromThePublicProfileReturnsToTheList() {
+    showMap()
+    composeTestRule.runOnIdle {
+      val uid = "test-student"
+      val peer = "peer"
+      auth.user = AuthUser(uid, "fictional@epfl.ch", true)
+      fakeFriends.seedFriendship(
+          Friendship(
+              checkNotNull(friendshipId(uid, peer)),
+              listOf(peer, uid),
+              uid,
+              FriendshipStatus.ACCEPTED,
+              Instant.EPOCH,
+              Instant.EPOCH,
+          )
+      )
+    }
+    node(Tab.PROFILE.navItemTag).performClick()
+    node(FriendsTags.ENTRY).performClick()
+    node(FriendsTags.SCREEN).assertIsDisplayed()
+    assertGone(C.Tag.bottom_nav)
+    node(FriendsTags.row("peer")).performClick()
+    node(C.Tag.student_profile_name).assertTextEquals("Test Peer")
+    assertEquals(Tab.PROFILE.studentProfileRoute, navController.currentDestination?.route)
+    node(C.Tag.student_profile_back).performClick()
+    node(FriendsTags.row("peer")).assertIsDisplayed()
+    node(FriendsTags.BACK).performClick()
+    node(FriendsTags.ENTRY).assertIsDisplayed()
+  }
+
+  @Test
+  fun associationsHaveNeitherTheFriendsEntryNorTheDestination() {
+    showMap(AccountType.ASSOCIATION)
+    node(C.Tag.nav_item_organization).performClick()
+    assertGone(FriendsTags.ENTRY)
+    composeTestRule.runOnIdle {
+      val profileGraph =
+          navController.graph.findNode(Tab.PROFILE.route) as androidx.navigation.NavGraph
+      assertEquals(null, profileGraph.findNode(Tab.PROFILE.friendsRoute))
+    }
   }
 
   @Test

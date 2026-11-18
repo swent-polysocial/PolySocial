@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: PolySocial Figma #358 (artwork); OpenAI Codex (6.2 Sol, high; converted to Android vector, #360). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="20dp" android:height="20dp"
+    android:viewportWidth="20" android:viewportHeight="20">
+    <path android:pathData="M1.66667 1.66667L18.3333 18.3333M7.08333 13.75C7.8622 12.9866 8.90936 12.5589 10 12.5589C11.0906 12.5589 12.1378 12.9866 12.9167 13.75M10 16.6667H10.0083M4.16667 10.4167C5.11406 9.48936 6.25131 8.77857 7.5 8.33333M12.0833 7.91667C13.5219 8.42493 14.8109 9.28424 15.8333 10.4167M11.6667 4.16667C14.1762 4.57397 16.5018 5.73679 18.3333 7.5M1.66667 7.5C2.53376 6.66905 3.51608 5.96739 4.58333 5.41667"
+        android:strokeColor="#754800" android:strokeWidth="1.58333"
+        android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>
