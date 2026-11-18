@@ -1,5 +1,6 @@
 // Contributors: Claude Opus 5.5 (wrote these tests, #121; the attendee count, #131).
-// Contributors: Claude (Opus 5.5, Anthropic) (listing the attendees, #370).
+// Contributors: Claude (Opus 5.5, Anthropic) (listing the attendees, #370; counted registrations
+// and why one was refused, #373).
 package com.polysocial.model.registration
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -15,6 +16,11 @@ import com.google.firebase.firestore.EventListener
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.FirebaseFirestoreException.Code.ABORTED
+import com.google.firebase.firestore.FirebaseFirestoreException.Code.DEADLINE_EXCEEDED
+import com.google.firebase.firestore.FirebaseFirestoreException.Code.FAILED_PRECONDITION
+import com.google.firebase.firestore.FirebaseFirestoreException.Code.PERMISSION_DENIED
+import com.google.firebase.firestore.FirebaseFirestoreException.Code.UNAVAILABLE
 import com.google.firebase.firestore.ListenerRegistration
 import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.Query
@@ -25,7 +31,10 @@ import com.google.firebase.firestore.Transaction
 import com.google.firebase.firestore.TransactionOptions
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
+import com.polysocial.model.event.ATTENDEE_COUNT_FIELD
 import com.polysocial.model.event.EVENTS_COLLECTION
+import com.polysocial.model.event.toFirestoreMap
+import com.polysocial.model.event.validEvent
 import com.polysocial.model.network.NetworkMonitor
 import io.mockk.every
 import io.mockk.mockk
@@ -55,7 +64,16 @@ class FirestoreRegistrationRepositoryTest {
   private val attendee = mockk<DocumentReference>()
   private val transaction = mockk<Transaction>()
   private val written = slot<Map<String, Any>>()
-  private val options = slot<TransactionOptions>()
+  private val countChange = slot<Any>()
+
+  /** The options of every transaction run, in order. */
+  private val options = mutableListOf<TransactionOptions>()
+
+  /**
+   * How the next transactions end, in order, once their function has run: null commits, an
+   * exception fails the commit. A transaction with nothing left here commits.
+   */
+  private val commits = ArrayDeque<FirebaseFirestoreException?>()
 
   private val auth = FakeAuthRepository(AuthUser("student", "student@epfl.ch", true))
   private var online = true
@@ -66,8 +84,15 @@ class FirestoreRegistrationRepositoryTest {
 
   private val repository = FirestoreRegistrationRepository(db, auth, network)
 
-  private fun snapshot(exists: Boolean) =
-      mockk<DocumentSnapshot>().also { every { it.exists() } returns exists }
+  private fun snapshot(exists: Boolean, data: Map<String, Any?>? = null) =
+      mockk<DocumentSnapshot>().also {
+        every { it.exists() } returns exists
+        every { it.data } returns data
+      }
+
+  /** The stored event, with [count] students registered out of [capacity]. */
+  private fun storedEvent(count: Int, capacity: Int?) =
+      validEvent(capacity = capacity).toFirestoreMap() + (ATTENDEE_COUNT_FIELD to count.toLong())
 
   @Before
   fun stubFirestore() {
@@ -75,88 +100,185 @@ class FirestoreRegistrationRepositoryTest {
     every { events.document("event-1") } returns event
     every { event.collection(ATTENDEES_COLLECTION) } returns attendees
     every { attendees.document("student") } returns attendee
-    stubStored(eventExists = true, registered = false)
+    stubStored(registered = false, event = storedEvent(count = 3, capacity = 8))
     every { transaction.set(attendee, capture(written)) } returns transaction
+    every { transaction.update(event, ATTENDEE_COUNT_FIELD, capture(countChange)) } returns
+        transaction
     every { transaction.delete(attendee) } returns transaction
-    every { db.runTransaction(capture(options), any<Transaction.Function<Any>>()) } answers
+    every { db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Any>>()) } answers
         {
-          Tasks.forResult(secondArg<Transaction.Function<Any>>().apply(transaction))
+          options += firstArg<TransactionOptions>()
+          try {
+            val result = secondArg<Transaction.Function<Any>>().apply(transaction)
+            commits.removeFirstOrNull()?.let { Tasks.forException(it) } ?: Tasks.forResult(result)
+          } catch (e: FirebaseFirestoreException) {
+            // A read that fails fails the transaction, like the SDK's.
+            Tasks.forException(e)
+          }
         }
   }
 
-  private fun stubStored(eventExists: Boolean, registered: Boolean) {
-    every { transaction.get(event) } returns snapshot(eventExists)
+  /** What the transactions read: the student's registration, and the event (null: missing). */
+  private fun stubStored(registered: Boolean, event: Map<String, Any?>?) {
     every { transaction.get(attendee) } returns snapshot(registered)
+    every { transaction.get(this@FirestoreRegistrationRepositoryTest.event) } returns
+        snapshot(event != null, event)
   }
 
   private fun failed(code: FirebaseFirestoreException.Code) =
       FirebaseFirestoreException("failed", code)
 
-  /** Fails the transaction with [failure] before it reads anything, like a denied first read. */
-  private fun failBeforeReading(failure: Exception) {
-    every { db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Any>>()) } returns
-        Tasks.forException(failure)
+  /**
+   * By how much the last write changed the count. The SDK's increment has no `equals`, so its
+   * operand is read through its package-private getter.
+   */
+  private fun countIncrement(): Number {
+    val increment = countChange.captured
+    assertEquals(FieldValue.increment(1).javaClass, increment.javaClass)
+    return increment.javaClass
+        .getDeclaredMethod("getOperand")
+        .apply { isAccessible = true }
+        .invoke(increment) as Number
   }
 
-  /** Runs the transaction's reads and writes, then fails its commit with [code]. */
-  private fun failTheCommitWith(code: FirebaseFirestoreException.Code) {
-    every { db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Any>>()) } answers
-        {
-          secondArg<Transaction.Function<Any>>().apply(transaction)
-          Tasks.forException(failed(code))
-        }
+  /** The first transaction's commit fails with [code], as the rules refuse a write. */
+  private fun refuseTheWriteWith(code: FirebaseFirestoreException.Code = PERMISSION_DENIED) {
+    commits += failed(code)
   }
 
   // register
 
   @Test
-  fun register_writesTheStudentsUidAndTheServerTime() = runTest {
+  fun register_writesTheRegistrationAndRaisesTheCount_withoutReadingAnything() = runTest {
     assertEquals(RegisterResult.Registered, repository.register("event-1"))
 
     assertEquals(setOf("uid", "registeredAt"), written.captured.keys)
     assertEquals("student", written.captured["uid"])
     assertSame(FieldValue.serverTimestamp(), written.captured["registeredAt"])
+    assertEquals(1L, countIncrement())
+    verify(exactly = 0) { transaction.get(any()) }
   }
 
   @Test
-  fun register_readsTheEventAndTheRegistrationInOneTransactionTriedOnce() = runTest {
+  fun register_runsOneTransactionWithTheSdksDefaultAttempts() = runTest {
     repository.register("event-1")
 
-    assertEquals(1, options.captured.maxAttempts)
-    verify { transaction.get(event) }
-    verify { transaction.get(attendee) }
+    assertEquals(listOf(DEFAULT_MAX_ATTEMPTS), options.map { it.maxAttempts })
   }
 
   @Test
-  fun register_twice_writesNothingAndIsStillRegistered() = runTest {
-    stubStored(eventExists = true, registered = true)
+  fun register_refused_whileAlreadyRegistered_isRegisteredAndWritesNothingMore() = runTest {
+    refuseTheWriteWith()
+    stubStored(registered = true, event = storedEvent(count = 8, capacity = 8))
 
     assertEquals(RegisterResult.Registered, repository.register("event-1"))
 
-    verify(exactly = 0) { transaction.set(any(), any()) }
+    // The second transaction only reads, once, and stops at the registration.
+    assertEquals(listOf(DEFAULT_MAX_ATTEMPTS, 1), options.map { it.maxAttempts })
+    verify(exactly = 1) { transaction.set(any(), any()) }
+    verify(exactly = 0) { transaction.get(event) }
   }
 
   @Test
-  fun register_aDeletedEvent_isNotFoundAndWritesNothing() = runTest {
-    stubStored(eventExists = false, registered = false)
+  fun register_refused_atCapacity_isFull() = runTest {
+    refuseTheWriteWith()
+    stubStored(registered = false, event = storedEvent(count = 8, capacity = 8))
 
-    assertEquals(RegisterResult.NotFound, repository.register("event-1"))
-
-    verify(exactly = 0) { transaction.set(any(), any()) }
+    assertEquals(RegisterResult.Full, repository.register("event-1"))
   }
 
   @Test
-  fun register_anEventTheRulesDontLetTheStudentRead_isNotFound() = runTest {
-    failBeforeReading(failed(FirebaseFirestoreException.Code.PERMISSION_DENIED))
+  fun register_refused_withTheCapacityLoweredBelowTheCount_isFull() = runTest {
+    refuseTheWriteWith()
+    stubStored(registered = false, event = storedEvent(count = 9, capacity = 4))
 
-    assertEquals(RegisterResult.NotFound, repository.register("event-1"))
+    assertEquals(RegisterResult.Full, repository.register("event-1"))
   }
 
   @Test
-  fun register_aWriteTheRulesDenyAfterTheRead_isAnUnexpectedError() = runTest {
-    failTheCommitWith(FirebaseFirestoreException.Code.PERMISSION_DENIED)
+  fun register_refused_withAPlaceLeft_isAnUnexpectedError() = runTest {
+    // For example an event that has ended, a deleted account, or rules not deployed yet.
+    refuseTheWriteWith()
+    stubStored(registered = false, event = storedEvent(count = 7, capacity = 8))
 
     assertEquals(RegisterResult.UnexpectedError, repository.register("event-1"))
+  }
+
+  @Test
+  fun register_refused_withoutACapacity_isAnUnexpectedError() = runTest {
+    refuseTheWriteWith()
+    stubStored(registered = false, event = storedEvent(count = 1000, capacity = null))
+
+    assertEquals(RegisterResult.UnexpectedError, repository.register("event-1"))
+  }
+
+  @Test
+  fun register_refused_forAMissingEvent_isNotFound() = runTest {
+    refuseTheWriteWith()
+    stubStored(registered = false, event = null)
+
+    assertEquals(RegisterResult.NotFound, repository.register("event-1"))
+  }
+
+  @Test
+  fun register_refused_forAMalformedEvent_isNotFound() = runTest {
+    refuseTheWriteWith()
+    stubStored(registered = false, event = mapOf("title" to 42))
+
+    assertEquals(RegisterResult.NotFound, repository.register("event-1"))
+  }
+
+  @Test
+  fun register_refused_forAnEventTheRulesDontLetTheStudentRead_isNotFound() = runTest {
+    refuseTheWriteWith()
+    every { transaction.get(event) } throws failed(PERMISSION_DENIED)
+
+    assertEquals(RegisterResult.NotFound, repository.register("event-1"))
+  }
+
+  @Test
+  fun register_refused_whenTheRegistrationCantBeReadEither_isNotFound() = runTest {
+    // An account that isn't a student: no event is open to it.
+    refuseTheWriteWith()
+    every { transaction.get(attendee) } throws failed(PERMISSION_DENIED)
+
+    assertEquals(RegisterResult.NotFound, repository.register("event-1"))
+  }
+
+  @Test
+  fun register_refused_thenTheEventChangesBeforeTheReadsCommit_isAnUnexpectedError() = runTest {
+    refuseTheWriteWith()
+    commits += failed(FAILED_PRECONDITION)
+    stubStored(registered = false, event = storedEvent(count = 8, capacity = 8))
+
+    assertEquals(RegisterResult.UnexpectedError, repository.register("event-1"))
+  }
+
+  @Test
+  fun register_refused_thenOffline_isANetworkError() = runTest {
+    refuseTheWriteWith()
+    every { transaction.get(attendee) } throws failed(UNAVAILABLE)
+
+    assertEquals(RegisterResult.NetworkError, repository.register("event-1"))
+  }
+
+  @Test
+  fun register_aContentionTheSdkDidntGetPast_isClassifiedToo() = runTest {
+    refuseTheWriteWith(ABORTED)
+    stubStored(registered = false, event = storedEvent(count = 8, capacity = 8))
+
+    assertEquals(RegisterResult.Full, repository.register("event-1"))
+  }
+
+  @Test
+  fun register_losingTheConnectionDuringTheWrite_isANetworkErrorWithoutReading() = runTest {
+    for (code in listOf(UNAVAILABLE, DEADLINE_EXCEEDED)) {
+      options.clear()
+      refuseTheWriteWith(code)
+
+      assertEquals(RegisterResult.NetworkError, repository.register("event-1"))
+      assertEquals(1, options.size)
+    }
   }
 
   @Test
@@ -173,9 +295,7 @@ class FirestoreRegistrationRepositoryTest {
 
     assertEquals(RegisterResult.NotSignedIn, repository.register("event-1"))
 
-    verify(exactly = 0) {
-      db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Any>>())
-    }
+    assertTrue(options.isEmpty())
   }
 
   @Test
@@ -184,23 +304,7 @@ class FirestoreRegistrationRepositoryTest {
 
     assertEquals(RegisterResult.NetworkError, repository.register("event-1"))
 
-    verify(exactly = 0) {
-      db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Any>>())
-    }
-  }
-
-  @Test
-  fun register_losingTheConnectionDuringTheWrite_isANetworkError() = runTest {
-    failTheCommitWith(FirebaseFirestoreException.Code.UNAVAILABLE)
-
-    assertEquals(RegisterResult.NetworkError, repository.register("event-1"))
-  }
-
-  @Test
-  fun register_anotherFirestoreFailure_isAnUnexpectedError() = runTest {
-    failBeforeReading(failed(FirebaseFirestoreException.Code.ABORTED))
-
-    assertEquals(RegisterResult.UnexpectedError, repository.register("event-1"))
+    assertTrue(options.isEmpty())
   }
 
   @Test
@@ -211,9 +315,26 @@ class FirestoreRegistrationRepositoryTest {
   }
 
   @Test
+  fun register_anUnexpectedExceptionWhileClassifying_isAnUnexpectedError() = runTest {
+    refuseTheWriteWith()
+    every { transaction.get(attendee) } throws IllegalStateException("terminated")
+
+    assertEquals(RegisterResult.UnexpectedError, repository.register("event-1"))
+  }
+
+  @Test
   fun register_aTaskCancelledWhileTheCallerRuns_isAnUnexpectedError() = runTest {
     every { db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Any>>()) } returns
         Tasks.forCanceled()
+
+    assertEquals(RegisterResult.UnexpectedError, repository.register("event-1"))
+  }
+
+  @Test
+  fun register_aClassificationCancelledWhileTheCallerRuns_isAnUnexpectedError() = runTest {
+    every {
+      db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Any>>())
+    } returnsMany listOf(Tasks.forException(failed(PERMISSION_DENIED)), Tasks.forCanceled())
 
     assertEquals(RegisterResult.UnexpectedError, repository.register("event-1"))
   }
@@ -236,11 +357,53 @@ class FirestoreRegistrationRepositoryTest {
   // cancel
 
   @Test
-  fun cancel_deletesTheStudentsRegistrationInATransactionTriedOnce() = runTest {
+  fun cancel_deletesTheRegistrationAndLowersTheCount_withoutReadingAnything() = runTest {
     assertEquals(CancelRegistrationResult.Cancelled, repository.cancel("event-1"))
 
-    verify { transaction.delete(attendee) }
-    assertEquals(1, options.captured.maxAttempts)
+    verify(exactly = 1) { transaction.delete(attendee) }
+    assertEquals(-1L, countIncrement())
+    verify(exactly = 0) { transaction.get(any()) }
+    assertEquals(listOf(DEFAULT_MAX_ATTEMPTS), options.map { it.maxAttempts })
+  }
+
+  @Test
+  fun cancel_refused_deletesTheRegistrationAlone() = runTest {
+    // Nothing to count: no registration, an event gone or unreadable, or a count at 0.
+    refuseTheWriteWith()
+
+    assertEquals(CancelRegistrationResult.Cancelled, repository.cancel("event-1"))
+
+    verify(exactly = 2) { transaction.delete(attendee) }
+    verify(exactly = 1) { transaction.update(any(), any<String>(), any()) }
+    verify(exactly = 0) { transaction.get(any()) }
+    assertEquals(listOf(DEFAULT_MAX_ATTEMPTS, DEFAULT_MAX_ATTEMPTS), options.map { it.maxAttempts })
+  }
+
+  @Test
+  fun cancel_refusedTwice_isAnUnexpectedError() = runTest {
+    refuseTheWriteWith()
+    commits += failed(PERMISSION_DENIED)
+
+    assertEquals(CancelRegistrationResult.UnexpectedError, repository.cancel("event-1"))
+  }
+
+  @Test
+  fun cancel_refused_thenOffline_isANetworkError() = runTest {
+    refuseTheWriteWith()
+    commits += failed(UNAVAILABLE)
+
+    assertEquals(CancelRegistrationResult.NetworkError, repository.cancel("event-1"))
+  }
+
+  @Test
+  fun cancel_losingTheConnectionDuringTheDelete_isANetworkErrorWithoutTheFallback() = runTest {
+    for (code in listOf(UNAVAILABLE, DEADLINE_EXCEEDED)) {
+      options.clear()
+      refuseTheWriteWith(code)
+
+      assertEquals(CancelRegistrationResult.NetworkError, repository.cancel("event-1"))
+      assertEquals(1, options.size)
+    }
   }
 
   @Test
@@ -256,9 +419,7 @@ class FirestoreRegistrationRepositoryTest {
 
     assertEquals(CancelRegistrationResult.NotSignedIn, repository.cancel("event-1"))
 
-    verify(exactly = 0) {
-      db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Any>>())
-    }
+    assertTrue(options.isEmpty())
   }
 
   @Test
@@ -267,23 +428,7 @@ class FirestoreRegistrationRepositoryTest {
 
     assertEquals(CancelRegistrationResult.NetworkError, repository.cancel("event-1"))
 
-    verify(exactly = 0) {
-      db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Any>>())
-    }
-  }
-
-  @Test
-  fun cancel_losingTheConnectionDuringTheDelete_isANetworkError() = runTest {
-    failTheCommitWith(FirebaseFirestoreException.Code.UNAVAILABLE)
-
-    assertEquals(CancelRegistrationResult.NetworkError, repository.cancel("event-1"))
-  }
-
-  @Test
-  fun cancel_aDeleteTheRulesDeny_isAnUnexpectedError() = runTest {
-    failTheCommitWith(FirebaseFirestoreException.Code.PERMISSION_DENIED)
-
-    assertEquals(CancelRegistrationResult.UnexpectedError, repository.cancel("event-1"))
+    assertTrue(options.isEmpty())
   }
 
   @Test
@@ -575,5 +720,10 @@ class FirestoreRegistrationRepositoryTest {
 
     assertTrue(call.isCancelled)
     assertEquals(null, result)
+  }
+
+  private companion object {
+    /** How many times the SDK tries a transaction by default. */
+    val DEFAULT_MAX_ATTEMPTS = TransactionOptions.Builder().build().maxAttempts
   }
 }

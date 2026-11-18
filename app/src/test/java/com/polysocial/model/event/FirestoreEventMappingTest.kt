@@ -1,5 +1,6 @@
 // Contributors: Claude (wrote these tests, including reading events back, #49; the place name's
 // read, write and round-trip tests, #112).
+// Contributors: Claude (Opus 5.5, Anthropic) (reading the attendee count, never writing it, #373).
 package com.polysocial.model.event
 
 import com.google.firebase.Timestamp
@@ -97,6 +98,36 @@ class FirestoreEventMappingTest {
     val data = stored.toFirestoreMap() + ("capacity" to 8L)
 
     assertEquals(8, eventFromFirestore("event-1", data)?.capacity)
+  }
+
+  @Test
+  fun eventFromFirestore_readsTheAttendeeCountAsANumber() {
+    assertEquals(
+        3,
+        eventFromFirestore("event-1", stored.toFirestoreMap() + (ATTENDEE_COUNT_FIELD to 3L))
+            ?.attendeeCount,
+    )
+    // Only a hand edit or an Admin client other than JavaScript stores 3.0 (decision 21).
+    assertEquals(
+        3,
+        eventFromFirestore("event-1", stored.toFirestoreMap() + (ATTENDEE_COUNT_FIELD to 3.0))
+            ?.attendeeCount,
+    )
+  }
+
+  @Test
+  fun eventFromFirestore_readsAMissingOrWrongTypedAttendeeCountAsZero() {
+    assertEquals(0, eventFromFirestore("event-1", stored.toFirestoreMap())?.attendeeCount)
+    assertEquals(
+        0,
+        eventFromFirestore("event-1", stored.toFirestoreMap() + (ATTENDEE_COUNT_FIELD to "3"))
+            ?.attendeeCount,
+    )
+  }
+
+  @Test
+  fun toFirestoreMap_neverWritesTheAttendeeCount() {
+    assertFalse(ATTENDEE_COUNT_FIELD in stored.copy(attendeeCount = 4).toFirestoreMap())
   }
 
   @Test

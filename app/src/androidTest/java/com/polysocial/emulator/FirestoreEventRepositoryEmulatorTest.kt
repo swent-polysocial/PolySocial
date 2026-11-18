@@ -9,11 +9,13 @@
 // #121).
 // Contributors: Claude (Opus 5.5, Anthropic) tested the private events query against the rules,
 // #320.
-// Contributors: Claude (Opus 5.5, Anthropic) (co-organizer changes against the rules, #370).
+// Contributors: Claude (Opus 5.5, Anthropic) (co-organizer changes against the rules, #370; a new
+// event's attendee count, and a save while students register, #373).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.firebase.firestore.Source
+import com.polysocial.model.event.ATTENDEE_COUNT_FIELD
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.CreateEventResult
 import com.polysocial.model.event.DeleteEventResult
@@ -315,6 +317,8 @@ class FirestoreEventRepositoryEmulatorTest {
     // Firestore's automatic mapping would store `private` and `associationEvent` instead, and the
     // queries and rules would never match them.
     assertEquals(STORED_FIELDS, stored.keys)
+    // Nobody is registered yet, and the rules accept only the whole number 0 (#372).
+    assertEquals(0L, stored[ATTENDEE_COUNT_FIELD])
     assertEquals(true, stored["isPrivate"])
     assertEquals(false, stored["isAssociationEvent"])
     assertEquals(uid, stored["createdBy"])
@@ -707,6 +711,7 @@ class FirestoreEventRepositoryEmulatorTest {
             "startTime",
             "endTime",
             "capacity",
+            "attendeeCount",
             "isPrivate",
             "createdBy",
             "organizerIds",
