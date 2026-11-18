@@ -99,10 +99,16 @@ class EventDetailAttendanceScreenTest {
       EventAttendanceActions(
           onImGoing = { calls += "going" },
           onCancelRegistration = { calls += "cancel" },
+          onConfirmCancelRegistration = { calls += "confirmCancel" },
+          onKeepRegistration = { calls += "keep" },
           onMessageShown = { calls += "shown ${it.message}" },
       )
 
-  private fun show(state: EventDetailUiState.Loaded, feedback: AttendanceFeedback? = null) {
+  private fun show(
+      state: EventDetailUiState.Loaded,
+      feedback: AttendanceFeedback? = null,
+      registrationSheet: CancelRegistrationState = CancelRegistrationState.Hidden,
+  ) {
     composeTestRule.setContent {
       PolySocialTheme {
         EventDetailScreen(
@@ -111,6 +117,7 @@ class EventDetailAttendanceScreenTest {
             onRetry = {},
             attendanceFeedback = feedback,
             attendance = actions,
+            registrationSheet = registrationSheet,
         )
       }
     }
@@ -234,6 +241,29 @@ class EventDetailAttendanceScreenTest {
     composeTestRule.onNodeWithText(string(R.string.event_detail_youre_going)).assertIsDisplayed()
     node(EventDetailTags.CANCEL_REGISTRATION).assertIsDisplayed().performClick()
     assertEquals(listOf("cancel"), calls)
+  }
+
+  @Test
+  fun theCancelRegistrationSheet_forwardsConfirmAndKeep_andIsNotShownToOrganizers() {
+    val inAGroup = loaded(Attendance.GOING, yourGroup = YourGroup("g", 4, emptyList(), STUDENT))
+    show(inAGroup, registrationSheet = CancelRegistrationState.Confirming)
+
+    node(EventDetailTags.CANCEL_REGISTRATION_SHEET).assertIsDisplayed()
+    node(EventDetailTags.CONFIRM_CANCEL_REGISTRATION).performClick()
+    node(EventDetailTags.KEEP_REGISTRATION).performClick()
+    // Closing slides the sheet away before it reports.
+    composeTestRule.waitForIdle()
+    assertEquals(listOf("confirmCancel", "keep"), calls)
+  }
+
+  @Test
+  fun anOrganizer_neverSeesTheCancelRegistrationSheet() {
+    show(
+        loaded(isOrganizer = true),
+        registrationSheet = CancelRegistrationState.Confirming,
+    )
+
+    node(EventDetailTags.CANCEL_REGISTRATION_SHEET).assertDoesNotExist()
   }
 
   @Test
