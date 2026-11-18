@@ -65,24 +65,22 @@ internal fun OrganizerRow(organizer: Organizer) {
   when (organizer) {
     // While loading, the row holds "Organized by you" invisibly and silently, for its height.
     Organizer.Loading ->
-        OrganizedByYou(
+        PlainOrganizer(
+            stringResource(R.string.create_event_organized_by_you),
             Modifier.alpha(0f).clearAndSetSemantics {
               testTag = C.Tag.create_event_organizer_loading
-            }
+            },
         )
-    Organizer.You -> OrganizedByYou(Modifier.testTag(C.Tag.create_event_organized_by))
+    Organizer.You ->
+        PlainOrganizer(
+            stringResource(R.string.create_event_organized_by_you),
+            Modifier.testTag(C.Tag.create_event_organized_by),
+        )
     // A co-organizer's Edit event: the creator, as plain text like "Organized by you" (#249).
     is Organizer.Student ->
-        Text(
+        PlainOrganizer(
             stringResource(R.string.create_event_organized_by, organizer.name),
-            style = MaterialTheme.typography.labelMedium,
-            color = Ink2,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier =
-                Modifier.heightIn(min = ROW_HEIGHT)
-                    .padding(top = 3.dp)
-                    .testTag(C.Tag.create_event_organized_by),
+            Modifier.testTag(C.Tag.create_event_organized_by),
         )
     is Organizer.Association ->
         Row(Modifier.fillMaxWidth().heightIn(min = ROW_HEIGHT)) {
@@ -106,13 +104,19 @@ internal fun OrganizerRow(organizer: Organizer) {
   }
 }
 
-/** "Organized by you", as the form showed it before #134. */
+/**
+ * A row of plain [text], without avatar or badge: "Organized by you", as the form showed it
+ * before #134, and a co-organizer's "Organized by <creator>" (#249). One line, a long name
+ * shortened.
+ */
 @Composable
-private fun OrganizedByYou(modifier: Modifier) {
+private fun PlainOrganizer(text: String, modifier: Modifier) {
   Text(
-      stringResource(R.string.create_event_organized_by_you),
+      text,
       style = MaterialTheme.typography.labelMedium,
       color = Ink2,
+      maxLines = 1,
+      overflow = TextOverflow.Ellipsis,
       modifier = modifier.heightIn(min = ROW_HEIGHT).padding(top = 3.dp),
   )
 }
