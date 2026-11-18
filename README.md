@@ -1,3 +1,4 @@
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (JDK 21 in the prerequisites, #456 review). -->
 <!-- Contributors: OpenAI Codex (group membership account-deletion cleanup and deploy order, #241). -->
 <!-- Contributors: OpenAI Codex (manual association verification guide and PR #245 review revisions, #135). -->
 <!-- Contributors: OpenAI Codex (association onboarding integration notes, #125). -->
@@ -86,7 +87,7 @@ The app needs two private files that are **not in the repository**. Both are git
 | `local.properties` (repository root) | The Android SDK path: `sdk.dir=/path/to/Android/Sdk`. Also `MAPBOX_ACCESS_TOKEN`, the team’s dedicated public Mapbox token. | Android Studio creates it when you open the project. Otherwise, write that one line yourself. |
 | `app/google-services.json` | The Firebase configuration for `com.polysocial` | Firebase console → Project settings → *Your apps* → Android app `com.polysocial` → download `google-services.json`. Or ask a teammate. |
 
-**Prerequisites:** Android Studio with the Android SDK (compile SDK 37), and JDK 17 or newer.
+**Prerequisites:** Android Studio with the Android SDK (compile SDK 37), and JDK 21 or newer, as CI uses: the rules emulator needs it, and the organizer initials' unit tests need a JDK whose `BreakIterator` keeps a flag emoji whole (JDK 20 or newer).
 
 Then build with `./gradlew assembleDebug` (on Windows, `./gradlew.bat assembleDebug`). CI creates both private files from GitHub secrets.
 
