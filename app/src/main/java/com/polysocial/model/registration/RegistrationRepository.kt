@@ -1,5 +1,6 @@
 // Contributors: Claude Opus 5.5 (drafted the registration interface, #121; the ended-event note
 // after review; the attendee count, #131).
+// Contributors: Claude (Opus 5.5, Anthropic) (a full event and the counted registration, #373).
 package com.polysocial.model.registration
 
 import kotlinx.coroutines.flow.Flow
@@ -18,6 +19,12 @@ sealed interface RegisterResult {
    * `EventResult.NotFound`. Nothing was written.
    */
   data object NotFound : RegisterResult
+
+  /**
+   * The event has no place left (`Event.isFull`, #372): the Security Rules refused the registration
+   * and the event was read back at its capacity. Nothing was written.
+   */
+  data object Full : RegisterResult
 
   /** The device is offline. Nothing was written or queued, so the student can try again. */
   data object NetworkError : RegisterResult
@@ -92,7 +99,8 @@ sealed interface AttendeesResult {
  * one document per registered student, so an event's organizers can count its attendees.
  *
  * Only a student registers, for an event they can read, and only for themselves; the Security Rules
- * enforce it. The event's capacity isn't checked yet (#121's second part).
+ * enforce it. Each registration is counted in the event's `attendeeCount` in the same write, and
+ * the rules refuse one that would go over the event's capacity (#372, decision 21).
  */
 interface RegistrationRepository {
   /**
@@ -101,8 +109,11 @@ interface RegistrationRepository {
    * The checks run in this order, and each one stops before anything is written: an ID that can't
    * be a document ID returns [RegisterResult.NotFound], a missing user
    * [RegisterResult.NotSignedIn], and an offline device [RegisterResult.NetworkError]. Firestore
-   * would queue a write made offline instead of failing, so the repository must not start one.
-   * Then, in one step, the event is read and the registration written if it isn't there yet.
+   * would queue a write made offline instead of failing, so the repository must not start one. Then
+   * the registration and the event's count go up together, without reading the event first. If the
+   * rules refuse that, the registration and the event are read to say why: already registered is
+   * [RegisterResult.Registered] and nothing changes, an event at its capacity
+   * [RegisterResult.Full], and a missing or unreadable one [RegisterResult.NotFound].
    *
    * The Security Rules refuse a registration once the event has ended (its `endTime`, or its
    * `startTime` without one), which returns [RegisterResult.UnexpectedError]: the screens don't
@@ -111,9 +122,9 @@ interface RegistrationRepository {
   suspend fun register(eventId: String): RegisterResult
 
   /**
-   * Removes the signed-in student's registration for the event [eventId], if there is one. It works
-   * even once the event is deleted or no longer readable, so a student can always remove their own
-   * registration.
+   * Removes the signed-in student's registration for the event [eventId], if there is one, and
+   * gives its place back. It works even once the event is deleted or no longer readable, so a
+   * student can always remove their own registration.
    *
    * Like [register], a missing user returns [CancelRegistrationResult.NotSignedIn] and an offline
    * device [CancelRegistrationResult.NetworkError], before anything is deleted. An ID that can't be

@@ -1,10 +1,17 @@
 // Contributors: Claude (drafted the Firestore mapping for events, and reading it back, #49; the
 // place name, #112).
+// Contributors: Claude (Opus 5.5, Anthropic) (reading the attendee count, #373).
 package com.polysocial.model.event
 
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.GeoPoint
 import java.time.Instant
+
+/**
+ * The field of `events/{id}` that counts its registrations (#372, decision 21). [toFirestoreMap]
+ * never writes it: `createEvent` adds 0, and only registering and cancelling change it.
+ */
+const val ATTENDEE_COUNT_FIELD = "attendeeCount"
 
 /**
  * The fields of `events/{id}` as Firestore stores them, written by hand instead of with Firestore's
@@ -14,7 +21,9 @@ import java.time.Instant
  *
  * The category is stored by its enum name, the location as a [GeoPoint] and the times as
  * [Timestamp]s. A missing end time or capacity is stored as null. The place name is stored as
- * `locationName`.
+ * `locationName`. [Event.attendeeCount] isn't in the map ([ATTENDEE_COUNT_FIELD]): an update sends
+ * the map with `update`, so the stored count is kept, and the Security Rules refuse an organizer's
+ * change to it.
  */
 fun Event.toFirestoreMap(): Map<String, Any?> =
     mapOf(
@@ -40,7 +49,8 @@ fun Event.toFirestoreMap(): Map<String, Any?> =
  * category later doesn't break older versions. Returns null if a required field (title,
  * description, category, location, start time or visibility) is missing or has the wrong type, so
  * one malformed document can't crash the map. Missing optional fields get their defaults, so an
- * event saved before `locationName` existed reads with a blank place name.
+ * event saved before `locationName` existed reads with a blank place name, and one saved before the
+ * attendee count with 0.
  */
 fun eventFromFirestore(id: String, data: Map<String, Any?>): Event? {
   val title = data["title"] as? String ?: return null
@@ -60,6 +70,9 @@ fun eventFromFirestore(id: String, data: Map<String, Any?>): Event? {
       endTime = (data["endTime"] as? Timestamp)?.toInstant(),
       // Firestore returns every whole number as a Long.
       capacity = (data["capacity"] as? Number)?.toInt(),
+      // A Number, like the capacity: the rules keep it whole, the Admin SDK and the console
+      // needn't.
+      attendeeCount = (data[ATTENDEE_COUNT_FIELD] as? Number)?.toInt() ?: 0,
       isPrivate = isPrivate,
       createdBy = data["createdBy"] as? String ?: "",
       organizerIds = data["organizerIds"].stringList(),

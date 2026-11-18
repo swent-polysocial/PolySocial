@@ -1,6 +1,6 @@
 // Contributors: Claude Opus 5.5 (wrote this fake for tests, #121; matched the real checks' order
 // after review; the attendee count, #131).
-// Contributors: Claude (Opus 5.5, Anthropic) (listing the attendees, #370).
+// Contributors: Claude (Opus 5.5, Anthropic) (listing the attendees, #370; full events, #373).
 package com.polysocial.model.registration
 
 import com.polysocial.model.event.isReadableEventId
@@ -15,7 +15,8 @@ import kotlinx.coroutines.flow.map
  * ID, then the signed-in user, then [registerFailure] or [cancelFailure], then the stored
  * registrations.
  * Only the events in [readableEventIds] can be registered for; any other ID is
- * [RegisterResult.NotFound], like a missing or private event.
+ * [RegisterResult.NotFound], like a missing or private event. A student who isn't registered yet
+ * gets [RegisterResult.Full] for the events in [fullEventIds], like an event at its capacity.
  *
  * @property currentUid the signed-in student, or null when nobody is signed in.
  */
@@ -23,6 +24,9 @@ class FakeRegistrationRepository(var currentUid: String? = "test-student") :
     RegistrationRepository {
   /** The events a student may register for, like the events they can read. */
   val readableEventIds = mutableSetOf<String>()
+
+  /** The events with no place left, where a student who isn't registered yet is refused. */
+  val fullEventIds = mutableSetOf<String>()
 
   /** The stored registrations, as event ID to the UIDs of its registered students. */
   private val attendees = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
@@ -64,6 +68,7 @@ class FakeRegistrationRepository(var currentUid: String? = "test-student") :
       return it
     }
     if (eventId !in readableEventIds) return RegisterResult.NotFound
+    if (uid !in attendeesOf(eventId) && eventId in fullEventIds) return RegisterResult.Full
     attendees.value += eventId to (attendeesOf(eventId) + uid)
     return RegisterResult.Registered
   }

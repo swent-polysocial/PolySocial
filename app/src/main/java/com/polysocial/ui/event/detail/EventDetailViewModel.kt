@@ -20,6 +20,8 @@
 // runs, so the screen holds the name's place from the first state, #281's review).
 // Contributors: Claude (Opus 5.5, Anthropic) (every organizer's name, the co-organizers after the
 // creator, for the same viewers as the creator's, #371).
+// Contributors: Claude (Opus 5.5, Anthropic) (a full event's refusal shown as the usual failure,
+// #373).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -870,6 +872,8 @@ constructor(
               when (registrations.register(eventId)) {
                 RegisterResult.Registered -> null
                 RegisterResult.NetworkError -> AttendanceMessage.REGISTER_OFFLINE
+                // The usual failure until "Event full" has its own message (#407).
+                RegisterResult.Full,
                 RegisterResult.NotSignedIn,
                 RegisterResult.NotFound,
                 RegisterResult.UnexpectedError -> AttendanceMessage.REGISTER_FAILED
