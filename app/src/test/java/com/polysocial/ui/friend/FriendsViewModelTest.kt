@@ -14,6 +14,7 @@ import com.polysocial.model.network.FakeNetworkMonitor
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileRepository
+import com.polysocial.model.user.PublicProfileResult
 import com.polysocial.utils.MainDispatcherRule
 import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
@@ -121,6 +122,45 @@ class FriendsViewModelTest {
   }
 
   @Test
+  fun aNetworkErrorFallsBackToTheCachedName() = runTest {
+    friends.seedFriendship(accepted)
+    val unavailableProfiles =
+        object : PublicProfileRepository by cachedProfiles {
+          override suspend fun getPublicProfile(uid: String) = PublicProfileResult.NetworkError
+        }
+    val vm = FriendsViewModel(auth, friends, unavailableProfiles, network)
+    runCurrent()
+
+    assertEquals(lea, vm.list().rows.single().profile)
+  }
+
+  @Test
+  fun aFreshListRetriesMissingNamesWithoutReloadingKnownPeers() = runTest {
+    friends.seedFriendship(accepted)
+    friends.seedFriendship(outgoing)
+    val vm = create()
+    runCurrent()
+    assertEquals(
+        mapOf("lea" to lea, "tom" to null),
+        vm.list().rows.associate { it.uid to it.profile },
+    )
+
+    val tom = PublicProfile("tom", "Tom Sample", "SC", "BA2")
+    profiles.profiles["tom"] = tom
+    friends.readFromCache = true
+    runCurrent()
+    assertNull(vm.list().rows.single { it.uid == "tom" }.profile)
+
+    friends.readFromCache = false
+    runCurrent()
+    assertEquals(
+        mapOf("lea" to lea, "tom" to tom),
+        vm.list().rows.associate { it.uid to it.profile },
+    )
+    assertEquals(1, profiles.requestedUids.count { it == listOf("lea") })
+  }
+
+  @Test
   fun reconnectRestartsAFailedListenerAndRefreshesSavedRows() = runTest {
     friends.seedFriendship(accepted)
     val vm = create()
@@ -192,6 +232,49 @@ class FriendsViewModelTest {
     unblock.complete(Unit)
     runCurrent()
     assertTrue(vm.list().rows.isEmpty())
+  }
+
+  @Test
+  fun aCacheOnlyEmptySnapshotAfterLoadingStillHasATimeout() = runTest {
+    val vm = create()
+    runCurrent()
+    assertEquals(FriendsContent.ListContent(emptyList(), false), vm.uiState.value.content)
+
+    friends.readFromCache = true
+    runCurrent()
+    assertEquals(FriendsContent.Loading, vm.uiState.value.content)
+    advanceTimeBy(5_000)
+    runCurrent()
+    assertEquals(FriendsContent.Error, vm.uiState.value.content)
+
+    friends.readFromCache = false
+    runCurrent()
+    assertEquals(FriendsContent.ListContent(emptyList(), false), vm.uiState.value.content)
+  }
+
+  @Test
+  fun removingTheLastCachedFriendBeforeTheListenerUpdatesStillHasATimeout() = runTest {
+    friends.readFromCache = true
+    friends.seedFriendship(accepted)
+    val repository =
+        object : FriendRepository by friends {
+          override suspend fun remove(shown: Friendship) = FriendshipActionResult.Done
+        }
+    val vm = create(repository)
+    runCurrent()
+    vm.requestRemoval(vm.list().rows.single())
+    vm.confirmRemoval()
+    runCurrent()
+    assertEquals(FriendsContent.Loading, vm.uiState.value.content)
+
+    advanceTimeBy(5_000)
+    runCurrent()
+    assertEquals(FriendsContent.Error, vm.uiState.value.content)
+
+    friends.deleteFriendship(accepted.id)
+    friends.readFromCache = false
+    runCurrent()
+    assertEquals(FriendsContent.ListContent(emptyList(), false), vm.uiState.value.content)
   }
 
   @Test
