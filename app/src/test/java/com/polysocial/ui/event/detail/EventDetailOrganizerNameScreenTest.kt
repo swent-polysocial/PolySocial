@@ -4,6 +4,7 @@
 // screen of a student who isn't going, #281).
 // Contributors: Claude (Opus 5.5, Anthropic) (the row's place held while the name is read, also at
 // the largest font size, #281's review).
+// Contributors: Claude (Opus 5.5, Anthropic) (the state's names as a list, #371).
 package com.polysocial.ui.event.detail
 
 import androidx.compose.runtime.getValue
@@ -81,8 +82,8 @@ class EventDetailOrganizerNameScreenTest {
           isOffline = false,
           isOrganizer = isOrganizer,
           associationName = associationName,
-          organizerName = organizerName,
-          isReadingOrganizerName = readingName,
+          organizerNames = listOfNotNull(organizerName),
+          isReadingOrganizerNames = readingName,
           attendance = if (isOrganizer) Attendance.NOT_GOING else Attendance.GOING,
       )
 

@@ -18,6 +18,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (no organizer name read from a stale request when the
 // screen comes back, and an answered read kept, also when the connection changes; whether a read
 // runs, so the screen holds the name's place from the first state, #281's review).
+// Contributors: Claude (Opus 5.5, Anthropic) (every organizer's name, the co-organizers after the
+// creator, for the same viewers as the creator's, #371).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -57,6 +59,9 @@ import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -183,11 +188,12 @@ sealed interface EventDetailUiState {
    *   Edit and Cancel event (#131).
    * @property associationName the name of the association that publishes the event, once read
    *   (#128); null for a student's event, and while or when it can't be read.
-   * @property organizerName the name of the student who created the event, shown as "by <name>"
-   *   (#281); null unless the viewer may see it ([namedOrganizer]), and while or when it can't be
-   *   read.
-   * @property isReadingOrganizerName true while [organizerName] is read for a viewer who may see
-   *   it, so the screen holds its row's place instead of moving what is below when it arrives.
+   * @property organizerNames the names of the event's organizers, the creator first, then its
+   *   co-organizers in the order they were added, shown as "by <names>" (#281, #371); empty unless
+   *   the viewer may see them ([namedOrganizers]), and while or when they can't be read. An
+   *   organizer whose profile is missing or can't be read is left out.
+   * @property isReadingOrganizerNames true while [organizerNames] are read for a viewer who may see
+   *   them, so the screen holds its row's place instead of moving what is below when they arrive.
    * @property going the "Going" count, only on [isManaged] events; null otherwise.
    * @property isLive true while the event runs, when it was read (Figma's "Live now" on the manage
    *   screen); it is updated with the event's next change.
@@ -213,8 +219,8 @@ sealed interface EventDetailUiState {
       val isOffline: Boolean,
       val isOrganizer: Boolean = false,
       val associationName: String? = null,
-      val organizerName: String? = null,
-      val isReadingOrganizerName: Boolean = false,
+      val organizerNames: List<String> = emptyList(),
+      val isReadingOrganizerNames: Boolean = false,
       val going: GoingCount? = null,
       val isLive: Boolean = false,
       val hasEnded: Boolean = false,
@@ -246,72 +252,77 @@ sealed interface EventDetailUiState {
 }
 
 /**
- * The UID of the organizer whose name this viewer may see on the event (#281), or null when they
- * may see none: the creator of a student's public event, for the event's organizers and the
- * students registered for it ("I'm going"). Everyone else gets no name, so a public event doesn't
- * show its organizer to every student. An association's event shows the association instead (#128),
- * and a private event names nobody until its own decision.
+ * The UIDs of the organizers whose names this viewer may see on the event (#281), empty when they
+ * may see none: the organizers of a student's public event, the creator first, then the
+ * co-organizers in the order they were added (#371), for the event's organizers and the students
+ * registered for it ("I'm going"). Everyone else gets no name, so a public event doesn't show its
+ * organizers to every student; co-organizers follow the creator's rule, since they never agreed to
+ * be named (decided by the Sprint 6 PO on #371). An association's event shows the association
+ * instead (#128), and a private event names nobody until its own decision.
  *
- * The name is only hidden on screen (decided on #281, see CONTEXT.md): the creator's UID stays in
- * the event every student can read.
- *
- * Today the creator is the only organizer; co-organizers (#371) extend this.
+ * The names are only hidden on screen (decided on #281, see CONTEXT.md): the organizers' UIDs stay
+ * in the event every student can read.
  */
-private fun EventDetailUiState.Loaded.namedOrganizer(): String? {
+private fun EventDetailUiState.Loaded.namedOrganizers(): List<String> {
   val event = details.event
   val maySee =
       (isOrganizer || attendance == Attendance.GOING) &&
           !event.isAssociationEvent &&
           !event.isPrivate
-  return event.createdBy.takeIf { maySee && it.isNotBlank() }
+  if (!maySee) return emptyList()
+  return (listOf(event.createdBy) + event.organizerIds).filter { it.isNotBlank() }.distinct()
 }
 
 /**
- * The organizer whose name is read for the viewer ([namedOrganizer]). [offline] isn't sent with the
- * read: it makes the event no longer showing as offline a new request, so a read that failed for
- * the network is tried again then ([OrganizerRead.answers]). A network that Android reports but
+ * The organizers whose names are read for the viewer ([namedOrganizers]). [offline] isn't sent with
+ * the read: it makes the event no longer showing as offline a new request, so a read that failed
+ * for the network is tried again then ([OrganizerRead.answers]). A network that Android reports but
  * Firestore can't reach doesn't change it, so the name then waits for the next request (the screen
  * coming back, or the registration changing).
  */
-private data class OrganizerRequest(val uid: String, val offline: Boolean)
+private data class OrganizerRequest(val uids: List<String>, val offline: Boolean)
 
-/** The organizer whose name this state's viewer may see ([namedOrganizer]), if any. */
+/** The organizers whose names this state's viewer may see ([namedOrganizers]), if any. */
 private fun EventDetailUiState.Loaded.organizerRequest() =
-    namedOrganizer()?.let { OrganizerRequest(it, isOffline) }
+    namedOrganizers().takeIf { it.isNotEmpty() }?.let { OrganizerRequest(it, isOffline) }
 
 /**
- * The answer to a read of the name of the organizer [uid]: [name], null when the profile is
- * missing, unreadable or has no name; [failedForNetwork] when the read failed for the network.
+ * The answer to a read of the names of the organizers [uids]: [names], in the same order, without
+ * the organizers whose profile is missing, unreadable or has no name; [failedForNetwork] when a
+ * read failed for the network.
  */
 private data class OrganizerRead(
-    val uid: String,
-    val name: String?,
+    val uids: List<String>,
+    val names: List<String>,
     val failedForNetwork: Boolean = false,
 ) {
   /**
-   * Whether this answer still holds for [request]: the same organizer, and a read that didn't fail
+   * Whether this answer still holds for [request]: the same organizers, and reads that didn't fail
    * for the network, or did while the event still shows as offline.
    */
   fun answers(request: OrganizerRequest) =
-      uid == request.uid && (request.offline || !failedForNetwork)
+      uids == request.uids && (request.offline || !failedForNetwork)
 }
 
-/** The answer to [request]: the organizer's [name], null without one or without a request. */
-private data class OrganizerAnswer(val request: OrganizerRequest?, val name: String? = null)
+/** The answer to [request]: the organizers' [names], empty without any or without a request. */
+private data class OrganizerAnswer(
+    val request: OrganizerRequest?,
+    val names: List<String> = emptyList(),
+)
 
 /**
- * This state with the organizer's name from [answer], for a viewer who may see it: checked again
- * here, so the name goes at once when the registration is cancelled. Until the answer to this
- * state's own request comes, a name already read for the same organizer stays, and without one the
- * row holds its place ([EventDetailUiState.Loaded.isReadingOrganizerName]).
+ * This state with the organizers' names from [answer], for a viewer who may see them: checked again
+ * here, so the names go at once when the registration is cancelled. Until the answer to this
+ * state's own request comes, names already read for the same organizers stay, and without them the
+ * row holds its place ([EventDetailUiState.Loaded.isReadingOrganizerNames]).
  */
 private fun EventDetailUiState.withOrganizer(answer: OrganizerAnswer): EventDetailUiState {
   if (this !is EventDetailUiState.Loaded) return this
   val request = organizerRequest() ?: return this
-  val name = answer.name.takeIf { answer.request?.uid == request.uid }
+  val names = answer.names.takeIf { answer.request?.uids == request.uids }.orEmpty()
   return copy(
-      organizerName = name,
-      isReadingOrganizerName = name == null && answer.request != request,
+      organizerNames = names,
+      isReadingOrganizerNames = names.isEmpty() && answer.request != request,
   )
 }
 
@@ -381,12 +392,12 @@ sealed interface CancelEventState {
  * saves again; each failure gets its own id, so a Retry that fails the same way is reported again
  * too.
  *
- * A student's public event names its organizer to the viewers [namedOrganizer] allows (#281), from
- * the creator's public profile, read through [profiles] only for them, then kept while this
- * ViewModel lives; only a read that failed for the network is tried again, once the event no longer
- * shows as offline or when the screen comes back ([OrganizerRequest]). The event never waits for
- * it, and a profile that is missing or can't be read just leaves the name out: a missing profile
- * doesn't mean a deleted account (#291).
+ * A student's public event names its organizers to the viewers [namedOrganizers] allows
+ * (#281, #371), from their public profiles, read through [profiles] only for them, then kept while
+ * this ViewModel lives and the organizers don't change; only reads that failed for the network are
+ * tried again, once the event no longer shows as offline or when the screen comes back
+ * ([OrganizerRequest]). The event never waits for them, and a profile that is missing or can't be
+ * read just leaves that name out: a missing profile doesn't mean a deleted account (#291).
  *
  * Once going, "Remind me 1 h before" ([EventDetailUiState.Loaded.reminderOn], second PR of #123)
  * schedules or cancels through [reminders]: its state is seeded once from
@@ -438,8 +449,8 @@ constructor(
   private val watchesGroup = MutableStateFlow(false)
 
   /**
-   * The last answered read of the organizer's name, kept while this ViewModel lives, also while the
-   * screen is stopped.
+   * The last answered read of the organizers' names, kept while this ViewModel lives, also while
+   * the screen is stopped.
    */
   private var organizerRead: OrganizerRead? = null
 
@@ -559,8 +570,8 @@ constructor(
           )
 
   /**
-   * These states with the organizer's name, for the viewers [namedOrganizer] allows (#281). Whose
-   * name they need is worked out again on each run of [uiState], so when the screen comes back
+   * These states with the organizers' names, for the viewers [namedOrganizers] allows (#281). Whose
+   * names they need is worked out again on each run of [uiState], so when the screen comes back
    * nothing is read before the event and the registrations say again who may see it.
    */
   private fun Flow<EventDetailUiState>.withOrganizerName(): Flow<EventDetailUiState> = flow {
@@ -574,10 +585,10 @@ constructor(
   }
 
   /**
-   * The answer to each of [requests], once there is one: the organizer's name from their public
-   * profile, none when the profile is missing, unreadable or has no name. It is read once and kept,
-   * so the screen coming back, the registration cancelled and made again or the connection changing
-   * costs no read ([OrganizerRead.answers]).
+   * The answer to each of [requests], once there is one: the organizers' names from their public
+   * profiles, without those whose profile is missing, unreadable or has no name. They are read once
+   * and kept, so the screen coming back, the registration cancelled and made again or the
+   * connection changing costs no read ([OrganizerRead.answers]).
    */
   @OptIn(ExperimentalCoroutinesApi::class)
   private fun organizerAnswers(requests: Flow<OrganizerRequest?>): Flow<OrganizerAnswer> =
@@ -586,7 +597,7 @@ constructor(
         val known = organizerRead?.takeIf { it.answers(request) }
         OrganizerAnswer(
             request,
-            (known ?: readOrganizer(request.uid).also { organizerRead = it }).name,
+            (known ?: readOrganizers(request.uids).also { organizerRead = it }).names,
         )
       }
 
@@ -677,15 +688,20 @@ constructor(
         PublicProfilesResult.UnexpectedError -> null
       }
 
-  /** Reads the name of the organizer [uid] from their public profile. */
-  private suspend fun readOrganizer(uid: String): OrganizerRead =
-      when (val result = profiles.getPublicProfile(uid)) {
-        is PublicProfileResult.Found ->
-            OrganizerRead(uid, result.profile.displayName.ifBlank { null })
-        PublicProfileResult.NetworkError -> OrganizerRead(uid, null, failedForNetwork = true)
-        PublicProfileResult.NotFound,
-        PublicProfileResult.UnexpectedError -> OrganizerRead(uid, null)
-      }
+  /**
+   * Reads the names of the organizers [uids] from their public profiles, one read each, in
+   * parallel: one profile that is missing or can't be read leaves only its own name out.
+   */
+  private suspend fun readOrganizers(uids: List<String>): OrganizerRead {
+    val results = coroutineScope { uids.map { async { profiles.getPublicProfile(it) } }.awaitAll() }
+    return OrganizerRead(
+        uids,
+        results.mapNotNull {
+          (it as? PublicProfileResult.Found)?.profile?.displayName?.ifBlank { null }
+        },
+        failedForNetwork = results.any { it == PublicProfileResult.NetworkError },
+    )
+  }
 
   /** Counts the attendees again after the count failed (tapping the unavailable count). */
   fun retryGoingCount() {
