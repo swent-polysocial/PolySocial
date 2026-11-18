@@ -1,4 +1,4 @@
-// Contributors: OpenAI Codex (6.2 Sol, high; request action controls and feedback, #361).
+// Contributors: OpenAI Codex (6.2 Sol, high; request controls, feedback and accessibility, #361).
 // Contributors: OpenAI Codex (6.2 Sol, high; Compose Friends screen from Figma #358, #360,
 // profile-link modifier, and review fixes for fallback copy and confirmation).
 package com.polysocial.ui.friend
@@ -47,6 +47,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.dismiss
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
@@ -308,6 +310,7 @@ private fun RequestActions(
     if (row.section == FriendsSection.INCOMING) {
       RequestButton(
           R.string.friends_decline,
+          R.string.friends_decline_named,
           FriendsTags.decline(row.uid),
           enabled,
           row,
@@ -316,6 +319,7 @@ private fun RequestActions(
       )
       RequestButton(
           R.string.friends_accept,
+          R.string.friends_accept_named,
           FriendsTags.accept(row.uid),
           enabled,
           row,
@@ -325,6 +329,7 @@ private fun RequestActions(
     } else {
       RequestButton(
           R.string.friends_cancel,
+          R.string.friends_cancel_named,
           FriendsTags.cancel(row.uid),
           enabled,
           row,
@@ -338,12 +343,15 @@ private fun RequestActions(
 @Composable
 private fun RequestButton(
     @StringRes text: Int,
+    @StringRes namedDescription: Int,
     tag: String,
     enabled: Boolean,
     row: FriendRow,
     action: FriendListAction,
     onAnswer: (FriendRow, FriendListAction) -> Unit,
 ) {
+  val label = stringResource(text)
+  val description = row.profile?.displayName?.let { stringResource(namedDescription, it) } ?: label
   val filled = action == FriendListAction.ACCEPT
   val background =
       when {
@@ -369,7 +377,8 @@ private fun RequestButton(
       contentAlignment = Alignment.Center,
   ) {
     Text(
-        stringResource(text),
+        label,
+        modifier = Modifier.clearAndSetSemantics { contentDescription = description },
         style = privacyTextStyle(13, 17f, FontWeight.Bold),
         color = textColor,
         textAlign = TextAlign.Center,

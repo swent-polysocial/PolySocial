@@ -29,6 +29,9 @@
     <string name="friends_accept">Accept</string>
     <string name="friends_decline">Decline</string>
     <string name="friends_cancel">Cancel</string>
+    <string name="friends_accept_named">Accept %1$s’s request</string>
+    <string name="friends_decline_named">Decline %1$s’s request</string>
+    <string name="friends_cancel_named">Cancel request to %1$s</string>
     <string name="friends_request_error">Couldn’t update request.</string>
     <string name="friends_request_changed">This request has changed.</string>
 </resources>
