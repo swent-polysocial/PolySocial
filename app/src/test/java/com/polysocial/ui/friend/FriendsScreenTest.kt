@@ -85,6 +85,28 @@ class FriendsScreenTest {
   }
 
   @Test
+  fun unavailableFriendCanOpenAndRemoveAfterActionControlsRecover() {
+    val content = FriendsContent.ListContent(listOf(friend.copy(profile = null)), false)
+    render(FriendsUiState(content))
+    compose.onNodeWithText("Saved friendship").assertIsDisplayed()
+    tag(FriendsTags.row("lea")).performClick()
+    tag(FriendsTags.options("lea")).performClick()
+    tag(FriendsTags.REMOVE).assertIsDisplayed()
+
+    compose.runOnIdle { state.value = FriendsUiState(content, writing = true) }
+    tag(FriendsTags.options("lea")).assertIsNotEnabled()
+    tag(FriendsTags.REMOVE).assertDoesNotExist()
+    compose.runOnIdle { state.value = FriendsUiState(content) }
+    tag(FriendsTags.REMOVE).assertDoesNotExist()
+
+    tag(FriendsTags.options("lea")).performClick()
+    tag(FriendsTags.REMOVE).performClick()
+    compose.onNodeWithText("Remove this friend?").assertIsDisplayed()
+    tag(FriendsTags.CONFIRM).performClick()
+    assertEquals(listOf("profile:lea", "confirm"), calls)
+  }
+
+  @Test
   fun offlineListKeepsTheRowsAndShowsTheActionRetry() {
     render(
         FriendsUiState(

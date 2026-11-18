@@ -102,20 +102,21 @@ fun FriendsRoute(
     viewModel: FriendsViewModel = hiltViewModel(),
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
-  FriendsScreen(
-      state,
-      FriendsActions(
-          onBack,
-          onOpenProfile,
-          onScan,
-          viewModel::retryLoad,
-          viewModel::requestRemoval,
-          viewModel::keepFriend,
-          viewModel::confirmRemoval,
-          viewModel::retryAction,
-          viewModel::dismissNotice,
-      ),
-  )
+  val actions =
+      remember(viewModel, onBack, onOpenProfile, onScan) {
+        FriendsActions(
+            onBack,
+            onOpenProfile,
+            onScan,
+            viewModel::retryLoad,
+            viewModel::requestRemoval,
+            viewModel::keepFriend,
+            viewModel::confirmRemoval,
+            viewModel::retryAction,
+            viewModel::dismissNotice,
+        )
+      }
+  FriendsScreen(state, actions)
 }
 
 internal data class FriendsActions(
@@ -257,12 +258,9 @@ private fun FriendCard(
           .padding(start = 12.dp, end = if (accepted && !offline) 4.dp else 12.dp),
       verticalAlignment = Alignment.CenterVertically,
   ) {
-    val open =
-        if (accepted) Modifier.clickable(role = Role.Button) { actions.onOpenProfile(row.uid) }
-        else Modifier
     Row(
         Modifier.weight(1f)
-            .then(open)
+            .then(profileLink(row, actions.onOpenProfile))
             .testTag(FriendsTags.row(row.uid))
             .padding(vertical = if (accepted && !offline) 15.dp else 13.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -273,6 +271,11 @@ private fun FriendCard(
     if (accepted && !offline) FriendOptions(row, enabled = !writing, actions.onRemove)
   }
 }
+
+private fun profileLink(row: FriendRow, onOpenProfile: (String) -> Unit): Modifier =
+    if (row.section == FriendsSection.FRIENDS) {
+      Modifier.clickable(role = Role.Button) { onOpenProfile(row.uid) }
+    } else Modifier
 
 @Composable
 private fun FriendIdentity(row: FriendRow) {
@@ -308,7 +311,7 @@ private fun FriendIdentity(row: FriendRow) {
 
 @Composable
 private fun FriendOptions(row: FriendRow, enabled: Boolean, onRemove: (FriendRow) -> Unit) {
-  var expanded by remember { mutableStateOf(false) }
+  var expanded by remember(enabled) { mutableStateOf(false) }
   val name = row.profile?.displayName ?: stringResource(R.string.group_profile_unavailable)
   Box {
     IconButton(
@@ -324,7 +327,7 @@ private fun FriendOptions(row: FriendRow, enabled: Boolean, onRemove: (FriendRow
       )
     }
     DropdownMenu(
-        expanded = expanded && enabled,
+        expanded = expanded,
         onDismissRequest = { expanded = false },
         shape = RoundedCornerShape(14.dp),
         containerColor = Bg,
@@ -423,7 +426,8 @@ private fun OfflineFriendsBanner() {
 
 @Composable
 private fun RemoveFriendSheet(row: FriendRow, actions: FriendsActions) {
-  val firstName = row.profile?.displayName?.trim()?.substringBefore(' ')?.takeIf { it.isNotEmpty() }
+  val firstName =
+      row.profile?.displayName?.let { it.trim().substringBefore(' ').takeIf(String::isNotEmpty) }
   val title =
       if (firstName != null) stringResource(R.string.friends_remove_named, firstName)
       else stringResource(R.string.friends_remove_unnamed)
