@@ -9,6 +9,7 @@ import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.validEvent
 import com.polysocial.model.group.FakeGroupRepository
+import com.polysocial.model.group.GroupRepository
 import com.polysocial.model.group.GroupWriteResult
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.registration.CancelRegistrationResult
@@ -19,6 +20,7 @@ import com.polysocial.utils.MainDispatcherRule
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -45,7 +47,7 @@ class EventDetailCancelRegistrationTest {
       }
   private val groups = FakeGroupRepository(currentUid = ME).apply { readableEventIds += EVENT }
 
-  private fun TestScope.open(): EventDetailViewModel {
+  private fun TestScope.open(groupRepository: GroupRepository = groups): EventDetailViewModel {
     events.seed(validEvent().copy(id = EVENT, title = "Balélec warm-up"))
     val vm =
         EventDetailViewModel(
@@ -58,7 +60,7 @@ class EventDetailCancelRegistrationTest {
             clock,
             FakeAssociationNames(),
             registrations,
-            groups,
+            groupRepository,
             FakePublicProfileRepository(),
             FakeReminderScheduler(clock),
         )
@@ -214,6 +216,48 @@ class EventDetailCancelRegistrationTest {
 
     assertEquals(Attendance.GOING, vm.loaded.attendance)
     assertEquals(listOf("lea", ME), groups.groupsOf(EVENT).single().memberUids)
+  }
+
+  @Test
+  fun aLeaveThatThrows_isAnUnexpectedFailure_notACrash() = runTest {
+    groups.seedGroup(EVENT, listOf("lea", ME))
+    val vm =
+        open(
+            object : GroupRepository by groups {
+              override suspend fun leaveGroup(eventId: String, groupId: String): GroupWriteResult =
+                  throw IllegalStateException("a stored field had the wrong type")
+            }
+        )
+    vm.onCancelRegistration()
+
+    vm.onConfirmCancelRegistration()
+    runCurrent()
+
+    assertEquals(
+        CancelRegistrationState.Failed(CancelRegistrationState.Failed.Reason.UNEXPECTED),
+        vm.registrationSheet.value,
+    )
+    assertEquals(Attendance.GOING, vm.loaded.attendance)
+  }
+
+  @Test
+  fun aCancelledLeave_putsTheSheetBackAsItWas() = runTest {
+    groups.seedGroup(EVENT, listOf("lea", ME))
+    val vm =
+        open(
+            object : GroupRepository by groups {
+              override suspend fun leaveGroup(eventId: String, groupId: String): GroupWriteResult =
+                  throw CancellationException("the screen went away")
+            }
+        )
+    vm.onCancelRegistration()
+
+    vm.onConfirmCancelRegistration()
+    runCurrent()
+
+    // Not stuck on "Leaving": the confirmation is back, and nothing was cancelled.
+    assertEquals(CancelRegistrationState.Confirming, vm.registrationSheet.value)
+    assertEquals(Attendance.GOING, vm.loaded.attendance)
   }
 
   private companion object {
