@@ -14,6 +14,7 @@ import android.content.res.Resources
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
@@ -365,13 +366,26 @@ class AppShellDefaultScreensTest {
     node(FriendsTags.ENTRY).performClick()
     node(FriendsTags.SCREEN).assertIsDisplayed()
     assertGone(C.Tag.bottom_nav)
-    node(FriendsTags.row("peer")).performClick()
+    clickTwiceDuringNavigation(FriendsTags.row("peer"))
     node(C.Tag.student_profile_name).assertTextEquals("Test Peer")
     assertEquals(Tab.PROFILE.studentProfileRoute, navController.currentDestination?.route)
     node(C.Tag.student_profile_back).performClick()
     node(FriendsTags.row("peer")).assertIsDisplayed()
-    node(FriendsTags.BACK).performClick()
+    clickTwiceDuringNavigation(FriendsTags.SCAN)
+    node(C.Tag.scan_friend_screen).assertIsDisplayed()
+    assertEquals(Tab.PROFILE.scanFriendRoute, navController.currentDestination?.route)
+    node(C.Tag.scan_friend_close).performClick()
+    node(FriendsTags.SCREEN).assertIsDisplayed()
+    clickTwiceDuringNavigation(FriendsTags.BACK)
     node(FriendsTags.ENTRY).assertIsDisplayed()
+  }
+
+  private fun clickTwiceDuringNavigation(tag: String) {
+    val click = checkNotNull(node(tag).fetchSemanticsNode().config[SemanticsActions.OnClick].action)
+    composeTestRule.runOnIdle {
+      click()
+      click()
+    }
   }
 
   @Test
