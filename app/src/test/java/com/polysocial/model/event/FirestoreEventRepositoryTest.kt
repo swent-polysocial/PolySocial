@@ -6,6 +6,8 @@
 // Contributors: OpenAI Codex (listener disposal failure and cancellation tests, #156).
 // Contributors: Claude (Opus 5.5, Anthropic) tested the readable private events query, #320.
 // Contributors: Claude (Opus 5.5, Anthropic) tested saving co-organizer changes, #370.
+// Contributors: Claude (Opus 5.5, Anthropic) (a new event's attendee count, organizer writes with
+// the SDK's default attempts, #373).
 package com.polysocial.model.event
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -112,7 +114,10 @@ class FirestoreEventRepositoryTest {
   fun aValidEvent_isWrittenAndGetsTheNewDocumentId() = runTest {
     assertEquals(CreateEventResult.Created("event-42"), repository.createEvent(validEvent()))
 
-    assertEquals(validEvent().withCreator("creator", false).toFirestoreMap(), writtenFields())
+    assertEquals(
+        validEvent().withCreator("creator", false).toFirestoreMap() + (ATTENDEE_COUNT_FIELD to 0),
+        writtenFields(),
+    )
   }
 
   @Test
@@ -130,12 +135,15 @@ class FirestoreEventRepositoryTest {
                 createdBy = "someone-else",
                 organizerIds = listOf("someone-else"),
                 allowedUids = listOf("intruder"),
+                attendeeCount = 12,
                 isAssociationEvent = true,
             )
 
     repository.createEvent(claimed)
 
     val fields = writtenFields()
+    // Nobody is registered for a new event: the rules accept only 0 (#372).
+    assertEquals(0, fields[ATTENDEE_COUNT_FIELD])
     assertEquals("creator", fields["createdBy"])
     assertEquals(listOf("creator"), fields["organizerIds"])
     assertEquals(listOf("creator"), fields["allowedUids"])
@@ -901,7 +909,10 @@ class FirestoreEventRepositoryTest {
     assertEquals(listOf("creator", "co-organizer"), updatedFields()["organizerIds"])
     assertEquals(listOf("creator", "co-organizer", "member"), updatedFields()["allowedUids"])
     assertEquals(true, updatedFields()["isAssociationEvent"])
-    assertEquals(1, options.captured.maxAttempts)
+    // The count is left to registrations: the rules refuse an organizer's change to it (#372).
+    assertFalse(ATTENDEE_COUNT_FIELD in updatedFields())
+    // A registration that commits between the read and the commit is retried by the SDK (#373).
+    assertEquals(DEFAULT_MAX_ATTEMPTS, options.captured.maxAttempts)
   }
 
   @Test
@@ -1174,14 +1185,14 @@ class FirestoreEventRepositoryTest {
   }
 
   @Test
-  fun delete_byAnOrganizer_deletesTheEventInOneAttempt() = runTest {
+  fun delete_byAnOrganizer_deletesTheEvent_withTheSdksDefaultAttempts() = runTest {
     stubStoredEvent()
     auth.user = AuthUser("co-organizer", "co@epfl.ch", true)
 
     assertEquals(DeleteEventResult.Deleted, repository.deleteEvent("event-1"))
 
     verify { transaction.delete(storedDocument) }
-    assertEquals(1, options.captured.maxAttempts)
+    assertEquals(DEFAULT_MAX_ATTEMPTS, options.captured.maxAttempts)
   }
 
   @Test
@@ -1402,5 +1413,10 @@ class FirestoreEventRepositoryTest {
     every { collection.whereEqualTo("isPrivate", true) } throws terminated()
 
     assertEquals(listOf(PrivateEventsResult.Error), repository.getReadablePrivateEvents().toList())
+  }
+
+  private companion object {
+    /** How many times the SDK tries a transaction by default. */
+    val DEFAULT_MAX_ATTEMPTS = TransactionOptions.Builder().build().maxAttempts
   }
 }

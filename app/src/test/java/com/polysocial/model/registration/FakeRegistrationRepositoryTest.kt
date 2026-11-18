@@ -1,5 +1,6 @@
 // Contributors: Claude Opus 5.5 (wrote these tests, #121; the invalid-ID test after review; the
 // attendee count, #131).
+// Contributors: Claude (Opus 5.5, Anthropic) (full events, #373).
 package com.polysocial.model.registration
 
 import kotlinx.coroutines.flow.first
@@ -39,6 +40,17 @@ class FakeRegistrationRepositoryTest {
     assertEquals(RegisterResult.NotFound, repository.register("private"))
 
     assertEquals(emptySet<String>(), repository.attendeesOf("private"))
+  }
+
+  @Test
+  fun aFullEvent_isFull_butStaysRegisteredForWhoAlreadyIs() = runTest {
+    repository.fullEventIds += "event-1"
+
+    assertEquals(RegisterResult.Full, repository.register("event-1"))
+    assertEquals(emptySet<String>(), repository.attendeesOf("event-1"))
+
+    repository.seedRegistration("event-1", "student")
+    assertEquals(RegisterResult.Registered, repository.register("event-1"))
   }
 
   @Test

@@ -1,5 +1,6 @@
 // Contributors: Claude Opus 5.5 (wrote these tests of "I'm going" on the event detail, #122;
 // passed the new reminder scheduler fake, second PR of #123).
+// Contributors: Claude (Opus 5.5, Anthropic) (a full event's refusal, #373).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -228,6 +229,8 @@ class EventDetailAttendanceTest {
   fun aRefusedOrFailedRegistration_isNeverShownAsGoing() = runTest {
     for (failure in
         listOf(
+            // The usual failure until "Event full" has its own message (#407).
+            RegisterResult.Full,
             RegisterResult.UnexpectedError,
             RegisterResult.NotFound,
             RegisterResult.NotSignedIn,
