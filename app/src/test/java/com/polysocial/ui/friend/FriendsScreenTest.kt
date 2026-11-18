@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (6.2 Sol, high; request action interaction tests, #361).
 // Contributors: OpenAI Codex (6.2 Sol, high; Compose Friends screen tests, #360).
 package com.polysocial.ui.friend
 
@@ -54,6 +55,7 @@ class FriendsScreenTest {
                 },
                 onRetryAction = { calls += "retry" },
                 onDismissNotice = { calls += "dismiss" },
+                onAnswer = { row, action -> calls += "$action:${row.uid}" },
             ),
         )
       }
@@ -166,6 +168,69 @@ class FriendsScreenTest {
     tag(FriendsTags.NOTICE_ACTION).performClick()
     tag(FriendsTags.NOTICE).performSemanticsAction(SemanticsActions.Dismiss)
     assertEquals(listOf("retry", "dismiss", "dismiss"), calls)
+  }
+
+  @Test
+  fun incomingAndSentRequestsOfferOnlyTheirOwnActions() {
+    render(FriendsUiState(FriendsContent.ListContent(listOf(incoming, sent), false)))
+    tag(FriendsTags.accept("emma")).performClick()
+    tag(FriendsTags.decline("emma")).performClick()
+    tag(FriendsTags.cancel("tom")).performClick()
+    tag(FriendsTags.cancel("emma")).assertDoesNotExist()
+    tag(FriendsTags.accept("tom")).assertDoesNotExist()
+    tag(FriendsTags.decline("tom")).assertDoesNotExist()
+    assertEquals(listOf("ACCEPT:emma", "DECLINE:emma", "CANCEL:tom"), calls)
+  }
+
+  @Test
+  fun writingDisablesOtherActionsAndOfflineHidesThem() {
+    val content = FriendsContent.ListContent(listOf(incoming, sent), false)
+    render(FriendsUiState(content, writing = true))
+    tag(FriendsTags.accept("emma")).assertIsNotEnabled()
+    tag(FriendsTags.decline("emma")).assertIsNotEnabled()
+    tag(FriendsTags.cancel("tom")).assertIsNotEnabled()
+
+    compose.runOnIdle { state.value = FriendsUiState(content.copy(offline = true)) }
+    tag(FriendsTags.row("emma")).assertIsDisplayed()
+    tag(FriendsTags.accept("emma")).assertDoesNotExist()
+    tag(FriendsTags.decline("emma")).assertDoesNotExist()
+    tag(FriendsTags.cancel("tom")).assertDoesNotExist()
+  }
+
+  @Test
+  fun changedRequestCanBeDismissedWithoutRetryingIt() {
+    render(
+        FriendsUiState(
+            FriendsContent.ListContent(emptyList(), false),
+            notice = FriendsNotice.FRIENDSHIP_CHANGED,
+            noticeAction = FriendListAction.ACCEPT,
+        )
+    )
+    compose.onNodeWithText("This request has changed.").assertIsDisplayed()
+    tag(FriendsTags.NOTICE_ACTION).performClick()
+    assertEquals(listOf("dismiss"), calls)
+  }
+
+  @Test
+  fun writeFailureCopyMatchesTheActionThatFailed() {
+    val empty = FriendsContent.ListContent(emptyList(), false)
+    render(
+        FriendsUiState(empty, notice = FriendsNotice.FAILED, noticeAction = FriendListAction.CANCEL)
+    )
+    compose.onNodeWithText("Couldn’t update request.").assertIsDisplayed()
+    tag(FriendsTags.NOTICE_ACTION).performClick()
+
+    compose.runOnIdle {
+      state.value =
+          FriendsUiState(
+              empty,
+              notice = FriendsNotice.FAILED,
+              noticeAction = FriendListAction.REMOVE,
+          )
+    }
+    compose.onNodeWithText("Couldn’t remove friend.").assertIsDisplayed()
+    tag(FriendsTags.NOTICE_ACTION).performClick()
+    assertEquals(listOf("retry", "retry"), calls)
   }
 
   private fun tag(tag: String) = compose.onNodeWithTag(tag)

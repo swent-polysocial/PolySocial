@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (6.2 Sol, high; request action controls and feedback, #361).
 // Contributors: OpenAI Codex (6.2 Sol, high; Compose Friends screen from Figma #358, #360,
 // profile-link modifier, and review fixes for fallback copy and confirmation).
 package com.polysocial.ui.friend
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -67,6 +69,7 @@ import com.polysocial.ui.theme.AccentSoft
 import com.polysocial.ui.theme.AccentText
 import com.polysocial.ui.theme.Bg
 import com.polysocial.ui.theme.Border
+import com.polysocial.ui.theme.Disabled
 import com.polysocial.ui.theme.InfoSoft
 import com.polysocial.ui.theme.Ink
 import com.polysocial.ui.theme.Ink3
@@ -93,6 +96,12 @@ object FriendsTags {
   fun row(uid: String) = "friends_row_$uid"
 
   fun options(uid: String) = "friends_options_$uid"
+
+  fun accept(uid: String) = "friends_accept_$uid"
+
+  fun decline(uid: String) = "friends_decline_$uid"
+
+  fun cancel(uid: String) = "friends_cancel_$uid"
 }
 
 @Composable
@@ -115,6 +124,7 @@ fun FriendsRoute(
             viewModel::confirmRemoval,
             viewModel::retryAction,
             viewModel::dismissNotice,
+            viewModel::answerRequest,
         )
       }
   FriendsScreen(state, actions)
@@ -130,6 +140,7 @@ internal data class FriendsActions(
     val onConfirm: () -> Unit,
     val onRetryAction: () -> Unit,
     val onDismissNotice: () -> Unit,
+    val onAnswer: (FriendRow, FriendListAction) -> Unit,
 )
 
 @Composable
@@ -176,7 +187,7 @@ internal fun FriendsScreen(state: FriendsUiState, actions: FriendsActions) {
         Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 28.dp),
         verticalArrangement = Arrangement.spacedBy(24.dp),
     ) {
-      state.notice?.let { ActionNotice(it, actions) }
+      state.notice?.let { ActionNotice(it, state.noticeAction, actions) }
       when (val content = state.content) {
         FriendsContent.OfflineWithoutSavedData ->
             OutlinePill(R.string.retry, FriendsTags.RETRY, actions.onRetryLoad)
@@ -251,25 +262,110 @@ private fun FriendCard(
 ) {
   val accepted = row.section == FriendsSection.FRIENDS
   val shape = RoundedCornerShape(14.dp)
-  Row(
+  Column(
       Modifier.fillMaxWidth()
           .clip(shape)
           .background(if (accepted) Bg else Surface)
-          .border(1.dp, Border, shape)
-          .padding(start = 12.dp, end = if (accepted && !offline) 4.dp else 12.dp),
-      verticalAlignment = Alignment.CenterVertically,
+          .border(1.dp, Border, shape),
   ) {
     Row(
-        Modifier.weight(1f)
-            .profileLink(row, actions.onOpenProfile)
-            .testTag(FriendsTags.row(row.uid))
-            .padding(vertical = if (accepted && !offline) 15.dp else 13.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        Modifier.fillMaxWidth()
+            .padding(start = 12.dp, end = if (accepted && !offline) 4.dp else 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-      FriendIdentity(row, offline)
+      val topPadding =
+          when {
+            accepted && !offline -> 15.dp
+            offline -> 13.dp
+            else -> 12.dp
+          }
+      Row(
+          Modifier.weight(1f)
+              .profileLink(row, actions.onOpenProfile)
+              .testTag(FriendsTags.row(row.uid))
+              .padding(top = topPadding, bottom = if (accepted || offline) topPadding else 8.dp),
+          horizontalArrangement = Arrangement.spacedBy(10.dp),
+          verticalAlignment = Alignment.CenterVertically,
+      ) {
+        FriendIdentity(row, offline)
+      }
+      if (accepted && !offline) FriendOptions(row, enabled = !writing, actions.onRemove)
     }
-    if (accepted && !offline) FriendOptions(row, enabled = !writing, actions.onRemove)
+    if (!accepted && !offline) RequestActions(row, enabled = !writing, actions.onAnswer)
+  }
+}
+
+@Composable
+private fun RequestActions(
+    row: FriendRow,
+    enabled: Boolean,
+    onAnswer: (FriendRow, FriendListAction) -> Unit,
+) {
+  Row(
+      Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, bottom = 12.dp),
+      horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+  ) {
+    if (row.section == FriendsSection.INCOMING) {
+      RequestButton(
+          R.string.friends_decline,
+          FriendsTags.decline(row.uid),
+          enabled,
+      ) {
+        onAnswer(row, FriendListAction.DECLINE)
+      }
+      RequestButton(
+          R.string.friends_accept,
+          FriendsTags.accept(row.uid),
+          enabled,
+          filled = true,
+      ) {
+        onAnswer(row, FriendListAction.ACCEPT)
+      }
+    } else {
+      RequestButton(R.string.friends_cancel, FriendsTags.cancel(row.uid), enabled) {
+        onAnswer(row, FriendListAction.CANCEL)
+      }
+    }
+  }
+}
+
+@Composable
+private fun RequestButton(
+    @StringRes text: Int,
+    tag: String,
+    enabled: Boolean,
+    filled: Boolean = false,
+    onClick: () -> Unit,
+) {
+  val background =
+      when {
+        !enabled -> Disabled
+        filled -> Ink
+        else -> Bg
+      }
+  val textColor =
+      when {
+        !enabled -> Ink3
+        filled -> Bg
+        else -> Ink
+      }
+  Box(
+      Modifier.widthIn(min = 92.dp)
+          .heightIn(min = 40.dp)
+          .clip(CircleShape)
+          .background(background)
+          .then(if (filled) Modifier else Modifier.border(1.dp, Border, CircleShape))
+          .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+          .testTag(tag)
+          .padding(horizontal = 10.dp, vertical = 8.dp),
+      contentAlignment = Alignment.Center,
+  ) {
+    Text(
+        stringResource(text),
+        style = privacyTextStyle(13, 17f, FontWeight.Bold),
+        color = textColor,
+        textAlign = TextAlign.Center,
+    )
   }
 }
 
@@ -494,12 +590,20 @@ private fun OutlinePill(@StringRes label: Int, tag: String, onClick: () -> Unit)
 }
 
 @Composable
-private fun ActionNotice(notice: FriendsNotice, actions: FriendsActions) {
+private fun ActionNotice(
+    notice: FriendsNotice,
+    action: FriendListAction?,
+    actions: FriendsActions,
+) {
+  val forRequest = action != null && action != FriendListAction.REMOVE
   val message =
       when (notice) {
         FriendsNotice.OFFLINE -> R.string.friends_offline
-        FriendsNotice.FAILED -> R.string.friends_remove_error
-        FriendsNotice.FRIENDSHIP_CHANGED -> R.string.friends_friendship_changed
+        FriendsNotice.FAILED ->
+            if (forRequest) R.string.friends_request_error else R.string.friends_remove_error
+        FriendsNotice.FRIENDSHIP_CHANGED ->
+            if (forRequest) R.string.friends_request_changed
+            else R.string.friends_friendship_changed
       }
   val canRetry = notice != FriendsNotice.FRIENDSHIP_CHANGED
   Snackbar(

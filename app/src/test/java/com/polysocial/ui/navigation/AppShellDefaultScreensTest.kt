@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (6.2 Sol, high; real request action integration, #361).
 // Contributors: OpenAI Codex (6.2 Sol, high; Friends route and association visibility tests, #360).
 // Contributors: Claude Opus 5.5 (a fake FriendRepository for the scanner's ViewModel, #359; the
 // real member profile from the roster, #368); Konstantinos Perdikeas (directed, reviewed and owns
@@ -386,6 +387,31 @@ class AppShellDefaultScreensTest {
       click()
       click()
     }
+  }
+
+  @Test
+  fun acceptingFromTheRealFriendsRouteMovesTheStudentIntoFriends() {
+    showMap()
+    composeTestRule.runOnIdle {
+      val uid = "test-student"
+      val peer = "peer"
+      auth.user = AuthUser(uid, "fictional@epfl.ch", true)
+      fakeFriends.seedFriendship(
+          Friendship(
+              checkNotNull(friendshipId(uid, peer)),
+              listOf(peer, uid),
+              peer,
+              FriendshipStatus.PENDING,
+              Instant.EPOCH,
+              null,
+          )
+      )
+    }
+    node(Tab.PROFILE.navItemTag).performClick()
+    node(FriendsTags.ENTRY).performClick()
+    node(FriendsTags.accept("peer")).performClick()
+    assertGone(FriendsTags.accept("peer"))
+    node(FriendsTags.options("peer")).assertIsDisplayed()
   }
 
   @Test

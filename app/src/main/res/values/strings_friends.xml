@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Contributors: OpenAI Codex (6.2 Sol, high; Friends screen copy from Figma #358 and failure feedback, #360). -->
+<!-- Contributors: OpenAI Codex (6.2 Sol, high; request actions and feedback, #361). -->
 <resources>
     <string name="friends_title">Friends</string>
     <string name="friends_incoming">Incoming requests</string>
@@ -25,4 +26,9 @@
     <string name="friends_remove_error">Couldn’t remove friend.</string>
     <string name="friends_friendship_changed">This friendship has changed.</string>
     <string name="friends_dismiss">Dismiss</string>
+    <string name="friends_accept">Accept</string>
+    <string name="friends_decline">Decline</string>
+    <string name="friends_cancel">Cancel</string>
+    <string name="friends_request_error">Couldn’t update request.</string>
+    <string name="friends_request_changed">This request has changed.</string>
 </resources>
