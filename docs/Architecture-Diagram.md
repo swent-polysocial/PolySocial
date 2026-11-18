@@ -36,6 +36,7 @@
 <!-- Contributors: Claude Opus 5.5 (drafted the profile visibility, bio, photo, usernames and friends-on-profile design, #366); Konstantinos Perdikeas (decided the design, reviewed and owns it). -->
 <!-- Contributors: Claude Opus 5.5 (3.9 after #445's review: the trigger reads the current friendship, the backfill, both-way username rules, the active-account photo check, the offline count, and the PO's username format and reserved names); Konstantinos Perdikeas (directed, reviewed and owns it). -->
 <!-- Contributors: Claude Opus 5.5 (a group member's public profile marked as built, #368); Konstantinos Perdikeas (directed, reviewed and owns it). -->
+<!-- Contributors: Claude Opus 5.5 (drafted the check-in model, its rules sketch, retention and Sprint 7 tasks, #374); Konstantinos Perdikeas (decided the design, reviewed and owns it). -->
 
 How PolySocial is built, as we currently envision it. The page follows the [Android App Architecture guide](https://developer.android.com/topic/architecture/intro): a **UI layer** (Compose screens and ViewModels), a **domain layer** of pure Kotlin logic, and a **data layer** of repositories in front of Firebase, the map and geocoding services, and the device sensors.
 
@@ -282,7 +283,7 @@ flowchart TB
 
 ### 3.5 At the venue and social features (Product Backlog)
 
-- **Check-in (#22).** A one-off location check against the venue during the event window. A QR code at the entrance is the indoor fallback. Only checked-in members can upload to the album (README).
+- **Check-in (#22, decided in #374, [3.10](#310-check-in-at-the-venue-product-backlog-decided-in-374)).** A one-off precise location check against the venue during the event window, at the student's tap, with a rotating entrance QR code as the indoor fallback. The album's upload rule (#421) can build on it.
 - **Find my group (#20).** Locations are shared **only with the group and only during the event** (README). Each member's position lives in `events/{eventId}/groups/{groupId}/locations/{uid}`. It is written only during the event window, readable only by group members, and deleted when the event ends. There is no location history.
 - **Album.** Photos are compressed and resized on the device, then stored in Cloud Storage. A Firestore document holds each photo's metadata. Storage Security Rules enforce size and type limits and check-in membership. Thumbnails are cached.
 - **Reminders (#21, #36).** WorkManager schedules them when the student registers, so they fire offline and survive reboots. The notification permission (Android 13+) is requested at that moment.
@@ -678,6 +679,112 @@ flowchart TB
 - **Account deletion** (decision 15): `deleteAccount` deletes the `usernames/{name}` document, so the name is free at once, and the photo file, both after the profile transaction. Deleting the friendships (#338) fires the trigger, which removes the student from each friend's list and empties their own.
 - **Offline:** a profile and its friends list show from the cache; changing the visibility, bio, photo or username is refused offline with Try again, like the friends actions.
 
+### 3.10 Check-in at the venue (Product Backlog, decided in #374)
+
+```mermaid
+flowchart TB
+  classDef pb fill:#dbe4ff,stroke:#364fc7,color:#000
+  classDef ext fill:#fff3bf,stroke:#e67700,color:#000
+  classDef s1 fill:#d3f9d8,stroke:#2b8a3e,color:#000
+
+  checkUi["Check in<br/>Check my location · Scan entrance QR<br/>Figma section 20, #375"]:::pb --> checkVM["<b>Check-in ViewModel</b><br/>window · one-off fix · result"]:::pb
+  codeUi["Entrance QR<br/>organizers only"]:::pb --> codeVM["<b>Entrance code ViewModel</b><br/>shows the current token, refreshes it"]:::pb
+  groupUi["Your group<br/>3 of 4 checked in"]:::pb --> groupVM["<b>Your group ViewModel</b><br/>built, #234"]:::s1
+  checkVM --> window["<b>checkInWindow · isAtVenue</b><br/><i>domain</i>, pure Kotlin, haversine"]:::pb
+  checkVM --> loc["<b>LocationService</b><br/>one-off precise fix<br/>built (coarse), #51"]:::s1
+  checkVM --> scan["<b>QrScanner · parseQrPayload</b><br/>built, #359, #337"]:::s1
+  checkVM --> repo["<b>CheckInRepository</b><br/>checkIn · observeCheckIn · entrance code"]:::pb
+  codeVM --> repo
+  groupVM --> repo
+  repo --> fs[("Firestore<br/>events/{eventId}/checkIns/{uid}<br/>events/{eventId}/checkInCode/current")]:::ext
+  loc --> gps[("Device location<br/>precise, foreground, once")]:::ext
+  ttl["Firestore TTL policy<br/>on expiresAt"]:::pb -. "deletes 30 days after the event" .-> fs
+```
+
+- **What check-in is.** A student who said "I'm going" (#122) taps **Check my location** during the event window. The app takes **one** precise location fix, compares it with the event's `location` on the device, and on success writes a check-in that their group sees ("Checked in at 20:08"). Indoors, or when location is off or too imprecise, they scan the **entrance QR code** an organizer shows instead. That is the whole feature: no background location, no geofence, no location history.
+- **Not automatic, on purpose.** The user story (#22) asks for an automatic check-in "without me doing anything". That would need background location or a geofence, which `AGENTS.md` forbids (no continuous tracking), so the student taps once, in the foreground, as #375's frames show. The app may *offer* the check-in (a prompt on the event detail during the window), but it never reads the location before the tap.
+- **Who checks in.** Only a verified EPFL student **registered** for the event (their `attendees/{uid}` exists), not under a `deletedAccounts/{uid}` marker. Organizers don't register (#122), so they don't check in; they show the entrance code. Associations never check in, and a verified association organizing an event shows its entrance code like a student organizer.
+- **The window.** From **30 minutes before `startTime`** until **`endTime`**. An event **without an end time** closes **3 hours after its start** (resolves the open question "Events without an end time"). The same window will apply to Find my group (#20). It is one pure function, `checkInWindow(event)`, which the rules mirror exactly. Registration is unchanged: it still closes at `endTime`, or at the start without one (`Event.isPast`, #121).
+- **The location check (`isAtVenue`, pure Kotlin, reusing the existing haversine distance).** A fix counts when it is **within 150 m** of the event's `location` **and** its reported accuracy is **100 m or better**. 150 m covers a large venue measured from one pin, such as the Rolex Learning Center; the accuracy limit stops a vague fix from passing by luck. A fix that fails either check is "too far" (#375's frame 05), with the QR fallback and Try again.
+- **Precise location, asked at the tap.** The app has only had approximate location so far (#51), and Android's approximate location is accurate to about 3 km², which can't tell the venue from the next building. Check-in therefore adds `ACCESS_FINE_LOCATION` to the manifest and asks for it **only when the student taps Check my location**, never at app start. `LocationService` gets a one-off precise read, with the 15 s timeout it already has. If the student refuses, or on Android 12+ allows only approximate location, the screen says so and offers the entrance QR (#375's frame 04, plus an "approximate only" variant). Android's new location button (`androidx.core:core-locationbutton`, made for one-off check-ins) was considered and left for later: it is an experimental alpha library, a new dependency, and only Play Store apps targeting API 37 must use it.
+- **Honest-client limit, accepted.** The rules can't see a GPS fix, so a modified app could claim to be at the venue. The rules still enforce everything they can see (registration, window, the entrance token), and the stakes are low: a fake check-in only shows "arrived" to the student's own group and, later, lets them add photos to the album (#421). The entrance QR is the strong path.
+- **The entrance code rotates every 60 s, so a screenshot stops working within 2 minutes.**
+  - **Stored** in `events/{eventId}/checkInCode/current`: `token` (a random 128-bit value, 22 base64url characters, so it passes #337's ID check), `previousToken`, `rotatedAt` (server time) and `expiresAt` (below). Only the event's organizers read or write it.
+  - **Shown** on an organizer's "Entrance QR" screen (#375's frame 06), during the window only, as #337's `polysocial://checkin/{eventId}/{token}`. The screen listens to the document and draws the **stored** token, so every organizer's phone shows the same code. When `rotatedAt` is 60 s old, the screen writes a new token in a transaction (the old one becomes `previousToken`), so two organizers' phones never both rotate.
+  - **Checked by the rules,** not the app: a QR check-in is accepted only if its token equals `token` or `previousToken` **and** `rotatedAt` is less than 2 minutes old. A forwarded screenshot or photo is refused within 2 minutes, and the student sees #375's "expired code" frame.
+  - **Cost, accepted:** the organizer's phone must stay online with the screen open. Offline, it can't refresh, the code expires, and the screen says to reconnect. It writes once a minute, about 300 writes for a 5-hour event, well within the free quota.
+  - A code of **another event** is "wrong event" (#375's frame 09), checked in the app before any write, and the rules refuse it anyway (the token is per event).
+- **The stored check-in.** `events/{eventId}/checkIns/{uid}`, under the event like the registrations: `uid`, `checkedInAt` (server time), `method` (`location` or `qr`), `expiresAt`, and, for `qr` only, the `token` used, which the rule needs to compare and which is useless once expired. **No coordinates, distance or accuracy are stored or sent anywhere**: the comparison happens on the device. A student checks in once per event (the UID is the document ID); nobody updates a check-in; the student may delete their own.
+- **Who sees it.** The student, and the members of **their group for that event**: the rule compares the two students' `groupMembers` markers (#232). The Your group screen gets each member's check-in by ID (at most 4 reads, live), which shows "3 of 4 checked in" and each time (#375's frame 03). Organizers don't see check-ins: no screen needs them (data minimisation), and they already see who registered. Nobody lists check-ins.
+- **Kept 30 days after the event, then deleted by Firestore.** `expiresAt` is the window's end plus 30 days; the create rule computes it from the event, so the client can't choose it. A **Firestore TTL policy** on `expiresAt` (a `fieldOverrides` entry with `"ttl": true` in `firestore.indexes.json`, deployed with the indexes; no Cloud Function) deletes expired check-ins and entrance codes, usually within a day of `expiresAt`. #421 (the album) may close uploads earlier, never later. If an organizer moves the end time after students checked in, their `expiresAt` stays as written: accepted, a few days' difference at most.
+- **Also deleted:** with the account (`deleteAccount` deletes the UID's check-ins with the collection-group query `checkIns where uid == <UID>`, like the attendees, #275), with the event (`deleteEventRegistrations` also deletes `checkIns` and `checkInCode`), and with the registration (cancelling deletes the student's check-in in the same write, since check-in requires a registration).
+- **Offline.** Checking in is **refused offline with Try again** (#375's frame 11), like registering: a queued write would reach the server after the window or the token had expired and fail silently. The group's check-ins show from the cache.
+- **Privacy notice** (#103, with the check-in task): the precise location is read once, at the student's tap, compared on the device and never stored or sent to PolySocial; the check-in (time and method) is visible to the student's group for that event; it is deleted 30 days after the event, or earlier with the registration, the event or the account.
+- **Sprint 7 tasks:** #466 Figma alignment (first), #467 check-ins and their rules, #468 the rotating entrance code, #469 check in with my location, #470 check in by scanning the entrance QR, #471 the group's arrivals, #472 deletion with the account and the event, #473 the privacy notice.
+- **Rules sketch** (for the check-in tasks, which test each condition with an allowed and a denied case; not yet run against the emulator). It lives in `match /events/{eventId}`, next to `attendees`, and reuses `isStudent()`, `isDeletedAccount()`, `isRegistered()` and the organizer check of `attendees` (`isEventOrganizer()`: `canWriteEvents()` and the caller in the event's `organizerIds`, so a verified association organizer qualifies). A check-in reads at most 5 documents, within the rules' limit of 10.
+
+```
+// event() and isEventOrganizer() as in match /attendees/{uid}, moved up to this level.
+// The check-in window, as checkInWindow(event) in the app: from 30 min before the start to
+// endTime, or 3 h after the start without one.
+function windowEnd() {
+  let data = get(event()).data;
+  return data.get('endTime', null) is timestamp
+      ? data.endTime
+      : data.startTime + duration.value(3, 'h');
+}
+function inWindow() {
+  return request.time >= get(event()).data.startTime - duration.value(30, 'm')
+      && request.time < windowEnd();
+}
+
+match /checkIns/{uid} {
+  function sameGroup() {
+    let mine = /databases/$(database)/documents/events/$(eventId)/groupMembers/$(request.auth.uid);
+    let theirs = /databases/$(database)/documents/events/$(eventId)/groupMembers/$(uid);
+    return exists(mine) && exists(theirs) && get(mine).data.groupId == get(theirs).data.groupId;
+  }
+  // Read only for a QR check-in, so a missing code never fails a location one.
+  function code() {
+    return get(/databases/$(database)/documents/events/$(eventId)/checkInCode/current).data;
+  }
+  // A location check-in carries no token; a QR one carries the current or previous entrance
+  // token, refreshed less than 2 minutes ago.
+  function validMethod(data) {
+    return (data.method == 'location'
+            && data.keys().hasOnly(['uid', 'checkedInAt', 'method', 'expiresAt']))
+        || (data.method == 'qr'
+            && data.keys().hasOnly(['uid', 'checkedInAt', 'method', 'expiresAt', 'token'])
+            && data.token in [code().token, code().get('previousToken', null)]
+            && request.time < code().rotatedAt + duration.value(2, 'm'));
+  }
+  allow get: if isStudent() && !isDeletedAccount(request.auth.uid)
+      && (request.auth.uid == uid || sameGroup());
+  allow create: if isStudent() && request.auth.uid == uid && !isDeletedAccount(uid)
+      && isRegistered(uid)
+      && inWindow()
+      && request.resource.data.uid == uid
+      && request.resource.data.checkedInAt == request.time
+      && request.resource.data.expiresAt == windowEnd() + duration.value(30, 'd')
+      && validMethod(request.resource.data);
+  allow delete: if isStudent() && request.auth.uid == uid;
+}
+
+match /checkInCode/{codeId} {
+  allow get: if codeId == 'current' && isEventOrganizer();
+  allow create, update: if codeId == 'current' && isEventOrganizer() && inWindow()
+      && request.resource.data.keys().hasOnly(['token', 'previousToken', 'rotatedAt', 'expiresAt'])
+      && request.resource.data.token is string
+      && request.resource.data.token.matches('[A-Za-z0-9_-]{22}')
+      && request.resource.data.rotatedAt == request.time
+      && request.resource.data.expiresAt == windowEnd() + duration.value(30, 'd')
+      && (resource == null
+          ? !('previousToken' in request.resource.data)
+          : request.resource.data.previousToken == resource.data.token);
+  allow delete: if isEventOrganizer();
+}
+```
+
 ## 4. Key flows
 
 Each flow shows who calls whom, top to bottom. "App" is the screen together with its ViewModel.
@@ -837,7 +944,9 @@ flowchart LR
   photos["photos"]:::pb
   groups["events/{eventId}/groups/{groupId}<br/>#232"]:::pb
   marker["events/{eventId}/groupMembers/{uid}<br/>one group per event, #232"]:::pb
-  sub["messages #237 · locations<br/>check-ins"]:::pb
+  sub["messages #237 · locations"]:::pb
+  checkins["events/{eventId}/checkIns/{uid}<br/>#374"]:::pb
+  entrance["events/{eventId}/checkInCode/current<br/>organizers, #374"]:::pb
   mreq["matchRequests<br/>undecided"]:::pb
   friends["friendships/{pairId}<br/>two students, #338"]:::pb
   direct["chats/{pairId}<br/>two friends, #365"]:::pb
@@ -856,6 +965,10 @@ flowchart LR
   photos -.-> storage
   events --> groups
   events --> marker
+  reg -. "required" .-> checkins
+  events --> checkins
+  events --> entrance
+  entrance -. "QR token" .-> checkins
   marker -. "groupId" .-> groups
   groups --> sub
   pub -. "members' profiles<br/>for matching" .-> groups
@@ -887,7 +1000,8 @@ flowchart LR
 | `events/{eventId}/groups/{groupId}` | `capacity` (4), `memberUids` (1 to `capacity`, creator first), `createdBy`, server-set `createdAt` | 🟦 S4 #232 |
 | `events/{eventId}/groupMembers/{uid}` | `groupId`: the student's group for this event, written in the same transaction as `memberUids` | 🟦 S4 #232 |
 | `events/{eventId}/groups/{groupId}/messages/{id}` | `senderId` (empty after account deletion, displayed as Deleted account), `text` (1–1000; empty once its sender unsends it, decided in #365), server-set `createdAt` | 🟩 S5 #237 (built); unsend 🟦 decided in #365 |
-| `events/{eventId}/groups/{groupId}/checkIns/{uid}` | `method` (gps or qr), `checkedInAt` | 🟦 #22 |
+| `events/{eventId}/checkIns/{uid}` | student UID as document ID; `uid`, server-set `checkedInAt`, `method` (`location` or `qr`), `expiresAt` (the window's end + 30 days, computed by the rules; a TTL policy deletes the document after it), and `token` for `qr` only. No coordinates ([3.10](#310-check-in-at-the-venue-product-backlog-decided-in-374)) | 🟦 decided in #374 |
+| `events/{eventId}/checkInCode/current` | `token` (22 base64url characters), `previousToken`, server-set `rotatedAt`, `expiresAt`; rotated every 60 s by an organizer's Entrance QR screen | 🟦 decided in #374 |
 | `events/{eventId}/groups/{groupId}/locations/{uid}` | position, `updatedAt`. Only during the event, deleted after | 🟦 #20 |
 | `friendships/{pairId}` | `pairId` = `{lowerUid}~{higherUid}`; `uids` (the two UIDs, sorted), `requestedBy` (the sender), `status` (`pending` or `accepted`), server-set `createdAt`, server-set `acceptedAt` once accepted. Deleted on decline, cancel or removal, and with either account | 🟦 PB, decided in #338 |
 | `publicProfiles/{uid}/friends/{friendUid}` | the friend's UID as document ID; `acceptedAt`. Written and deleted only by the `syncFriendLists` trigger, from `friendships` ([3.9](#39-profile-visibility-and-usernames-product-backlog-decided-in-366)) | 🟦 decided in #366 |
@@ -928,6 +1042,8 @@ Rules live in `firebase/firestore/firestore.rules` and are tested against the Fi
 | `publicProfiles/{uid}/friends/{friendUid}` | an active student (not under a marker): the owner, anyone when `publicProfiles/{uid}.profileVisibility == 'public'`, or the owner's accepted friend (`friendships/{pair}` exists with `status == 'accepted'`, the pair ID built from the two UIDs). The owner's UID is in the path, so a list rule can check it. No association | nobody: the `syncFriendLists` trigger writes it (Admin SDK) | nobody (the trigger) | #366 | 🟦 decided |
 | `usernames/{name}` | `get` by an active student; **no list**, so no student directory | an active student, the ID matches `^[a-z][a-z0-9_.]{2,19}$` and isn't reserved (`polysocial`, `admin`, `support`, `epfl`, `agepoly`, `staff`, `moderator`, `official`, `help`), exactly `{uid: <own UID>}`, with `users/{uid}.username == name` after the write (`getAfter`) | no update; delete by its owner, only when `users/{uid}` no longer names it after the write (rename, removal, or the profile deleted); `deleteAccount` releases it (Admin SDK). In turn, a `users/{uid}` update that changes or removes `username`, or a client delete of a profile that has one, must delete the old `usernames/{name}` in the same write (`!existsAfter`) | #366 | 🟦 decided |
 | Storage `profilePhotos/{uid}.jpg` | a verified EPFL student, not an association (`firestore.get` of the caller's profile) | the owner only, an active student (`publicProfiles/{uid}` exists and no `deletedAccounts/{uid}` marker, `firestore.exists`), `image/jpeg`, at most 500 KB | the owner replaces or deletes it; `deleteAccount` deletes it | #366 | 🟦 decided |
+| `events/{eventId}/checkIns/{uid}` | the student, and the members of their group for the event (their two `groupMembers` markers name the same group); `get` only, no list; not under a deletion marker. No organizer or association | the student, own UID, not under a deletion marker, **registered** (`attendees/{uid}` exists), within the window (30 min before the start to `endTime`, or start + 3 h), server `checkedInAt`, `expiresAt` = window end + 30 days; `method` `location`, or `qr` with the current or previous entrance token refreshed less than 2 min ago | no update; the student deletes their own (also when cancelling the registration); `deleteAccount`, `deleteEventRegistrations` and the TTL policy delete the rest | #374 | 🟦 decided |
+| `events/{eventId}/checkInCode/current` | the event's organizers (`canWriteEvents()` and in `organizerIds`, so a verified association organizer too) | organizers, within the window: a 22-character `[A-Za-z0-9_-]` `token`, server `rotatedAt`, `expiresAt` = window end + 30 days | update: organizers, within the window, with `previousToken` = the stored `token`; delete: organizers; deleted with the event and by the TTL policy | #374 | 🟦 decided |
 | Storage `events/{id}/album/**` | event group members | checked-in members, size and type limits | uploader | album | 🟦 PB |
 
 **Event capacity rule** (decision 21, #372; built by #373, so the rules file now holds it). The sketch below replaced the `allow create` and `allow update` of `match /events/{eventId}` and the `allow create` and `allow delete` of its `match /attendees/{uid}`; nothing else in the rules changed. It keeps #370's co-organizer checks: the creator is a new event's only organizer, and `keepsValidOrganizers()` checks an organizer's change to `organizerIds`. The two documents are tied in both directions: the event accepts a counter change only with the caller's own registration (`exists` / `existsAfter`), and a registration is accepted only with the counter change (`getAfter`), as groups tie `memberUids` to the `groupMembers` marker (#232). A student therefore changes the counter only by their own one place, and no client can skip or fake the count. The rule checks the capacity itself, against the counter as it is stored when the write commits, so the app's write doesn't have to read the event first: it sends `FieldValue.increment(±1)` (decision 21, "The app's transactions").
@@ -1060,7 +1176,7 @@ Every PR that changes rules follows the process in `AGENTS.md`: "Changes Securit
 
 - **Google sign-in (#106):** both entry buttons use Credential Manager through the auth repository. Invalid domains are rejected before Firebase account creation; Firebase validates the token and verified exact `@epfl.ch` identity before profile access. Firebase manages compatible account linking; the owner confirmed automatic linking for EPFL Google accounts through EPFL SSO. Use Firebase's returned UID without client-side linking or a dedicated collision flow.
 
-Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after review, and 5 and 11 revised on 2026-10-06; 15 added on 2026-10-28 (#201); 16 to 18 decided by the Sprint 4 PO on 2026-11-01 (#228); 19 added on 2026-11-11 (#210); 20 decided by the Sprint 5 PO on 2026-11-11 (#338); 21 decided by the Sprint 6 PO on 2026-11-14 (#372); 22 decided by the Sprint 6 PO on 2026-11-14 (#281); 12 revised by the Sprint 6 PO on 2026-11-14 and 2026-11-16 (#365). The issues are being updated to match.
+Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after review, and 5 and 11 revised on 2026-10-06; 15 added on 2026-10-28 (#201); 16 to 18 decided by the Sprint 4 PO on 2026-11-01 (#228); 19 added on 2026-11-11 (#210); 20 decided by the Sprint 5 PO on 2026-11-11 (#338); 21 decided by the Sprint 6 PO on 2026-11-14 (#372); 22 decided by the Sprint 6 PO on 2026-11-14 (#281); 12 revised by the Sprint 6 PO on 2026-11-14 and 2026-11-16 (#365); 24 decided on 2026-11-18 (#374). The issues are being updated to match.
 
 | # | Topic | Decision |
 |---|---|---|
@@ -1087,6 +1203,7 @@ Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after re
 | 21 | Event capacity | A counter on the event, kept in the registration transaction. Every `events/{id}` has `attendeeCount`: registering creates the student's `attendees/{uid}` and raises it by one in the same transaction, which the rules accept only while it is below `capacity`; cancelling deletes the registration and lowers it by one. The event update rule gains one narrow student branch: only `attendeeCount` changes, by exactly ±1, with the caller's own registration created or deleted in the same write; everything else about the event stays organizer-only. `deleteAccount` lowers the counter for each registration it removes, and a deleted event takes its counter along. An organizer may lower the capacity below the number going, with a warning in Edit event. Rejected: a counter in its own document, a Cloud Function that registers, and no capacity check. Details below and in section 6; built by #373 (the rules and the repository), #405 (the Admin SDK side) before it and #407 (the screens) after it (added on 2026-11-14, #372; #373 and #405 built) |
 | 22 | Student organizer's name | A student's public event shows its organizers' names ("by <names>", from their public profiles: the creator first, then the co-organizers in the order they were added, #371) only to the students registered for it and to its organizers (who see both "Organized by you" and "by <names>", their own included). Co-organizers follow the creator's rule, since another organizer adds them without asking (Sprint 6 PO, #371). It is hidden in the app's UI only: the organizers' UIDs stay in the public event document (`createdBy`, `organizerIds`, `allowedUids`), so any verified EPFL student could still resolve it with a modified client. That limitation is accepted; the data model and the Security Rules don't change (#281) |
 | 23 | Profile visibility and usernames | Private by default (nLPD art. 7). Name, section, year, interests and the optional username, bio (1–150) and photo are always visible, as on Instagram; only the friends list and its count are public only (on a private profile, the student's friends see them). Another student's friends come from `publicProfiles/{uid}/friends`, kept by the `syncFriendLists` trigger, because a list rule can't check a UID in a query; a private student shows in a public friend's list. The trigger sets both entries from the friendship as it is now, so events out of order can't restore a removed friend; a backfill covers friendships accepted before it. Usernames are unique, lowercase `usernames/{name}` documents starting with a letter, get only, never listed, tied to the profile both ways so no write keeps two, released at once on account deletion. Rejected: hiding the photo and bio on private profiles, per-field choices, the app writing the friends list in #357's transactions, a friend count only, and looking students up by email (#366) |
+| 24 | Check-in | A registered student checks in at their tap during the window (30 min before the start to `endTime`, or start + 3 h without one): one precise location fix within 150 m of the venue with accuracy of 100 m or better, compared on the device, or the entrance QR, whose token an organizer's screen rotates every 60 s and the rules accept for 2 min. `events/{eventId}/checkIns/{uid}` stores no coordinates, only the time and method; the student and their group see it; a TTL policy deletes it 30 days after the event. Not automatic: that would need background location, which `AGENTS.md` forbids |
 
 **Sprint 2 decisions:** sign-in is email/password and Google only, not Microsoft, which would need EPFL's admin to whitelist the app, while Google goes through EPFL's SSO (#106, #107, PR #197 review); events store the picked place's name as an optional `locationName` of at most 100 characters (rules #102, app #151; blank for older events); Nominatim remains the approved explicit-search geocoder; one shared detail screen replaces the Map placeholder, using each entry tab's event-ID route; co-organizers wait for Public profiles; associations move to Sprint 3; unbuilt actions show a Snackbar. Sources: #103, #106, #111, #112 and the Sprint Planning record #141.
 
@@ -1103,6 +1220,7 @@ Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after re
 | reminders (#123) | not built yet; its issue adds cleanup to the function or the reminder worker | — |
 | `friendships/*` containing the UID (#338; built, #357, the `delete-friendships` step) | deleted, pending or accepted, by a query on `uids array-contains` in the function, **after** the profile transaction: from then on the public profile is gone and the marker exists, so no new request can name the UID, and the marker stops the deleted account's own token from reading or changing a friendship until the cleanup ends; idempotent like the other steps, so Retry finishes it. Added by the friendships storage task, together with its rules | function (Admin SDK) |
 | `publicProfiles/*/friends/*` entries for the UID (#366) | each friendship deleted above fires `syncFriendLists`, which finds it missing and deletes the entry on both sides, so the student leaves every friend's list and their own list empties | trigger (Admin SDK) |
+| the student's check-ins (#374) | deleted by the collection-group query `checkIns where uid == <UID>`, like the attendees; the rules refuse a new one under the marker | function (Admin SDK) |
 | `usernames/{name}` (#366) | deleted with the profile, so the name is free at once | function (Admin SDK) |
 | Storage `profilePhotos/{uid}.jpg` (#366) | deleted; a missing file is not an error | function (Admin SDK) |
 | `chats/*/messages` the UID sent (#365) | `senderId` replaced by an empty string, text and time kept, so the other student's conversation stays with a "Deleted account" author: #241's step (the collection-group query on `messages.senderId`, with the same index) already covers one-to-one chats, with no change. A message the student unsent keeps its empty text | function (Admin SDK) |
@@ -1249,7 +1367,6 @@ Known limits:
 - **Mapbox production account:** who adds billing, which usage alert applies, and when does a dedicated token replace the signup token? Mapbox bills separately from Google Cloud. Needed before release.
 - **Shared privacy notice (#103):** Mapbox receives map requests for the viewed area; Mehdi owns Profile → Privacy & data; the private deletion contact and final wording still need confirmation before release.
 - **Association members and event drafts:** Figma has them, but there is no data model yet. How does an association find and add a student as a member, and what can each role do? Drafts are not in the `Event` model.
-- **Events without an end time:** `endTime` is optional, but check-in and Find my group only work during the event. Which time window applies when it is not set?
 - **Logout/reminders (#109, #123):** confirm account-scoped reminder cancellation on logout and account deletion before another account enters; cache isolation is decided (#198, decision 15).
 - **Association account deletion (#201):** associations can't delete their own `users/{uid}` (#161), and the deletion flow refuses them with the privacy contact. Who deletes an association account, its `associations/{uid}` and its events, and how, is not decided.
 - **Year field values:** the profile step offers BA1–BA6 and MA1–MA4 under "Year" (as in Figma and #34), but these are EPFL semesters, and there is no option for exchange or PhD students. Rename to "Semester" and/or add options?
@@ -1291,7 +1408,7 @@ Every Scrum Board item mapped to the components it touches.
 | #16 Adding friends | Groups & Matchmaking | Friends screen, Friends ViewModel, FriendRepository, `friendships/{pairId}`, rules and `deleteAccount` cleanup (built, #357); Add by @username (`usernames/{name}`, #366) | 🟦 decided in #338 |
 | Public profiles and profile visibility | Groups & Matchmaking | Privacy & data visibility switch, Edit profile (bio, photo, username), a student's profile with their friends, `syncFriendLists`, `usernames/{name}`, Storage `profilePhotos` | 🟦 decided in #366 |
 | #17 Meeting people by QR | Groups & Matchmaking | QrScanner and Scan a friend's code (built, #359), QR payload parsing (built, #337), My friend code (built, #339), FriendRepository (built, #357) | 🟦 S5 #336, #337, #339 |
-| #22 Automatic check-in | — | check-in policy, LocationService, QR fallback, GroupRepository | 🟦 |
+| #22 Automatic check-in | Event Creation & Management | Check in screen, Entrance QR screen, `checkInWindow` and `isAtVenue` (domain), `CheckInRepository`, `events/{e}/checkIns` and `checkInCode`, LocationService (one-off precise read), QrScanner, Your group arrivals, TTL policy | 🟦 decided in #374; tasks #466–#473 |
 | #20 Find my group | — | group venue map, `events/{e}/groups/{g}/locations` | 🟦 |
 | #21 Event notification | — | `ReminderScheduler`, pure reminder time, WorkManager, local notifications | 🟩 S2 #120, #123 |
 | #103 Privacy notice | Profile | Privacy & data, full dated notice, unavailable actions | 🟩 S2 |
