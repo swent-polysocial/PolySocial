@@ -260,6 +260,50 @@ class EventDetailCancelRegistrationTest {
     assertEquals(Attendance.GOING, vm.loaded.attendance)
   }
 
+  @Test
+  fun theGroupDisappearsWhileTheSheetIsOpen_confirmStillCancelsTheRegistration() = runTest {
+    val group = groups.seedGroup(EVENT, listOf("lea", ME))
+    val vm = open()
+    vm.onCancelRegistration()
+    groups.leaveGroup(EVENT, group.id)
+    runCurrent()
+    assertNull(vm.loaded.yourGroup)
+
+    vm.onConfirmCancelRegistration()
+    runCurrent()
+
+    assertEquals(Attendance.NOT_GOING, vm.loaded.attendance)
+    assertEquals(CancelRegistrationState.Hidden, vm.registrationSheet.value)
+  }
+
+  @Test
+  fun retryingAfterAFailure_whenTheGroupIsGoneMeanwhile_cancelsWithoutLeaving() = runTest {
+    val group = groups.seedGroup(EVENT, listOf("lea", ME))
+    groups.writeFailure = GroupWriteResult.NetworkError
+    val vm = open()
+    vm.onCancelRegistration()
+    vm.onConfirmCancelRegistration()
+    runCurrent()
+    assertEquals(
+        CancelRegistrationState.Failed(CancelRegistrationState.Failed.Reason.OFFLINE),
+        vm.registrationSheet.value,
+    )
+
+    // The failure is only on the next write; the group was left from another device.
+    groups.writeFailure = null
+    groups.leaveGroup(EVENT, group.id)
+    groups.writeFailure = GroupWriteResult.NetworkError
+    runCurrent()
+    assertNull(vm.loaded.yourGroup)
+
+    vm.onConfirmCancelRegistration()
+    runCurrent()
+
+    // No leave was needed, so the failing group write never ran.
+    assertEquals(Attendance.NOT_GOING, vm.loaded.attendance)
+    assertEquals(CancelRegistrationState.Hidden, vm.registrationSheet.value)
+  }
+
   private companion object {
     const val EVENT = "party"
     const val ME = "me"

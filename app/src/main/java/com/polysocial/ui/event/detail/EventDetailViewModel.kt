@@ -812,10 +812,12 @@ constructor(
   /**
    * Confirms the sheet: leaves the group first, then cancels the registration. This order never
    * leaves the student in a group without a registration; if only the cancellation fails, the
-   * student is still registered and the usual Snackbar offers Retry.
+   * student is still registered and the usual Snackbar offers Retry. If the group is gone by now
+   * (left from another device, or deleted), there is nothing to leave and the registration is
+   * cancelled straight away, also when retrying after a failure.
    */
   fun onConfirmCancelRegistration() {
-    val group = (uiState.value as? EventDetailUiState.Loaded)?.yourGroup ?: return
+    val group = (uiState.value as? EventDetailUiState.Loaded ?: return).yourGroup
     val current = _registrationSheet.value
     if (
         (current != CancelRegistrationState.Confirming &&
@@ -824,19 +826,7 @@ constructor(
     )
         return
     viewModelScope.launch {
-      val failure =
-          try {
-            when (groups.leaveGroup(eventId, group.groupId)) {
-              is GroupWriteResult.Success -> null
-              GroupWriteResult.NetworkError -> CancelRegistrationState.Failed.Reason.OFFLINE
-              else -> CancelRegistrationState.Failed.Reason.UNEXPECTED
-            }
-          } catch (cancelled: CancellationException) {
-            _registrationSheet.value = current
-            throw cancelled
-          } catch (_: Exception) {
-            CancelRegistrationState.Failed.Reason.UNEXPECTED
-          }
+      val failure = if (group == null) null else leaveFailure(group.groupId, current)
       if (failure == null) {
         _registrationSheet.value = CancelRegistrationState.Hidden
         saveAttendance(going = false)
@@ -845,6 +835,27 @@ constructor(
       }
     }
   }
+
+  /**
+   * Leaves [groupId] and returns why it failed, or null once the student is out. A cancelled call
+   * puts the sheet back to [previous] and lets the cancellation through.
+   */
+  private suspend fun leaveFailure(
+      groupId: String,
+      previous: CancelRegistrationState,
+  ): CancelRegistrationState.Failed.Reason? =
+      try {
+        when (groups.leaveGroup(eventId, groupId)) {
+          is GroupWriteResult.Success -> null
+          GroupWriteResult.NetworkError -> CancelRegistrationState.Failed.Reason.OFFLINE
+          else -> CancelRegistrationState.Failed.Reason.UNEXPECTED
+        }
+      } catch (cancelled: CancellationException) {
+        _registrationSheet.value = previous
+        throw cancelled
+      } catch (_: Exception) {
+        CancelRegistrationState.Failed.Reason.UNEXPECTED
+      }
 
   /** Clears [shown], unless a newer failure replaced it meanwhile. */
   fun onAttendanceFeedbackShown(shown: AttendanceFeedback) {
