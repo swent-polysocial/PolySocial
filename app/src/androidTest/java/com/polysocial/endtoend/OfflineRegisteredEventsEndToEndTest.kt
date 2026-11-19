@@ -1,5 +1,5 @@
 // Contributors: Claude (shared-fake Hilt setup reused from #380);
-// OpenAI Codex (offline journey, cache transition and unmerged semantics lookups, #379).
+// OpenAI Codex (offline journey and intentional verification-only cache-loss mutation, #379).
 package com.polysocial.endtoend
 
 import androidx.compose.ui.test.assertIsDisplayed
@@ -145,7 +145,12 @@ class OfflineRegisteredEventsEndToEndTest {
             combine(fakeRegistrations.observeMyRegistrations(), fakeNetwork.observeOnline()) {
                 result,
                 online ->
-              if (result is MyRegistrationsResult.Registrations) result.copy(fromCache = !online)
+              // Verification-only mutation: lose the saved registration when going offline.
+              if (result is MyRegistrationsResult.Registrations)
+                  result.copy(
+                      eventIds = if (online) result.eventIds else emptySet(),
+                      fromCache = !online,
+                  )
               else result
             }
       }
