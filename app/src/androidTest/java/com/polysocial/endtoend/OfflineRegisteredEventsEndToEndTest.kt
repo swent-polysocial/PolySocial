@@ -1,5 +1,5 @@
 // Contributors: Claude (shared-fake Hilt setup reused from #380);
-// OpenAI Codex (offline registered-events end-to-end journey and cache transition, #379).
+// OpenAI Codex (offline journey, cache transition and unmerged semantics lookups, #379).
 package com.polysocial.endtoend
 
 import androidx.compose.ui.test.assertIsDisplayed
@@ -239,7 +239,7 @@ class OfflineRegisteredEventsEndToEndTest {
     assertEventDetail()
     compose.waitUntil("registration can be saved", TIMEOUT_MS) {
       compose
-          .onAllNodes(hasTestTag(EventDetailTags.IM_GOING) and isEnabled())
+          .onAllNodes(hasTestTag(EventDetailTags.IM_GOING) and isEnabled(), useUnmergedTree = true)
           .fetchSemanticsNodes()
           .isNotEmpty()
     }
@@ -264,7 +264,8 @@ class OfflineRegisteredEventsEndToEndTest {
 
   private fun assertSavedSchedule() {
     await(MyEventsTags.card(EVENT.id))
-    node(MyEventsTags.card(EVENT.id)).assertTextContains(EVENT.title)
+    // The clickable card merges its title; its tagged details need the unmerged tree below.
+    compose.onNodeWithTag(MyEventsTags.card(EVENT.id)).assertTextContains(EVENT.title)
     node(MyEventsTags.details(EVENT.id)).assertTextContains("20:00", substring = true)
     node(MyEventsTags.details(EVENT.id)).assertTextContains("23:00", substring = true)
     node(MyEventsTags.details(EVENT.id)).assertTextContains(EVENT.locationName, substring = true)
@@ -288,11 +289,14 @@ class OfflineRegisteredEventsEndToEndTest {
     assertEquals(setOf(UID), fakeRegistrations.attendeesOf(EVENT.id))
   }
 
-  private fun node(tag: String) = compose.onNodeWithTag(tag)
+  private fun node(tag: String) = compose.onNodeWithTag(tag, useUnmergedTree = true)
 
   private fun await(tag: String) =
       compose.waitUntil("$tag is available", TIMEOUT_MS) {
-        compose.onAllNodes(hasTestTag(tag)).fetchSemanticsNodes().isNotEmpty()
+        compose
+            .onAllNodes(hasTestTag(tag), useUnmergedTree = true)
+            .fetchSemanticsNodes()
+            .isNotEmpty()
       }
 
   private companion object {
