@@ -5,6 +5,7 @@
 // plural after review).
 // Contributors: Claude (the shared field label, #251; split into the details and interests screens,
 // with a shared frame, heading, top bar and button, #230; the button's role, after review, #230).
+// Contributors: OpenAI Codex (reuse the profile header and pickers for editing, #235).
 package com.polysocial.ui.profile
 
 import androidx.activity.compose.BackHandler
@@ -323,28 +324,35 @@ internal fun StepHeading(@StringRes title: Int, @StringRes subtitle: Int) {
  * at the right margin.
  */
 @Composable
-internal fun ProfileTopBar(onBack: () -> Unit, backEnabled: Boolean, step: Int) {
+internal fun ProfileTopBar(
+    onBack: () -> Unit,
+    backEnabled: Boolean,
+    step: Int?,
+    backTag: String = ProfileSetupTestTags.BACK,
+) {
   Row(Modifier.fillMaxWidth().padding(top = 12.dp)) {
     Box(
         Modifier.offset(x = (-12).dp)
             .size(44.dp)
             .clickable(enabled = backEnabled, onClick = onBack)
-            .testTag(ProfileSetupTestTags.BACK),
+            .testTag(backTag),
         contentAlignment = Alignment.Center,
     ) {
       Image(painterResource(R.drawable.ic_back), stringResource(R.string.profile_back))
     }
     Spacer(Modifier.weight(1f))
-    Text(
-        stringResource(R.string.profile_step, step),
-        style = MaterialTheme.typography.bodySmall.exact(),
-        color = Ink2,
-        modifier = Modifier.padding(top = 14.dp),
-    )
-    Spacer(Modifier.width(9.5.dp))
-    ProgressBar(Ink)
-    Spacer(Modifier.width(4.dp))
-    ProgressBar(if (step == 2) Ink else Border)
+    if (step != null) {
+      Text(
+          stringResource(R.string.profile_step, step),
+          style = MaterialTheme.typography.bodySmall.exact(),
+          color = Ink2,
+          modifier = Modifier.padding(top = 14.dp),
+      )
+      Spacer(Modifier.width(9.5.dp))
+      ProgressBar(Ink)
+      Spacer(Modifier.width(4.dp))
+      ProgressBar(if (step == 2) Ink else Border)
+    }
   }
 }
 
@@ -482,7 +490,7 @@ private fun EmailField(email: String) {
 
 /** A field that opens a menu of fixed [options] (Figma "choosing section" and "choosing year"). */
 @Composable
-private fun Picker(
+internal fun Picker(
     @StringRes label: Int,
     value: String?,
     options: List<String>,
@@ -491,6 +499,7 @@ private fun Picker(
     optionTag: (String) -> String,
     textStart: Dp,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
 ) {
   var expanded by remember { mutableStateOf(false) }
   var fieldBottom by remember { mutableIntStateOf(0) }
@@ -507,7 +516,7 @@ private fun Picker(
               .heightIn(min = 48.dp)
               .background(Bg, shape)
               .border(if (expanded) 2.dp else 1.dp, if (expanded) Ink else Border, shape)
-              .clickable(role = Role.DropdownList) { expanded = true }
+              .clickable(enabled = enabled, role = Role.DropdownList) { expanded = true }
               // Screen readers announce "Section, IN, drop-down list".
               .semantics {
                 contentDescription = labelText

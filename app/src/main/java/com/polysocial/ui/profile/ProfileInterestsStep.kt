@@ -1,6 +1,7 @@
 // Contributors: Claude (the profile step's interests screen from the Figma "Interests · …" frames,
 // #230; its save errors and Log out moved here from the details screen, where #142 added them;
 // the shared chip surface and labels, the count announced, after review, #230).
+// Contributors: OpenAI Codex (reuse interest chips in the profile editor, #235).
 package com.polysocial.ui.profile
 
 import androidx.annotation.StringRes
@@ -136,7 +137,13 @@ fun ProfileInterestsContent(
  * checkbox and whether it is checked.
  */
 @Composable
-private fun InterestChip(code: String, selected: Boolean, enabled: Boolean, onToggle: () -> Unit) {
+internal fun InterestChip(
+    code: String,
+    selected: Boolean,
+    enabled: Boolean,
+    onToggle: () -> Unit,
+    tag: String = ProfileSetupTestTags.interest(code),
+) {
   val shape = RoundedCornerShape(20.dp)
   Box(
       Modifier.heightIn(min = 48.dp)
@@ -146,7 +153,7 @@ private fun InterestChip(code: String, selected: Boolean, enabled: Boolean, onTo
               role = Role.Checkbox,
               onValueChange = { onToggle() },
           )
-          .testTag(ProfileSetupTestTags.interest(code)),
+          .testTag(tag),
       contentAlignment = Alignment.Center,
   ) {
     Row(
