@@ -7,6 +7,8 @@
 // #123's second PR, Mehdi's review).
 // Contributors: Claude Opus 5.5 (recheck the owner after the suspending event lookup, #123's second
 // PR, Mehdi's re-review).
+// Contributors: Claude Sonnet 5.5 (the worker follows the event's current time, title and place,
+// and skips a student who is no longer going, #485).
 package com.polysocial.model.reminder
 
 import android.Manifest
@@ -24,8 +26,11 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.polysocial.R
 import com.polysocial.model.auth.AuthRepository
+import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.EventResult
+import com.polysocial.model.registration.MyRegistrationsResult
+import com.polysocial.model.registration.RegistrationRepository
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -35,6 +40,8 @@ import java.time.Instant
 import java.time.format.DateTimeFormatter
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
 
@@ -86,21 +93,33 @@ internal fun eventReminderFrom(data: Data): EventReminder? {
   )
 }
 
+/** What [lookUpEvent] found about an event. */
+internal sealed interface EventLookup {
+  /** The event is gone: deleted, or no longer readable by the signed-in student. */
+  data object Gone : EventLookup
+
+  /** The event as it is now: its current time, title and place. */
+  data class Current(val event: Event) : EventLookup
+
+  /** Nothing could tell (offline and not cached, or the read ended), so the reminder stays. */
+  data object Unknown : EventLookup
+}
+
 /**
- * False only if [events] says the event [eventId] is gone: deleted, or no longer readable by the
- * signed-in student (see [EventResult.NotFound]).
+ * The event [eventId] as [events] has it now, or [EventLookup.Gone] if it is deleted or no longer
+ * readable by the signed-in student (see [EventResult.NotFound]).
  *
  * The server's answer decides. If it doesn't come within [EVENT_CHECK_TIMEOUT] (offline), the
- * latest cached answer does, and an event the cache doesn't hold counts as still there, so a
+ * latest cached answer does, and an event the cache doesn't hold is [EventLookup.Unknown], so a
  * reminder still fires offline.
  *
  * A failed read counts as gone: the app's repository can't tell a denied read from a failed one, so
  * it reports any read error, and a database blocked by the session guard (#198), as
  * [EventResult.NotFound], and the reminder is skipped. During an account switch, that is what we
- * want. Only a flow that ends without an answer or throws keeps the reminder, which
+ * want. Only a flow that ends without an answer or throws is [EventLookup.Unknown], which
  * `FirestoreEventRepository` never does.
  */
-internal suspend fun eventStillExists(events: EventRepository, eventId: String): Boolean {
+internal suspend fun lookUpEvent(events: EventRepository, eventId: String): EventLookup {
   var latest: EventResult? = null
   val confirmed =
       try {
@@ -116,12 +135,40 @@ internal suspend fun eventStillExists(events: EventRepository, eventId: String):
         // The flow ended without an answer or threw: keep the reminder (see above).
         null
       }
-  return (confirmed ?: latest) !is EventResult.NotFound
+  return when (val result = confirmed ?: latest) {
+    is EventResult.NotFound -> EventLookup.Gone
+    is EventResult.Found -> EventLookup.Current(result.event)
+    EventResult.NotCached,
+    null -> EventLookup.Unknown
+  }
 }
 
 /**
- * Gives [ReminderWorker], which WorkManager creates itself, the app's [EventRepository] and
- * [AuthRepository] (to check who is signed in when it fires).
+ * False only if the server says the signed-in student is no longer registered for [eventId] (they
+ * cancelled on another device, or an organizer removed them). A cached answer may be out of date,
+ * so it never decides: if the server doesn't answer within [EVENT_CHECK_TIMEOUT] (offline), or the
+ * read fails, the student is still taken as going and the reminder fires.
+ */
+internal suspend fun stillGoing(registrations: RegistrationRepository, eventId: String): Boolean {
+  val confirmed =
+      try {
+        withTimeoutOrNull(EVENT_CHECK_TIMEOUT) {
+          registrations.observeMyRegistrations().first {
+            it is MyRegistrationsResult.Registrations && !it.fromCache
+          }
+        }
+      } catch (e: CancellationException) {
+        throw e
+      } catch (_: Exception) {
+        null
+      }
+  return (confirmed as? MyRegistrationsResult.Registrations)?.let { eventId in it.eventIds } ?: true
+}
+
+/**
+ * Gives [ReminderWorker], which WorkManager creates itself, the app's [EventRepository],
+ * [AuthRepository] (to check who is signed in when it fires), [RegistrationRepository] (to check
+ * that the student still goes) and [ReminderScheduler] (to follow an event moved later).
  */
 @EntryPoint
 @InstallIn(SingletonComponent::class)
@@ -129,6 +176,10 @@ internal interface ReminderWorkerEntryPoint {
   fun eventRepository(): EventRepository
 
   fun authRepository(): AuthRepository
+
+  fun registrationRepository(): RegistrationRepository
+
+  fun reminderScheduler(): ReminderScheduler
 }
 
 /**
@@ -136,10 +187,16 @@ internal interface ReminderWorkerEntryPoint {
  * [timeLeft]), and the text gives its day, time and place, as in the Figma frame "Reminder · system
  * notification". Tapping it opens the app.
  *
- * Nothing is posted if the event has already started (the device was off when the reminder was
- * due), if the student doesn't allow notifications, or if the event was deleted (see
- * [eventStillExists]). WorkManager creates this worker with the device's clock and the app's
- * [EventRepository]; tests pass a fixed clock and a fake repository through a worker factory.
+ * It follows the event as it is when it fires (see [lookUpEvent]): the title, time and place come
+ * from the event, not from when the reminder was set, so a change by the organizer shows. An event
+ * moved to a time more than [REMINDER_LEAD] away is scheduled again for its new time instead, which
+ * replaces this very work: nothing is left to do after that call, and being stopped by it is
+ * harmless. An event moved closer is notified right away, with the time actually left.
+ *
+ * Nothing is posted if the event has already started, if the student doesn't allow notifications,
+ * if the event was deleted, or if the server says the student isn't going anymore (see
+ * [stillGoing]). WorkManager creates this worker with the device's clock and the app's repositories
+ * and scheduler; tests pass a fixed clock and fakes through a worker factory.
  */
 class ReminderWorker
 @JvmOverloads
@@ -153,19 +210,43 @@ constructor(
         EntryPointAccessors.fromApplication(context, ReminderWorkerEntryPoint::class.java)
             .authRepository(),
     private val clock: Clock = Clock.systemDefaultZone(),
+    private val registrations: RegistrationRepository =
+        EntryPointAccessors.fromApplication(context, ReminderWorkerEntryPoint::class.java)
+            .registrationRepository(),
+    private val scheduler: ReminderScheduler =
+        EntryPointAccessors.fromApplication(context, ReminderWorkerEntryPoint::class.java)
+            .reminderScheduler(),
 ) : CoroutineWorker(context, params) {
 
   override suspend fun doWork(): Result {
-    val reminder = eventReminderFrom(inputData) ?: return Result.failure()
-    if (!clock.instant().isBefore(reminder.startTime)) return Result.success()
+    val saved = eventReminderFrom(inputData) ?: return Result.failure()
     // A failed cancelAll() on logout (best-effort, see ProfileViewModel.confirmLogout) can leave
     // this reminder queued; without this, it would fire for whichever account signs in next.
-    if (!isScheduledBySignedInAccount(reminder)) return Result.success()
+    if (!isScheduledBySignedInAccount(saved)) return Result.success()
     if (!canPostNotifications()) return Result.success()
-    if (!eventStillExists(events, reminder.eventId)) return Result.success()
+    // Both answers are awaited together: offline, each waits out its own timeout.
+    val (lookup, going) =
+        coroutineScope {
+          val event = async { lookUpEvent(events, saved.eventId) }
+          val registered = async { stillGoing(registrations, saved.eventId) }
+          event.await() to registered.await()
+        }
+    if (lookup is EventLookup.Gone || !going) return Result.success()
     // The lookup above can suspend for up to EVENT_CHECK_TIMEOUT, long enough for the account to
     // switch, so the owner is checked again right before posting.
-    if (!isScheduledBySignedInAccount(reminder)) return Result.success()
+    if (!isScheduledBySignedInAccount(saved)) return Result.success()
+    val reminder = (lookup as? EventLookup.Current)?.event?.let { saved.followed(it) } ?: saved
+    val now = clock.instant()
+    if (!now.isBefore(reminder.startTime)) return Result.success()
+    if (
+        reminder.startTime.isAfter(saved.startTime) && reminderTime(reminder.startTime, now) != null
+    ) {
+      // Moved later, and the new reminder time hasn't come: wait for it instead of notifying now.
+      return when (scheduler.schedule(reminder)) {
+        is ScheduleReminderResult.UnexpectedError -> Result.retry()
+        else -> Result.success()
+      }
+    }
     val notifications = NotificationManagerCompat.from(applicationContext)
     notifications.createNotificationChannel(
         NotificationChannelCompat.Builder(
@@ -183,6 +264,14 @@ constructor(
       Result.success()
     }
   }
+
+  /** This reminder with the title, start time and place the organizer has now. */
+  private fun EventReminder.followed(event: Event) =
+      copy(
+          title = event.title,
+          startTime = event.startTime,
+          placeName = event.locationName.ifBlank { null },
+      )
 
   private fun isScheduledBySignedInAccount(reminder: EventReminder): Boolean =
       auth.currentUser()?.uid == reminder.uid
