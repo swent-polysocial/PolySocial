@@ -3,6 +3,8 @@
 // a user action, #123's second PR review).
 // Contributors: Claude Opus 5.5 (fixed GatedReminderScheduler to capture a true stale snapshot,
 // and covered cancelling registration racing the initial read, #123's second PR, Mehdi's review).
+// Contributors: Claude Sonnet 5.5 (tests that a reminder follows its event's time, title and place,
+// #485).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -18,6 +20,7 @@ import com.polysocial.model.registration.FakeRegistrationRepository
 import com.polysocial.model.reminder.EventReminder
 import com.polysocial.model.reminder.FakeReminderScheduler
 import com.polysocial.model.reminder.ReminderScheduler
+import com.polysocial.model.reminder.ScheduleReminderResult
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.utils.MainDispatcherRule
 import java.time.Clock
@@ -110,6 +113,120 @@ class EventDetailReminderTest {
       gate.await()
       return snapshot
     }
+  }
+
+  /** The reminder the device holds for [event], as it was set before the organizer changed it. */
+  private fun heldFor(event: Event) =
+      EventReminder(
+          eventId = EVENT_ID,
+          title = event.title,
+          startTime = event.startTime,
+          uid = STUDENT,
+          placeName = event.locationName,
+      )
+
+  /** [reminders], counting every [schedule] call. */
+  private inner class CountingScheduler : ReminderScheduler by reminders {
+    var schedules = 0
+
+    override suspend fun schedule(reminder: EventReminder): ScheduleReminderResult {
+      schedules++
+      return reminders.schedule(reminder)
+    }
+  }
+
+  /** Replaces the stored event by [changed], as an organizer's edit does. */
+  private fun edit(changed: Event) {
+    events.events.clear()
+    events.seed(changed)
+  }
+
+  @Test
+  fun anEventMovedSinceTheReminderWasSet_reschedulesItOnOpening() = runTest {
+    reminders.scheduled[EVENT_ID] = heldFor(event)
+    val moved =
+        event.copy(
+            title = "Balélec warm-up",
+            startTime = Instant.parse("2026-10-11T09:00:00Z"),
+            endTime = Instant.parse("2026-10-11T12:00:00Z"),
+            locationName = "Rolex Learning Center",
+        )
+
+    val vm = open(moved)
+
+    assertTrue(vm.loaded.reminderOn)
+    assertEquals(
+        EventReminder(
+            EVENT_ID,
+            "Balélec warm-up",
+            moved.startTime,
+            STUDENT,
+            "Rolex Learning Center",
+        ),
+        reminders.scheduled[EVENT_ID],
+    )
+  }
+
+  @Test
+  fun anEventThatChangesWhileTheScreenIsOpen_reschedulesTheReminder() = runTest {
+    reminders.scheduled[EVENT_ID] = heldFor(event)
+    val counting = CountingScheduler()
+    val vm = open(scheduler = counting)
+    assertEquals(1, counting.schedules)
+
+    val moved = event.copy(startTime = Instant.parse("2026-10-12T09:00:00Z"))
+    edit(moved)
+    runCurrent()
+
+    assertEquals(2, counting.schedules)
+    assertEquals(moved.startTime, reminders.scheduled[EVENT_ID]?.startTime)
+    assertTrue(vm.loaded.reminderOn)
+  }
+
+  @Test
+  fun anUnchangedEvent_isNotScheduledAgain() = runTest {
+    reminders.scheduled[EVENT_ID] = heldFor(event)
+    val counting = CountingScheduler()
+    open(scheduler = counting)
+
+    // The same event arrives again, for example when it comes back from the server.
+    edit(event)
+    runCurrent()
+
+    assertEquals(1, counting.schedules)
+    assertEquals(heldFor(event).startTime, reminders.scheduled[EVENT_ID]?.startTime)
+  }
+
+  @Test
+  fun noReminder_noScheduling() = runTest {
+    val counting = CountingScheduler()
+    val vm = open(scheduler = counting)
+
+    edit(event.copy(startTime = Instant.parse("2026-10-12T09:00:00Z")))
+    runCurrent()
+
+    assertEquals(0, counting.schedules)
+    assertFalse(vm.loaded.reminderOn)
+  }
+
+  @Test
+  fun anEventMovedToWithinTheHour_cancelsTheReminder_andTurnsTheSwitchOff() = runTest {
+    reminders.scheduled[EVENT_ID] = heldFor(event)
+    val vm = open(event.copy(startTime = Instant.parse("2026-10-07T10:30:00Z")))
+
+    assertFalse(vm.loaded.reminderOn)
+    assertFalse(EVENT_ID in reminders.scheduled)
+  }
+
+  @Test
+  fun aSchedulerThatFailsWhileFollowingTheEvent_leavesTheReminderAsItWas() = runTest {
+    reminders.scheduled[EVENT_ID] = heldFor(event)
+    reminders.fail = true
+
+    val vm = open(event.copy(startTime = Instant.parse("2026-10-11T09:00:00Z")))
+
+    assertTrue(vm.loaded.reminderOn)
+    assertEquals(event.startTime, reminders.scheduled[EVENT_ID]?.startTime)
   }
 
   @Test
