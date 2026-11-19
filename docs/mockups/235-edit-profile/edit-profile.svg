@@ -1,0 +1,380 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2196" height="1870" viewBox="0 0 2196 1870" role="img" aria-labelledby="title description">
+<!-- Contributors: Mehdi (@mehdifddl), human author; OpenAI Codex (drafted the profile-edit mockup from the existing app and onboarding design, #235). -->
+<title id="title">PolySocial · Edit profile (#235)</title>
+<desc id="description">Nine Android screen states from PR 476. Layout follows PolySocial onboarding. Draft by Mehdi (@mehdifddl) with OpenAI Codex assistance.</desc>
+
+<rect x="0" y="0" width="2196" height="1870" rx="0" fill="#F6F5F2" stroke="none" stroke-width="1"/>
+<text x="56" y="65" font-family="Plus Jakarta Sans, sans-serif" font-size="36" font-weight="800" fill="#17171C" text-anchor="start">Edit profile</text>
+<text x="56" y="98" font-family="Plus Jakarta Sans, sans-serif" font-size="16" font-weight="400" fill="#4A4A55" text-anchor="start">PolySocial · Section, year and interests · #235</text>
+<text x="56" y="144" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="700" fill="#4A4A55" text-anchor="start">Unchanged</text><g transform="translate(56 158)" aria-label="Edit profile · Unchanged">
+<rect x="0.5" y="0.5" width="359" height="799" rx="28" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><path d="M31 28.5l-5.5 5.5 5.5 5.5" fill="none" stroke="#17171C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><text x="20" y="93" font-family="Plus Jakarta Sans, sans-serif" font-size="26" font-weight="800" fill="#17171C" text-anchor="start">Edit profile</text><text x="20" y="124" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#4A4A55" text-anchor="start">Update your section, year and interests.</text><g transform="translate(20 175)" aria-label="Section">
+<text x="0" y="13" font-family="Plus Jakarta Sans, sans-serif" font-size="13" font-weight="600" fill="#4A4A55" text-anchor="start">Section</text><rect x="0.5" y="23.5" width="153" height="47" rx="12" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="14" y="52" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#17171C" text-anchor="start">IN</text><path d="M127 46l4 4 4-4" fill="none" stroke="#17171C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</g><g transform="translate(186 175)" aria-label="Year">
+<text x="0" y="13" font-family="Plus Jakarta Sans, sans-serif" font-size="13" font-weight="600" fill="#4A4A55" text-anchor="start">Year</text><rect x="0.5" y="23.5" width="153" height="47" rx="12" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="13" y="52" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#17171C" text-anchor="start">BA3</text><path d="M127 46l4 4 4-4" fill="none" stroke="#17171C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</g><text x="20" y="284" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="700" fill="#17171C" text-anchor="start">What are you into?</text><text x="20" y="308" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="400" fill="#4A4A55" text-anchor="start">Optional. We only use them to match you with</text><text x="20" y="327" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="400" fill="#4A4A55" text-anchor="start">people you'll get along with.</text><g transform="translate(20 352)" aria-label="Sports">
+<rect x="0.5" y="0.5" width="75" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Sports</text>
+</g>
+<g transform="translate(104 352)" aria-label="Outdoors">
+<rect x="0.5" y="0.5" width="112" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Outdoors</text>
+</g>
+<g transform="translate(225 352)" aria-label="Music">
+<rect x="0.5" y="0.5" width="87" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Music</text>
+</g>
+<g transform="translate(20 400)" aria-label="Parties">
+<rect x="0.5" y="0.5" width="76" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Parties</text>
+</g>
+<g transform="translate(105 400)" aria-label="Cinema">
+<rect x="0.5" y="0.5" width="99" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Cinema</text>
+</g>
+<g transform="translate(213 400)" aria-label="Games">
+<rect x="0.5" y="0.5" width="78" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Games</text>
+</g>
+<g transform="translate(20 448)" aria-label="Photography">
+<rect x="0.5" y="0.5" width="118" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Photography</text>
+</g>
+<g transform="translate(147 448)" aria-label="Cooking">
+<rect x="0.5" y="0.5" width="87" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Cooking</text>
+</g>
+<g transform="translate(243 448)" aria-label="Tech">
+<rect x="0.5" y="0.5" width="59" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Tech</text>
+</g>
+<g transform="translate(20 496)" aria-label="Startups">
+<rect x="0.5" y="0.5" width="88" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Startups</text>
+</g>
+<g transform="translate(117 496)" aria-label="Arts &amp; theatre">
+<rect x="0.5" y="0.5" width="123" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Arts &amp; theatre</text>
+</g>
+<g transform="translate(20 544)" aria-label="Volunteering">
+<rect x="0.5" y="0.5" width="116" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Volunteering</text>
+</g><g transform="translate(20 608)" aria-label="Save changes">
+<rect x="0" y="0" width="320" height="52" rx="26" fill="#EFEDE8" stroke="none" stroke-width="1"/><text x="160" y="32" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="700" fill="#6B6B76" text-anchor="middle">Save changes</text>
+</g>
+</g>
+<text x="486" y="144" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="700" fill="#4A4A55" text-anchor="start">Edited</text><g transform="translate(486 158)" aria-label="Edit profile · Edited">
+<rect x="0.5" y="0.5" width="359" height="799" rx="28" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><path d="M31 28.5l-5.5 5.5 5.5 5.5" fill="none" stroke="#17171C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><text x="20" y="93" font-family="Plus Jakarta Sans, sans-serif" font-size="26" font-weight="800" fill="#17171C" text-anchor="start">Edit profile</text><text x="20" y="124" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#4A4A55" text-anchor="start">Update your section, year and interests.</text><g transform="translate(20 175)" aria-label="Section">
+<text x="0" y="13" font-family="Plus Jakarta Sans, sans-serif" font-size="13" font-weight="600" fill="#4A4A55" text-anchor="start">Section</text><rect x="0.5" y="23.5" width="153" height="47" rx="12" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="14" y="52" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#17171C" text-anchor="start">IN</text><path d="M127 46l4 4 4-4" fill="none" stroke="#17171C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</g><g transform="translate(186 175)" aria-label="Year">
+<text x="0" y="13" font-family="Plus Jakarta Sans, sans-serif" font-size="13" font-weight="600" fill="#4A4A55" text-anchor="start">Year</text><rect x="0.5" y="23.5" width="153" height="47" rx="12" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="13" y="52" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#17171C" text-anchor="start">BA3</text><path d="M127 46l4 4 4-4" fill="none" stroke="#17171C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</g><text x="20" y="284" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="700" fill="#17171C" text-anchor="start">What are you into?</text><text x="20" y="308" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="400" fill="#4A4A55" text-anchor="start">Optional. We only use them to match you with</text><text x="20" y="327" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="400" fill="#4A4A55" text-anchor="start">people you'll get along with.</text><g transform="translate(20 352)" aria-label="Sports">
+<rect x="0.5" y="0.5" width="75" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Sports</text>
+</g>
+<g transform="translate(104 352)" aria-label="Outdoors">
+<rect x="0.5" y="0.5" width="112" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Outdoors</text>
+</g>
+<g transform="translate(225 352)" aria-label="Music">
+<rect x="0.5" y="0.5" width="87" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Music</text>
+</g>
+<g transform="translate(20 400)" aria-label="Parties">
+<rect x="0.5" y="0.5" width="76" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Parties</text>
+</g>
+<g transform="translate(105 400)" aria-label="Cinema">
+<rect x="0.5" y="0.5" width="99" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Cinema</text>
+</g>
+<g transform="translate(213 400)" aria-label="Games">
+<rect x="0.5" y="0.5" width="78" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Games</text>
+</g>
+<g transform="translate(20 448)" aria-label="Photography">
+<rect x="0.5" y="0.5" width="118" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Photography</text>
+</g>
+<g transform="translate(147 448)" aria-label="Cooking">
+<rect x="0.5" y="0.5" width="87" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Cooking</text>
+</g>
+<g transform="translate(243 448)" aria-label="Tech">
+<rect x="0.5" y="0.5" width="79" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Tech</text>
+</g>
+<g transform="translate(20 496)" aria-label="Startups">
+<rect x="0.5" y="0.5" width="88" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Startups</text>
+</g>
+<g transform="translate(117 496)" aria-label="Arts &amp; theatre">
+<rect x="0.5" y="0.5" width="123" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Arts &amp; theatre</text>
+</g>
+<g transform="translate(20 544)" aria-label="Volunteering">
+<rect x="0.5" y="0.5" width="116" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Volunteering</text>
+</g><g transform="translate(20 608)" aria-label="Save changes">
+<rect x="0" y="0" width="320" height="52" rx="26" fill="#17171C" stroke="none" stroke-width="1"/><text x="160" y="32" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="700" fill="#FFFFFF" text-anchor="middle">Save changes</text>
+</g>
+</g>
+<text x="916" y="144" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="700" fill="#4A4A55" text-anchor="start">Choosing section</text><g transform="translate(916 158)" aria-label="Edit profile · Choosing section">
+<rect x="0.5" y="0.5" width="359" height="799" rx="28" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><path d="M31 28.5l-5.5 5.5 5.5 5.5" fill="none" stroke="#17171C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><text x="20" y="93" font-family="Plus Jakarta Sans, sans-serif" font-size="26" font-weight="800" fill="#17171C" text-anchor="start">Edit profile</text><text x="20" y="124" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#4A4A55" text-anchor="start">Update your section, year and interests.</text><g transform="translate(20 175)" aria-label="Section">
+<text x="0" y="13" font-family="Plus Jakarta Sans, sans-serif" font-size="13" font-weight="600" fill="#4A4A55" text-anchor="start">Section</text><rect x="0.5" y="23.5" width="153" height="47" rx="12" fill="#FFFFFF" stroke="#17171C" stroke-width="2"/><text x="14" y="52" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#17171C" text-anchor="start">IN</text><path d="M127 46l4 4 4-4" fill="none" stroke="#17171C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</g><g transform="translate(186 175)" aria-label="Year">
+<text x="0" y="13" font-family="Plus Jakarta Sans, sans-serif" font-size="13" font-weight="600" fill="#4A4A55" text-anchor="start">Year</text><rect x="0.5" y="23.5" width="153" height="47" rx="12" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="13" y="52" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#17171C" text-anchor="start">BA3</text><path d="M127 46l4 4 4-4" fill="none" stroke="#17171C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</g><text x="20" y="284" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="700" fill="#17171C" text-anchor="start">What are you into?</text><text x="20" y="308" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="400" fill="#4A4A55" text-anchor="start">Optional. We only use them to match you with</text><text x="20" y="327" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="400" fill="#4A4A55" text-anchor="start">people you'll get along with.</text><g transform="translate(20 352)" aria-label="Sports">
+<rect x="0.5" y="0.5" width="75" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Sports</text>
+</g>
+<g transform="translate(104 352)" aria-label="Outdoors">
+<rect x="0.5" y="0.5" width="112" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Outdoors</text>
+</g>
+<g transform="translate(225 352)" aria-label="Music">
+<rect x="0.5" y="0.5" width="87" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Music</text>
+</g>
+<g transform="translate(20 400)" aria-label="Parties">
+<rect x="0.5" y="0.5" width="76" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Parties</text>
+</g>
+<g transform="translate(105 400)" aria-label="Cinema">
+<rect x="0.5" y="0.5" width="99" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Cinema</text>
+</g>
+<g transform="translate(213 400)" aria-label="Games">
+<rect x="0.5" y="0.5" width="78" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Games</text>
+</g>
+<g transform="translate(20 448)" aria-label="Photography">
+<rect x="0.5" y="0.5" width="118" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Photography</text>
+</g>
+<g transform="translate(147 448)" aria-label="Cooking">
+<rect x="0.5" y="0.5" width="87" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Cooking</text>
+</g>
+<g transform="translate(243 448)" aria-label="Tech">
+<rect x="0.5" y="0.5" width="79" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Tech</text>
+</g>
+<g transform="translate(20 496)" aria-label="Startups">
+<rect x="0.5" y="0.5" width="88" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Startups</text>
+</g>
+<g transform="translate(117 496)" aria-label="Arts &amp; theatre">
+<rect x="0.5" y="0.5" width="123" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Arts &amp; theatre</text>
+</g>
+<g transform="translate(20 544)" aria-label="Volunteering">
+<rect x="0.5" y="0.5" width="116" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Volunteering</text>
+</g><g transform="translate(20 608)" aria-label="Save changes">
+<rect x="0" y="0" width="320" height="52" rx="26" fill="#17171C" stroke="none" stroke-width="1"/><text x="160" y="32" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="700" fill="#FFFFFF" text-anchor="middle">Save changes</text>
+</g><g transform="translate(20 253)" aria-label="Section options">
+<rect x="-3" y="3" width="160" height="300" rx="15" fill="#17171C0E" stroke="none" stroke-width="1"/><rect x="0" y="0" width="154" height="298" rx="12" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><g transform="translate(5 9)" aria-label="GC">
+<text x="12" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#17171C" text-anchor="start">GC</text>
+</g>
+<g transform="translate(5 49)" aria-label="GM">
+<text x="12" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#17171C" text-anchor="start">GM</text>
+</g>
+<g transform="translate(5 89)" aria-label="IF">
+<text x="12" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#17171C" text-anchor="start">IF</text>
+</g>
+<g transform="translate(5 129)" aria-label="IN">
+<rect x="0" y="0" width="144" height="40" rx="8" fill="#F6F5F2" stroke="none" stroke-width="1"/><text x="12" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="700" fill="#17171C" text-anchor="start">IN</text><path d="M121 19l3 3 6-6" fill="none" stroke="#17171C" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<g transform="translate(5 169)" aria-label="MA">
+<text x="12" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#17171C" text-anchor="start">MA</text>
+</g>
+<g transform="translate(5 209)" aria-label="MT">
+<text x="12" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#17171C" text-anchor="start">MT</text>
+</g>
+<g transform="translate(5 249)" aria-label="MTE">
+<text x="12" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#17171C" text-anchor="start">MTE</text>
+</g>
+</g>
+</g>
+<text x="1346" y="144" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="700" fill="#4A4A55" text-anchor="start">Choosing year</text><g transform="translate(1346 158)" aria-label="Edit profile · Choosing year">
+<rect x="0.5" y="0.5" width="359" height="799" rx="28" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><path d="M31 28.5l-5.5 5.5 5.5 5.5" fill="none" stroke="#17171C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><text x="20" y="93" font-family="Plus Jakarta Sans, sans-serif" font-size="26" font-weight="800" fill="#17171C" text-anchor="start">Edit profile</text><text x="20" y="124" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#4A4A55" text-anchor="start">Update your section, year and interests.</text><g transform="translate(20 175)" aria-label="Section">
+<text x="0" y="13" font-family="Plus Jakarta Sans, sans-serif" font-size="13" font-weight="600" fill="#4A4A55" text-anchor="start">Section</text><rect x="0.5" y="23.5" width="153" height="47" rx="12" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="14" y="52" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#17171C" text-anchor="start">IN</text><path d="M127 46l4 4 4-4" fill="none" stroke="#17171C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</g><g transform="translate(186 175)" aria-label="Year">
+<text x="0" y="13" font-family="Plus Jakarta Sans, sans-serif" font-size="13" font-weight="600" fill="#4A4A55" text-anchor="start">Year</text><rect x="0.5" y="23.5" width="153" height="47" rx="12" fill="#FFFFFF" stroke="#17171C" stroke-width="2"/><text x="13" y="52" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#17171C" text-anchor="start">BA3</text><path d="M127 46l4 4 4-4" fill="none" stroke="#17171C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</g><text x="20" y="284" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="700" fill="#17171C" text-anchor="start">What are you into?</text><text x="20" y="308" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="400" fill="#4A4A55" text-anchor="start">Optional. We only use them to match you with</text><text x="20" y="327" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="400" fill="#4A4A55" text-anchor="start">people you'll get along with.</text><g transform="translate(20 352)" aria-label="Sports">
+<rect x="0.5" y="0.5" width="75" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Sports</text>
+</g>
+<g transform="translate(104 352)" aria-label="Outdoors">
+<rect x="0.5" y="0.5" width="112" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Outdoors</text>
+</g>
+<g transform="translate(225 352)" aria-label="Music">
+<rect x="0.5" y="0.5" width="87" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Music</text>
+</g>
+<g transform="translate(20 400)" aria-label="Parties">
+<rect x="0.5" y="0.5" width="76" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Parties</text>
+</g>
+<g transform="translate(105 400)" aria-label="Cinema">
+<rect x="0.5" y="0.5" width="99" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Cinema</text>
+</g>
+<g transform="translate(213 400)" aria-label="Games">
+<rect x="0.5" y="0.5" width="78" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Games</text>
+</g>
+<g transform="translate(20 448)" aria-label="Photography">
+<rect x="0.5" y="0.5" width="118" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Photography</text>
+</g>
+<g transform="translate(147 448)" aria-label="Cooking">
+<rect x="0.5" y="0.5" width="87" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Cooking</text>
+</g>
+<g transform="translate(243 448)" aria-label="Tech">
+<rect x="0.5" y="0.5" width="79" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Tech</text>
+</g>
+<g transform="translate(20 496)" aria-label="Startups">
+<rect x="0.5" y="0.5" width="88" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Startups</text>
+</g>
+<g transform="translate(117 496)" aria-label="Arts &amp; theatre">
+<rect x="0.5" y="0.5" width="123" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Arts &amp; theatre</text>
+</g>
+<g transform="translate(20 544)" aria-label="Volunteering">
+<rect x="0.5" y="0.5" width="116" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Volunteering</text>
+</g><g transform="translate(20 608)" aria-label="Save changes">
+<rect x="0" y="0" width="320" height="52" rx="26" fill="#17171C" stroke="none" stroke-width="1"/><text x="160" y="32" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="700" fill="#FFFFFF" text-anchor="middle">Save changes</text>
+</g><g transform="translate(186 253)" aria-label="Year options">
+<rect x="-3" y="3" width="160" height="300" rx="15" fill="#17171C0E" stroke="none" stroke-width="1"/><rect x="0" y="0" width="154" height="298" rx="12" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><g transform="translate(5 9)" aria-label="BA1">
+<text x="12" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#17171C" text-anchor="start">BA1</text>
+</g>
+<g transform="translate(5 49)" aria-label="BA2">
+<text x="12" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#17171C" text-anchor="start">BA2</text>
+</g>
+<g transform="translate(5 89)" aria-label="BA3">
+<rect x="0" y="0" width="144" height="40" rx="8" fill="#F6F5F2" stroke="none" stroke-width="1"/><text x="12" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="700" fill="#17171C" text-anchor="start">BA3</text><path d="M121 19l3 3 6-6" fill="none" stroke="#17171C" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+<g transform="translate(5 129)" aria-label="BA4">
+<text x="12" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#17171C" text-anchor="start">BA4</text>
+</g>
+<g transform="translate(5 169)" aria-label="BA5">
+<text x="12" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#17171C" text-anchor="start">BA5</text>
+</g>
+<g transform="translate(5 209)" aria-label="BA6">
+<text x="12" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#17171C" text-anchor="start">BA6</text>
+</g>
+<g transform="translate(5 249)" aria-label="MA1">
+<text x="12" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#17171C" text-anchor="start">MA1</text>
+</g>
+</g>
+</g>
+<text x="1776" y="144" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="700" fill="#4A4A55" text-anchor="start">Saving</text><g transform="translate(1776 158)" aria-label="Edit profile · Saving">
+<rect x="0.5" y="0.5" width="359" height="799" rx="28" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><path d="M31 28.5l-5.5 5.5 5.5 5.5" fill="none" stroke="#17171C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><text x="20" y="93" font-family="Plus Jakarta Sans, sans-serif" font-size="26" font-weight="800" fill="#17171C" text-anchor="start">Edit profile</text><text x="20" y="124" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#4A4A55" text-anchor="start">Update your section, year and interests.</text><g transform="translate(20 175)" aria-label="Section">
+<text x="0" y="13" font-family="Plus Jakarta Sans, sans-serif" font-size="13" font-weight="600" fill="#4A4A55" text-anchor="start">Section</text><rect x="0.5" y="23.5" width="153" height="47" rx="12" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="14" y="52" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#17171C" text-anchor="start">IN</text><path d="M127 46l4 4 4-4" fill="none" stroke="#17171C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</g><g transform="translate(186 175)" aria-label="Year">
+<text x="0" y="13" font-family="Plus Jakarta Sans, sans-serif" font-size="13" font-weight="600" fill="#4A4A55" text-anchor="start">Year</text><rect x="0.5" y="23.5" width="153" height="47" rx="12" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="13" y="52" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#17171C" text-anchor="start">BA3</text><path d="M127 46l4 4 4-4" fill="none" stroke="#17171C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</g><text x="20" y="284" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="700" fill="#17171C" text-anchor="start">What are you into?</text><text x="20" y="308" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="400" fill="#4A4A55" text-anchor="start">Optional. We only use them to match you with</text><text x="20" y="327" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="400" fill="#4A4A55" text-anchor="start">people you'll get along with.</text><g transform="translate(20 352)" aria-label="Sports">
+<rect x="0.5" y="0.5" width="75" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Sports</text>
+</g>
+<g transform="translate(104 352)" aria-label="Outdoors">
+<rect x="0.5" y="0.5" width="112" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Outdoors</text>
+</g>
+<g transform="translate(225 352)" aria-label="Music">
+<rect x="0.5" y="0.5" width="87" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Music</text>
+</g>
+<g transform="translate(20 400)" aria-label="Parties">
+<rect x="0.5" y="0.5" width="76" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Parties</text>
+</g>
+<g transform="translate(105 400)" aria-label="Cinema">
+<rect x="0.5" y="0.5" width="99" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Cinema</text>
+</g>
+<g transform="translate(213 400)" aria-label="Games">
+<rect x="0.5" y="0.5" width="78" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Games</text>
+</g>
+<g transform="translate(20 448)" aria-label="Photography">
+<rect x="0.5" y="0.5" width="118" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Photography</text>
+</g>
+<g transform="translate(147 448)" aria-label="Cooking">
+<rect x="0.5" y="0.5" width="87" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Cooking</text>
+</g>
+<g transform="translate(243 448)" aria-label="Tech">
+<rect x="0.5" y="0.5" width="79" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Tech</text>
+</g>
+<g transform="translate(20 496)" aria-label="Startups">
+<rect x="0.5" y="0.5" width="88" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Startups</text>
+</g>
+<g transform="translate(117 496)" aria-label="Arts &amp; theatre">
+<rect x="0.5" y="0.5" width="123" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Arts &amp; theatre</text>
+</g>
+<g transform="translate(20 544)" aria-label="Volunteering">
+<rect x="0.5" y="0.5" width="116" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Volunteering</text>
+</g><g transform="translate(20 608)" aria-label="Save changes">
+<rect x="0" y="0" width="320" height="52" rx="26" fill="#17171C" stroke="none" stroke-width="1"/><circle cx="101" cy="26" r="7.2" fill="none" stroke="#FFFFFF" stroke-opacity=".22" stroke-width="2"/><path d="M101 18.8 A7.2 7.2 0 0 1 108.2 26" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><text x="173" y="32" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="700" fill="#FFFFFF" text-anchor="middle">Save changes</text>
+</g>
+</g>
+<text x="56" y="1008" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="700" fill="#4A4A55" text-anchor="start">Offline</text><g transform="translate(56 1022)" aria-label="Edit profile · Offline">
+<rect x="0.5" y="0.5" width="359" height="799" rx="28" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><path d="M31 28.5l-5.5 5.5 5.5 5.5" fill="none" stroke="#17171C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><text x="20" y="93" font-family="Plus Jakarta Sans, sans-serif" font-size="26" font-weight="800" fill="#17171C" text-anchor="start">Edit profile</text><text x="20" y="124" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#4A4A55" text-anchor="start">Update your section, year and interests.</text><g transform="translate(20 175)" aria-label="Section">
+<text x="0" y="13" font-family="Plus Jakarta Sans, sans-serif" font-size="13" font-weight="600" fill="#4A4A55" text-anchor="start">Section</text><rect x="0.5" y="23.5" width="153" height="47" rx="12" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="14" y="52" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#17171C" text-anchor="start">IN</text><path d="M127 46l4 4 4-4" fill="none" stroke="#17171C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</g><g transform="translate(186 175)" aria-label="Year">
+<text x="0" y="13" font-family="Plus Jakarta Sans, sans-serif" font-size="13" font-weight="600" fill="#4A4A55" text-anchor="start">Year</text><rect x="0.5" y="23.5" width="153" height="47" rx="12" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="13" y="52" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#17171C" text-anchor="start">BA3</text><path d="M127 46l4 4 4-4" fill="none" stroke="#17171C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</g><text x="20" y="284" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="700" fill="#17171C" text-anchor="start">What are you into?</text><text x="20" y="308" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="400" fill="#4A4A55" text-anchor="start">Optional. We only use them to match you with</text><text x="20" y="327" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="400" fill="#4A4A55" text-anchor="start">people you'll get along with.</text><g transform="translate(20 352)" aria-label="Sports">
+<rect x="0.5" y="0.5" width="75" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Sports</text>
+</g>
+<g transform="translate(104 352)" aria-label="Outdoors">
+<rect x="0.5" y="0.5" width="112" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Outdoors</text>
+</g>
+<g transform="translate(225 352)" aria-label="Music">
+<rect x="0.5" y="0.5" width="87" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Music</text>
+</g>
+<g transform="translate(20 400)" aria-label="Parties">
+<rect x="0.5" y="0.5" width="76" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Parties</text>
+</g>
+<g transform="translate(105 400)" aria-label="Cinema">
+<rect x="0.5" y="0.5" width="99" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Cinema</text>
+</g>
+<g transform="translate(213 400)" aria-label="Games">
+<rect x="0.5" y="0.5" width="78" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Games</text>
+</g>
+<g transform="translate(20 448)" aria-label="Photography">
+<rect x="0.5" y="0.5" width="118" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Photography</text>
+</g>
+<g transform="translate(147 448)" aria-label="Cooking">
+<rect x="0.5" y="0.5" width="87" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Cooking</text>
+</g>
+<g transform="translate(243 448)" aria-label="Tech">
+<rect x="0.5" y="0.5" width="79" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Tech</text>
+</g>
+<g transform="translate(20 496)" aria-label="Startups">
+<rect x="0.5" y="0.5" width="88" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Startups</text>
+</g>
+<g transform="translate(117 496)" aria-label="Arts &amp; theatre">
+<rect x="0.5" y="0.5" width="123" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Arts &amp; theatre</text>
+</g>
+<g transform="translate(20 544)" aria-label="Volunteering">
+<rect x="0.5" y="0.5" width="116" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Volunteering</text>
+</g><g transform="translate(20 608)" aria-label="Save error">
+<rect x="0" y="0" width="320" height="84" rx="14" fill="#FDECEC" stroke="none" stroke-width="1"/><g transform="translate(14 14)" aria-label="Offline icon">
+<path d="M10 16.67h.01 M7.08 13.69c1.62-1.59 4.22-1.59 5.84 0 M4.17 10.72a8.35 8.35 0 0 1 4.3-2.25 M15.83 10.72a8.37 8.37 0 0 0-1.67-1.27 M1.67 7.35a11.8 11.8 0 0 1 3.48-2.2 M18.33 7.35a11.79 11.79 0 0 0-9.4-3.14 M1.67 1.67l16.66 16.66" fill="none" stroke="#B3202A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+</g><text x="46" y="28" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="700" fill="#17171C" text-anchor="start">Couldn't save your changes</text><text x="46" y="47" font-family="Plus Jakarta Sans, sans-serif" font-size="13" font-weight="400" fill="#4A4A55" text-anchor="start">You're offline. Your changes are still here.</text>
+<text x="46" y="65" font-family="Plus Jakarta Sans, sans-serif" font-size="13" font-weight="400" fill="#4A4A55" text-anchor="start">Connect and try again.</text>
+</g><g transform="translate(20 708)" aria-label="Retry">
+<rect x="0" y="0" width="320" height="52" rx="26" fill="#17171C" stroke="none" stroke-width="1"/><text x="160" y="32" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="700" fill="#FFFFFF" text-anchor="middle">Retry</text>
+</g>
+</g>
+<text x="486" y="1008" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="700" fill="#4A4A55" text-anchor="start">Save failed</text><g transform="translate(486 1022)" aria-label="Edit profile · Save failed">
+<rect x="0.5" y="0.5" width="359" height="799" rx="28" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><path d="M31 28.5l-5.5 5.5 5.5 5.5" fill="none" stroke="#17171C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><text x="20" y="93" font-family="Plus Jakarta Sans, sans-serif" font-size="26" font-weight="800" fill="#17171C" text-anchor="start">Edit profile</text><text x="20" y="124" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#4A4A55" text-anchor="start">Update your section, year and interests.</text><g transform="translate(20 175)" aria-label="Section">
+<text x="0" y="13" font-family="Plus Jakarta Sans, sans-serif" font-size="13" font-weight="600" fill="#4A4A55" text-anchor="start">Section</text><rect x="0.5" y="23.5" width="153" height="47" rx="12" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="14" y="52" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#17171C" text-anchor="start">IN</text><path d="M127 46l4 4 4-4" fill="none" stroke="#17171C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</g><g transform="translate(186 175)" aria-label="Year">
+<text x="0" y="13" font-family="Plus Jakarta Sans, sans-serif" font-size="13" font-weight="600" fill="#4A4A55" text-anchor="start">Year</text><rect x="0.5" y="23.5" width="153" height="47" rx="12" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="13" y="52" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#17171C" text-anchor="start">BA3</text><path d="M127 46l4 4 4-4" fill="none" stroke="#17171C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+</g><text x="20" y="284" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="700" fill="#17171C" text-anchor="start">What are you into?</text><text x="20" y="308" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="400" fill="#4A4A55" text-anchor="start">Optional. We only use them to match you with</text><text x="20" y="327" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="400" fill="#4A4A55" text-anchor="start">people you'll get along with.</text><g transform="translate(20 352)" aria-label="Sports">
+<rect x="0.5" y="0.5" width="75" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Sports</text>
+</g>
+<g transform="translate(104 352)" aria-label="Outdoors">
+<rect x="0.5" y="0.5" width="112" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Outdoors</text>
+</g>
+<g transform="translate(225 352)" aria-label="Music">
+<rect x="0.5" y="0.5" width="87" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Music</text>
+</g>
+<g transform="translate(20 400)" aria-label="Parties">
+<rect x="0.5" y="0.5" width="76" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Parties</text>
+</g>
+<g transform="translate(105 400)" aria-label="Cinema">
+<rect x="0.5" y="0.5" width="99" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Cinema</text>
+</g>
+<g transform="translate(213 400)" aria-label="Games">
+<rect x="0.5" y="0.5" width="78" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Games</text>
+</g>
+<g transform="translate(20 448)" aria-label="Photography">
+<rect x="0.5" y="0.5" width="118" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Photography</text>
+</g>
+<g transform="translate(147 448)" aria-label="Cooking">
+<rect x="0.5" y="0.5" width="87" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Cooking</text>
+</g>
+<g transform="translate(243 448)" aria-label="Tech">
+<rect x="0.5" y="0.5" width="79" height="39" rx="20" fill="#17171C" stroke="#17171C" stroke-width="1"/><path d="M15 20l3 3 6-6" fill="none" stroke="#FFFFFF" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><text x="34" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#FFFFFF" text-anchor="start">Tech</text>
+</g>
+<g transform="translate(20 496)" aria-label="Startups">
+<rect x="0.5" y="0.5" width="88" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Startups</text>
+</g>
+<g transform="translate(117 496)" aria-label="Arts &amp; theatre">
+<rect x="0.5" y="0.5" width="123" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Arts &amp; theatre</text>
+</g>
+<g transform="translate(20 544)" aria-label="Volunteering">
+<rect x="0.5" y="0.5" width="116" height="39" rx="20" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><text x="15" y="25" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#17171C" text-anchor="start">Volunteering</text>
+</g><g transform="translate(20 608)" aria-label="Save error">
+<rect x="0" y="0" width="320" height="84" rx="14" fill="#FDECEC" stroke="none" stroke-width="1"/><g transform="translate(14 14)" aria-label="Error icon">
+<path d="M10 6.7V10 M10 13.3h.01" fill="none" stroke="#B3202A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="10" r="8.3" fill="none" stroke="#B3202A" stroke-width="1.8"/>
+</g><text x="46" y="28" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="700" fill="#17171C" text-anchor="start">Couldn't save your changes</text><text x="46" y="47" font-family="Plus Jakarta Sans, sans-serif" font-size="13" font-weight="400" fill="#4A4A55" text-anchor="start">Your changes are still here. Try again, or</text>
+<text x="46" y="65" font-family="Plus Jakarta Sans, sans-serif" font-size="13" font-weight="400" fill="#4A4A55" text-anchor="start">go back.</text>
+</g><g transform="translate(20 708)" aria-label="Retry">
+<rect x="0" y="0" width="320" height="52" rx="26" fill="#17171C" stroke="none" stroke-width="1"/><text x="160" y="32" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="700" fill="#FFFFFF" text-anchor="middle">Retry</text>
+</g>
+</g>
+<text x="916" y="1008" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="700" fill="#4A4A55" text-anchor="start">Loading</text><g transform="translate(916 1022)" aria-label="Edit profile · Loading">
+<rect x="0.5" y="0.5" width="359" height="799" rx="28" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><path d="M31 28.5l-5.5 5.5 5.5 5.5" fill="none" stroke="#17171C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><text x="20" y="93" font-family="Plus Jakarta Sans, sans-serif" font-size="26" font-weight="800" fill="#17171C" text-anchor="start">Edit profile</text><text x="20" y="124" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#4A4A55" text-anchor="start">Update your section, year and interests.</text><circle cx="180" cy="461" r="12.8" fill="none" stroke="#17171C" stroke-opacity=".22" stroke-width="3.2"/><path d="M180 448.2 A12.8 12.8 0 0 1 192.8 461" fill="none" stroke="#17171C" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><text x="180" y="500" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="600" fill="#4A4A55" text-anchor="middle">Loading your profile…</text>
+</g>
+<text x="1346" y="1008" font-family="Plus Jakarta Sans, sans-serif" font-size="14" font-weight="700" fill="#4A4A55" text-anchor="start">Load failed</text><g transform="translate(1346 1022)" aria-label="Edit profile · Load failed">
+<rect x="0.5" y="0.5" width="359" height="799" rx="28" fill="#FFFFFF" stroke="#E4E2DC" stroke-width="1"/><path d="M31 28.5l-5.5 5.5 5.5 5.5" fill="none" stroke="#17171C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><text x="20" y="93" font-family="Plus Jakarta Sans, sans-serif" font-size="26" font-weight="800" fill="#17171C" text-anchor="start">Edit profile</text><text x="20" y="124" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#4A4A55" text-anchor="start">Update your section, year and interests.</text><circle cx="180" cy="416" r="36" fill="#F6F5F2"/><g transform="translate(165 401)" aria-label="Connection error">
+<g transform="scale(1.5)"><path d="M10 16.67h.01 M7.08 13.69c1.62-1.59 4.22-1.59 5.84 0 M4.17 10.72a8.35 8.35 0 0 1 4.3-2.25 M15.83 10.72a8.37 8.37 0 0 0-1.67-1.27 M1.67 7.35a11.8 11.8 0 0 1 3.48-2.2 M18.33 7.35a11.79 11.79 0 0 0-9.4-3.14 M1.67 1.67l16.66 16.66" fill="none" stroke="#B3202A" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></g>
+</g><text x="180" y="478" font-family="Plus Jakarta Sans, sans-serif" font-size="17" font-weight="700" fill="#17171C" text-anchor="middle">Couldn't load your profile</text><text x="180" y="508" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="400" fill="#4A4A55" text-anchor="middle">Try again, or go back to Profile.</text><rect x="100" y="527" width="160" height="48" rx="24" fill="#17171C" stroke="none" stroke-width="1"/><text x="180" y="557" font-family="Plus Jakarta Sans, sans-serif" font-size="15" font-weight="700" fill="#FFFFFF" text-anchor="middle">Retry</text>
+</g>
+</svg>
+
