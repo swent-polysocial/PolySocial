@@ -210,8 +210,9 @@ sealed interface EventDetailUiState {
    *   [isManaged] events.
    * @property groupConfirmed true once a successful read says whether the student is in a group, so
    *   a null [yourGroup] then means they aren't. False while it is read, when it can't be read (the
-   *   read then ends until it is restarted) and on [isManaged] events; cancelling the registration
-   *   needs it, so a failed read is never taken for a group that is gone (#318).
+   *   read then ends until it is restarted), when only the offline cache has answered with no group
+   *   (the server may say otherwise) and on [isManaged] events; cancelling the registration needs
+   *   it, so an unconfirmed read is never taken for a group that is gone (#318).
    * @property attendance whether the student is going (#122); organizers aren't offered "I'm
    *   going", as in Figma's "Event detail · organizer", so theirs stays [Attendance.NOT_GOING].
    * @property isSavingAttendance true while "I'm going" or "Cancel registration" is saved.
@@ -702,8 +703,12 @@ constructor(
     return groups
         .observeMyGroup(eventId)
         .map { result ->
-          // Only a successful read says whether the student is in a group.
-          if (result is MyGroupResult.Success) result.group to true else null to false
+          // Only a successful read says whether the student is in a group, and an empty answer from
+          // the offline cache doesn't: they may have joined from another device, and the server's
+          // answer is still to come. A group from the cache is still shown.
+          if (result is MyGroupResult.Success && (result.group != null || !result.fromCache))
+              result.group to true
+          else null to false
         }
         .distinctUntilChanged { old, new -> profilesRead && old == new }
         .transformLatest { (group, confirmed) ->

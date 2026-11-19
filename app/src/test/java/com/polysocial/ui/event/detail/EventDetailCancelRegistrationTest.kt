@@ -23,6 +23,9 @@ import java.time.Instant
 import java.time.ZoneId
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -374,6 +377,60 @@ class EventDetailCancelRegistrationTest {
     )
     assertEquals(Attendance.GOING, vm.loaded.attendance)
     assertEquals(listOf("lea", ME), groups.groupsOf(EVENT).single().memberUids)
+  }
+
+  @Test
+  fun anEmptyAnswerFromTheCache_isNotAbsence_untilTheServerAnswers() = runTest {
+    val group = groups.seedGroup(EVENT, listOf("lea", ME))
+    val serverAnswer = MutableSharedFlow<MyGroupResult>()
+    val vm =
+        open(
+            object : GroupRepository by groups {
+              override fun observeMyGroup(eventId: String) = flow {
+                // The cache has nothing yet: they joined from another device.
+                emit(MyGroupResult.Success(null, fromCache = true))
+                emitAll(serverAnswer)
+              }
+            }
+        )
+    assertNull(vm.loaded.yourGroup)
+
+    vm.onCancelRegistration()
+    runCurrent()
+
+    // Nothing is cancelled on the cache's word: the student is still in a group.
+    assertEquals(Attendance.GOING, vm.loaded.attendance)
+    assertEquals(
+        CancelRegistrationState.Failed(CancelRegistrationState.Failed.Reason.UNEXPECTED),
+        vm.registrationSheet.value,
+    )
+    assertEquals(listOf("lea", ME), groups.groupsOf(EVENT).single().memberUids)
+
+    // The server answers with the group: Retry now leaves it, then cancels.
+    serverAnswer.emit(MyGroupResult.Success(group, fromCache = false))
+    runCurrent()
+    vm.onConfirmCancelRegistration()
+    runCurrent()
+
+    assertEquals(Attendance.NOT_GOING, vm.loaded.attendance)
+    assertEquals(listOf("lea"), groups.groupsOf(EVENT).single().memberUids)
+  }
+
+  @Test
+  fun anEmptyAnswerFromTheServer_isAbsence_andCancelsRightAway() = runTest {
+    val vm =
+        open(
+            object : GroupRepository by groups {
+              override fun observeMyGroup(eventId: String) =
+                  flowOf(MyGroupResult.Success(null, fromCache = false))
+            }
+        )
+
+    vm.onCancelRegistration()
+    runCurrent()
+
+    assertEquals(Attendance.NOT_GOING, vm.loaded.attendance)
+    assertEquals(CancelRegistrationState.Hidden, vm.registrationSheet.value)
   }
 
   private companion object {
