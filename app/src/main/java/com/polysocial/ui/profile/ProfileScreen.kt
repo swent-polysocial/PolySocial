@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (6.2 Sol, high; Friends entry beside My friend code, #360).
 // Contributors: OpenAI Codex (Profile tab, shared logout dialog and remembered action binding,
 // #109; matched the logout row and icon to Figma).
 // Contributors: OpenAI Codex (privacy entry alongside confirmed logout after rebase, #103).
@@ -24,6 +25,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
 import com.polysocial.resources.C
+import com.polysocial.ui.friend.FriendsTags
 import com.polysocial.ui.theme.exact
 
 object ProfileTags {
@@ -41,6 +43,7 @@ fun ProfileRoute(
     onLoggedOut: () -> Unit,
     viewModel: ProfileViewModel = hiltViewModel(),
     onOpenPrivacy: (() -> Unit)? = null,
+    onOpenFriends: (() -> Unit)? = null,
     onOpenFriendCode: (() -> Unit)? = null,
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -54,6 +57,7 @@ fun ProfileRoute(
       actions.cancel,
       actions.confirm,
       onOpenPrivacy,
+      onOpenFriends,
       onOpenFriendCode,
   )
 }
@@ -72,16 +76,27 @@ fun ProfileScreen(
     onCancel: () -> Unit,
     onConfirm: () -> Unit,
     onOpenPrivacy: (() -> Unit)? = null,
+    onOpenFriends: (() -> Unit)? = null,
     onOpenFriendCode: (() -> Unit)? = null,
 ) {
   Column(Modifier.fillMaxSize().padding(horizontal = 20.dp).testTag(C.Tag.screen_profile)) {
-    // Students only: the association's Organization tab passes no onOpenFriendCode (#339).
+    // The association's Organization tab supplies neither student-only action.
     if (onOpenFriendCode != null) {
       PrivacyActionRow(
           R.string.friend_code_title,
           R.drawable.ic_qr,
           C.Tag.profile_friend_code_entry,
           onOpenFriendCode,
+          Modifier.fillMaxWidth(),
+          dividerAtBottom = true,
+      )
+    }
+    if (onOpenFriends != null) {
+      PrivacyActionRow(
+          R.string.friends_title,
+          R.drawable.ic_friends_profile_people,
+          FriendsTags.ENTRY,
+          onOpenFriends,
           Modifier.fillMaxWidth(),
           dividerAtBottom = true,
       )

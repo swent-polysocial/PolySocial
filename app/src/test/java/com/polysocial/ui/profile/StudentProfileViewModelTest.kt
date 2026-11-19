@@ -1,5 +1,6 @@
 // Contributors: Claude Opus 5.5 (wrote these tests, #368, and the cached-profile tests after
 // review); Konstantinos Perdikeas (directed, reviewed and owns them).
+// Contributors: OpenAI Codex (6.2 Sol, high; cache fallback on a network error, #360 review).
 package com.polysocial.ui.profile
 
 import androidx.lifecycle.SavedStateHandle
@@ -176,6 +177,19 @@ class StudentProfileViewModelTest {
 
           assertEquals("$cached", StudentProfileUiState.CouldNotLoad, vm.uiState.value)
         }
+      }
+
+  @Test
+  fun aNetworkErrorWithACachedProfile_showsTheCachedProfile() =
+      runTest(main.dispatcher) {
+        val answer = CompletableDeferred<PublicProfileResult>(PublicProfileResult.NetworkError)
+        val repository = Answers(answer, cached = PublicProfileResult.Found(lea))
+        val vm = viewModel(repository = repository)
+
+        runCurrent()
+
+        assertEquals(StudentProfileUiState.Found(lea), vm.uiState.value)
+        assertEquals(listOf("lea"), repository.cacheReads)
       }
 
   @Test

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: OpenAI Codex (student profile edit and recovery copy, #235). -->
+<resources>
+    <string name="edit_profile_subtitle">Update your section, year and interests.</string>
+    <string name="edit_profile_loading">Loading your profile…</string>
+    <string name="edit_profile_load_failed">Couldn\'t load your profile</string>
+    <string name="edit_profile_load_failed_body">Try again, or go back to Profile.</string>
+    <string name="edit_profile_save">Save changes</string>
+    <string name="edit_profile_save_failed">Couldn\'t save your changes</string>
+    <string name="edit_profile_offline">You\'re offline. Your changes are still here. Connect and try again.</string>
+    <string name="edit_profile_save_failed_body">Your changes are still here. Try again, or go back.</string>
+</resources>

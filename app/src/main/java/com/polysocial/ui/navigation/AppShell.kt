@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (6.2 Sol, high; student Friends navigation, #360).
 // Contributors: Claude Opus 5.5 (a group member's public profile opened from Your group, #368);
 // Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: Claude Opus 5.5 (Scan a friend's code opened from My friend code, #359);
@@ -96,12 +97,14 @@ import com.polysocial.ui.event.create.EditEventScreen
 import com.polysocial.ui.event.detail.EventDetailRoute
 import com.polysocial.ui.event.detail.EventDetailViewModel
 import com.polysocial.ui.event.list.EventsTabRoute
+import com.polysocial.ui.friend.FriendsRoute
 import com.polysocial.ui.friend.ScanFriendRoute
 import com.polysocial.ui.group.FindGroupDone
 import com.polysocial.ui.group.FindGroupRoute
 import com.polysocial.ui.group.YourGroupRoute
 import com.polysocial.ui.map.MapRoute
 import com.polysocial.ui.map.mapViewModel
+import com.polysocial.ui.profile.EditProfileRoute
 import com.polysocial.ui.profile.FriendCodeRoute
 import com.polysocial.ui.profile.FullPrivacyNoticeRoute
 import com.polysocial.ui.profile.PrivacyRoute
@@ -227,6 +230,7 @@ fun AppShell(
       ProfileRoute(
           onLoggedOut = done,
           onOpenPrivacy = dropUnlessResumed { navController.navigate(Tab.PROFILE.privacyRoute) },
+          onOpenFriends = dropUnlessResumed { navController.navigate(Tab.PROFILE.friendsRoute) },
           onOpenFriendCode =
               dropUnlessResumed { navController.navigate(Tab.PROFILE.friendCodeRoute) },
       )
@@ -243,6 +247,7 @@ fun AppShell(
           ChatsRoute(onOpenChat)
         },
     studentProfileContent: @Composable (() -> Unit) -> Unit = { StudentProfileRoute(it) },
+    editProfileContent: @Composable (onBack: () -> Unit) -> Unit = { EditProfileRoute(it) },
 ) {
   val association = accountType == AccountType.ASSOCIATION
   val tabs = if (association) listOf(Tab.EVENTS, Tab.MAP, Tab.PROFILE) else Tab.entries
@@ -257,6 +262,7 @@ fun AppShell(
   val profileRowScreen =
       destination?.route == Tab.PROFILE.privacyRoute ||
           destination?.route == Tab.PROFILE.privacyNoticeRoute ||
+          destination?.route == Tab.PROFILE.friendsRoute ||
           destination?.route == Tab.PROFILE.friendCodeRoute ||
           destination?.route == Tab.PROFILE.scanFriendRoute
   val showBars =
@@ -381,8 +387,17 @@ fun AppShell(
           composable(tab.privacyNoticeRoute) {
             FullPrivacyNoticeRoute(onBack = { navController.popBackStack() })
           }
-          // Students only: an association has no friend code, so its graph has no such screen.
+          // Friends and QR codes are student-only destinations.
           if (!association) {
+            composable(tab.friendsRoute) { entry ->
+              FriendsRoute(
+                  onBack = { if (entry.isResumed) navController.popBackStack() },
+                  onOpenProfile = { uid ->
+                    if (entry.isResumed) navController.navigate(tab.studentProfileRoute(uid))
+                  },
+                  onScan = { if (entry.isResumed) navController.navigate(tab.scanFriendRoute) },
+              )
+            }
             composable(tab.friendCodeRoute) { entry ->
               FriendCodeRoute(
                   onBack = { if (entry.isResumed) navController.popBackStack() },
@@ -395,7 +410,15 @@ fun AppShell(
           }
         }
         tab.action?.let { action ->
-          composable(tab.routeOf(action)) { PlaceholderActionScreen(action) }
+          composable(tab.routeOf(action)) {
+            // Students edit their section, year and interests (#235); an association has no such
+            // fields.
+            if (tab == Tab.PROFILE && !association && action == TabAction.EDIT_PROFILE) {
+              editProfileContent { navController.popBackStack() }
+            } else {
+              PlaceholderActionScreen(action)
+            }
+          }
         }
         composable(
             tab.eventDetailRoute,
