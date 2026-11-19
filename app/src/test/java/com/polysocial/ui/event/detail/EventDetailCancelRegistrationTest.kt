@@ -11,6 +11,7 @@ import com.polysocial.model.event.validEvent
 import com.polysocial.model.group.FakeGroupRepository
 import com.polysocial.model.group.GroupRepository
 import com.polysocial.model.group.GroupWriteResult
+import com.polysocial.model.group.MyGroupResult
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.registration.CancelRegistrationResult
 import com.polysocial.model.registration.FakeRegistrationRepository
@@ -22,6 +23,7 @@ import java.time.Instant
 import java.time.ZoneId
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -302,6 +304,76 @@ class EventDetailCancelRegistrationTest {
     // No leave was needed, so the failing group write never ran.
     assertEquals(Attendance.NOT_GOING, vm.loaded.attendance)
     assertEquals(CancelRegistrationState.Hidden, vm.registrationSheet.value)
+  }
+
+  @Test
+  fun theGroupCantBeRead_cancellingDoesNotCancel_thenRetryAfterTheReadRecovers() = runTest {
+    groups.seedGroup(EVENT, listOf("lea", ME))
+    groups.readFailure = FakeGroupRepository.ReadFailure.NETWORK
+    val vm = open()
+    assertNull(vm.loaded.yourGroup)
+
+    vm.onCancelRegistration()
+    runCurrent()
+
+    // The student is still in a group, so the failed read must not look like "no group".
+    assertEquals(Attendance.GOING, vm.loaded.attendance)
+    assertEquals(
+        CancelRegistrationState.Failed(CancelRegistrationState.Failed.Reason.UNEXPECTED),
+        vm.registrationSheet.value,
+    )
+    assertEquals(listOf("lea", ME), groups.groupsOf(EVENT).single().memberUids)
+
+    // Retry restarts the read. Once it works, the group is known and Retry leaves it, then cancels.
+    groups.readFailure = null
+    vm.onConfirmCancelRegistration()
+    runCurrent()
+    assertEquals(Attendance.GOING, vm.loaded.attendance)
+    assertEquals(listOf("lea", ME), vm.loaded.yourGroup?.members?.map { it.uid })
+    vm.onConfirmCancelRegistration()
+    runCurrent()
+
+    assertEquals(Attendance.NOT_GOING, vm.loaded.attendance)
+    assertEquals(listOf("lea"), groups.groupsOf(EVENT).single().memberUids)
+  }
+
+  @Test
+  fun theGroupIsStillBeingRead_cancellingDoesNotCancel() = runTest {
+    groups.seedGroup(EVENT, listOf("lea", ME))
+    val vm =
+        open(
+            object : GroupRepository by groups {
+              override fun observeMyGroup(eventId: String) = flowOf(MyGroupResult.Loading)
+            }
+        )
+
+    vm.onCancelRegistration()
+    runCurrent()
+
+    assertEquals(Attendance.GOING, vm.loaded.attendance)
+    assertEquals(
+        CancelRegistrationState.Failed(CancelRegistrationState.Failed.Reason.UNEXPECTED),
+        vm.registrationSheet.value,
+    )
+  }
+
+  @Test
+  fun retryingWhileTheGroupStillCantBeRead_staysFailed_andLeavesNothingCancelled() = runTest {
+    groups.seedGroup(EVENT, listOf("lea", ME))
+    groups.readFailure = FakeGroupRepository.ReadFailure.UNEXPECTED
+    val vm = open()
+    vm.onCancelRegistration()
+    runCurrent()
+
+    vm.onConfirmCancelRegistration()
+    runCurrent()
+
+    assertEquals(
+        CancelRegistrationState.Failed(CancelRegistrationState.Failed.Reason.UNEXPECTED),
+        vm.registrationSheet.value,
+    )
+    assertEquals(Attendance.GOING, vm.loaded.attendance)
+    assertEquals(listOf("lea", ME), groups.groupsOf(EVENT).single().memberUids)
   }
 
   private companion object {
