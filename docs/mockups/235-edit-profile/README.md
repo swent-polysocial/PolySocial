@@ -1,4 +1,4 @@
-<!-- Contributors: Mehdi (@mehdifddl), human author; OpenAI Codex (prepared the mockup and documented the Figma publication blocker, #235). -->
+<!-- Contributors: Mehdi (@mehdifddl), human author; OpenAI Codex (prepared the mockup and documented the Figma publication and initial blocker, #235). -->
 
 # Edit profile proposal (#235)
 
@@ -6,12 +6,10 @@ Draft for [PR #476](https://github.com/swent-polysocial/PolySocial/pull/476), pr
 
 ![Nine Edit profile states](edit-profile.png)
 
-[Editable SVG](edit-profile.svg) for importing into the team's Figma file when editing is restored. The SVG uses Plus Jakarta Sans, the existing product font; it contains editable text and does not embed the font binary.
+The native Figma frames are published. The SVG preserves the draft created while editing was blocked and uses editable text in the existing product font, Plus Jakarta Sans. [Native editable Figma frames](https://www.figma.com/design/7Gt7tmy1ikpNyNBh1P6QdY/App-Mockup?node-id=1471-658) · [Editable SVG snapshot](edit-profile.svg)
 
 The nine states cover unchanged and edited values, section and year menus, saving, offline failure, failed save, loading and failed loading. Offline and save failures preserve the form and offer Retry. Scope is section, year and interests; username and bio belong to later issues.
 
-## Figma publication blocker — 19 November 2026
+## Figma publication — 19 November 2026
 
-Figma displays: “Ce fichier fait partie d'une équipe verrouillée.” It states that all team work is currently in consultation-only mode. The connected account reports a View seat and the write tool fails with “Can't call createSection in read-only mode”. This is an external team-access blocker, not completion of the Figma acceptance criterion.
-
-Once the team is unlocked, import the SVG into [App Mockup](https://www.figma.com/design/7Gt7tmy1ikpNyNBh1P6QdY/App-Mockup?node-id=123-467), check its font and editable layers, and replace this temporary reference in PR #476 and issue #235 with the native frame link. The Figma acceptance criterion remains open until that happens and the design is reviewed.
+Figma initially displayed “Ce fichier fait partie d'une équipe verrouillée” and rejected edits in read-only mode. A later retry that day published all nine states with editable layers and the existing product font. PR #476 and issue #235 link to the native frames. Teammate design review is pending.
