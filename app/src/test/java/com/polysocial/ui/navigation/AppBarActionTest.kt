@@ -38,6 +38,7 @@ class AppBarActionTest {
             eventsContent = { TabRootScreen(Tab.EVENTS) },
             profileContent = { TabRootScreen(Tab.PROFILE) },
             chatsContent = { TabRootScreen(Tab.CHATS) },
+            editProfileContent = { PlaceholderActionScreen(TabAction.EDIT_PROFILE) },
             mapContent = { _, _ -> TabRootScreen(Tab.MAP) },
         )
       }
