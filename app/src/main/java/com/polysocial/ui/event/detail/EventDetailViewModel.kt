@@ -820,9 +820,11 @@ constructor(
               CancelRegistrationState.Hidden,
               CancelRegistrationState.Confirming,
           )
-      loaded != null && loaded.isGroupUnknown() -> {
+      loaded != null && loaded.isGroupUnknown() && network.isOnline() -> {
         // The student may still be in a group: ask for the read again and offer Retry, rather than
-        // cancelling the registration and leaving them in a group without it.
+        // cancelling the registration and leaving them in a group without it. Offline, the
+        // cancellation itself can't happen (it is a server transaction), so it goes ahead and
+        // explains that, as before.
         groupReads.update { it + 1 }
         _registrationSheet.compareAndSet(
             CancelRegistrationState.Hidden,
