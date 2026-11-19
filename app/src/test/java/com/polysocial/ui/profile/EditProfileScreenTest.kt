@@ -1,10 +1,12 @@
-// Contributors: OpenAI Codex (UI tests for editing section, year and interests, #235).
+// Contributors: OpenAI Codex (UI tests for editing section, year and interests, including the
+// route's offline retry and confirmed save, #235).
 package com.polysocial.ui.profile
 
 import android.app.Application
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -13,8 +15,14 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
+import com.polysocial.model.auth.AuthUser
+import com.polysocial.model.auth.FakeAuthRepository
+import com.polysocial.model.user.FakeUserProfileRepository
+import com.polysocial.model.user.ProfileResult
+import com.polysocial.model.user.UpdateProfileResult
 import com.polysocial.model.user.UserProfile
 import com.polysocial.ui.theme.PolySocialTheme
+import com.polysocial.utils.MainDispatcherRule
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -25,7 +33,8 @@ import org.robolectric.annotation.GraphicsMode
 @RunWith(AndroidJUnit4::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class EditProfileScreenTest {
-  @get:Rule val composeTestRule = createComposeRule()
+  @get:Rule(order = 0) val main = MainDispatcherRule()
+  @get:Rule(order = 1) val composeTestRule = createComposeRule()
 
   private val profile =
       UserProfile(
@@ -106,6 +115,51 @@ class EditProfileScreenTest {
         .onNodeWithTag(EditProfileTags.interest("music"))
         .performScrollTo()
         .assertIsDisplayed()
+  }
+
+  @Test
+  fun editsReachTheRepository_andOnlyASuccessfulRetryClosesTheEditor() {
+    val auth = FakeAuthRepository(AuthUser(profile.uid, profile.email, isEmailVerified = true))
+    val profiles = FakeUserProfileRepository(ProfileResult.Found(profile))
+    profiles.updateProfileResult = UpdateProfileResult.NetworkError
+    val viewModel = EditProfileViewModel(auth, profiles)
+    var closes = 0
+    composeTestRule.setContent {
+      PolySocialTheme { EditProfileRoute(onBack = { closes++ }, viewModel = viewModel) }
+    }
+    settleRoute()
+
+    composeTestRule.onNodeWithTag(EditProfileTags.SECTION).performClick()
+    composeTestRule.onNodeWithTag(EditProfileTags.section("EL")).performScrollTo().performClick()
+    composeTestRule.onNodeWithTag(EditProfileTags.YEAR).performClick()
+    composeTestRule.onNodeWithTag(EditProfileTags.year("BA4")).performScrollTo().performClick()
+    val interest = composeTestRule.onNodeWithTag(EditProfileTags.interest("music"))
+    interest.performScrollTo().performClick()
+    val save = composeTestRule.onNodeWithTag(EditProfileTags.SAVE)
+    save.performScrollTo().performClick()
+    settleRoute()
+
+    val updated = profile.copy(section = "EL", year = "BA4", interests = setOf("music"))
+    assertEquals(listOf(updated), profiles.updatedProfiles)
+    assertEquals(0, closes)
+    save.performScrollTo()
+    composeTestRule.onNodeWithText(string(R.string.edit_profile_offline)).assertIsDisplayed()
+    interest.performScrollTo().assertIsOn()
+
+    profiles.updateProfileResult = UpdateProfileResult.Updated
+    save.performScrollTo().performClick()
+    settleRoute()
+
+    assertEquals(listOf(updated, updated), profiles.updatedProfiles)
+    assertEquals(1, closes)
+  }
+
+  private fun settleRoute() {
+    repeat(2) {
+      composeTestRule.waitForIdle()
+      main.dispatcher.scheduler.runCurrent()
+    }
+    composeTestRule.waitForIdle()
   }
 
   @Test
