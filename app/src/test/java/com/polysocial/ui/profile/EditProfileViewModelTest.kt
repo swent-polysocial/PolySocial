@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (tests for editing section, year and interests, #235).
+// Contributors: OpenAI Codex (tests for editing section, year and interests and recovering from
+// repository failures, #235).
 package com.polysocial.ui.profile
 
 import com.polysocial.model.auth.AuthUser
@@ -8,7 +9,10 @@ import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.UpdateProfileResult
 import com.polysocial.model.user.UserProfile
+import com.polysocial.model.user.UserProfileRepository
 import com.polysocial.utils.MainDispatcherRule
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -37,7 +41,8 @@ class EditProfileViewModelTest {
   private val auth = FakeAuthRepository(user)
   private val profiles = FakeUserProfileRepository(ProfileResult.Found(profile))
 
-  private fun viewModel() = EditProfileViewModel(auth, profiles).also { settle() }
+  private fun viewModel(repository: UserProfileRepository = profiles) =
+      EditProfileViewModel(auth, repository).also { settle() }
 
   private fun settle() = mainDispatcherRule.dispatcher.scheduler.advanceUntilIdle()
 
@@ -122,6 +127,49 @@ class EditProfileViewModelTest {
   }
 
   @Test
+  fun aThrownWriteFailure_offersRetryWithTheSameEdits() {
+    var writeFails = true
+    val repository =
+        object : UserProfileRepository by profiles {
+          override suspend fun updateProfile(profile: UserProfile): UpdateProfileResult {
+            if (writeFails) error("Simulated repository failure")
+            return profiles.updateProfile(profile)
+          }
+        }
+    val vm = viewModel(repository)
+    vm.year("BA4")
+    vm.save()
+    settle()
+
+    assertEquals(EditProfileState.Failure.UNEXPECTED, vm.form().failure)
+    assertEquals("BA4", vm.form().year)
+    assertFalse(vm.form().locked)
+
+    writeFails = false
+    vm.save()
+    settle()
+
+    assertEquals(listOf(profile.copy(year = "BA4")), profiles.updatedProfiles)
+    assertTrue(vm.form().saved)
+  }
+
+  @Test
+  fun aCancelledWrite_unlocksTheFormAndKeepsTheEdits() {
+    val repository =
+        object : UserProfileRepository by profiles {
+          override suspend fun updateProfile(profile: UserProfile): UpdateProfileResult =
+              throw CancellationException("Simulated cancelled write")
+        }
+    val vm = viewModel(repository)
+    vm.year("BA4")
+    val edited = vm.form()
+    vm.save()
+    settle()
+
+    assertEquals(edited, vm.uiState.value)
+  }
+
+  @Test
   fun editingAfterAFailure_clearsTheError() {
     profiles.updateProfileResult = UpdateProfileResult.NetworkError
     val vm = viewModel()
@@ -157,6 +205,22 @@ class EditProfileViewModelTest {
     settle()
 
     assertTrue(vm.uiState.value is EditProfileState.Editing)
+  }
+
+  @Test
+  fun aThrownReadFailure_offersRetryAndRecovers() {
+    profiles.gate =
+        CompletableDeferred<Unit>().apply {
+          completeExceptionally(IllegalStateException("Simulated repository failure"))
+        }
+    val vm = viewModel()
+    assertEquals(EditProfileState.CouldNotLoad, vm.uiState.value)
+
+    profiles.gate = null
+    vm.retry()
+    settle()
+
+    assertEquals(profile, vm.form().original)
   }
 
   @Test
