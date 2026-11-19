@@ -1,4 +1,5 @@
 // Contributors: Claude Opus 5.5 (wrote this test, #130).
+// Contributors: Claude Sonnet 5.5 (a fake scheduler now that the worker takes one, #485).
 package com.polysocial.model.reminder
 
 import android.content.Context
@@ -14,6 +15,7 @@ import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import dagger.hilt.android.testing.HiltTestApplication
 import dagger.hilt.android.testing.UninstallModules
+import java.time.Clock
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -22,11 +24,14 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
 @HiltAndroidTest
-@UninstallModules(EventModule::class)
+@UninstallModules(EventModule::class, ReminderModule::class)
 @Config(application = HiltTestApplication::class)
 @RunWith(AndroidJUnit4::class)
 class ReminderWorkerInjectionTest {
   @BindValue @JvmField val events: EventRepository = FakeEventRepository()
+
+  // WorkManager isn't initialized in a unit test, so the real scheduler can't be built here.
+  @BindValue @JvmField val scheduler: ReminderScheduler = FakeReminderScheduler(Clock.systemUTC())
 
   @get:Rule val hilt = HiltAndroidRule(this)
 

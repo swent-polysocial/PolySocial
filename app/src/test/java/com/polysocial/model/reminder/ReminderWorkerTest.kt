@@ -5,6 +5,8 @@
 // second PR, Mehdi's review).
 // Contributors: Claude Opus 5.5 (an account switch during the event lookup, #123's second PR,
 // Mehdi's re-review).
+// Contributors: Claude Sonnet 5.5 (the worker follows an event moved or edited, and skips a student
+// who is no longer going, #485).
 package com.polysocial.model.reminder
 
 import android.Manifest
@@ -28,6 +30,8 @@ import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.EventResult
 import com.polysocial.model.event.FakeEventRepository
+import com.polysocial.model.registration.FakeRegistrationRepository
+import com.polysocial.model.registration.RegistrationRepository
 import java.time.Clock
 import java.time.Instant
 import java.time.ZoneId
@@ -74,6 +78,14 @@ class ReminderWorkerTest {
       )
 
   private val events = FakeEventRepository()
+  private val registrations =
+      FakeRegistrationRepository(currentUid = STUDENT).apply {
+        readableEventIds += listOf("e1", "e2")
+        seedRegistration("e1", STUDENT)
+        seedRegistration("e2", STUDENT)
+      }
+  private val scheduler =
+      FakeReminderScheduler(Clock.fixed(reminderDue, ZoneId.of("Europe/Zurich")))
   private val auth = FakeAuthRepository(AuthUser(STUDENT, "student@example.com", true))
 
   private fun stored(id: String) =
@@ -84,6 +96,7 @@ class ReminderWorkerTest {
           category = EventCategory.PARTY,
           location = Coordinates(46.52, 6.57),
           startTime = balelec.startTime,
+          locationName = balelec.placeName.orEmpty(),
           isPrivate = false,
       )
 
@@ -107,6 +120,8 @@ class ReminderWorkerTest {
       at: Instant = reminderDue,
       repository: EventRepository = events,
       signedInAs: AuthRepository = auth,
+      registered: RegistrationRepository = registrations,
+      reminders: ReminderScheduler = scheduler,
   ): ListenableWorker.Result {
     val clock = Clock.fixed(at, zurich)
     val worker =
@@ -118,7 +133,16 @@ class ReminderWorkerTest {
                       appContext: Context,
                       workerClassName: String,
                       workerParameters: WorkerParameters,
-                  ) = ReminderWorker(appContext, workerParameters, repository, signedInAs, clock)
+                  ) =
+                      ReminderWorker(
+                          appContext,
+                          workerParameters,
+                          repository,
+                          signedInAs,
+                          clock,
+                          registered,
+                          reminders,
+                      )
                 }
             )
             .build()
@@ -147,6 +171,10 @@ class ReminderWorkerTest {
 
   @Test
   fun anEventWithoutAPlace_showsOnlyItsDayAndTime() = runTest {
+    // The event is what the notification follows: one without a place name, one with a blank one.
+    events.events.clear()
+    events.seed(stored("e1").copy(locationName = ""), stored("e2").copy(locationName = " "))
+
     run(balelec.copy(placeName = null).toWorkData())
     run(balelec.copy(eventId = "e2", placeName = " ").toWorkData())
 
@@ -157,6 +185,7 @@ class ReminderWorkerTest {
   fun anEventJustAfterMidnight_saysTomorrow() = runTest {
     // 00:30 on the 4th in Zurich, reminded at 23:30 on the 3rd.
     val lateNight = balelec.copy(startTime = Instant.parse("2026-10-03T22:30:00Z"))
+    edited { it.copy(startTime = lateNight.startTime) }
 
     run(lateNight.toWorkData(), at = Instant.parse("2026-10-03T21:30:00Z"))
 
@@ -288,12 +317,110 @@ class ReminderWorkerTest {
 
   @Test
   fun aRepositoryThatThrowsOrEndsWithoutAnswer_stillNotifies() = runTest {
-    // FirestoreEventRepository reports a failed read as NotFound instead (see eventStillExists).
+    // FirestoreEventRepository reports a failed read as NotFound instead (see lookUpEvent).
     val failing = flow<EventResult> { throw IllegalStateException("read failed") }
     run(balelec.toWorkData(), repository = reading(failing))
     run(balelec.copy(eventId = "e2").toWorkData(), repository = reading(emptyFlow()))
 
     assertEquals(2, notifications.size)
+  }
+
+  /** [events] with e1 as the organizer has changed it: [change] applied to the stored event. */
+  private fun edited(change: (Event) -> Event) {
+    events.events.clear()
+    events.seed(change(stored("e1")), stored("e2"))
+  }
+
+  @Test
+  fun anEventMovedLater_isScheduledAgainForItsNewTime_notNotifiedNow() = runTest {
+    val newStart = Instant.parse("2026-10-03T21:00:00Z")
+    edited { it.copy(startTime = newStart) }
+
+    val result = run(balelec.toWorkData())
+
+    assertEquals(ListenableWorker.Result.success(), result)
+    assertTrue(notifications.isEmpty())
+    assertEquals(balelec.copy(startTime = newStart), scheduler.scheduled["e1"])
+  }
+
+  @Test
+  fun anEventMovedLaterButWithinTheHour_isNotifiedNowWithTheTimeLeft() = runTest {
+    edited { it.copy(startTime = Instant.parse("2026-10-03T17:40:00Z")) }
+
+    run(balelec.toWorkData())
+
+    assertEquals("Balélec warm-up starts in 40 min", notifications.single().title())
+    assertTrue(scheduler.scheduled.isEmpty())
+  }
+
+  @Test
+  fun anEventMovedEarlier_isNotifiedWithItsNewTime() = runTest {
+    edited { it.copy(startTime = Instant.parse("2026-10-03T17:30:00Z")) }
+
+    run(balelec.toWorkData())
+
+    val notification = notifications.single()
+    assertEquals("Balélec warm-up starts in 30 min", notification.title())
+    assertEquals("Today 19:30 · Satellite, EPFL", notification.text())
+    assertTrue(scheduler.scheduled.isEmpty())
+  }
+
+  @Test
+  fun anEventMovedToThePast_isNotNotified() = runTest {
+    edited { it.copy(startTime = Instant.parse("2026-10-03T16:00:00Z")) }
+
+    assertEquals(ListenableWorker.Result.success(), run(balelec.toWorkData()))
+    assertTrue(notifications.isEmpty())
+    assertTrue(scheduler.scheduled.isEmpty())
+  }
+
+  @Test
+  fun aRenamedEventWithANewPlace_isNotifiedWithTheCurrentTitleAndPlace() = runTest {
+    edited { it.copy(title = "Balélec", locationName = "Rolex Learning Center") }
+
+    run(balelec.toWorkData())
+
+    val notification = notifications.single()
+    assertEquals("Balélec starts in 1 h", notification.title())
+    assertEquals("Today 20:00 · Rolex Learning Center", notification.text())
+  }
+
+  @Test
+  fun aSchedulerThatFailsWhileFollowingAMovedEvent_retriesLater() = runTest {
+    edited { it.copy(startTime = Instant.parse("2026-10-03T21:00:00Z")) }
+    scheduler.fail = true
+
+    assertEquals(ListenableWorker.Result.retry(), run(balelec.toWorkData()))
+    assertTrue(notifications.isEmpty())
+  }
+
+  @Test
+  fun aStudentTheServerSaysIsNoLongerGoing_isNotNotified() = runTest {
+    registrations.cancel("e1")
+
+    assertEquals(ListenableWorker.Result.success(), run(balelec.toWorkData()))
+    assertTrue(notifications.isEmpty())
+  }
+
+  @Test
+  fun offline_aCachedAbsenceDoesNotDecide_theStudentIsStillNotified() = runTest {
+    // The registrations may have been joined on another device: only the server decides.
+    registrations.cancel("e1")
+    registrations.readFromCache = true
+
+    run(balelec.toWorkData())
+
+    assertEquals(EVENT_CHECK_TIMEOUT.inWholeMilliseconds, currentTime)
+    assertEquals(1, notifications.size)
+  }
+
+  @Test
+  fun registrationsThatCantBeRead_stillNotify() = runTest {
+    registrations.readFailure = true
+
+    run(balelec.toWorkData())
+
+    assertEquals(1, notifications.size)
   }
 
   @Test
