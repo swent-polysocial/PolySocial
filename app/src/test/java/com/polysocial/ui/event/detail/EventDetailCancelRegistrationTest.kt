@@ -52,14 +52,17 @@ class EventDetailCancelRegistrationTest {
       }
   private val groups = FakeGroupRepository(currentUid = ME).apply { readableEventIds += EVENT }
 
-  private fun TestScope.open(groupRepository: GroupRepository = groups): EventDetailViewModel {
+  private fun TestScope.open(
+      groupRepository: GroupRepository = groups,
+      online: Boolean = true,
+  ): EventDetailViewModel {
     events.seed(validEvent().copy(id = EVENT, title = "Balélec warm-up"))
     val vm =
         EventDetailViewModel(
             SavedStateHandle(mapOf(EventDetailViewModel.EVENT_ID_ARG to EVENT)),
             events,
             object : NetworkMonitor {
-              override fun isOnline() = true
+              override fun isOnline() = online
             },
             FakeAuthRepository(AuthUser(ME, "fictional.student@epfl.ch", true)),
             clock,
@@ -431,6 +434,22 @@ class EventDetailCancelRegistrationTest {
 
     assertEquals(Attendance.NOT_GOING, vm.loaded.attendance)
     assertEquals(CancelRegistrationState.Hidden, vm.registrationSheet.value)
+  }
+
+  @Test
+  fun offlineWithAnEmptyCache_cancelExplainsTheLimit_insteadOfTheGroupSheet() = runTest {
+    groups.readFromCache = true
+    registrations.cancelFailure = CancelRegistrationResult.NetworkError
+    val vm = open(online = false)
+    assertNull(vm.loaded.yourGroup)
+
+    vm.onCancelRegistration()
+    runCurrent()
+
+    // The cancellation can't happen offline, so it says so; nothing changed and no sheet opened.
+    assertEquals(CancelRegistrationState.Hidden, vm.registrationSheet.value)
+    assertEquals(AttendanceMessage.CANCEL_OFFLINE, vm.attendanceFeedback.value?.message)
+    assertEquals(Attendance.GOING, vm.loaded.attendance)
   }
 
   private companion object {
