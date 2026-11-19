@@ -1,5 +1,6 @@
 // Contributors: Claude Opus 5.5 (a group member's public profile, #368, and the cached fallback
 // after review); Konstantinos Perdikeas (directed, reviewed and owns it).
+// Contributors: OpenAI Codex (6.2 Sol, high; reuse the bounded profile lookup, #360 review).
 package com.polysocial.ui.profile
 
 import androidx.lifecycle.SavedStateHandle
@@ -8,13 +9,13 @@ import androidx.lifecycle.viewModelScope
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.PublicProfileResult
+import com.polysocial.model.user.getPublicProfileWithCache
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withTimeoutOrNull
 
 /** What a student's public profile screen shows. */
 sealed interface StudentProfileUiState {
@@ -69,16 +70,13 @@ constructor(savedStateHandle: SavedStateHandle, private val profiles: PublicProf
             }
     state.value = StudentProfileUiState.Loading
     viewModelScope.launch {
-      val result =
-          withTimeoutOrNull(TIMEOUT_MILLIS) { profiles.getPublicProfile(uid) }
-              ?: profiles.getCachedPublicProfile(uid).takeIf { it is PublicProfileResult.Found }
+      val result = profiles.getPublicProfileWithCache(uid, TIMEOUT_MILLIS)
       state.value =
           when (result) {
             is PublicProfileResult.Found -> StudentProfileUiState.Found(result.profile)
             PublicProfileResult.NotFound -> StudentProfileUiState.NotFound
             PublicProfileResult.NetworkError,
-            PublicProfileResult.UnexpectedError,
-            null -> StudentProfileUiState.CouldNotLoad
+            PublicProfileResult.UnexpectedError -> StudentProfileUiState.CouldNotLoad
           }
     }
   }

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: OpenAI Codex (6.2 Sol, high; Friends screen copy from Figma #358 and failure feedback, #360). -->
+<!-- Contributors: OpenAI Codex (6.2 Sol, high; request actions and feedback, #361). -->
+<resources>
+    <string name="friends_title">Friends</string>
+    <string name="friends_incoming">Incoming requests</string>
+    <string name="friends_sent">Sent requests</string>
+    <string name="friends_yours">Your friends</string>
+    <string name="friends_loading">Loading friends…</string>
+    <string name="friends_load_error">Couldn’t load friends</string>
+    <string name="friends_load_error_body">Check your connection and try again.</string>
+    <string name="friends_empty">No friends yet</string>
+    <string name="friends_empty_body">Scan a friend’s PolySocial QR code to send your first request.</string>
+    <string name="friends_offline">You’re offline</string>
+    <string name="friends_offline_saved">Showing saved friends and requests. Reconnect to make changes.</string>
+    <string name="friends_offline_without_data">Your friends and requests haven’t been saved on this device. Reconnect to load them.</string>
+    <string name="friends_saved_friendship">Saved friendship</string>
+    <string name="friends_saved_request">Saved request</string>
+    <string name="friends_options">More options for %1$s</string>
+    <string name="friends_remove">Remove friend</string>
+    <string name="friends_remove_named">Remove %1$s as a friend?</string>
+    <string name="friends_remove_unnamed">Remove this friend?</string>
+    <string name="friends_remove_body">You’ll be removed from each other’s friends lists. You can send a new request later.</string>
+    <string name="friends_keep">Keep friend</string>
+    <string name="friends_try_again">Try again</string>
+    <string name="friends_remove_error">Couldn’t remove friend.</string>
+    <string name="friends_friendship_changed">This friendship has changed.</string>
+    <string name="friends_dismiss">Dismiss</string>
+    <string name="friends_accept">Accept</string>
+    <string name="friends_decline">Decline</string>
+    <string name="friends_cancel">Cancel</string>
+    <string name="friends_accept_named">Accept %1$s’s request</string>
+    <string name="friends_decline_named">Decline %1$s’s request</string>
+    <string name="friends_cancel_named">Cancel request to %1$s</string>
+    <string name="friends_request_error">Couldn’t update request.</string>
+    <string name="friends_request_changed">This request has changed.</string>
+</resources>

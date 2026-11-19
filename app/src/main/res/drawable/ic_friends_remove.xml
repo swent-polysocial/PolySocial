@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: PolySocial Figma #358 (artwork); OpenAI Codex (6.2 Sol, high; converted to Android vector, #360). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="25dp" android:height="25dp"
+    android:viewportWidth="25" android:viewportHeight="25">
+    <path android:pathData="M16.6667 21.875V19.7917C16.6667 18.6866 16.2277 17.6268 15.4463 16.8454C14.6649 16.064 13.6051 15.625 12.5 15.625H6.25C5.14493 15.625 4.08512 16.064 3.30372 16.8454C2.52232 17.6268 2.08333 18.6866 2.08333 19.7917V21.875"
+        android:strokeColor="#B3202A" android:strokeWidth="1.97917"
+        android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M13.5417 7.29167C13.5417 9.59285 11.6762 11.4583 9.375 11.4583C7.07381 11.4583 5.20833 9.59285 5.20833 7.29167C5.20833 4.99048 7.07381 3.125 9.375 3.125C11.6762 3.125 13.5417 4.99048 13.5417 7.29167Z"
+        android:strokeColor="#B3202A" android:strokeWidth="1.97917"
+        android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M17.7083 11.4583H22.9167"
+        android:strokeColor="#B3202A" android:strokeWidth="1.97917"
+        android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

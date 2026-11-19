@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (6.2 Sol, high; centered handle variant for Friends, #360).
 // Contributors: Claude (Opus 5.5, Anthropic) shared the Cancel event and Delete account sheets'
 // parts, #296.
 package com.polysocial.ui.common
@@ -56,6 +57,7 @@ import kotlinx.coroutines.launch
  * Figma's confirmation bottom sheet (Cancel event, Delete account): white, expanded at once, with
  * 28 dp top corners over a 45% Ink scrim, and the handle at the start of [content] instead of
  * Material's. [content] is laid out in a scrolling column, 20 dp from the sides and 12 dp apart.
+ * [centerHandle] uses the centered 32 dp handle from the Friends design.
  *
  * While [locked] (a call runs), Back, a swipe and the scrim neither close it nor call
  * [onDismissRequest]; otherwise they call it. [content] gets `dismiss`, which slides the sheet away
@@ -67,6 +69,7 @@ fun ConfirmationSheet(
     locked: Boolean,
     onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
+    centerHandle: Boolean = false,
     content: @Composable ColumnScope.(dismiss: () -> Unit) -> Unit,
 ) {
   val isLocked by rememberUpdatedState(locked)
@@ -97,7 +100,11 @@ fun ConfirmationSheet(
             .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-      Box(Modifier.size(width = 36.dp, height = 4.dp).background(Border, RoundedCornerShape(2.dp)))
+      Box(
+          Modifier.align(if (centerHandle) Alignment.CenterHorizontally else Alignment.Start)
+              .size(width = if (centerHandle) 32.dp else 36.dp, height = 4.dp)
+              .background(Border, RoundedCornerShape(2.dp))
+      )
       content(dismiss)
     }
   }

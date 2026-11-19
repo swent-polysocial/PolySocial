@@ -1,7 +1,25 @@
 // Contributors: Claude (public profile model and repository contract, #229; reads by UID only and
 // what a missing profile means, after review, #229; interests, #230); Claude Opus 5.5 (the
 // cache-only read, #368 review); Konstantinos Perdikeas (directed, reviewed and owns it).
+// Contributors: OpenAI Codex (6.2 Sol, high; shared bounded profile lookup, #360 review).
 package com.polysocial.model.user
+
+import kotlinx.coroutines.withTimeoutOrNull
+
+/**
+ * Reads a profile with a bounded server wait and checks the cache when offline, when the server
+ * stalls, or when the server read reports a network error. A cache miss cannot confirm absence.
+ */
+internal suspend fun PublicProfileRepository.getPublicProfileWithCache(
+    uid: String,
+    timeoutMillis: Long,
+    online: Boolean = true,
+): PublicProfileResult {
+  val result = if (online) withTimeoutOrNull(timeoutMillis) { getPublicProfile(uid) } else null
+  return if (result == null || result == PublicProfileResult.NetworkError) {
+    getCachedPublicProfile(uid) as? PublicProfileResult.Found ?: PublicProfileResult.NetworkError
+  } else result
+}
 
 /**
  * What other students see of a student, `publicProfiles/{uid}` (#229): the fields matching needs

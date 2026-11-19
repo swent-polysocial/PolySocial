@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: PolySocial Figma #358 (artwork); OpenAI Codex (6.2 Sol, high; converted to Android vector, #360). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="20dp" android:height="20dp"
+    android:viewportWidth="20" android:viewportHeight="20">
+    <path android:pathData="M10.8333 4.16667C10.8333 4.6269 10.4602 5 10 5C9.53976 5 9.16667 4.6269 9.16667 4.16667C9.16667 3.70643 9.53976 3.33333 10 3.33333C10.4602 3.33333 10.8333 3.70643 10.8333 4.16667Z"
+        android:strokeColor="#17171C" android:strokeWidth="1.58333"
+        android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M10.8333 10C10.8333 10.4602 10.4602 10.8333 10 10.8333C9.53976 10.8333 9.16667 10.4602 9.16667 10C9.16667 9.53976 9.53976 9.16667 10 9.16667C10.4602 9.16667 10.8333 9.53976 10.8333 10Z"
+        android:strokeColor="#17171C" android:strokeWidth="1.58333"
+        android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M10.8333 15.8333C10.8333 16.2936 10.4602 16.6667 10 16.6667C9.53976 16.6667 9.16667 16.2936 9.16667 15.8333C9.16667 15.3731 9.53976 15 10 15C10.4602 15 10.8333 15.3731 10.8333 15.8333Z"
+        android:strokeColor="#17171C" android:strokeWidth="1.58333"
+        android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>
