@@ -208,6 +208,10 @@ sealed interface EventDetailUiState {
    * @property yourGroup the student's group for the event, which then shows instead of Find a group
    *   (#233); null when they aren't in one, while it is read, when it can't be read, and on
    *   [isManaged] events.
+   * @property groupConfirmed true once a successful read says whether the student is in a group, so
+   *   a null [yourGroup] then means they aren't. False while it is read, when it can't be read (the
+   *   read then ends until it is restarted) and on [isManaged] events; cancelling the registration
+   *   needs it, so a failed read is never taken for a group that is gone (#318).
    * @property attendance whether the student is going (#122); organizers aren't offered "I'm
    *   going", as in Figma's "Event detail · organizer", so theirs stays [Attendance.NOT_GOING].
    * @property isSavingAttendance true while "I'm going" or "Cancel registration" is saved.
@@ -231,6 +235,7 @@ sealed interface EventDetailUiState {
       val isLive: Boolean = false,
       val hasEnded: Boolean = false,
       val yourGroup: YourGroup? = null,
+      val groupConfirmed: Boolean = false,
       val attendance: Attendance = Attendance.NOT_GOING,
       val isSavingAttendance: Boolean = false,
       val reminderOn: Boolean = false,
@@ -482,6 +487,9 @@ constructor(
   /** True once a student's view of the event shows, so the student's group is observed. */
   private val watchesGroup = MutableStateFlow(false)
 
+  /** Restarts the read of the student's group, which ends when it fails. */
+  private val groupReads = MutableStateFlow(0)
+
   /**
    * The last answered read of the organizers' names, kept while this ViewModel lives, also while
    * the screen is stopped.
@@ -567,11 +575,13 @@ constructor(
           .onEach {
             if (it is EventDetailUiState.Loaded && !it.isManaged) watchesGroup.value = true
           }
-          .combine(watchesGroup.flatMapLatest { if (it) yourGroup() else flowOf(null) }) {
-              state,
-              group ->
+          .combine(
+              watchesGroup
+                  .combine(groupReads) { watches, _ -> watches }
+                  .flatMapLatest { if (it) yourGroup() else flowOf(GroupRead()) }
+          ) { state, read ->
             if (state is EventDetailUiState.Loaded && !state.isManaged)
-                state.copy(yourGroup = group)
+                state.copy(yourGroup = read.group, groupConfirmed = read.confirmed)
             else state
           }
           .combine(attendance) { state, (attendance, saving) ->
@@ -672,6 +682,9 @@ constructor(
     }
   }
 
+  /** What the read of the student's group says; [confirmed] as in [EventDetailUiState.Loaded]. */
+  private data class GroupRead(val group: YourGroup? = null, val confirmed: Boolean = false)
+
   /**
    * The signed-in student's group for the event, with its members' public profiles, or null. The
    * group shows as soon as it is known, with the profiles already read; the others fill in when
@@ -680,7 +693,7 @@ constructor(
    * read failed.
    */
   @OptIn(ExperimentalCoroutinesApi::class)
-  private fun yourGroup(): Flow<YourGroup?> {
+  private fun yourGroup(): Flow<GroupRead> {
     // If the last read of the members' profiles failed, the same group goes through again, so
     // coming back online names them.
     var profilesRead = true
@@ -688,20 +701,23 @@ constructor(
     var known = emptyMap<String, PublicProfile>()
     return groups
         .observeMyGroup(eventId)
-        .map { (it as? MyGroupResult.Success)?.group }
+        .map { result ->
+          // Only a successful read says whether the student is in a group.
+          if (result is MyGroupResult.Success) result.group to true else null to false
+        }
         .distinctUntilChanged { old, new -> profilesRead && old == new }
-        .transformLatest { group ->
+        .transformLatest { (group, confirmed) ->
           val me = auth.currentUser()?.uid
           if (group == null || me == null) {
-            emit(null)
+            emit(GroupRead(group = null, confirmed = confirmed && me != null))
             return@transformLatest
           }
-          emit(yourGroup(group, me, known))
+          emit(GroupRead(yourGroup(group, me, known), confirmed = true))
           val read = readProfiles(group.memberUids.filter { it != me })
           profilesRead = read != null
           if (read != null) {
             known = read
-            emit(yourGroup(group, me, read))
+            emit(GroupRead(yourGroup(group, me, read), confirmed = true))
           }
         }
   }
@@ -792,15 +808,33 @@ constructor(
    * leaves their group if they are in one (#318). Ignored while a save is running.
    */
   fun onCancelRegistration() {
-    if ((uiState.value as? EventDetailUiState.Loaded)?.yourGroup == null) {
-      saveAttendance(going = false)
-    } else {
-      _registrationSheet.compareAndSet(
-          CancelRegistrationState.Hidden,
-          CancelRegistrationState.Confirming,
-      )
+    val loaded = uiState.value as? EventDetailUiState.Loaded
+    when {
+      loaded?.yourGroup != null ->
+          _registrationSheet.compareAndSet(
+              CancelRegistrationState.Hidden,
+              CancelRegistrationState.Confirming,
+          )
+      loaded != null && loaded.isGroupUnknown() -> {
+        // The student may still be in a group: ask for the read again and offer Retry, rather than
+        // cancelling the registration and leaving them in a group without it.
+        groupReads.update { it + 1 }
+        _registrationSheet.compareAndSet(
+            CancelRegistrationState.Hidden,
+            CancelRegistrationState.Failed(loaded.groupUnknownReason()),
+        )
+      }
+      else -> saveAttendance(going = false)
     }
   }
+
+  /** True when the student's membership is unknown, so cancelling must wait for a read. */
+  private fun EventDetailUiState.Loaded.isGroupUnknown() =
+      !isManaged && yourGroup == null && !groupConfirmed
+
+  private fun EventDetailUiState.Loaded.groupUnknownReason() =
+      if (isOffline) CancelRegistrationState.Failed.Reason.OFFLINE
+      else CancelRegistrationState.Failed.Reason.UNEXPECTED
 
   /** "Keep going": closes the confirmation, unless the group is being left. */
   fun onKeepRegistration() {
@@ -812,12 +846,14 @@ constructor(
   /**
    * Confirms the sheet: leaves the group first, then cancels the registration. This order never
    * leaves the student in a group without a registration; if only the cancellation fails, the
-   * student is still registered and the usual Snackbar offers Retry. If the group is gone by now
-   * (left from another device, or deleted), there is nothing to leave and the registration is
-   * cancelled straight away, also when retrying after a failure.
+   * student is still registered and the usual Snackbar offers Retry. If a successful read says the
+   * group is gone by now (left from another device, or deleted), there is nothing to leave and the
+   * registration is cancelled straight away, also when retrying after a failure. While the group
+   * can't be read, nothing is cancelled: the sheet fails and the read restarts.
    */
   fun onConfirmCancelRegistration() {
-    val group = (uiState.value as? EventDetailUiState.Loaded ?: return).yourGroup
+    val loaded = uiState.value as? EventDetailUiState.Loaded ?: return
+    val group = loaded.yourGroup
     val current = _registrationSheet.value
     if (
         (current != CancelRegistrationState.Confirming &&
@@ -826,7 +862,15 @@ constructor(
     )
         return
     viewModelScope.launch {
-      val failure = if (group == null) null else leaveFailure(group.groupId, current)
+      val failure =
+          when {
+            group != null -> leaveFailure(group.groupId, current)
+            loaded.isGroupUnknown() -> {
+              groupReads.update { it + 1 }
+              loaded.groupUnknownReason()
+            }
+            else -> null
+          }
       if (failure == null) {
         _registrationSheet.value = CancelRegistrationState.Hidden
         saveAttendance(going = false)
