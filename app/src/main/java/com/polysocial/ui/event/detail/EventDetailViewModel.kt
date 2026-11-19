@@ -518,6 +518,12 @@ constructor(
    */
   private var reminderUserActed = false
 
+  /**
+   * The reminder this screen last put on the device (or tried to), so [resyncReminder] schedules
+   * again only when the event's time, title or place changed. Null until then.
+   */
+  private var syncedReminder: EventReminder? = null
+
   private val reminderOn = MutableStateFlow(false)
   private val remindersBlocked = MutableStateFlow(false)
   private val showReminderExplanation = MutableStateFlow(false)
@@ -592,6 +598,7 @@ constructor(
           }
           .withOrganizerName()
           .onEach(::initReminderOnce)
+          .onEach(::resyncReminder)
           .combine(reminderUi) { state, reminder ->
             if (state is EventDetailUiState.Loaded && !state.isOrganizer)
                 state.copy(
@@ -927,7 +934,50 @@ constructor(
     viewModelScope.launch {
       val scheduled = reminders.isScheduled(eventId)
       if (!reminderUserActed) reminderOn.value = scheduled
+      // The organizer may have changed the event since the reminder was set: follow it now.
+      if (scheduled && !reminderUserActed) resyncReminder(uiState.value)
     }
+  }
+
+  /**
+   * Keeps an existing reminder in step with the event it belongs to: when its start time, title or
+   * place differs from what this screen last scheduled (or from what the device holds, the first
+   * time), it is scheduled again, which replaces the earlier one. A reminder whose event now starts
+   * within an hour or has started can't be scheduled, so it is cancelled and the switch turns off.
+   * A failure leaves the reminder as it was, and the next change tries again (#485).
+   */
+  private fun resyncReminder(state: EventDetailUiState) {
+    if (!reminderInitialized || !reminderOn.value) return
+    if (state !is EventDetailUiState.Loaded) return
+    if (state.isOrganizer || state.attendance != Attendance.GOING) return
+    val wanted = reminderFor(state.details.event) ?: return
+    if (wanted == syncedReminder) return
+    syncedReminder = wanted
+    viewModelScope.launch {
+      when (reminders.schedule(wanted)) {
+        is ScheduleReminderResult.Scheduled -> Unit
+        ScheduleReminderResult.TooLate -> {
+          if (reminders.cancel(eventId) == CancelReminderResult.Cancelled) {
+            reminderOn.value = false
+          } else {
+            syncedReminder = null
+          }
+        }
+        ScheduleReminderResult.UnexpectedError -> syncedReminder = null
+      }
+    }
+  }
+
+  /** The reminder of [event] as it is now, or null when nobody is signed in. */
+  private fun reminderFor(event: Event): EventReminder? {
+    val uid = auth.currentUser()?.uid ?: return null
+    return EventReminder(
+        eventId = eventId,
+        title = event.title,
+        startTime = event.startTime,
+        uid = uid,
+        placeName = event.locationName.ifBlank { null },
+    )
   }
 
   /**
@@ -994,18 +1044,10 @@ constructor(
 
   private fun scheduleReminder() {
     val event = (uiState.value as? EventDetailUiState.Loaded)?.details?.event ?: return
-    val uid = auth.currentUser()?.uid ?: return
+    val reminder = reminderFor(event) ?: return
+    syncedReminder = reminder
     viewModelScope.launch {
-      val result =
-          reminders.schedule(
-              EventReminder(
-                  eventId = eventId,
-                  title = event.title,
-                  startTime = event.startTime,
-                  uid = uid,
-                  placeName = event.locationName.ifBlank { null },
-              )
-          )
+      val result = reminders.schedule(reminder)
       // TooLate or UnexpectedError: the switch simply doesn't turn on, like a save that fails
       // changes nothing elsewhere on this screen; Figma has no frame for this failure.
       reminderOn.value = result is ScheduleReminderResult.Scheduled
