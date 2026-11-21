@@ -1,6 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #428).
-// Contributors: Claude (Opus 5.5, Anthropic) (tester: a rerun finding its stored message and a
-// cancelled first-message send, #428).
+// Contributors: Claude (Opus 5.5, Anthropic) (tester: a rerun finding its stored message, a
+// cancelled first-message send, Retry of the message listeners, #428).
 package com.polysocial.model.chat
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -34,6 +34,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -672,6 +673,42 @@ class FirestoreOneToOneChatRepositoryTest {
         ),
         results.await(),
     )
+  }
+
+  @Test
+  fun observeMessagesAndLatest_afterAFailure_aNewCollectionReadsTheWholeChatAgain() = runTest {
+    stubMessages()
+    val first = messageDocument("a", stored(ALICE, "Hi"))
+    val second = messageDocument("b", stored(BOB, "Hello"))
+    val failedMessages = collect(repository.observeMessages(PAIR))
+    listeners.last().onEvent(snapshot(first), null)
+    listeners.last().onEvent(null, failed(Code.UNAVAILABLE))
+    val failedLatest = collect(repository.observeLatestMessage(PAIR))
+    listeners.last().onEvent(null, failed(Code.PERMISSION_DENIED))
+    assertEquals(MessagesResult.NetworkError, failedMessages.await().last())
+    assertEquals(LatestMessageResult.UnexpectedError, failedLatest.await().last())
+
+    // Retry: each new collection listens again and gets the whole chat, the message that
+    // arrived while the first listener was down included.
+    val messages = collect(repository.observeMessages(PAIR).take(2))
+    listeners.last().onEvent(snapshot(first, second), null)
+    val latest = collect(repository.observeLatestMessage(PAIR).take(2))
+    listeners.last().onEvent(snapshot(second), null)
+
+    val at = Instant.ofEpochSecond(1_900_000_000L)
+    assertEquals(
+        MessagesResult.Success(
+            listOf(Message("a", ALICE, "Hi", at), Message("b", BOB, "Hello", at)),
+            fromCache = false,
+        ),
+        messages.await().last(),
+    )
+    assertEquals(
+        LatestMessageResult.Success(Message("b", BOB, "Hello", at), fromCache = false),
+        latest.await().last(),
+    )
+    assertEquals(4, listeners.size)
+    verify(exactly = 4) { registration.remove() }
   }
 
   @Test
