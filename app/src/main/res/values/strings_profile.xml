@@ -3,6 +3,7 @@
 <!-- Contributors: OpenAI Codex (logout dialog copy and consistent failure wording, #109). -->
 <!-- Contributors: Claude (the interests step texts and interest labels, from the Figma "Interests · …" frames, #230). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the Delete account texts, #207; Mohamed Khellaf (reviewed and revised). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (messages kept in group and one-to-one chats, in the Delete account sheet, #433). -->
 <resources>
     <string name="profile_back">Back</string>
     <string name="profile_step">Step %1$d of 2</string>
@@ -44,7 +45,7 @@
     <string name="interest_arts">Arts &amp; theatre</string>
     <string name="interest_volunteering">Volunteering</string>
     <string name="delete_account_title">Delete your account?</string>
-    <string name="delete_account_body">Your profile and sign-in are deleted. Events you created stay, without your name. This can\'t be undone.</string>
+    <string name="delete_account_body">Your profile and sign-in are deleted. Events you created stay, without your name. Your messages in group and one-to-one chats stay for the others, labelled as a deleted account. This can\'t be undone.</string>
     <string name="delete_account_confirm">Delete account</string>
     <string name="delete_account_cancel">Cancel</string>
     <string name="delete_account_offline">You\'re offline. Connect to the internet to delete your account.</string>
