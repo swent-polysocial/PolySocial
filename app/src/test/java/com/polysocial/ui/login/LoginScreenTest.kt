@@ -8,6 +8,7 @@
 // Contributors: Claude (testing agent: redirect states and LoginField error announcements, #277).
 // Contributors: Claude (Opus 5.5, Anthropic) replaced the accounts helper line tests with tests of
 // the centered header, #492.
+// Contributors: Claude (Sonnet 5.5, Anthropic) (keyboard Next and Done actions, #381).
 package com.polysocial.ui.login
 
 import android.app.Application
@@ -26,6 +27,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertTextEquals
@@ -39,6 +41,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.text.AnnotatedString
@@ -181,6 +184,41 @@ class LoginScreenTest {
 
     assertEquals(1, loggedInCalls)
     assertEquals(0, needsVerificationCalls)
+  }
+
+  @Test
+  fun nextOnTheEmailMovesToThePassword() {
+    setScreen()
+    node(LoginScreenTestTags.EMAIL).performClick()
+
+    node(LoginScreenTestTags.EMAIL).performImeAction()
+
+    node(LoginScreenTestTags.PASSWORD).assertIsFocused()
+    assertEquals(0, auth.logInCalls)
+  }
+
+  @Test
+  fun doneOnThePasswordLogsIn() {
+    auth.logInResult = LogInResult.Success(verifiedUser)
+    setScreen()
+    typeCredentials()
+
+    node(LoginScreenTestTags.PASSWORD).performImeAction()
+    composeTestRule.waitForIdle()
+
+    assertEquals(1, auth.logInCalls)
+    assertEquals(1, loggedInCalls)
+  }
+
+  @Test
+  fun doneOnAnIncompletePasswordDoesNotLogIn() {
+    setScreen()
+    node(LoginScreenTestTags.EMAIL).performTextInput("a@epfl.ch")
+
+    node(LoginScreenTestTags.PASSWORD).performImeAction()
+    composeTestRule.waitForIdle()
+
+    assertEquals(0, auth.logInCalls)
   }
 
   @Test

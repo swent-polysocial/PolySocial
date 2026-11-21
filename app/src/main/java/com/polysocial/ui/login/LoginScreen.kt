@@ -9,6 +9,8 @@
 // credentials, #277).
 // Contributors: Claude (Opus 5.5, Anthropic) centered the header and removed the accounts helper
 // line, #492.
+// Contributors: Claude (Sonnet 5.5, Anthropic) (keyboard Next and Done actions on the Log in
+// fields, #381).
 package com.polysocial.ui.login
 
 import androidx.activity.compose.BackHandler
@@ -36,6 +38,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
@@ -59,6 +62,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -266,6 +270,7 @@ fun LoginContent(
               errorMessage = wrongCredentials,
               placeholder = stringResource(R.string.login_email_placeholder),
               keyboardType = KeyboardType.Email,
+              imeAction = ImeAction.Next,
               modifier = Modifier.testTag(LoginScreenTestTags.EMAIL),
           )
           Spacer(Modifier.height(13.5.dp))
@@ -280,6 +285,8 @@ fun LoginContent(
               isError = wrongCredentials != null,
               errorMessage = wrongCredentials,
               keyboardType = KeyboardType.Password,
+              imeAction = ImeAction.Done,
+              onDone = onLogIn,
               visualTransformation =
                   if (state.passwordVisible) VisualTransformation.None
                   else PasswordVisualTransformation(),
@@ -398,6 +405,8 @@ internal fun LoginField(
     visualTransformation: VisualTransformation = VisualTransformation.None,
     trailing: (@Composable () -> Unit)? = null,
     errorBorderWidth: Dp = 2.dp,
+    imeAction: ImeAction = ImeAction.Default,
+    onDone: (() -> Unit)? = null,
 ) {
   // While loading, Figma fades the field (border and text) to 45%; the eye icon stays opaque.
   val fade = if (faded) 0.45f else 1f
@@ -412,7 +421,10 @@ internal fun LoginField(
       textStyle = textStyle,
       cursorBrush = SolidColor(Ink),
       visualTransformation = visualTransformation,
-      keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+      keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
+      // Next moves to the following field by itself; Done submits the form, if it can be.
+      keyboardActions =
+          if (onDone != null) KeyboardActions(onDone = { onDone() }) else KeyboardActions.Default,
       // Screen readers announce the field as in error, with [errorMessage].
       modifier =
           modifier.fillMaxWidth().semantics {

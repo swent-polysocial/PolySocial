@@ -109,6 +109,41 @@ class SignUpScreenTest {
   }
 
   @Test
+  fun nextOnTheFullNameMovesToTheEmail() {
+    launch()
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.FullName)).performClick()
+
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.FullName)).performImeAction()
+
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.Email)).assertIsFocused()
+    assertEquals(0, auth.signUpCalls)
+  }
+
+  @Test
+  fun doneOnTheLastFieldCreatesTheAccount() {
+    launch()
+    fill()
+
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.ConfirmPassword)).performImeAction()
+    compose.waitForIdle()
+
+    assertEquals(1, auth.signUpCalls)
+  }
+
+  @Test
+  fun doneOnAnIncompleteFormDoesNotCreateTheAccount() {
+    launch()
+    compose
+        .onNodeWithTag(SignUpTags.input(SignUpField.Email))
+        .performTextInput("student.test@epfl.ch")
+
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.ConfirmPassword)).performImeAction()
+    compose.waitForIdle()
+
+    assertEquals(0, auth.signUpCalls)
+  }
+
+  @Test
   fun invalidPasswordShowsTheFieldErrorAndBlocksSubmission() {
     launch()
     compose.onNodeWithTag(SignUpTags.input(SignUpField.Password)).performTextInput("short")
