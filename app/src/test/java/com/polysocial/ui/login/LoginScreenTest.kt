@@ -6,6 +6,8 @@
 // email label for associations, #208); Claude (both fields flagged on wrong credentials and a
 // neutral placeholder, written test-first, #277).
 // Contributors: Claude (testing agent: redirect states and LoginField error announcements, #277).
+// Contributors: Claude (Opus 5.5, Anthropic) replaced the accounts helper line tests with tests of
+// the centered header, #492.
 package com.polysocial.ui.login
 
 import android.app.Application
@@ -49,6 +51,7 @@ import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.auth.LogInResult
 import com.polysocial.ui.theme.PolySocialTheme
+import com.polysocial.utils.textLayout
 import kotlin.math.abs
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
@@ -471,23 +474,66 @@ class LoginScreenTest {
     composeTestRule.onNodeWithText(string(R.string.login_email_placeholder)).assertDoesNotExist()
   }
 
+  // ---- Centered header (#492, Figma "Log in" 1528:926 from #491) ----
+
   @Test
-  fun accountsHint_explainsBothAccountKinds_underTheSubtitle() {
+  fun header_hasNoAccountsHint_andKeepsTheFigmaGaps() {
     setContent(LoginUiState())
 
-    node(LoginScreenTestTags.ACCOUNTS_HINT)
+    node(LoginScreenTestTags.TITLE).assertIsDisplayed().assertTextEquals("Welcome back")
+    node(LoginScreenTestTags.SUBTITLE)
         .assertIsDisplayed()
-        .assertTextEquals("Students use @epfl.ch; associations use their own email.")
-    composeTestRule.onNodeWithText(string(R.string.login_subtitle)).assertIsDisplayed()
-    // Figma "Log in" (216:1173): the line starts 2.5 dp under the subtitle (y 127.5 → 130) and the
-    // Google button starts right under it (y 148). Robolectric's text heights differ from a
-    // device, so the gaps are checked, not the absolute positions.
-    val subtitle =
-        composeTestRule.onNodeWithText(string(R.string.login_subtitle)).getUnclippedBoundsInRoot()
-    val hint = node(LoginScreenTestTags.ACCOUNTS_HINT).getUnclippedBoundsInRoot()
+        .assertTextEquals("Log in with the account you signed up with.")
+    // Log in no longer says which email each account uses (decided on 2026-11-21); Welcome does.
+    composeTestRule.onNodeWithText("@epfl.ch", substring = true).assertDoesNotExist()
+    composeTestRule.onNodeWithText("their own email", substring = true).assertDoesNotExist()
+    // Figma: the subtitle starts 6 dp under the title (y 99.5 → 105.5) and the Google button
+    // 20.5 dp under the subtitle (y 127.5 → 148), the gap Log in had before #208. Robolectric's
+    // text heights differ from a device, so the gaps are checked, not the absolute positions.
+    val title = node(LoginScreenTestTags.TITLE).getUnclippedBoundsInRoot()
+    val subtitle = node(LoginScreenTestTags.SUBTITLE).getUnclippedBoundsInRoot()
     val google = node(LoginScreenTestTags.GOOGLE).getUnclippedBoundsInRoot()
-    assertEquals(2.5f, (hint.top - subtitle.bottom).value, 0.01f)
-    assertEquals(0f, (google.top - hint.bottom).value, 0.01f)
+    assertEquals(6f, (subtitle.top - title.bottom).value, 0.01f)
+    assertEquals(20.5f, (google.top - subtitle.bottom).value, 0.01f)
+  }
+
+  @Test
+  @Config(qualifiers = "w360dp-h800dp-xhdpi")
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  fun header_titleAndSubtitle_spanTheContentWidthWithCenteredText() {
+    // Figma: both texts span the 320 dp content width (x 20 → 340), as the fields do, centered.
+    setContent(LoginUiState())
+
+    val field = node(LoginScreenTestTags.EMAIL).getUnclippedBoundsInRoot()
+    assertEquals(20f, field.left.value, 0.01f)
+    assertEquals(340f, field.right.value, 0.01f)
+    for (tag in listOf(LoginScreenTestTags.TITLE, LoginScreenTestTags.SUBTITLE)) {
+      val text = node(tag).getUnclippedBoundsInRoot()
+      assertEquals("$tag's left edge", field.left.value, text.left.value, 0.01f)
+      assertEquals("$tag's right edge", field.right.value, text.right.value, 0.01f)
+      assertEveryLineCentered(tag)
+    }
+  }
+
+  @Test
+  @Config(qualifiers = "w360dp-h800dp-xhdpi", fontScale = 2.0f)
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  fun header_atTheLargestFontSize_aWrappedSubtitleStaysCenteredLineByLine() {
+    setContent(LoginUiState())
+
+    assertTrue(node(LoginScreenTestTags.SUBTITLE).textLayout().lineCount > 1)
+    assertEveryLineCentered(LoginScreenTestTags.TITLE)
+    assertEveryLineCentered(LoginScreenTestTags.SUBTITLE)
+  }
+
+  /** Each line of [tag]'s text leaves as much room on its left as on its right. */
+  private fun assertEveryLineCentered(tag: String) {
+    val layout = node(tag).textLayout()
+    for (line in 0 until layout.lineCount) {
+      val left = layout.getLineLeft(line)
+      val right = layout.size.width - layout.getLineRight(line)
+      assertEquals("$tag's line $line isn't centered", left, right, 1.5f)
+    }
   }
 
   @Test
