@@ -1,4 +1,5 @@
-// Contributors: Claude (matching heuristic, and member UIDs after review, #231).
+// Contributors: Claude (matching heuristic, and member UIDs after review, #231); Claude (Opus 5.5,
+// Anthropic) (friends in a group, #497).
 package com.polysocial.model.group
 
 /**
@@ -38,6 +39,9 @@ data class MatchGroup(
  *   in id order.
  * @property membersInSameSection How many members are in the student's section.
  * @property membersInSameYear How many members are in the student's year.
+ * @property friends The UIDs of the members who are the student's friends, in
+ *   [MatchGroup.memberUids] order, whether or not their profiles were read. Its size is how many
+ *   friends the group has.
  */
 data class RankedGroup(
     val group: MatchGroup,
@@ -45,6 +49,7 @@ data class RankedGroup(
     val sharedInterests: List<String>,
     val membersInSameSection: Int,
     val membersInSameYear: Int,
+    val friends: List<String>,
 )
 
 /** Points a member adds per interest they share with the student. */
@@ -56,18 +61,31 @@ private const val SECTION_POINTS = 2
 /** Points a member adds when they are in the student's year. */
 private const val YEAR_POINTS = 1
 
+/** Points a member adds when they are one of the student's friends (#497). */
+private const val FRIEND_POINTS = 10
+
 /**
  * The [groups] of one event that [student] can join, best fit first (#231). This is a deterministic
  * heuristic, not an optimal assignment: each group is scored on its own.
  *
  * **Score.** Each member of a group adds:
+ * - 10 points if they are one of the student's friends, that is, their UID is in [friendUids]
+ *   (#497),
  * - 3 points per interest they share with the student,
  * - 2 points if they are in the student's section,
  * - 1 point if they are in the student's year.
  *
- * A group's score is the sum over its members. A blank section or year never matches, so two
- * students who haven't set one don't count as alike. A student without interests is ranked on
- * section and year only.
+ * A group's score is the sum over its members. Friends are counted from [MatchGroup.memberUids], so
+ * a friend whose profile couldn't be read still adds their 10 points; the other points come from
+ * the profiles in [MatchGroup.members]. A friend is worth more than a member with two shared
+ * interests, the same section and the same year (9 points), so a group with a friend usually comes
+ * first, but a group whose members share more interests can still outrank it. A blank section or
+ * year never matches, so two students who haven't set one don't count as alike. A student without
+ * interests is ranked on friends, section and year only.
+ *
+ * [friendUids] are the UIDs of the student's accepted friends; the caller leaves out pending
+ * requests. Empty when the student has none or they couldn't be read: the groups are then ranked
+ * without friends.
  *
  * **Order.** Highest score first. Groups with the same score are in ascending [MatchGroup.id] order
  * (plain string order, the same in every locale), so the same groups always give the same list,
@@ -75,33 +93,40 @@ private const val YEAR_POINTS = 1
  *
  * **Left out.** Full groups (as many [MatchGroup.memberUids] as their [MatchGroup.capacity], or
  * more) and any group whose [MatchGroup.memberUids] contain [student]'s uid, whether or not their
- * profiles were read. A group with nothing in common is still suggested, last. With no groups, or
- * none left, the list is empty.
+ * profiles were read, even with friends in them. A group with nothing in common is still suggested,
+ * last. With no groups, or none left, the list is empty.
  *
  * It has no Android or Firebase dependency, so it runs on the device. If matching moves
  * server-side, only its caller changes.
  */
-fun rankGroups(student: MatchProfile, groups: List<MatchGroup>): List<RankedGroup> =
+fun rankGroups(
+    student: MatchProfile,
+    groups: List<MatchGroup>,
+    friendUids: Set<String>,
+): List<RankedGroup> =
     groups
         .filter { group ->
           group.memberUids.size < group.capacity && student.uid !in group.memberUids
         }
-        .map { group -> rank(student, group) }
+        .map { group -> rank(student, group, friendUids) }
         .sortedWith(compareByDescending<RankedGroup> { it.score }.thenBy { it.group.id })
 
-private fun rank(student: MatchProfile, group: MatchGroup): RankedGroup {
+private fun rank(student: MatchProfile, group: MatchGroup, friendUids: Set<String>): RankedGroup {
+  val friends = group.memberUids.filter { it in friendUids }
   val sharedByMember = group.members.map { student.interests intersect it.interests }
   val inSameSection = group.members.count { sameCode(student.section, it.section) }
   val inSameYear = group.members.count { sameCode(student.year, it.year) }
   return RankedGroup(
       group = group,
       score =
-          sharedByMember.sumOf { it.size } * INTEREST_POINTS +
+          friends.size * FRIEND_POINTS +
+              sharedByMember.sumOf { it.size } * INTEREST_POINTS +
               inSameSection * SECTION_POINTS +
               inSameYear * YEAR_POINTS,
       sharedInterests = sharedByMember.flatten().distinct().sorted(),
       membersInSameSection = inSameSection,
       membersInSameYear = inSameYear,
+      friends = friends,
   )
 }
 

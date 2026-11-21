@@ -1,4 +1,5 @@
-// Contributors: Claude (wrote these tests, and the missing-profile cases after review, #231).
+// Contributors: Claude (wrote these tests, and the missing-profile cases after review, #231);
+// Claude (Opus 5.5, Anthropic) (the friends cases, #497).
 package com.polysocial.model.group
 
 import kotlin.random.Random
@@ -27,12 +28,15 @@ class GroupMatchingTest {
   private fun group(id: String, vararg members: MatchProfile, capacity: Int = 4) =
       MatchGroup(id, capacity, members.map { it.uid }, members.toList())
 
-  private fun rankedIds(groups: List<MatchGroup>, student: MatchProfile = me) =
-      rankGroups(student, groups).map { it.group.id }
+  private fun rankedIds(
+      groups: List<MatchGroup>,
+      student: MatchProfile = me,
+      friends: Set<String> = NO_FRIENDS,
+  ) = rankGroups(student, groups, friends).map { it.group.id }
 
   @Test
   fun noGroups_giveAnEmptyList() {
-    assertEquals(emptyList<RankedGroup>(), rankGroups(me, emptyList()))
+    assertEquals(emptyList<RankedGroup>(), rankGroups(me, emptyList(), NO_FRIENDS))
   }
 
   @Test
@@ -69,7 +73,7 @@ class GroupMatchingTest {
     val full = group("full", member("m1"), member("m2"), capacity = 2)
     val mine = group("mine", me)
 
-    assertEquals(emptyList<RankedGroup>(), rankGroups(me, listOf(full, mine)))
+    assertEquals(emptyList<RankedGroup>(), rankGroups(me, listOf(full, mine), NO_FRIENDS))
   }
 
   @Test
@@ -88,7 +92,7 @@ class GroupMatchingTest {
     // Two stored members, one profile missing: open, scored on the one profile read.
     val oneProfile = MatchGroup("open", 4, listOf("m1", "m6"), listOf(m1))
 
-    val ranked = rankGroups(me, listOf(fullByUids, mine, oneProfile))
+    val ranked = rankGroups(me, listOf(fullByUids, mine, oneProfile), NO_FRIENDS)
 
     assertEquals(listOf("open"), ranked.map { it.group.id })
     assertEquals(5, ranked.single().score)
@@ -102,7 +106,7 @@ class GroupMatchingTest {
     val noneShared = group("g1", member("m3", interests = setOf("chess")))
     val noMembers = group("no-members")
 
-    val ranked = rankGroups(me, listOf(noMembers, noneShared, oneShared, twoShared))
+    val ranked = rankGroups(me, listOf(noMembers, noneShared, oneShared, twoShared), NO_FRIENDS)
 
     assertEquals(listOf("g3", "g2", "g1", "no-members"), ranked.map { it.group.id })
     assertEquals(listOf(6, 3, 0, 0), ranked.map { it.score })
@@ -110,7 +114,7 @@ class GroupMatchingTest {
         listOf(listOf("hiking", "music"), listOf("games"), emptyList(), emptyList()),
         ranked.map { it.sharedInterests },
     )
-    assertEquals(RankedGroup(noMembers, 0, emptyList(), 0, 0), ranked.last())
+    assertEquals(RankedGroup(noMembers, 0, emptyList(), 0, 0, emptyList()), ranked.last())
   }
 
   @Test
@@ -119,7 +123,7 @@ class GroupMatchingTest {
     val oneInSection = group("g2", member("m3", section = "IN"), member("m4"))
     val noneInSection = group("g1", member("m5"), member("m6"))
 
-    val ranked = rankGroups(me, listOf(noneInSection, oneInSection, twoInSection))
+    val ranked = rankGroups(me, listOf(noneInSection, oneInSection, twoInSection), NO_FRIENDS)
 
     assertEquals(listOf("g3", "g2", "g1"), ranked.map { it.group.id })
     assertEquals(listOf(4, 2, 0), ranked.map { it.score })
@@ -132,7 +136,7 @@ class GroupMatchingTest {
     val oneInYear = group("g2", member("m3", year = "BA3"), member("m4"))
     val noneInYear = group("g1", member("m5"), member("m6"))
 
-    val ranked = rankGroups(me, listOf(noneInYear, oneInYear, twoInYear))
+    val ranked = rankGroups(me, listOf(noneInYear, oneInYear, twoInYear), NO_FRIENDS)
 
     assertEquals(listOf("g3", "g2", "g1"), ranked.map { it.group.id })
     assertEquals(listOf(2, 1, 0), ranked.map { it.score })
@@ -163,7 +167,7 @@ class GroupMatchingTest {
             member("m3", year = "BA3"),
         )
 
-    val ranked = rankGroups(me, listOf(threeMembers)).single()
+    val ranked = rankGroups(me, listOf(threeMembers), NO_FRIENDS).single()
 
     // m1: 2 interests × 3 + section 2 + year 1 = 9; m2: 3 + 2 = 5; m3: 1.
     assertEquals(15, ranked.score)
@@ -182,7 +186,7 @@ class GroupMatchingTest {
             group("b", member("m4", year = "BA3"), member("m5", year = "BA3")),
         )
 
-    val ranked = rankGroups(me, groups)
+    val ranked = rankGroups(me, groups, NO_FRIENDS)
 
     assertEquals(listOf(2, 2, 2, 2), ranked.map { it.score })
     assertEquals(listOf("a", "ab", "b", "c"), ranked.map { it.group.id })
@@ -195,7 +199,7 @@ class GroupMatchingTest {
     val sameSection = group("g2", member("m2", section = "IN", interests = setOf("music")))
     val sameYear = group("g1", member("m3", year = "BA3"))
 
-    val ranked = rankGroups(student, listOf(sameInterests, sameSection, sameYear))
+    val ranked = rankGroups(student, listOf(sameInterests, sameSection, sameYear), NO_FRIENDS)
 
     assertEquals(listOf("g2", "g1", "g3"), ranked.map { it.group.id })
     assertEquals(listOf(2, 1, 0), ranked.map { it.score })
@@ -212,14 +216,16 @@ class GroupMatchingTest {
             member("m2", section = "IN", year = "BA3"),
         )
 
-    val ranked = rankGroups(student, listOf(blanks)).single()
+    val ranked = rankGroups(student, listOf(blanks), NO_FRIENDS).single()
 
     assertEquals(0, ranked.score)
     assertEquals(0, ranked.membersInSameSection)
     assertEquals(0, ranked.membersInSameYear)
     assertEquals(
         0,
-        rankGroups(me, listOf(group("g", member("m3", section = "", year = "")))).single().score,
+        rankGroups(me, listOf(group("g", member("m3", section = "", year = ""))), NO_FRIENDS)
+            .single()
+            .score,
     )
   }
 
@@ -237,9 +243,21 @@ class GroupMatchingTest {
             group("g4", member("m6")),
             group("g5", member("m7", interests = setOf("games"))),
         )
-    val expected = rankGroups(me, groups)
     // g1 and g2 tie at 6, so g1 comes first by id.
-    assertEquals(listOf("g1", "g2", "g3", "g5", "g4"), expected.map { it.group.id })
+    assertRankedTheSameInAnyOrder(groups, NO_FRIENDS, listOf("g1", "g2", "g3", "g5", "g4"))
+  }
+
+  /**
+   * Ranks [groups] with [friends], checks the order is [expectedIds], then checks that shuffling
+   * the groups, their members and the student's interests and friends changes nothing.
+   */
+  private fun assertRankedTheSameInAnyOrder(
+      groups: List<MatchGroup>,
+      friends: Set<String>,
+      expectedIds: List<String>,
+  ) {
+    val expected = rankGroups(me, groups, friends)
+    assertEquals(expectedIds, expected.map { it.group.id })
 
     val random = Random(231)
     repeat(20) {
@@ -252,13 +270,150 @@ class GroupMatchingTest {
             )
           }
 
-      val ranked = rankGroups(student, shuffled)
+      val ranked = rankGroups(student, shuffled, friends.shuffled(random).toSet())
 
       assertEquals(expected.map { it.group.id }, ranked.map { it.group.id })
       assertEquals(expected.map { it.score }, ranked.map { it.score })
       assertEquals(expected.map { it.sharedInterests }, ranked.map { it.sharedInterests })
       assertEquals(expected.map { it.membersInSameSection }, ranked.map { it.membersInSameSection })
       assertEquals(expected.map { it.membersInSameYear }, ranked.map { it.membersInSameYear })
+      assertEquals(expected.map { it.friends.toSet() }, ranked.map { it.friends.toSet() })
     }
+  }
+
+  @Test
+  fun noFriends_orFriendsInNoGroup_addNothing() {
+    val groups =
+        listOf(
+            group("g2", member("m1", section = "IN")),
+            group("g1", member("m2", year = "BA3")),
+        )
+
+    for (friends in listOf(NO_FRIENDS, setOf("someone-else"))) {
+      val ranked = rankGroups(me, groups, friends)
+
+      assertEquals(listOf("g2", "g1"), ranked.map { it.group.id })
+      assertEquals(listOf(2, 1), ranked.map { it.score })
+      assertTrue(ranked.all { it.friends.isEmpty() })
+    }
+  }
+
+  @Test
+  fun oneFriend_adds10Points_andIsGivenAsAReason() {
+    val withFriend = group("g1", member("friend"))
+    val withoutFriend = group("g2", member("m1"))
+
+    val ranked = rankGroups(me, listOf(withoutFriend, withFriend), setOf("friend"))
+
+    assertEquals(listOf("g1", "g2"), ranked.map { it.group.id })
+    assertEquals(listOf(10, 0), ranked.map { it.score })
+    assertEquals(listOf(listOf("friend"), emptyList()), ranked.map { it.friends })
+  }
+
+  @Test
+  fun twoFriends_add10PointsEach_inMemberOrder() {
+    val twoFriends = group("g1", member("friend-b"), member("m1"), member("friend-a"))
+    val oneFriend = group("g2", member("friend-c"), member("m2"))
+
+    val ranked =
+        rankGroups(me, listOf(oneFriend, twoFriends), setOf("friend-a", "friend-b", "friend-c"))
+
+    assertEquals(listOf("g1", "g2"), ranked.map { it.group.id })
+    assertEquals(listOf(20, 10), ranked.map { it.score })
+    assertEquals(listOf("friend-b", "friend-a"), ranked.first().friends)
+  }
+
+  @Test
+  fun aFriend_addsToWhatTheyShare() {
+    val friend = member("friend", section = "IN", interests = setOf("music"))
+
+    val ranked = rankGroups(me, listOf(group("g", friend, member("m1"))), setOf("friend")).single()
+
+    // 10 as a friend, 3 for music, 2 for the section.
+    assertEquals(15, ranked.score)
+    assertEquals(listOf("music"), ranked.sharedInterests)
+    assertEquals(1, ranked.membersInSameSection)
+    assertEquals(listOf("friend"), ranked.friends)
+  }
+
+  @Test
+  fun aFriendWithoutAReadableProfile_stillCounts() {
+    // The friend is a stored member, but their profile couldn't be read.
+    val friendUnread = MatchGroup("g1", 4, listOf("friend", "m1"), listOf(member("m1")))
+    val sameSection = group("g2", member("m2", section = "IN", year = "BA3"))
+
+    val ranked = rankGroups(me, listOf(sameSection, friendUnread), setOf("friend"))
+
+    assertEquals(listOf("g1", "g2"), ranked.map { it.group.id })
+    assertEquals(listOf(10, 3), ranked.map { it.score })
+    assertEquals(listOf("friend"), ranked.first().friends)
+  }
+
+  @Test
+  fun aFriendInAFullGroupOrTheStudentsOwn_isStillLeftOut() {
+    val full = group("full", member("friend-a"), member("m1"), capacity = 2)
+    val mine = group("mine", me, member("friend-b"))
+    val open = group("open", member("m2"))
+
+    val ranked = rankGroups(me, listOf(full, mine, open), setOf("friend-a", "friend-b"))
+
+    assertEquals(listOf("open"), ranked.map { it.group.id })
+    assertEquals(emptyList<String>(), ranked.single().friends)
+  }
+
+  @Test
+  fun aFriend_outranksAMemberWithTwoSharedInterestsTheSameSectionAndYear() {
+    val alike =
+        group("g1", member("m1", section = "IN", year = "BA3", interests = setOf("music", "games")))
+    val friend = group("g2", member("friend"))
+
+    val ranked = rankGroups(me, listOf(alike, friend), setOf("friend"))
+
+    assertEquals(listOf("g2", "g1"), ranked.map { it.group.id })
+    assertEquals(listOf(10, 9), ranked.map { it.score })
+  }
+
+  @Test
+  fun aGroupSharingMoreInterests_canStillOutrankAFriend() {
+    val alike =
+        group(
+            "g1",
+            member(
+                "m1",
+                section = "IN",
+                year = "BA3",
+                interests = setOf("music", "games", "hiking"),
+            ),
+        )
+    val friend = group("g2", member("friend"))
+
+    val ranked = rankGroups(me, listOf(friend, alike), setOf("friend"))
+
+    assertEquals(listOf("g1", "g2"), ranked.map { it.group.id })
+    assertEquals(listOf(12, 10), ranked.map { it.score })
+  }
+
+  @Test
+  fun withFriends_theSameGroupsInAnyOrder_giveTheSameRanking() {
+    val groups =
+        listOf(
+            group("g1", member("friend-a"), member("m1", section = "IN")),
+            group("g2", member("m2", interests = setOf("music", "games")), member("m3")),
+            group("g3", member("friend-b")),
+            group("g4", member("m4", section = "IN", year = "BA3", interests = setOf("music"))),
+            group("g5", member("friend-c"), member("friend-d")),
+        )
+
+    // g5: two friends, 20; g1: a friend and the section, 12; g3: a friend, 10; g2 (two interests)
+    // and g4 (an interest, the section and the year) tie at 6, so g2 comes first by id.
+    assertRankedTheSameInAnyOrder(
+        groups,
+        setOf("friend-a", "friend-b", "friend-c", "friend-d"),
+        listOf("g5", "g1", "g3", "g2", "g4"),
+    )
+  }
+
+  private companion object {
+    val NO_FRIENDS = emptySet<String>()
   }
 }
