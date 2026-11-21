@@ -5,7 +5,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (the attendeeCount the deletion lowers, #405).
 // Contributors: Claude (Opus 5.5, Anthropic) (the deletion triggers turned off while it runs, #382).
 // Contributors: Claude (Opus 5.5, Anthropic) (one-to-one chats and delete-for-me markers, #429; a
-// message deleted while the messages step runs, after review, #429).
+// message deleted while the messages step runs, and one pair ID helper, after review, #429).
 // Contributors: Claude (Opus 5.5, Anthropic) (two accounts deleted together, stopping partway, #429).
 "use strict";
 // Contributors: OpenAI Codex (real membership cleanup and retryable message anonymisation, #241).
@@ -151,6 +151,11 @@ async function documentExists(path) {
   return (await db.doc(path).get()).exists;
 }
 
+/** The pair ID of `a` and `b` (#338): their UIDs sorted and joined by `~`. */
+function pair(a, b) {
+  return [a, b].sort().join("~");
+}
+
 test("a student's profiles and Auth user are deleted, their event is kept", async () => {
   const uid = await seedUser("student@epfl.ch", { accountType: "student" });
   const idToken = await signIn("student@epfl.ch");
@@ -192,17 +197,15 @@ test("a student's registrations are deleted, other students' are kept", async ()
 test("a student's friendships are deleted, other students' are kept (#357)", async () => {
   const uid = await seedUser("student@epfl.ch", { accountType: "student" });
   const other = await seedUser("other@epfl.ch", { accountType: "student" });
-  const sorted = (a, b) => [a, b].sort();
-  const pair = (a, b) => sorted(a, b).join("~");
   await db.doc(`friendships/${pair(uid, other)}`).set({
-    uids: sorted(uid, other), requestedBy: other, status: "accepted",
+    uids: pair(uid, other).split("~"), requestedBy: other, status: "accepted",
     createdAt: new Date(), acceptedAt: new Date(),
   });
   await db.doc(`friendships/${pair(uid, "fictional-1")}`).set({
-    uids: sorted(uid, "fictional-1"), requestedBy: uid, status: "pending", createdAt: new Date(),
+    uids: pair(uid, "fictional-1").split("~"), requestedBy: uid, status: "pending", createdAt: new Date(),
   });
   await db.doc(`friendships/${pair(other, "fictional-2")}`).set({
-    uids: sorted(other, "fictional-2"), requestedBy: other, status: "pending", createdAt: new Date(),
+    uids: pair(other, "fictional-2").split("~"), requestedBy: other, status: "pending", createdAt: new Date(),
   });
   const idToken = await signIn("student@epfl.ch");
 
@@ -232,11 +235,10 @@ test("each event the student was going to counts one student less (#405)", async
   assert.deepEqual(left.docs.map((document) => document.ref.path), [`events/shared/attendees/${other}`]);
 });
 
-/** Stores the one-to-one chat of `a` and `b` (#365) under their sorted pair ID, with `messages` by ID. */
+/** Stores the one-to-one chat of `a` and `b` (#365) under their pair ID, with `messages` by ID. */
 async function seedChat(a, b, messages) {
-  const uids = [a, b].sort();
-  const chat = db.doc(`chats/${uids.join("~")}`);
-  await chat.set({ uids });
+  const chat = db.doc(`chats/${pair(a, b)}`);
+  await chat.set({ uids: pair(a, b).split("~") });
   for (const [id, message] of Object.entries(messages)) {
     await chat.collection("messages").doc(id).set(message);
   }
@@ -291,7 +293,7 @@ test("a one-to-one chat nobody is left in is deleted with its messages (#429)", 
     theirs: { senderId: "fictional-friend", text: "Fictional reply", createdAt },
   });
   // A deletion interrupted between a chat's messages and the chat: only the UID, no message left.
-  const interrupted = db.doc(`chats/${[uid, "fictional-gone"].sort().join("~")}`);
+  const interrupted = db.doc(`chats/${pair(uid, "fictional-gone")}`);
   await interrupted.set({ uids: [uid] });
   const othersChat = await seedChat("fictional-friend", "fictional-third", {
     kept: { senderId: "fictional-third", text: "Fictional note", createdAt },
