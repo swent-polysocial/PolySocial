@@ -5,6 +5,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (the attendeeCount the deletion lowers, #405).
 // Contributors: Claude (Opus 5.5, Anthropic) (the deletion triggers turned off while it runs, #382).
 // Contributors: Claude (Opus 5.5, Anthropic) (one-to-one chats and delete-for-me markers, #429).
+// Contributors: Claude (Opus 5.5, Anthropic) (two accounts deleted together, stopping partway, #429).
 "use strict";
 // Contributors: OpenAI Codex (real membership cleanup and retryable message anonymisation, #241).
 
@@ -15,7 +16,7 @@ const { after, before, beforeEach, test } = require("node:test");
 const assert = require("node:assert/strict");
 const { deleteApp, initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
-const { getFirestore, Timestamp } = require("firebase-admin/firestore");
+const { DocumentReference, getFirestore, Timestamp } = require("firebase-admin/firestore");
 const { DETAILS, REGION, deleteAccountHandler } = require("./deleteAccountHandler");
 const { setBackgroundTriggers } = require("./testing/triggerEmulator");
 
@@ -304,6 +305,129 @@ test("a one-to-one chat nobody is left in is deleted with its messages (#429)", 
   assert.deepEqual((await othersChat.get()).data(), { uids: ["fictional-friend", "fictional-third"] });
   assert.deepEqual(await idsIn(`${othersChat.path}/messages`), ["kept"]);
   assert.equal(await authUserExists(uid), false);
+});
+
+/** A Firestore error as a lost connection reports it. */
+function lostConnection() {
+  return Object.assign(new Error("Fictional failure"), { code: 14 });
+}
+
+/** The emulator's Firestore, with its collection-group queries on `group` failing. */
+function failingCollectionGroup(group) {
+  return new Proxy(db, {
+    get(target, key) {
+      if (key === "collectionGroup") {
+        return (name) => {
+          if (name === group) throw lostConnection();
+          return target.collectionGroup(name);
+        };
+      }
+      const value = Reflect.get(target, key);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+}
+
+/**
+ * Runs `run` with the first deletion of the document `path` failing, as a lost connection: the
+ * chats step deletes a chat with its reference's `delete`, which nothing else in the handler uses.
+ */
+async function withFailingDelete(path, run) {
+  const original = DocumentReference.prototype.delete;
+  DocumentReference.prototype.delete = async function (...args) {
+    if (this.path !== path) return original.apply(this, args);
+    DocumentReference.prototype.delete = original;
+    throw lostConnection();
+  };
+  try {
+    return await run();
+  } finally {
+    DocumentReference.prototype.delete = original;
+  }
+}
+
+/** Runs deleteAccount's handler for `uid`, signed in just now, on `firestore`. */
+function deleteAs(uid, firestore = db) {
+  return deleteAccountHandler({
+    auth: { uid, token: { auth_time: 1_000_000 } },
+    db: firestore,
+    adminAuth: auth,
+    now: () => 1_000_000 * 1000,
+    logger: { error() {}, warn() {} },
+  });
+}
+
+// Two friends deleting their accounts at about the same time, each stopping partway: whichever
+// reaches its chats step first, with the other's marker written and their UID still in uids.
+for (const lowerFirst of [true, false]) {
+  test(`two friends deleting together, both stopping partway, leave nothing of their chat (${lowerFirst ? "lower" : "higher"} UID first, #429)`, async () => {
+    const one = await seedUser("student@epfl.ch", { accountType: "student" });
+    const two = await seedUser("other@epfl.ch", { accountType: "student" });
+    const [first, second] = (one < two) === lowerFirst ? [one, two] : [two, one];
+    const createdAt = new Date("2026-11-13T10:00:00Z");
+    const theirs = await seedChat(first, second, {
+      fromFirst: { senderId: first, text: "Fictional plan", createdAt },
+      fromSecond: { senderId: second, text: "Fictional reply", createdAt },
+    });
+    const firstKept = await seedChat(first, "fictional-third", {
+      a: { senderId: first, text: "Fictional note", createdAt },
+    });
+    const secondKept = await seedChat(second, "fictional-third", {
+      b: { senderId: second, text: "Fictional note", createdAt },
+    });
+    for (const owner of [first, second]) {
+      await db.doc(`users/${owner}/hiddenChats/${theirs.id}`).set({ hiddenUpTo: createdAt });
+    }
+
+    // Both stop right after writing their deletion marker.
+    await assert.rejects(deleteAs(first, failingCollectionGroup("attendees")), { code: "unavailable" });
+    await assert.rejects(deleteAs(second, failingCollectionGroup("attendees")), { code: "unavailable" });
+    // The first retries and stops between their chat's messages and the chat: still listed.
+    await assert.rejects(withFailingDelete(theirs.path, () => deleteAs(first)), { code: "unavailable" });
+    assert.deepEqual((await theirs.get()).get("uids"), [first, second].sort());
+    assert.deepEqual(await idsIn(`${theirs.path}/messages`), []);
+
+    // The second's retry deletes the chat; the first's then finds nothing left of it.
+    assert.deepEqual(await deleteAs(second), { deleted: true });
+    assert.equal(await documentExists(theirs.path), false);
+    assert.deepEqual(await deleteAs(first), { deleted: true });
+
+    for (const [chat, id] of [[firstKept, "a"], [secondKept, "b"]]) {
+      assert.deepEqual((await chat.get()).data(), { uids: ["fictional-third"] });
+      assert.equal((await chat.collection("messages").doc(id).get()).get("senderId"), "");
+    }
+    for (const uid of [first, second]) {
+      assert.deepEqual(await idsIn(`users/${uid}/hiddenChats`), []);
+      assert.equal(await authUserExists(uid), false);
+    }
+  });
+}
+
+test("a deletion stopped after its chats step leaves nothing once the friend deletes too (#429)", async () => {
+  const uid = await seedUser("student@epfl.ch", { accountType: "student" });
+  const friend = await seedUser("other@epfl.ch", { accountType: "student" });
+  const createdAt = new Date("2026-11-13T10:00:00Z");
+  const chat = await seedChat(uid, friend, {
+    mine: { senderId: uid, text: "Fictional plan", createdAt },
+    theirs: { senderId: friend, text: "Fictional reply", createdAt },
+  });
+
+  // The student leaves the chat, then stops at the messages step: their message still names them.
+  await assert.rejects(deleteAs(uid, failingCollectionGroup("messages")), { code: "unavailable" });
+  assert.deepEqual((await chat.get()).get("uids"), [friend]);
+  assert.equal((await chat.collection("messages").doc("mine").get()).get("senderId"), uid);
+  // The friend's deletion finds nobody else left, deletes the messages, then stops before the chat.
+  await assert.rejects(withFailingDelete(chat.path, () => deleteAs(friend)), { code: "unavailable" });
+  assert.deepEqual((await chat.get()).get("uids"), [friend]);
+  assert.deepEqual(await idsIn(`${chat.path}/messages`), []);
+
+  // Both retries finish: the student's has no message left to rewrite, the friend's deletes the chat.
+  assert.deepEqual(await deleteAs(uid), { deleted: true });
+  assert.deepEqual(await deleteAs(friend), { deleted: true });
+  assert.equal(await documentExists(chat.path), false);
+  assert.equal((await db.collectionGroup("messages").get()).size, 0);
+  assert.equal(await authUserExists(uid), false);
+  assert.equal(await authUserExists(friend), false);
 });
 
 test("an account without a profile is deleted", async () => {
