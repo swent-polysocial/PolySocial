@@ -18,7 +18,6 @@ import com.polysocial.model.event.toFirestoreMap
 import com.polysocial.model.group.GROUPS_COLLECTION
 import com.polysocial.model.group.GROUP_CAPACITY
 import java.time.Instant
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
@@ -75,26 +74,14 @@ class FirestoreMessageRepositoryEmulatorTest {
 
   /** The group's chat, as the server first reports it through the repository. */
   private suspend fun chat(): MessagesResult =
-      withTimeout(TIMEOUT_MS) {
-        repository.observeMessages(EVENT, GROUP).first {
-          it !is MessagesResult.Loading && (it !is MessagesResult.Success || !it.fromCache)
-        }
-      }
+      repository.observeMessages(EVENT, GROUP).firstFromServer()
 
   /** The group's latest message, as the server first reports it through the repository. */
   private suspend fun latest(): LatestMessageResult =
-      withTimeout(TIMEOUT_MS) {
-        repository.observeLatestMessage(EVENT, GROUP).first {
-          it !is LatestMessageResult.Loading &&
-              (it !is LatestMessageResult.Success || !it.fromCache)
-        }
-      }
+      repository.observeLatestMessage(EVENT, GROUP).firstFromServer()
 
-  private suspend fun messages(): List<Message> {
-    val result = chat()
-    assertTrue("Expected messages, got $result", result is MessagesResult.Success)
-    return (result as MessagesResult.Success).messages
-  }
+  private suspend fun messages(): List<Message> =
+      repository.observeMessages(EVENT, GROUP).messagesFromServer()
 
   private suspend fun send(text: String) =
       withTimeout(TIMEOUT_MS) { repository.sendMessage(EVENT, GROUP, text) }
