@@ -2,7 +2,8 @@
 // event and account, #275; an event written again keeps its registrations, after review.
 // Contributors: Claude (Opus 5.5, Anthropic) tested the attendeeCount an account deletion lowers,
 // #405.
-// Contributors: Claude (Opus 5.5, Anthropic) moved the fakes to testing/fakeFirestore.js, #382.
+// Contributors: Claude (Opus 5.5, Anthropic) moved the fakes to testing/fakeFirestore.js, #382;
+// an event re-created by someone else loses its registrations, after review.
 "use strict";
 
 // Unit tests with fakes, no emulator: node firebase/functions/registrations.test.js
@@ -16,6 +17,9 @@ const {
   deleteUserRegistrations,
 } = require("./registrations");
 const { backendError, fakeFirestore, fakeLogger } = require("./testing/fakeFirestore");
+
+/** The deleted event's data, as the trigger gets it: its organizer's UID. */
+const DELETED = { createdBy: "organizer" };
 
 test("the trigger runs in a region Eventarc serves for Firestore's eur3", () => {
   assert.ok(["europe-west1", "europe-west4"].includes(TRIGGER_REGION));
@@ -92,28 +96,58 @@ test("a failure without a code logs a null code", async () => {
   assert.deepEqual(logs, [["error", "deleteEventRegistrations failed", { code: null }]]);
 });
 
-// The demo seed script deletes its events and writes them back under the same IDs, with new
-// registrations, before this trigger may run.
-test("an event written again before the trigger runs keeps its registrations", async () => {
-  const { db, documents, state } = fakeFirestore(["events/e1", "events/e1/attendees/u1"]);
+// The demo seed script deletes its events and writes them back under the same IDs, with the same
+// organizers and new registrations, before this trigger may run.
+test("an event its organizer wrote again before the trigger runs keeps its registrations", async () => {
+  const paths = ["events/e1", "events/e1/attendees/u1"];
+  const { db, documents, state } = fakeFirestore(paths, {}, { "events/e1": DELETED });
 
-  await deleteRegistrationsOfDeletedEvent({ eventId: "e1", db, logger: fakeLogger().logger });
+  await deleteRegistrationsOfDeletedEvent({
+    eventId: "e1",
+    deleted: DELETED,
+    db,
+    logger: fakeLogger().logger,
+  });
 
-  assert.deepEqual([...documents], ["events/e1", "events/e1/attendees/u1"]);
+  assert.deepEqual([...documents], paths);
   assert.equal(state.commits, 0);
 });
 
-test("an event written again while deleting keeps the registrations written with it", async () => {
+// A client chooses an event's ID, and the rules make its createdBy the creator's UID.
+test("an event another student created again under its ID still loses its registrations", async () => {
+  const { db, documents } = fakeFirestore(
+    ["events/e1", "events/e1/attendees/u1", "events/e1/attendees/u2"],
+    {},
+    { "events/e1": { createdBy: "another-student" } },
+  );
+
+  await deleteRegistrationsOfDeletedEvent({
+    eventId: "e1",
+    deleted: DELETED,
+    db,
+    logger: fakeLogger().logger,
+  });
+
+  assert.deepEqual([...documents], ["events/e1"]);
+});
+
+test("an event its organizer wrote again while deleting keeps the registrations written with it", async () => {
   const count = MAX_BATCH_WRITES + 1;
   const paths = Array.from({ length: count }, (_, i) => `events/e1/attendees/old${i}`);
   const { db, documents, state } = fakeFirestore(paths);
   state.onCommit = (stored) => {
     state.onCommit = null;
     stored.add("events/e1");
+    state.fields.set("events/e1", DELETED);
     stored.add("events/e1/attendees/new");
   };
 
-  await deleteRegistrationsOfDeletedEvent({ eventId: "e1", db, logger: fakeLogger().logger });
+  await deleteRegistrationsOfDeletedEvent({
+    eventId: "e1",
+    deleted: DELETED,
+    db,
+    logger: fakeLogger().logger,
+  });
 
   // The first batch went before the event came back; the rest now belongs to the new event.
   assert.equal(state.commits, 1);

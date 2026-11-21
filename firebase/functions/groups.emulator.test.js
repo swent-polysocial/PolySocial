@@ -3,7 +3,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (an account deletion emptying a group, with the
 // triggers on, as a tester, #382).
 // Contributors: Claude (Opus 5.5, Anthropic) (a group started again under its ID loses its old
-// chat, after review, #382).
+// chat, and an event re-created by someone else everything under it, after review, #382).
 "use strict";
 
 // Deletes events and groups in the Firestore emulator and waits for the deleteEventGroups and
@@ -154,6 +154,19 @@ test("an event written again under its ID keeps its new groups and markers", asy
   for (const path of ["groups/g1", "groupMembers/u2"]) {
     assert.ok(left.includes(`events/again/${path}`), `events/again/${path} was deleted`);
   }
+});
+
+// A client chooses an event's ID, and the rules make its createdBy the creator's UID: an event
+// another student creates under a cancelled event's ID must not keep what was under it.
+test("an event another student created again under its ID still loses everything under it", async () => {
+  await seedEvent("taken", { g1: { members: ["u1", "u2"], messages: 1 } });
+  const db = database();
+
+  await db.doc("events/taken").delete();
+  await db.doc("events/taken").set({ title: "Fictional party", createdBy: "another-student" });
+
+  await waitFor(() => stored("events/taken/"), []);
+  assert.equal((await db.doc("events/taken").get()).get("createdBy"), "another-student");
 });
 
 // A client chooses the ID of a group it starts: one started under a just-emptied group's ID must

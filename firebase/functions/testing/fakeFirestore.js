@@ -1,6 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the fake Firestore of the registrations'
 // tests, #275 and #405; moved here and made to hold documents at any depth for the deleted
-// groups' tests, #382.
+// groups' tests, #382, and other fields for the event's creator, after review.
 "use strict";
 
 // Fakes shared by the Cloud Functions' unit tests (no emulator). This folder isn't deployed
@@ -16,7 +16,8 @@ function backendError(code) {
 /**
  * A fake Firestore holding documents as paths, at any depth (`events/{eventId}`,
  * `events/{eventId}/attendees/{uid}`, `events/{eventId}/groups/{groupId}/messages/{id}`…), with
- * each event's `attendeeCount` in `counts` (by path, absent when the event has none). It answers a
+ * each event's `attendeeCount` in `counts` (by path, absent when the event has none) and any other
+ * field read in `fields` (by path, such as `{ createdBy: "organizer" }`). It answers a
  * collection's documents (its direct children only) and the collection-group query on the
  * attendees' `uid`, with `limit`, and runs batches and transactions (reading a document, a query,
  * or several documents with `getAll`) whose deletes and updates apply together at commit.
@@ -24,7 +25,7 @@ function backendError(code) {
  * `onCommit` runs after each commit, and `onTransaction` before each transaction's reads, to write
  * in between.
  */
-function fakeFirestore(paths, counts = {}) {
+function fakeFirestore(paths, counts = {}, fields = {}) {
   const documents = new Set(paths);
   const state = {
     commits: 0,
@@ -32,6 +33,7 @@ function fakeFirestore(paths, counts = {}) {
     onCommit: null,
     onTransaction: null,
     counts: new Map(Object.entries(counts)),
+    fields: new Map(Object.entries(fields)),
   };
   const depth = (path) => path.split("/").length;
   const docRef = (path) => ({
@@ -43,7 +45,8 @@ function fakeFirestore(paths, counts = {}) {
   });
   const snapshot = (path) => ({
     exists: documents.has(path),
-    get: (field) => (field === "attendeeCount" ? state.counts.get(path) : undefined),
+    get: (field) =>
+      field === "attendeeCount" ? state.counts.get(path) : state.fields.get(path)?.[field],
   });
   const uidOf = (path) => path.split("/")[3];
   const query = (matches, max = Infinity) => ({

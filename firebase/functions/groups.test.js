@@ -3,7 +3,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (the deletion triggers' deploy manifest, as a tester,
 // #382).
 // Contributors: Claude (Opus 5.5, Anthropic) (a group started again under its ID loses its old
-// chat, after review, #382).
+// chat, and an event re-created by someone else its groups, after review, #382).
 "use strict";
 
 // Unit tests with fakes, no emulator: node firebase/functions/groups.test.js
@@ -12,6 +12,9 @@ const assert = require("node:assert/strict");
 const { deleteGroupsOfDeletedEvent, deleteMessagesOfDeletedGroup } = require("./groups");
 const { MAX_BATCH_WRITES, TRIGGER_REGION } = require("./registrations");
 const { backendError, fakeFirestore, fakeLogger } = require("./testing/fakeFirestore");
+
+/** The deleted event's data, as the trigger gets it: its organizer's UID. */
+const DELETED = { createdBy: "organizer" };
 
 /** The group whose deletion most tests run deleteGroupMessages for. */
 const G1 = { eventId: "e1", groupId: "g1" };
@@ -100,19 +103,34 @@ test("a failure midway is thrown again, logs only its code, and the retry finish
   assert.equal(documents.size, 0);
 });
 
-// The demo seed script deletes its events and writes them back under the same IDs, with their
-// groups and markers, before this trigger may run.
-test("an event written again before the trigger runs keeps its groups and markers", async () => {
+// The demo seed script deletes its events and writes them back under the same IDs, with the same
+// organizers, groups and markers, before this trigger may run.
+test("an event its organizer wrote again before the trigger runs keeps its groups and markers", async () => {
   const paths = ["events/e1", "events/e1/groups/g1", "events/e1/groupMembers/u1"];
-  const { db, documents, state } = fakeFirestore(paths);
+  const { db, documents, state } = fakeFirestore(paths, {}, { "events/e1": DELETED });
 
-  await deleteGroupsOfDeletedEvent({ eventId: "e1", db, logger: fakeLogger().logger });
+  const { logger } = fakeLogger();
+  await deleteGroupsOfDeletedEvent({ eventId: "e1", deleted: DELETED, db, logger });
 
   assert.deepEqual([...documents], paths);
   assert.equal(state.commits, 0);
 });
 
-test("an event written again while deleting keeps the groups and markers written with it", async () => {
+// A client chooses an event's ID, and the rules make its createdBy the creator's UID.
+test("an event another student created again under its ID still loses its groups and markers", async () => {
+  const { db, documents } = fakeFirestore(
+    ["events/e1", "events/e1/groups/g1", "events/e1/groupMembers/u1"],
+    {},
+    { "events/e1": { createdBy: "another-student" } },
+  );
+
+  const { logger } = fakeLogger();
+  await deleteGroupsOfDeletedEvent({ eventId: "e1", deleted: DELETED, db, logger });
+
+  assert.deepEqual([...documents], ["events/e1"]);
+});
+
+test("an event its organizer wrote again while deleting keeps the groups and markers written with it", async () => {
   const { db, documents, state } = fakeFirestore([
     ...numbered("events/e1/groups/old", MAX_BATCH_WRITES + 1),
     "events/e1/groupMembers/old",
@@ -120,11 +138,13 @@ test("an event written again while deleting keeps the groups and markers written
   state.onCommit = (stored) => {
     state.onCommit = null;
     stored.add("events/e1");
+    state.fields.set("events/e1", DELETED);
     stored.add("events/e1/groups/new");
     stored.add("events/e1/groupMembers/new");
   };
 
-  await deleteGroupsOfDeletedEvent({ eventId: "e1", db, logger: fakeLogger().logger });
+  const { logger } = fakeLogger();
+  await deleteGroupsOfDeletedEvent({ eventId: "e1", deleted: DELETED, db, logger });
 
   // The first batch went before the event came back; the rest now belongs to the new event.
   assert.equal(state.commits, 1);
