@@ -1,6 +1,7 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (deleteAccount's one-to-one chats and delete-for-me markers step built, its steps listed in the code's order, and the messages step querying again for a message deleted meanwhile, #429). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the one-to-one chat's Security Rules built, #428). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (Log in's helper line dropped, #492). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (matching with the student's friends, built, #497). -->
 <!-- Contributors: OpenAI Codex (6.2 Sol, high; updated the Friends navigation and list architecture, #360). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (decision 21's Admin SDK side built, #405). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (decision 21's rules and repository built, and the capacity rows moved into the rules tests, #373). -->
@@ -264,7 +265,8 @@ flowchart TB
   classDef s1 fill:#d3f9d8,stroke:#2b8a3e,color:#000
 
   find["Find a group · group card<br/>#233, #244"]:::pb --> findVM["<b>FindGroupViewModel</b><br/>Loading · Loaded (offline, joining) · CouldNotLoad<br/>Joined / Started · Full · Offline · Error"]:::pb
-  findVM --> match["<b>Matching engine</b><br/><i>domain</i>, pure Kotlin, #231"]:::pb
+  findVM --> match["<b>Matching engine</b><br/><i>domain</i>, pure Kotlin, #231<br/>10 points per friend, built, #497"]:::pb
+  findVM --> friendRepo["<b>FriendRepository</b><br/>observeFriendships, built, #357"]:::s1
   findVM --> groups["<b>GroupRepository</b><br/>observeGroups · observeMyGroup<br/>createGroup · joinGroup · leaveGroup, #232<br/>observeMyGroups, built, #363"]:::pb
   findVM --> pub["<b>PublicProfileRepository</b><br/>getPublicProfile · getPublicProfiles<br/>by UID only, built, #229"]:::s1
   detailVM["<b>EventDetailViewModel</b><br/>group card: yourGroup, #233"]:::pb --> groups
@@ -275,6 +277,7 @@ flowchart TB
   chatList --> msgs
   groups --> fs[("Firestore<br/>events/{e}/groups · groupMembers")]:::ext
   pub --> fs2[("Firestore<br/>publicProfiles")]:::ext
+  friendRepo --> fs4[("Firestore<br/>friendships")]:::ext
   msgs --> fs3[("Firestore<br/>events/{e}/groups/{g}/messages")]:::ext
 ```
 
@@ -282,7 +285,8 @@ flowchart TB
 - **Joining and leaving touch only your own UID.** Join adds the student's UID to `memberUids`, leave removes it, and the last member to leave deletes the group; the trigger `deleteGroupMessages` then deletes its messages (#382). Cancelling the event deletes its groups and markers through the trigger `deleteEventGroups`, which sets off the same trigger for each group. The rules check `memberUids.size() <= capacity`, so the capacity needs no counter, and the client's **transaction** makes sure two students can't take the last place at the same time.
 - **One group per student per event:** the marker `events/{eventId}/groupMembers/{uid}` holds the student's `groupId`. It is created and deleted in the same transaction as the `memberUids` change, and the rules tie the two together with `getAfter`. Android transactions can't run queries, so the marker is how the transaction knows the student is already in a group.
 - **Who can join:** a student who can read the event. Requiring "I'm going" first is decided (#228) and built by #244, which also decides whether the rules check it. Associations never reach groups, messages or public profiles.
-- **Matching starts on the client.** The engine (#231) is a deterministic heuristic in a pure Kotlin module: given the student (section, year, interests) and the event's groups with their members' public profiles, it returns the open groups ranked, full groups left out, ties broken by a stable key. We revisit a Cloud Function only if fairness or cheating becomes a problem; the module would move unchanged.
+- **Matching starts on the client.** The engine (#231) is a deterministic heuristic in a pure Kotlin module: given the student (section, year, interests), their friends' UIDs and the event's groups with their members' public profiles, it returns the open groups ranked, full groups left out, ties broken by a stable key.
+- **Friends first (built, #497).** Each member who is one of the student's accepted friends adds 10 points, counted from `memberUids`, so a friend whose profile couldn't be read still counts; a member with two shared interests, the same section and the same year adds 9, so a group with a friend usually comes first. `FindGroupViewModel` takes the friends from the student's own friendships listener (#357), which the device already reads for public and private profiles alike, so there is no new data, rule or index; it ranks again when they change, never waits for them, ranks without friends while they can't be read and listens again once the device is back online. The card's first reason is "Your friend Marc" for one friend whose name could be read, otherwise "2 friends" (#496's frames); only the student sees it. Friends in common with members are not used (see section 7's open questions). We revisit a Cloud Function only if fairness or cheating becomes a problem; the module would move unchanged.
 - **Public profiles (#229):** `publicProfiles/{uid}` holds `displayName`, `section`, `year` and `interests` (codes from #230's fixed list of about ten), never the email. It is written in the same transaction as `users/{uid}`. Visibility, bio, photo and username are decided in #366 ([3.9](#39-profile-visibility-and-usernames-product-backlog-decided-in-366)).
 - **A member's public profile (built, #368):** on Your group, another member's row opens `Tab.studentProfileRoute` (`<tab>/student/{uid}`, in the same tab so Back returns to the group; the friends list will reuse it). `StudentProfileViewModel` reads `publicProfiles/{uid}` by UID only, once, with a 5 s timeout on the server read, then the cached profile if the device has one (a stalled connection takes Firestore about 10 s to notice; only a miss the server confirms is "not found"): Loading, the shared `StudentProfileCard` (also Scan a friend's code's card), Couldn't load with Retry, or Can't find this student (no Retry). Your own row and a "Profile unavailable" row don't open anything. No friend button there yet. No new data or rule: group members already see these fields.
 - **Chat (#237, #238):** each group has `messages` (`senderId`, `text` of 1 to 1000 characters, server-set `createdAt`). Only members read and send, each sender writes only their own messages, a deleted account can't send, and nobody edits or deletes one. Decided in #365 for both kinds of chat ([3.8](#38-one-to-one-chat-product-backlog-decided-in-365), not built yet): a sender unsends their own message while still a member (its text emptied, "This message was deleted" for all), and a member deletes the group chat from their own Chats list until a new message arrives or they leave the group. Sending is **refused offline** with Try again, like `createEvent`, rather than queued. A chat between two friends is not a group: it has its own collection, with the same message fields (#365, [3.8](#38-one-to-one-chat-product-backlog-decided-in-365)).
@@ -952,13 +956,15 @@ sequenceDiagram
   participant App as Event detail
   participant GR as GroupRepository
   participant PR as PublicProfileRepository
+  participant FR as FriendRepository
   participant ME as Matching engine
   S->>App: taps Find a group
   App->>GR: observeGroups(eventId)
+  App->>FR: observeFriendships() (never waited for)
   App->>PR: members' public profiles
-  App->>ME: rankGroups(me, groups)
+  App->>ME: rankGroups(me, groups, friends)
   ME-->>App: open groups, best fit first
-  App-->>S: groups and why each fits
+  App-->>S: groups and why each fits, friends first
   alt joins a group
     S->>App: Join
     App->>GR: joinGroup (transaction: marker + memberUids)
@@ -1229,7 +1235,7 @@ Every PR that changes rules follows the process in `AGENTS.md`: "Changes Securit
 
 - **Google sign-in (#106):** both entry buttons use Credential Manager through the auth repository. Invalid domains are rejected before Firebase account creation; Firebase validates the token and verified exact `@epfl.ch` identity before profile access. Firebase manages compatible account linking; the owner confirmed automatic linking for EPFL Google accounts through EPFL SSO. Use Firebase's returned UID without client-side linking or a dedicated collision flow.
 
-Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after review, and 5 and 11 revised on 2026-10-06; 15 added on 2026-10-28 (#201); 16 to 18 decided by the Sprint 4 PO on 2026-11-01 (#228); 19 added on 2026-11-11 (#210); 20 decided by the Sprint 5 PO on 2026-11-11 (#338); 21 decided by the Sprint 6 PO on 2026-11-14 (#372); 22 decided by the Sprint 6 PO on 2026-11-14 (#281); 12 revised by the Sprint 6 PO on 2026-11-14 and 2026-11-16 (#365); 24 decided on 2026-11-18 (#374); 15 and 16 extended on 2026-11-21 (#382). The issues are being updated to match.
+Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after review, and 5 and 11 revised on 2026-10-06; 15 added on 2026-10-28 (#201); 16 to 18 decided by the Sprint 4 PO on 2026-11-01 (#228); 19 added on 2026-11-11 (#210); 20 decided by the Sprint 5 PO on 2026-11-11 (#338); 21 decided by the Sprint 6 PO on 2026-11-14 (#372); 22 decided by the Sprint 6 PO on 2026-11-14 (#281); 12 revised by the Sprint 6 PO on 2026-11-14 and 2026-11-16 (#365); 24 decided on 2026-11-18 (#374); 15 and 16 extended on 2026-11-21 (#382); 6 extended on 2026-11-21 (#497). The issues are being updated to match.
 
 | # | Topic | Decision |
 |---|---|---|
@@ -1238,7 +1244,7 @@ Decided by the team on 2026-10-03, with 13 and 14 revised on 2026-10-04 after re
 | 3 | Profiles | Private `users` plus `publicProfiles`, with public or private visibility. Section, year and interests are always visible; what private hides is decision 23 |
 | 4 | Private events | `allowedUids` access list, checked by the rules |
 | 5 | Create Event entry | "+" button on the Events and Map tabs. Afterwards, an "Event created" confirmation with *View event* and *Back to map*, as in the Figma (changed on 2026-10-06) |
-| 6 | Matching | On the device: a pure module plus a Firestore transaction. Cloud Functions only if fairness or cheating becomes a problem |
+| 6 | Matching | On the device: a pure module plus a Firestore transaction. Cloud Functions only if fairness or cheating becomes a problem. Each member who is one of the student's accepted friends adds 10 points, from the student's own friendships, with no new data or rule (added on 2026-11-21, #497) |
 | 7 | Find my group | `events/{eventId}/groups/{groupId}/locations/{uid}`, only during the event, members only, deleted afterwards (path from decision 16) |
 | 8 | Reminders | Opt-in WorkManager reminder 1 h before the start; Android 13+ permission on first opt-in; Off, cancellation and logout remove unique work (#123) |
 | 9 | QR codes | CameraX + ML Kit to read; ZXing `core` to draw (#339, ML Kit can't). Typed `polysocial://checkin/…` and `polysocial://friend/…` payloads, pure parser |
@@ -1425,7 +1431,7 @@ Known limits:
 - **Logout/reminders (#109, #123):** confirm account-scoped reminder cancellation on logout and account deletion before another account enters; cache isolation is decided (#198, decision 15).
 - **Association account deletion (#201):** associations can't delete their own `users/{uid}` (#161), and the deletion flow refuses them with the privacy contact. Who deletes an association account, its `associations/{uid}` and its events, and how, is not decided.
 - **Year field values:** the profile step offers BA1–BA6 and MA1–MA4 under "Year" (as in Figma and #34), but these are EPFL semesters, and there is no option for exchange or PhD students. Rename to "Semester" and/or add options?
-- **Common friends in matching (#338, #366):** the friends lists from #366 let the device read a public student's friends, and a private student's only when the caller is their friend. Whether matching uses them, and how it treats private students, is decided with matching by friends.
+- **Friends in common in matching (#338, #366, #447):** matching uses the student's own friends since #497 (decision 6). Whether it also uses the friends they have in common with a group's members is open: the friends lists from #366 let the device read a public student's friends, and a private student's only when the caller is their friend, so it would also have to decide how to treat private students.
 - **Reporting and blocking (#376, proposal in section 3.11):** the team confirms or changes it in the review. Questions: (1) how long to keep a handled or unhandled report, which the privacy notice must then state (this proposes the admin deletes it once handled, and no other limit); (2) whether deleting an account should also delete the reports about it, or keep them for the admins (this proposes deleting, erasure first); (3) whether a blocked student should still be able to write in a group they share with the blocker (this proposes yes, the blocker just doesn't see it) or be avoided by matching; (4) whether the limits (1 message per second, 20 friend requests and 10 reports a day) are right; (5) whether the `rateLimits` batch pattern is worth one extra write per message, which the emulator prototype must show (a declined friend request can still be sent again, #338, until then).
 - **Organizer's name beyond #281:** decision 22 covers a student's public event only. Not decided: whether a private event's readers (or only its registered students) see its organizer's name.
 
