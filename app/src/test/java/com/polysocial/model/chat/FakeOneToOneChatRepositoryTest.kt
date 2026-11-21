@@ -224,6 +224,26 @@ class FakeOneToOneChatRepositoryTest {
   }
 
   @Test
+  fun sendsInDifferentChats_getServerTimesInTheirSendOrder() = runTest {
+    // The Chats tab orders the chats by their latest message's time.
+    befriend()
+    befriend("alice~carol")
+
+    repository.sendMessage(PAIR, "First")
+    repository.sendMessage("alice~carol", "Second")
+    repository.sendMessage(PAIR, "Third")
+
+    val times =
+        listOf(
+            repository.messagesOf(PAIR).first(),
+            repository.messagesOf("alice~carol").single(),
+            repository.messagesOf(PAIR).last(),
+        )
+    assertEquals(listOf("First", "Second", "Third"), times.map { it.text })
+    assertTrue(times.zipWithNext().all { (earlier, later) -> earlier.createdAt < later.createdAt })
+  }
+
+  @Test
   fun aBlankOrTooLongText_isInvalid_beforeAnyOtherCheck() = runTest {
     repository.currentUid = null
     repository.online = false
