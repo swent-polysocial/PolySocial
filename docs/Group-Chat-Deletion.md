@@ -1,4 +1,4 @@
-<!-- Contributors: Claude (Opus 5.5, Anthropic) (one-to-one chats and delete-for-me markers in account deletion, #429). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (one-to-one chats and delete-for-me markers in account deletion, and a message deleted meanwhile, #429). -->
 <!-- Contributors: Mehdi (@mehdifddl) selected retaining messages with anonymised authors on 2026-11-11; OpenAI Codex documented the implemented cleanup, retained data and deployment order for #241. -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) documented the deletion of a cancelled event's groups and of a deleted group's messages, its guards and known limits, #382. -->
 
@@ -13,7 +13,9 @@ backend step fails; Retry finishes remaining work. All reads/writes use the Admi
 
 The merged chat schema (#237) holds exactly `senderId`, `text` and `createdAt`.
 Cleanup queries the `messages` collection group on `senderId == uid` in batches of 500,
-replacing `senderId` with an empty string. This cannot identify an account and is the
+replacing `senderId` with an empty string. A batch that fails because one of its messages
+was deleted meanwhile (`NOT_FOUND`: a chat or group deleted with its messages, #429) is
+queried again; the same batch refused twice is a failure, so the step can't loop. This cannot identify an account and is the
 explicit deleted-author marker, shown as **Deleted account**. No copied author name or
 photo is stored in the schema. Text and server time remain unchanged. Messages in chats
 the student left, and below deleted groups/events, are included. No missing public
@@ -77,10 +79,10 @@ client-side batch was rejected: nested messages don't scale, and once the event 
 is gone no client can list what is under it. No rule changes: the Admin SDK bypasses
 them.
 
-Known limits: data left behind by events cancelled and groups emptied before the
+Known limit: data left behind by events cancelled and groups emptied before the
 triggers were deployed stays (a one-off sweep would be its own issue). An account deletion
-whose anonymising batch updates a message the trigger has just deleted fails with
-`NOT_FOUND`; Retry finishes it (#429 handles that case).
+whose anonymising batch updates a message the trigger has just deleted queries again
+(`NOT_FOUND`, #429, above).
 
 A deleted account's messages are still **anonymised, not deleted** (#382 keeps #241's
 decision, and #365 chose the same for one-to-one chats): they stay in the conversation
