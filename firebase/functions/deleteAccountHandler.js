@@ -7,7 +7,8 @@
 // Contributors: OpenAI Codex (retryable membership cleanup and message author removal before Auth deletion, #241).
 // Contributors: Claude (Fable 5.2, Anthropic) (errorCode shared with the unverified accounts cleanup, and REGION's KDoc for it, #226).
 // Contributors: Claude Opus 5.5 (the user's friendships, #357); Konstantinos Perdikeas (directed, reviewed and owns it).
-// Contributors: Claude (Opus 5.5, Anthropic) (the user's one-to-one chats and delete-for-me markers, #429).
+// Contributors: Claude (Opus 5.5, Anthropic) (the user's one-to-one chats and delete-for-me markers,
+// and the messages step querying again for a message deleted meanwhile, #429).
 
 const { HttpsError } = require("firebase-functions/v2/https");
 const { leaveUserChats } = require("./chats");
@@ -35,6 +36,8 @@ const DETAILS = Object.freeze({
 // gRPC status codes of a Firestore call worth retrying: DEADLINE_EXCEEDED, ABORTED (the
 // transaction lost to a concurrent write too many times) and UNAVAILABLE.
 const TRANSIENT_GRPC_CODES = new Set([4, 10, 14]);
+// gRPC NOT_FOUND: an update in a batch names a document that no longer exists.
+const NOT_FOUND = 5;
 // The same as strings, plus the Admin SDK's network errors and Node's socket errors.
 const TRANSIENT_CODES = new Set([
   "deadline-exceeded",
@@ -162,15 +165,28 @@ async function deleteGroupMemberships(db, uid, logger) {
  * createdAt; an empty senderId is the explicit deleted-author marker and cannot be a Firebase UID.
  * Client rules cannot create it, alter messages, or send after the deletion marker was written.
  * Repeating the bounded query finds only unfinished work after a failed batch or lost answer.
+ *
+ * A message deleted between the query and the batch (another deletion deleting a chat nobody is
+ * left in, or a group deleted with its chat) makes the whole batch fail with NOT_FOUND; the next
+ * query no longer returns it, so the step queries again. It can't loop forever: nothing can add a
+ * message from this UID any more, so between two refusals the query can only lose messages, and
+ * a batch refused twice with the same messages wasn't refused for a deleted one: that is a failure.
  */
 async function anonymiseMessages(db, uid) {
   const query = db.collectionGroup("messages").where("senderId", "==", uid).limit(MAX_BATCH_WRITES);
+  let refused = null;
   for (;;) {
     const snapshot = await query.get();
     if (snapshot.empty) return;
     const batch = db.batch();
     for (const message of snapshot.docs) batch.update(message.ref, { senderId: "" });
-    await batch.commit();
+    const paths = JSON.stringify(snapshot.docs.map((message) => message.ref.path));
+    try {
+      await batch.commit();
+    } catch (error) {
+      if (!error || error.code !== NOT_FOUND || paths === refused) throw error;
+      refused = paths;
+    }
   }
 }
 

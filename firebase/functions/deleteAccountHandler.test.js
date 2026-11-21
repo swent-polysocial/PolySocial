@@ -11,6 +11,8 @@
 // the chats, markers and other accounts' deletion markers in the fake, #429).
 // Contributors: Claude (Opus 5.5, Anthropic) (the fake's query limit, more chats than a page, and a
 // failure at every call followed by a retry, #429).
+// Contributors: Claude (Opus 5.5, Anthropic) (a message deleted while the messages step runs, and
+// malformed uids, after review, #429).
 
 // Unit tests with fakes, no emulator: node firebase/functions/deleteAccountHandler.test.js
 const { test } = require("node:test");
@@ -97,6 +99,7 @@ function fakeBackend({
   deletedUids = [],
   hidden = {},
   beforeChatRead = () => {},
+  beforeAnonymise = () => {},
 } = {}) {
   const calls = [];
   const fail = {};
@@ -257,6 +260,9 @@ function fakeBackend({
         async commit() {
           if (updates.length) {
             calls.push(`anonymise:${updates.length}`); failIfAsked("messages-write");
+            beforeAnonymise(state);
+            // As in Firestore, an update of a missing document fails the whole batch: NOT_FOUND.
+            if (updates.some(([path]) => !state.messages[path])) throw backendError(5);
             for (const [path, data] of updates) Object.assign(state.messages[path], data);
             return;
           }
@@ -1192,4 +1198,38 @@ test("a failure at any call, then a retry, ends as a deletion without failure", 
   assert.ok(!Object.values(clean.state.messages).some((message) => message.senderId === UID));
   assert.deepEqual(clean.state.messages[`${chatOf(UID, FRIEND)}/messages/unsent`], { senderId: "", text: "", createdAt: 1 });
   assert.equal(Object.keys(clean.state.hidden).length, 2);
+});
+
+test("a message deleted while the messages step runs doesn't fail the deletion", async () => {
+  // The friend's own deletion deletes a chat nobody is left in, between this step's query and its
+  // batch: the batch fails with NOT_FOUND, and the step queries again.
+  const chat = chatOf(UID, FRIEND);
+  const group = "events/e/groups/g/messages/m";
+  let deletedMeanwhile = false;
+  const backend = fakeBackend({
+    messages: { ...chatMessages(chat, { a: UID, b: UID }), [group]: { senderId: UID, text: "Plan", createdAt: 1 } },
+    beforeAnonymise(state) {
+      if (deletedMeanwhile) return;
+      deletedMeanwhile = true;
+      delete state.messages[`${chat}/messages/a`];
+      delete state.messages[`${chat}/messages/b`];
+    },
+  });
+  assert.deepEqual(await call(backend), { deleted: true });
+  assert.deepEqual(backend.logs, []);
+  assert.deepEqual(backend.state.messages, { [group]: { senderId: "", text: "Plan", createdAt: 1 } });
+  assert.deepEqual(backend.calls.filter((c) => c.startsWith("anonymise:")), ["anonymise:3", "anonymise:1"]);
+  assert.equal(backend.state.authUserExists, false);
+});
+
+test("a batch refused twice with the same messages is a failure, not an endless retry", async () => {
+  // NOT_FOUND although no message was deleted: querying again would return the same batch forever.
+  const path = "events/e/groups/g/messages/m";
+  const backend = fakeBackend({ messages: { [path]: { senderId: UID, text: "Plan", createdAt: 1 } } });
+  backend.fail["messages-write"] = { error: backendError(5) };
+  await assertHttpsError(call(backend), "internal", undefined);
+  assert.deepEqual(backend.calls.filter((c) => c.startsWith("anonymise:")), ["anonymise:1", "anonymise:1"]);
+  assert.deepEqual(backend.logs, [["error", "deleteAccount step failed", { step: "anonymise-messages", code: 5 }]]);
+  assert.equal(backend.state.messages[path].senderId, UID);
+  assert.equal(backend.state.authUserExists, true);
 });

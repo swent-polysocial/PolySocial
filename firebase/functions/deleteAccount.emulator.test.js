@@ -4,7 +4,8 @@
 // friendships, #357).
 // Contributors: Claude (Opus 5.5, Anthropic) (the attendeeCount the deletion lowers, #405).
 // Contributors: Claude (Opus 5.5, Anthropic) (the deletion triggers turned off while it runs, #382).
-// Contributors: Claude (Opus 5.5, Anthropic) (one-to-one chats and delete-for-me markers, #429).
+// Contributors: Claude (Opus 5.5, Anthropic) (one-to-one chats and delete-for-me markers, #429; a
+// message deleted while the messages step runs, after review, #429).
 // Contributors: Claude (Opus 5.5, Anthropic) (two accounts deleted together, stopping partway, #429).
 "use strict";
 // Contributors: OpenAI Codex (real membership cleanup and retryable message anonymisation, #241).
@@ -666,4 +667,43 @@ test("a malformed group list does not block account deletion or expose data in l
   assert.deepEqual((await group.get()).get("memberUids"), [42, "fictional-other"]);
   assert.equal(await authUserExists(uid), false);
   assert.equal(await documentExists(`events/shared/groupMembers/${uid}`), false);
+});
+
+test("a message deleted while the messages step rewrites it doesn't fail the deletion (#429)", async () => {
+  const uid = await seedUser("student@epfl.ch", { accountType: "student" });
+  const createdAt = new Date("2026-11-13T10:00:00Z");
+  const chat = await seedChat(uid, "fictional-friend", {
+    gone: { senderId: uid, text: "Fictional plan", createdAt },
+    kept: { senderId: uid, text: "Fictional note", createdAt },
+  });
+  // Another deletion deletes a message between the messages step's query and its batch: the batch
+  // is the handler's only one here, since the student has nothing else to delete in batches.
+  let deletedMeanwhile = false;
+  const racing = new Proxy(db, {
+    get(target, key) {
+      if (key === "batch") {
+        return () => {
+          const batch = target.batch();
+          const commit = batch.commit.bind(batch);
+          batch.commit = async () => {
+            if (!deletedMeanwhile) {
+              deletedMeanwhile = true;
+              await chat.collection("messages").doc("gone").delete();
+            }
+            return commit();
+          };
+          return batch;
+        };
+      }
+      const value = Reflect.get(target, key);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+
+  assert.deepEqual(await deleteAs(uid, racing), { deleted: true });
+
+  assert.equal(deletedMeanwhile, true);
+  assert.deepEqual(await idsIn(`${chat.path}/messages`), ["kept"]);
+  assert.equal((await chat.collection("messages").doc("kept").get()).get("senderId"), "");
+  assert.equal(await authUserExists(uid), false);
 });
