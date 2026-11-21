@@ -956,9 +956,10 @@ test("several chats are each decided on their own, other pairs' chats untouched"
 });
 
 test("a chat already cleaned by an earlier attempt is left as it is", async () => {
-  // An earlier attempt took the UID out of uids, then failed before Auth.
+  // An earlier attempt took the UID out of uids, then failed at the messages step: the student's
+  // message still names them, and this retry rewrites it without touching the chat.
   const chat = chatOf(UID, FRIEND);
-  const messages = chatMessages(chat, { a: "", b: FRIEND });
+  const messages = chatMessages(chat, { a: UID, b: FRIEND });
   const backend = fakeBackend({ chats: { [chat]: { uids: [FRIEND] } }, messages });
   assert.deepEqual(await call(backend), { deleted: true });
   assert.deepEqual(backend.state.chats, { [chat]: { uids: [FRIEND] } });
