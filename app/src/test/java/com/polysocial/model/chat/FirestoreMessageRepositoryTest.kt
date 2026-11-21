@@ -2,6 +2,8 @@
 // Contributors: OpenAI Codex (tested successful retry and conflicting message IDs, #238).
 // Contributors: Claude (Fable 5.2, Anthropic) (tests of a group's latest message, #363, with one
 // more from a test audit).
+// Contributors: Claude (Opus 5.5, Anthropic) (its Firestore mocks moved to FirestoreChatMocks.kt,
+// #428).
 package com.polysocial.model.chat
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -12,14 +14,9 @@ import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.DocumentSnapshot.ServerTimestampBehavior
-import com.google.firebase.firestore.EventListener
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
-import com.google.firebase.firestore.ListenerRegistration
-import com.google.firebase.firestore.MetadataChanges
-import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
-import com.google.firebase.firestore.SnapshotMetadata
 import com.google.firebase.firestore.Transaction
 import com.google.firebase.firestore.TransactionOptions
 import com.polysocial.model.auth.AuthUser
@@ -35,11 +32,8 @@ import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.async
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -89,13 +83,10 @@ class FirestoreMessageRepositoryTest {
         }
   }
 
-  private fun failed(code: FirebaseFirestoreException.Code) =
-      FirebaseFirestoreException("failed", code)
-
   private fun failTheWriteWith(code: FirebaseFirestoreException.Code) {
     every {
       db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<SendMessageResult>>())
-    } returns Tasks.forException(failed(code))
+    } returns Tasks.forException(firestoreFailure(code))
   }
 
   private fun verifyNoWrite() {
@@ -144,7 +135,7 @@ class FirestoreMessageRepositoryTest {
     every { transaction.get(newMessage) } returns existing
     every { existing.exists() } returns true
     every { newMessage.id } returns "retry-id"
-    every { existing.data } returns stored(STUDENT, "See you at 6?", timestamp(1L))
+    every { existing.data } returns storedMessage(STUDENT, "See you at 6?", timestamp(1L))
 
     assertEquals(
         SendMessageResult.Sent,
@@ -154,7 +145,7 @@ class FirestoreMessageRepositoryTest {
         SendMessageResult.UnexpectedError,
         repository.sendMessage(EVENT, GROUP, "Different message", "retry-id"),
     )
-    every { existing.data } returns stored("another-member", "See you at 6?", timestamp(1L))
+    every { existing.data } returns storedMessage("another-member", "See you at 6?", timestamp(1L))
     assertEquals(
         SendMessageResult.UnexpectedError,
         repository.sendMessage(EVENT, GROUP, "See you at 6?", "retry-id"),
@@ -288,41 +279,12 @@ class FirestoreMessageRepositoryTest {
 
   // observeMessages
 
-  private val ordered = mockk<Query>()
-  private val registration = mockk<ListenerRegistration>(relaxed = true)
-  private val listener = slot<EventListener<QuerySnapshot>>()
+  private val listeners = MockedChatListeners()
 
   /** Stubs exactly the query observeMessages must build, so any other query fails the test. */
-  private fun stubMessagesListener() {
-    every { messages.orderBy(MESSAGE_CREATED_AT) } returns ordered
-    every { ordered.addSnapshotListener(MetadataChanges.INCLUDE, capture(listener)) } returns
-        registration
-  }
+  private fun stubMessagesListener() = listeners.onMessagesInServerOrder(messages)
 
   private fun timestamp(seconds: Long) = Timestamp(seconds, 0)
-
-  private fun stored(senderId: String, text: String, createdAt: Any?) =
-      mapOf("senderId" to senderId, "text" to text, "createdAt" to createdAt)
-
-  /**
-   * A message document that answers only a read with [ServerTimestampBehavior.ESTIMATE], so a test
-   * fails if the repository reads it any other way.
-   */
-  private fun document(id: String, data: Map<String, Any?>) =
-      mockk<DocumentSnapshot>().also {
-        every { it.id } returns id
-        every { it.getData(ServerTimestampBehavior.ESTIMATE) } returns data
-      }
-
-  private fun messagesSnapshot(vararg documents: DocumentSnapshot, fromCache: Boolean = false) =
-      mockk<QuerySnapshot>().also {
-        every { it.documents } returns documents.toList()
-        every { it.metadata } returns
-            mockk<SnapshotMetadata>().also { m -> every { m.isFromCache } returns fromCache }
-      }
-
-  private fun <T> TestScope.collect(flow: Flow<T>) =
-      async(UnconfinedTestDispatcher(testScheduler)) { flow.toList() }
 
   @Test
   fun observeMessages_emitsLoadingThenTheMessagesInTheQuerysServerTimeOrder() = runTest {
@@ -334,17 +296,20 @@ class FirestoreMessageRepositoryTest {
         }
 
     // Firestore returns them ordered by createdAt, then by document ID for equal times.
-    listener.captured.onEvent(
-        messagesSnapshot(
-            document("a", stored("other", "Hi all", timestamp(1_900_000_000L))),
-            document("b", stored(STUDENT, "Hello", timestamp(1_900_000_000L))),
-            document("broken", mapOf("text" to "No sender", "createdAt" to timestamp(1L))),
-            document("c", stored("other", "See you at 6?", timestamp(1_900_000_100L))),
+    listeners.last.onEvent(
+        querySnapshot(
+            messageDocument("a", storedMessage("other", "Hi all", timestamp(1_900_000_000L))),
+            messageDocument("b", storedMessage(STUDENT, "Hello", timestamp(1_900_000_000L))),
+            messageDocument("broken", mapOf("text" to "No sender", "createdAt" to timestamp(1L))),
+            messageDocument(
+                "c",
+                storedMessage("other", "See you at 6?", timestamp(1_900_000_100L)),
+            ),
             fromCache = true,
         ),
         null,
     )
-    listener.captured.onEvent(messagesSnapshot(), null)
+    listeners.last.onEvent(querySnapshot(), null)
     collecting.cancel()
 
     assertEquals(
@@ -362,7 +327,7 @@ class FirestoreMessageRepositoryTest {
         ),
         results,
     )
-    verify { registration.remove() }
+    verify { listeners.registration.remove() }
   }
 
   @Test
@@ -372,16 +337,16 @@ class FirestoreMessageRepositoryTest {
         mockk<DocumentSnapshot>().also {
           every { it.id } returns "pending"
           // Without ESTIMATE, a server time that hasn't arrived yet reads as null.
-          every { it.data } returns stored(STUDENT, "On my way", null)
+          every { it.data } returns storedMessage(STUDENT, "On my way", null)
           every { it.getData(ServerTimestampBehavior.NONE) } returns
-              stored(STUDENT, "On my way", null)
+              storedMessage(STUDENT, "On my way", null)
           every { it.getData(ServerTimestampBehavior.ESTIMATE) } returns
-              stored(STUDENT, "On my way", timestamp(1_900_000_200L))
+              storedMessage(STUDENT, "On my way", timestamp(1_900_000_200L))
         }
-    val results = collect(repository.observeMessages(EVENT, GROUP))
+    val results = collectAll(repository.observeMessages(EVENT, GROUP))
 
-    listener.captured.onEvent(messagesSnapshot(pending), null)
-    listener.captured.onEvent(null, failed(FirebaseFirestoreException.Code.UNAVAILABLE))
+    listeners.last.onEvent(querySnapshot(pending), null)
+    listeners.last.onEvent(null, firestoreFailure(FirebaseFirestoreException.Code.UNAVAILABLE))
 
     assertEquals(
         listOf(
@@ -401,24 +366,27 @@ class FirestoreMessageRepositoryTest {
   @Test
   fun observeMessages_anUnreachableServer_isANetworkErrorAndEndsTheFlow() = runTest {
     stubMessagesListener()
-    val results = collect(repository.observeMessages(EVENT, GROUP))
+    val results = collectAll(repository.observeMessages(EVENT, GROUP))
 
-    listener.captured.onEvent(null, failed(FirebaseFirestoreException.Code.UNAVAILABLE))
+    listeners.last.onEvent(null, firestoreFailure(FirebaseFirestoreException.Code.UNAVAILABLE))
 
     assertEquals(listOf(MessagesResult.Loading, MessagesResult.NetworkError), results.await())
-    verify { registration.remove() }
+    verify { listeners.registration.remove() }
   }
 
   @Test
   fun observeMessages_aDeniedListener_isAnUnexpectedErrorAndRemovesTheListener() = runTest {
     // For example a student who isn't a member of the group, or who left it and the chat changed.
     stubMessagesListener()
-    val results = collect(repository.observeMessages(EVENT, GROUP))
+    val results = collectAll(repository.observeMessages(EVENT, GROUP))
 
-    listener.captured.onEvent(null, failed(FirebaseFirestoreException.Code.PERMISSION_DENIED))
+    listeners.last.onEvent(
+        null,
+        firestoreFailure(FirebaseFirestoreException.Code.PERMISSION_DENIED),
+    )
 
     assertEquals(listOf(MessagesResult.Loading, MessagesResult.UnexpectedError), results.await())
-    verify { registration.remove() }
+    verify { listeners.registration.remove() }
   }
 
   @Test
@@ -433,23 +401,27 @@ class FirestoreMessageRepositoryTest {
         if (results.size == 1) release.await()
       }
     }
-    val snapshot = messagesSnapshot(document("a", stored("other", "Hi", timestamp(1_900_000_000L))))
+    val snapshot =
+        querySnapshot(messageDocument("a", storedMessage("other", "Hi", timestamp(1_900_000_000L))))
 
-    repeat(200) { listener.captured.onEvent(snapshot, null) }
-    listener.captured.onEvent(null, failed(FirebaseFirestoreException.Code.PERMISSION_DENIED))
+    repeat(200) { listeners.last.onEvent(snapshot, null) }
+    listeners.last.onEvent(
+        null,
+        firestoreFailure(FirebaseFirestoreException.Code.PERMISSION_DENIED),
+    )
     release.complete(Unit)
     advanceUntilIdle()
 
     assertEquals(listOf(MessagesResult.Loading, MessagesResult.UnexpectedError), results)
-    verify { registration.remove() }
+    verify { listeners.registration.remove() }
   }
 
   @Test
   fun observeMessages_aNullSnapshotWithoutAnError_isAnUnexpectedError() = runTest {
     stubMessagesListener()
-    val results = collect(repository.observeMessages(EVENT, GROUP))
+    val results = collectAll(repository.observeMessages(EVENT, GROUP))
 
-    listener.captured.onEvent(null, null)
+    listeners.last.onEvent(null, null)
 
     assertEquals(listOf(MessagesResult.Loading, MessagesResult.UnexpectedError), results.await())
   }
@@ -461,9 +433,9 @@ class FirestoreMessageRepositoryTest {
         mockk<QuerySnapshot>().also {
           every { it.documents } throws IllegalStateException("terminated")
         }
-    val results = collect(repository.observeMessages(EVENT, GROUP))
+    val results = collectAll(repository.observeMessages(EVENT, GROUP))
 
-    listener.captured.onEvent(unreadable, null)
+    listeners.last.onEvent(unreadable, null)
 
     assertEquals(listOf(MessagesResult.Loading, MessagesResult.UnexpectedError), results.await())
   }
@@ -506,16 +478,8 @@ class FirestoreMessageRepositoryTest {
 
   // observeLatestMessage
 
-  private val newestFirst = mockk<Query>()
-  private val newestOnly = mockk<Query>()
-
   /** Stubs exactly the query observeLatestMessage must build, so any other query fails the test. */
-  private fun stubLatestMessageListener() {
-    every { messages.orderBy(MESSAGE_CREATED_AT, Query.Direction.DESCENDING) } returns newestFirst
-    every { newestFirst.limit(1) } returns newestOnly
-    every { newestOnly.addSnapshotListener(MetadataChanges.INCLUDE, capture(listener)) } returns
-        registration
-  }
+  private fun stubLatestMessageListener() = listeners.onNewestMessage(messages)
 
   @Test
   fun observeLatestMessage_readsOnlyTheNewestMessage_orNoneYet() = runTest {
@@ -525,11 +489,12 @@ class FirestoreMessageRepositoryTest {
         launch(UnconfinedTestDispatcher(testScheduler)) {
           repository.observeLatestMessage(EVENT, GROUP).collect { results += it }
         }
-    val newest = document("c", stored("other", "See you at 6?", timestamp(1_900_000_100L)))
+    val newest =
+        messageDocument("c", storedMessage("other", "See you at 6?", timestamp(1_900_000_100L)))
 
-    listener.captured.onEvent(messagesSnapshot(fromCache = true), null)
-    listener.captured.onEvent(messagesSnapshot(newest, fromCache = true), null)
-    listener.captured.onEvent(messagesSnapshot(newest), null)
+    listeners.last.onEvent(querySnapshot(fromCache = true), null)
+    listeners.last.onEvent(querySnapshot(newest, fromCache = true), null)
+    listeners.last.onEvent(querySnapshot(newest), null)
     collecting.cancel()
 
     val message = Message("c", "other", "See you at 6?", Instant.ofEpochSecond(1_900_000_100L))
@@ -542,19 +507,19 @@ class FirestoreMessageRepositoryTest {
         ),
         results,
     )
-    verify { registration.remove() }
+    verify { listeners.registration.remove() }
   }
 
   @Test
   fun observeLatestMessage_aNewestMessageThatCannotBeRead_isNoMessage() = runTest {
     stubLatestMessageListener()
-    val results = collect(repository.observeLatestMessage(EVENT, GROUP))
+    val results = collectAll(repository.observeLatestMessage(EVENT, GROUP))
 
-    listener.captured.onEvent(
-        messagesSnapshot(document("broken", mapOf("text" to "No sender or time"))),
+    listeners.last.onEvent(
+        querySnapshot(messageDocument("broken", mapOf("text" to "No sender or time"))),
         null,
     )
-    listener.captured.onEvent(null, failed(FirebaseFirestoreException.Code.UNAVAILABLE))
+    listeners.last.onEvent(null, firestoreFailure(FirebaseFirestoreException.Code.UNAVAILABLE))
 
     assertEquals(
         listOf(
@@ -569,19 +534,19 @@ class FirestoreMessageRepositoryTest {
   @Test
   fun observeLatestMessage_aDeletedAccountsMessage_isStillTheLatest_withoutASender() = runTest {
     stubLatestMessageListener()
-    val results = collect(repository.observeLatestMessage(EVENT, GROUP))
+    val results = collectAll(repository.observeLatestMessage(EVENT, GROUP))
 
     // Account cleanup keeps a message's text and time and empties its senderId (#241).
-    listener.captured.onEvent(
-        messagesSnapshot(
-            document(
+    listeners.last.onEvent(
+        querySnapshot(
+            messageDocument(
                 "kept",
-                stored(DELETED_MESSAGE_SENDER, "See you at 6?", timestamp(1_900_000_100L)),
+                storedMessage(DELETED_MESSAGE_SENDER, "See you at 6?", timestamp(1_900_000_100L)),
             )
         ),
         null,
     )
-    listener.captured.onEvent(null, failed(FirebaseFirestoreException.Code.UNAVAILABLE))
+    listeners.last.onEvent(null, firestoreFailure(FirebaseFirestoreException.Code.UNAVAILABLE))
 
     assertEquals(
         listOf(
@@ -604,13 +569,19 @@ class FirestoreMessageRepositoryTest {
   @Test
   fun observeLatestMessage_failures_endTheFlowWithTheirOwnErrorAndRemoveTheListener() = runTest {
     stubLatestMessageListener()
-    val offline = collect(repository.observeLatestMessage(EVENT, GROUP))
-    listener.captured.onEvent(null, failed(FirebaseFirestoreException.Code.DEADLINE_EXCEEDED))
+    val offline = collectAll(repository.observeLatestMessage(EVENT, GROUP))
+    listeners.last.onEvent(
+        null,
+        firestoreFailure(FirebaseFirestoreException.Code.DEADLINE_EXCEEDED),
+    )
     // For example a student who isn't in the group, or a deleted account still listed in it.
-    val denied = collect(repository.observeLatestMessage(EVENT, GROUP))
-    listener.captured.onEvent(null, failed(FirebaseFirestoreException.Code.PERMISSION_DENIED))
-    val unreadable = collect(repository.observeLatestMessage(EVENT, GROUP))
-    listener.captured.onEvent(
+    val denied = collectAll(repository.observeLatestMessage(EVENT, GROUP))
+    listeners.last.onEvent(
+        null,
+        firestoreFailure(FirebaseFirestoreException.Code.PERMISSION_DENIED),
+    )
+    val unreadable = collectAll(repository.observeLatestMessage(EVENT, GROUP))
+    listeners.last.onEvent(
         mockk<QuerySnapshot>().also {
           every { it.documents } throws IllegalStateException("terminated")
         },
@@ -624,7 +595,7 @@ class FirestoreMessageRepositoryTest {
     val unexpected = listOf(LatestMessageResult.Loading, LatestMessageResult.UnexpectedError)
     assertEquals(unexpected, denied.await())
     assertEquals(unexpected, unreadable.await())
-    verify(exactly = 3) { registration.remove() }
+    verify(exactly = 3) { listeners.registration.remove() }
   }
 
   @Test
