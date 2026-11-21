@@ -25,6 +25,8 @@
 // detail · full" frame, #407; not while the attendance loads, after review).
 // Contributors: Claude (Opus 5.5, Anthropic) (the organizer's way to the Entrance QR, #468);
 // Konstantinos Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (no reminder switch within the hour before the
+// start, #381).
 package com.polysocial.ui.event.detail
 
 import android.Manifest
@@ -613,18 +615,23 @@ private fun EventContent(
       Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
     } else {
       if (isGoing) {
-        ReminderRow(
-            on = state.reminderOn,
-            blocked = state.remindersBlocked,
-            enabled = !state.isSavingAttendance,
-            onCheckedChange = attendance.onReminderSwitchChange,
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 11.dp),
-        )
-        if (state.remindersBlocked) {
-          ReminderDeniedNote(
-              onOpenSettings = attendance.onOpenNotificationSettings,
-              modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 11.dp),
+        // Within the hour before the start no reminder can be scheduled, so the switch would flip
+        // back off without a word: it isn't offered then, unless a reminder is already on and can
+        // still be turned off.
+        if (!state.reminderTooLate || state.reminderOn) {
+          ReminderRow(
+              on = state.reminderOn,
+              blocked = state.remindersBlocked,
+              enabled = !state.isSavingAttendance,
+              onCheckedChange = attendance.onReminderSwitchChange,
+              modifier = Modifier.padding(horizontal = 20.dp, vertical = 11.dp),
           )
+          if (state.remindersBlocked) {
+            ReminderDeniedNote(
+                onOpenSettings = attendance.onOpenNotificationSettings,
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 11.dp),
+            )
+          }
         }
         RegisteredNote(
             enabled = !state.isSavingAttendance,

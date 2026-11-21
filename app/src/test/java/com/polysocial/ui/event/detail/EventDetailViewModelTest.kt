@@ -709,6 +709,21 @@ class EventDetailViewModelTest {
   }
 
   @Test
+  fun anEventStartingWithinTheHour_isTooLateForAReminder_andOneLaterIsNot() = runTest {
+    // The clock reads 7 October 2026, 10:00 UTC, so 11:00 is exactly the reminder lead before
+    // 12:00.
+    repository.seed(event.copy(id = "soon", startTime = Instant.parse("2026-10-07T10:30:00Z")))
+    val soon = viewModel(args = mapOf("eventId" to "soon"))
+    observe(soon)
+    assertTrue(soon.uiState.value.loaded().reminderTooLate)
+
+    repository.seed(event.copy(id = "later", startTime = Instant.parse("2026-10-07T12:00:00Z")))
+    val later = viewModel(args = mapOf("eventId" to "later"))
+    observe(later)
+    assertFalse(later.uiState.value.loaded().reminderTooLate)
+  }
+
+  @Test
   fun anEventThatHasEnded_hasEnded_andOneRunningNowHasNot() = runTest {
     // The clock reads 7 October 2026, 10:00 UTC.
     repository.seed(
