@@ -5226,6 +5226,9 @@ test("no other subcollection of a chat is reachable", async () => {
   await assertFails(setDoc(doc(db, "chats/u1~u2/groups/g1"), newGroup("u1")));
   const groups = query(collection(db, "chats/u1~u2/groups"), where("memberUids", "array-contains", "u1"));
   assert.equal((await assertSucceeds(getDocs(groups))).size, 0);
+  await assertFails(setDoc(doc(db, "chats/u1~u2/attendees/u1"), { uid: "u1" }));
+  const attendees = query(collection(db, "chats/u1~u2/attendees"), where("uid", "==", "u1"));
+  assert.equal((await assertSucceeds(getDocs(attendees))).size, 0);
 });
 
 // -- sending --
