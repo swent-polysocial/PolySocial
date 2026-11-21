@@ -1,4 +1,5 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (the Chats list, from #362's Figma section 16, #364).
+// Contributors: Claude (Opus 5.5, Anthropic) (the Chats list, from #362's Figma section 16, #364;
+// the first name moved to model/user for Find a group, #497).
 package com.polysocial.ui.chat
 
 import androidx.lifecycle.ViewModel
@@ -15,6 +16,7 @@ import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.PublicProfilesResult
+import com.polysocial.model.user.firstName
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
 import java.time.Duration as JavaDuration
@@ -289,7 +291,3 @@ constructor(
     val LOAD_TIMEOUT: Duration = 10.seconds
   }
 }
-
-/** The first word of a public profile's name, as the Chats list names members ("Léa"). */
-private fun PublicProfile.firstName(): String? =
-    displayName.trim().split(' ').firstOrNull()?.takeIf { it.isNotBlank() }
