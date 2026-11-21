@@ -26,6 +26,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) left Verify Email only once its account is deleted,
 // #225; Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (Opus 5.5, Anthropic) wired Verify Email's Log out anyway, #225 review.
+// Contributors: Claude (Sonnet 5.5, Anthropic) (keyboard Next and Done actions on the Sign up
+// fields, #381).
 package com.polysocial.ui.auth
 
 import androidx.activity.compose.BackHandler
@@ -40,6 +42,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -64,6 +67,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -606,7 +610,7 @@ fun SignUpScreen(
           modifier = Modifier.widthIn(max = 300.dp),
       )
       Spacer(Modifier.height(18.dp))
-      SignUpFields(state, editingEnabled, onChange, onBlur, onLogIn)
+      SignUpFields(state, editingEnabled, onChange, onBlur, onLogIn, onSubmit)
       if (
           backendError != null &&
               backendError !in listOf(SignUpResult.AlreadyInUse, SignUpResult.InvalidDomain)
@@ -696,6 +700,7 @@ private fun SignUpFields(
     onChange: (SignUpField, String) -> Unit,
     onBlur: (SignUpField) -> Unit,
     onLogIn: () -> Unit,
+    onSubmit: () -> Unit,
 ) {
   val association = state.form.accountType == AccountType.ASSOCIATION
   val backendError = (state.status as? SignUpStatus.Error)?.reason
@@ -714,6 +719,7 @@ private fun SignUpFields(
               editingEnabled,
               { onChange(field, it) },
               { onBlur(field) },
+              onSubmit,
           )
           if (fieldError != null) {
             ErrorLabel(fieldError.text(), SignUpTags.error(field))
@@ -796,6 +802,7 @@ private fun FormField(
     enabled: Boolean,
     onChange: (String) -> Unit,
     onBlur: () -> Unit,
+    onSubmit: () -> Unit,
 ) {
   val label =
       stringResource(
@@ -838,8 +845,12 @@ private fun FormField(
                     passwordField -> KeyboardType.Password
                     field == SignUpField.Email -> KeyboardType.Email
                     else -> KeyboardType.Text
-                  }
+                  },
+              // Next moves to the following field by itself; the last one submits the form.
+              imeAction =
+                  if (field == SignUpField.ConfirmPassword) ImeAction.Done else ImeAction.Next,
           ),
+      keyboardActions = KeyboardActions(onDone = { onSubmit() }),
       visualTransformation =
           if (passwordField && !visible) PasswordVisualTransformation()
           else VisualTransformation.None,

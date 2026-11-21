@@ -1,4 +1,6 @@
 // Contributors: OpenAI Codex (Figma recovery screen and account-neutral confirmation for #164).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (keyboard Next and Done actions on the recovery
+// field, #381).
 package com.polysocial.ui.auth
 
 import androidx.activity.compose.BackHandler
@@ -35,6 +37,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -147,6 +150,8 @@ fun PasswordRecoveryContent(
               Modifier.testTag(PasswordRecoveryTags.Email),
               isError = error != null,
               errorBorderWidth = 1.dp,
+              imeAction = ImeAction.Done,
+              onDone = onSubmit,
           )
           if (error != null) {
             Spacer(Modifier.height(8.dp))
