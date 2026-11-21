@@ -2,29 +2,20 @@
 // Contributors: OpenAI Codex (made explicit message IDs safe to retry, #238).
 // Contributors: Claude (Fable 5.2, Anthropic) (shared the message listener and read a group's
 // latest message with limit(1), #363).
+// Contributors: Claude (Opus 5.5, Anthropic) (the listener and send failures moved to
+// FirestoreChatMessages.kt, to share them with one-to-one chats, #428).
 package com.polysocial.model.chat
 
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentSnapshot.ServerTimestampBehavior
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.FirebaseFirestoreException
-import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.Query
-import com.google.firebase.firestore.QuerySnapshot
-import com.google.firebase.firestore.TransactionOptions
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.event.EVENTS_COLLECTION
 import com.polysocial.model.event.isReadableEventId
 import com.polysocial.model.group.GROUPS_COLLECTION
 import com.polysocial.model.network.NetworkMonitor
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.channels.awaitClose
-import kotlinx.coroutines.currentCoroutineContext
-import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.buffer
-import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
@@ -75,7 +66,7 @@ class FirestoreMessageRepository(
    * other repositories' listeners.
    */
   override fun observeMessages(eventId: String, groupId: String): Flow<MessagesResult> =
-      listen(eventId, groupId) { it.orderBy(MESSAGE_CREATED_AT) }
+      listen(eventId, groupId) { it.inServerOrder() }
 
   /**
    * The same listener as [observeMessages] on the newest message only: `createdAt` descending with
@@ -83,10 +74,7 @@ class FirestoreMessageRepository(
    * can't be read, is a null [LatestMessageResult.Success.message].
    */
   override fun observeLatestMessage(eventId: String, groupId: String): Flow<LatestMessageResult> =
-      listen(eventId, groupId) {
-            it.orderBy(MESSAGE_CREATED_AT, Query.Direction.DESCENDING).limit(1)
-          }
-          .map { it.toLatestMessage() }
+      listen(eventId, groupId) { it.newestOnly() }.map { it.toLatestMessage() }
 
   /**
    * A snapshot listener on [query] of the group's messages as a flow, as [observeMessages]
@@ -100,44 +88,7 @@ class FirestoreMessageRepository(
     if (!isReadableEventId(eventId) || !isReadableEventId(groupId)) {
       return flowOf(MessagesResult.Loading, MessagesResult.UnexpectedError)
     }
-    return callbackFlow {
-          trySend(MessagesResult.Loading)
-          fun fail(error: Exception?) {
-            trySend(
-                if ((error as? FirebaseFirestoreException)?.isOffline() == true)
-                    MessagesResult.NetworkError
-                else MessagesResult.UnexpectedError
-            )
-            close()
-          }
-          // Nothing in this try suspends, so it can't catch the collector's cancellation, and
-          // awaitClose still ends a cancelled collection.
-          val registration =
-              try {
-                val user = auth.currentUser()
-                if (user == null) fail(null)
-                user?.let {
-                  query(messages(eventId, groupId)).addSnapshotListener(MetadataChanges.INCLUDE) {
-                      snapshot,
-                      error ->
-                    if (error != null || snapshot == null) fail(error)
-                    else
-                        try {
-                          trySend(snapshot.toMessagesResult())
-                        } catch (e: Exception) {
-                          // Thrown here, it would crash the app on Firestore's callback thread.
-                          fail(e)
-                        }
-                  }
-                }
-              } catch (e: Exception) {
-                // For example a database blocked while the session's cache is cleared (#198).
-                fail(e)
-                null
-              }
-          awaitClose { registration?.remove() }
-        }
-        .buffer(Channel.CONFLATED)
+    return listenToMessages(auth) { query(messages(eventId, groupId)) }
   }
 
   /**
@@ -160,7 +111,7 @@ class FirestoreMessageRepository(
     }
     val user = auth.currentUser() ?: return SendMessageResult.UnexpectedError
     if (!network.isOnline()) return SendMessageResult.NetworkError
-    return try {
+    return reportSendFailures {
       val collection = messages(eventId, groupId)
       val message = messageId?.let(collection::document) ?: collection.document()
       val trimmed = text.trim()
@@ -171,42 +122,11 @@ class FirestoreMessageRepository(
                 transaction.set(message, newMessageFirestoreMap(user.uid, trimmed))
                 SendMessageResult.Sent
               }
-              else -> {
-                val stored = messageFromFirestore(message.id, existing.data)
-                if (stored?.senderId == user.uid && stored.text == trimmed) SendMessageResult.Sent
-                else SendMessageResult.UnexpectedError
-              }
+              else ->
+                  retriedDraft(messageFromFirestore(message.id, existing.data), user.uid, trimmed)
             }
           }
           .await()
-    } catch (e: FirebaseFirestoreException) {
-      if (e.isOffline()) SendMessageResult.NetworkError else SendMessageResult.UnexpectedError
-    } catch (_: CancellationException) {
-      // A task cancelled while the caller still runs is a failure; a cancelled caller rethrows.
-      currentCoroutineContext().ensureActive()
-      SendMessageResult.UnexpectedError
-    } catch (_: Exception) {
-      SendMessageResult.UnexpectedError
     }
-  }
-
-  /**
-   * The snapshot's readable messages, in the query's order, with
-   * [ServerTimestampBehavior.ESTIMATE].
-   */
-  private fun QuerySnapshot.toMessagesResult() =
-      MessagesResult.Success(
-          documents.mapNotNull {
-            messageFromFirestore(it.id, it.getData(ServerTimestampBehavior.ESTIMATE))
-          },
-          metadata.isFromCache,
-      )
-
-  private fun FirebaseFirestoreException.isOffline() =
-      code == FirebaseFirestoreException.Code.UNAVAILABLE ||
-          code == FirebaseFirestoreException.Code.DEADLINE_EXCEEDED
-
-  private companion object {
-    val SINGLE_ATTEMPT: TransactionOptions = TransactionOptions.Builder().setMaxAttempts(1).build()
   }
 }
