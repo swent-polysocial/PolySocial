@@ -1,4 +1,5 @@
-// Contributors: Claude (Opus 5.5, Anthropic) drafted Find a group from #227's Figma frames, #233.
+// Contributors: Claude (Opus 5.5, Anthropic) drafted Find a group from #227's Figma frames, #233,
+// and ranked the groups with the student's friends, #497.
 package com.polysocial.ui.group
 
 import androidx.lifecycle.SavedStateHandle
@@ -7,6 +8,10 @@ import androidx.lifecycle.viewModelScope
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.EventResult
+import com.polysocial.model.friend.FriendRepository
+import com.polysocial.model.friend.FriendshipStatus
+import com.polysocial.model.friend.FriendshipsResult
+import com.polysocial.model.friend.otherUid
 import com.polysocial.model.group.Group
 import com.polysocial.model.group.GroupRepository
 import com.polysocial.model.group.GroupWriteResult
@@ -33,7 +38,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.dropWhile
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.onStart
@@ -46,7 +54,9 @@ data class GroupMember(val uid: String, val profile: PublicProfile?)
 /**
  * A group Find a group suggests, with why it fits, from #231's ranking: [sharedInterests] is how
  * many of the student's interests its members share, and [sameSection] and [sameYear] are the
- * student's own codes when at least one member shares them, null otherwise.
+ * student's own codes when at least one member shares them, null otherwise. [friends] are the
+ * members who are the student's friends (#497), in member order, each with a null profile when it
+ * couldn't be read; empty when none is.
  */
 data class GroupSuggestion(
     val groupId: String,
@@ -55,6 +65,7 @@ data class GroupSuggestion(
     val sharedInterests: Int,
     val sameSection: String?,
     val sameYear: String?,
+    val friends: List<GroupMember> = emptyList(),
 )
 
 /** What Find a group shows. */
@@ -111,10 +122,17 @@ enum class FindGroupDone {
  *
  * The groups are observed live. Each time they change, the members' and the student's public
  * profiles are read once ([PublicProfileRepository.getPublicProfiles]); a profile that can't be
- * read leaves that member without a name and adds nothing to the score, and if none can be read,
- * the groups are still shown, unranked. When the profiles couldn't be read, the next emission reads
- * them again even if the groups didn't change, so coming back online names the members. A failed
- * read of the groups shows [FindGroupUiState.CouldNotLoad], and [retry] reads them again.
+ * read leaves that member without a name and adds nothing to the score but a friend's points, and
+ * if none can be read, the groups are still shown, ranked on friends only. When the profiles
+ * couldn't be read, the next emission reads them again even if the groups didn't change, so coming
+ * back online names the members. A failed read of the groups shows [FindGroupUiState.CouldNotLoad],
+ * and [retry] reads them again.
+ *
+ * The student's friendships are observed live too ([FriendRepository.observeFriendships], #497),
+ * and the groups are ranked again, without reading the profiles again, each time their accepted
+ * friends change. The groups never wait for them: until they answer, or while they can't be read,
+ * the groups are ranked without friends, and a friendships read that failed is tried again once the
+ * device comes back online (or when the screen opens again).
  *
  * [join] and [start] run one write at a time; taps while one runs are ignored. A success reports
  * [done] (the screen then leaves), and a refusal reports [message]. Nothing reports a success that
@@ -129,6 +147,7 @@ constructor(
     private val events: EventRepository,
     private val groups: GroupRepository,
     private val profiles: PublicProfileRepository,
+    private val friends: FriendRepository,
     private val auth: AuthRepository,
     private val network: NetworkMonitor,
     private val clock: Clock,
@@ -212,9 +231,9 @@ constructor(
               (it as? EventResult.Found)?.let { found -> eventDetails(found.event, clock.zone) }
             }
             .onStart { emit(null) }
-    // Whether the last ranking could read the profiles: if not, the same groups are ranked again.
+    // Whether the last read could read the profiles: if not, the same groups are read again.
     var profilesRead = true
-    val ranked =
+    val groupsRead =
         groups
             .observeGroups(eventId)
             // Only the groups matter here: when only fromCache changes, the profiles aren't read
@@ -223,25 +242,57 @@ constructor(
             .distinctUntilChanged { old, new -> profilesRead && old == new }
             .mapLatest { result ->
               when (result) {
-                GroupsResult.Loading -> Ranking.Loading
+                GroupsResult.Loading -> GroupsRead.Loading
                 is GroupsResult.Success -> {
-                  val read = readProfiles(result.groups)
-                  profilesRead = read != null
-                  Ranking.Done(rank(result.groups, read.orEmpty()))
+                  val found = readProfiles(result.groups)
+                  profilesRead = found != null
+                  GroupsRead.Done(result.groups, found.orEmpty())
                 }
                 GroupsResult.NetworkError,
-                GroupsResult.UnexpectedError -> Ranking.Failed
+                GroupsResult.UnexpectedError -> GroupsRead.Failed
               }
             }
-    return combine(event, ranked) { details, ranking ->
-      when (ranking) {
-        Ranking.Loading -> FindGroupUiState.Loading
-        Ranking.Failed -> FindGroupUiState.CouldNotLoad
-        is Ranking.Done ->
-            FindGroupUiState.Loaded(details, ranking.suggestions, isOffline = !network.isOnline())
+    return combine(event, groupsRead, observeFriendUids()) { details, read, friendUids ->
+      when (read) {
+        GroupsRead.Loading -> FindGroupUiState.Loading
+        GroupsRead.Failed -> FindGroupUiState.CouldNotLoad
+        is GroupsRead.Done ->
+            FindGroupUiState.Loaded(
+                details,
+                rank(read.groups, read.profiles, friendUids),
+                isOffline = !network.isOnline(),
+            )
       }
     }
   }
+
+  /**
+   * The UIDs of the signed-in student's accepted friends, live: none until the friendships answer,
+   * so the groups never wait for them, and none while they can't be read. A pending request isn't a
+   * friend. The listener ends after a failure; it then starts again once the device comes back
+   * online.
+   */
+  private fun observeFriendUids(): Flow<Set<String>> = flow {
+    emit(emptySet())
+    val me = auth.currentUser()?.uid ?: return@flow
+    do {
+      friends.observeFriendships().collect { emit(it.friendUidsOf(me)) }
+    } while (cameBackOnline())
+  }
+      .distinctUntilChanged()
+
+  /** Waits until the device goes offline, then online again; false if that can't be observed. */
+  private suspend fun cameBackOnline(): Boolean =
+      network.observeOnline().dropWhile { it }.firstOrNull { it } != null
+
+  private fun FriendshipsResult.friendUidsOf(me: String): Set<String> =
+      when (this) {
+        is FriendshipsResult.Success ->
+            friendships
+                .filter { it.status == FriendshipStatus.ACCEPTED }
+                .mapNotNullTo(mutableSetOf()) { it.otherUid(me) }
+        FriendshipsResult.Error -> emptySet()
+      }
 
   /**
    * The public profiles of [stored]'s members and the student, or null if they couldn't be read.
@@ -255,8 +306,12 @@ constructor(
     }
   }
 
-  /** Ranks [stored] for the signed-in student, with the profiles [read]. */
-  private fun rank(stored: List<Group>, read: Map<String, PublicProfile>): List<GroupSuggestion> {
+  /** Ranks [stored] for the signed-in student, with the profiles [read] and their [friendUids]. */
+  private fun rank(
+      stored: List<Group>,
+      read: Map<String, PublicProfile>,
+      friendUids: Set<String>,
+  ): List<GroupSuggestion> {
     val me = auth.currentUser()?.uid.orEmpty()
     val student = read[me]?.toMatch() ?: MatchProfile(me, section = "", year = "", emptySet())
     val byId = stored.associateBy { it.id }
@@ -270,7 +325,7 @@ constructor(
                   group.memberUids.mapNotNull { read[it]?.toMatch() },
               )
             },
-            friendUids = emptySet(),
+            friendUids,
         )
         .map { ranked ->
           val group = byId.getValue(ranked.group.id)
@@ -281,19 +336,21 @@ constructor(
               sharedInterests = ranked.sharedInterests.size,
               sameSection = student.section.takeIf { ranked.membersInSameSection > 0 },
               sameYear = student.year.takeIf { ranked.membersInSameYear > 0 },
+              friends = ranked.friends.map { GroupMember(it, read[it]) },
           )
         }
   }
 
   private fun PublicProfile.toMatch() = MatchProfile(uid, section, year, interests)
 
-  /** Where reading and ranking the groups is. */
-  private sealed interface Ranking {
-    data object Loading : Ranking
+  /** Where reading the groups and their members' profiles is. */
+  private sealed interface GroupsRead {
+    data object Loading : GroupsRead
 
-    data object Failed : Ranking
+    data object Failed : GroupsRead
 
-    data class Done(val suggestions: List<GroupSuggestion>) : Ranking
+    /** The [groups] as stored, with the [profiles] that could be read, by UID. */
+    data class Done(val groups: List<Group>, val profiles: Map<String, PublicProfile>) : GroupsRead
   }
 
   private companion object {
