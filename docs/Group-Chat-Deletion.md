@@ -1,5 +1,5 @@
 <!-- Contributors: Mehdi (@mehdifddl) selected retaining messages with anonymised authors on 2026-11-11; OpenAI Codex documented the implemented cleanup, retained data and deployment order for #241. -->
-<!-- Contributors: Claude (Opus 5.5, Anthropic) documented the deletion of a cancelled event's groups and of a deleted group's messages, #382. -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) documented the deletion of a cancelled event's groups and of a deleted group's messages, its guards and known limits, #382. -->
 
 # Groups, chat and account deletion · #241
 
@@ -24,9 +24,10 @@ Clients cannot forge the empty sender, edit messages or restore an author link.
 
 Membership transactions reread groups to preserve concurrent changes. Removing the last
 member deletes the group, and the `deleteGroupMessages` trigger then deletes its messages
-(below); surviving groups retain their original opaque `createdBy`, as events do. A malformed array keeps other entries while removing the deleted UID; a list
-that became a scalar or disappeared has no remaining UID to remove. These cases emit
-only a generic warning, without data, and the student's marker is removed.
+(below); surviving groups retain their original opaque `createdBy`, as events do. A
+malformed array keeps other entries while removing the deleted UID; a list that became a
+scalar or disappeared has no remaining UID to remove. These cases emit only a generic
+warning, without data, and the student's marker is removed.
 
 After approval and merge, a human deploys from up-to-date `main`: first the restrictive
 rules and the new collection-group `messages.senderId` index, wait for the index to be
@@ -40,19 +41,27 @@ retries, like #275's `deleteEventRegistrations`) delete what nobody could read o
 any more:
 
 - **`deleteEventGroups`**, when `events/{eventId}` is deleted ("Cancel event"): the
-  event's `groups/*`, then its `groupMembers/*` markers.
+  event's `groups/*`, then its `groupMembers/*` markers, in transactions of 500 that first
+  read the event and stop once it exists again with the deleted event's `createdBy` (the
+  demo seed writes its events back under the same IDs and organizers). An event anyone
+  else creates under that ID doesn't stop it: a client chooses an event's ID, and the rules
+  make `createdBy` the creator's UID. `deleteEventRegistrations` uses the same check.
 - **`deleteGroupMessages`**, when `events/{eventId}/groups/{groupId}` is deleted (its last
   member left, through the app or `deleteAccount`, or its event was cancelled): that
-  group's `messages/*`. The event and its other groups keep theirs.
+  group's `messages/*`, in batches of 500, even if a group is started again under the
+  same ID (a client chooses it, and would otherwise read the old chat; the seed writes no
+  messages). The event and its other groups keep theirs.
 
-Both delete in transactions of 500 that first read the deleted parent and stop as soon as
-it exists again, since the demo seed script writes its events and groups back under the same
-IDs. A failure logs only the trigger's name and the error code and is thrown again, so the
+A failure logs only the trigger's name and the error code and is thrown again, so the
 trigger's retry finishes the job; deleting what is already gone is not an error. A
-client-side batch was rejected: nested messages don't scale, and once the event or group is
-gone no client can list what is under it. No rule changes: the Admin SDK bypasses them.
-Data left behind by events cancelled and groups emptied before the triggers were deployed
-stays until a one-off cleanup, which isn't built.
+client-side batch was rejected: nested messages don't scale, and once the event or group
+is gone no client can list what is under it. No rule changes: the Admin SDK bypasses
+them.
+
+Known limits: data left behind by events cancelled and groups emptied before the
+triggers were deployed stays (a one-off sweep would be its own issue). An account deletion
+whose anonymising batch updates a message the trigger has just deleted fails with
+`NOT_FOUND`; Retry finishes it (#429 handles that case).
 
 A deleted account's messages are still **anonymised, not deleted** (#382 keeps #241's
 decision, and #365 chose the same for one-to-one chats): they stay in the conversation
