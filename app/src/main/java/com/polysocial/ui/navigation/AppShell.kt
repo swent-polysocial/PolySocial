@@ -34,6 +34,8 @@
 // from the Chats list, #432).
 // Contributors: Claude (Opus 5.5, Anthropic) (the organizer's way to the Entrance QR, #468);
 // Konstantinos Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (a second quick Back no longer leaves Privacy or the
+// full notice and pops the Profile root too, #381).
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.layout.Box
@@ -412,17 +414,19 @@ fun AppShell(
           }
         }
         if (tab == Tab.PROFILE) {
-          composable(tab.privacyRoute) {
+          composable(tab.privacyRoute) { entry ->
             PrivacyRoute(
-                onBack = { navController.popBackStack() },
-                onFullNotice = { navController.navigate(tab.privacyNoticeRoute) },
+                onBack = { if (entry.isResumed) navController.popBackStack() },
+                onFullNotice = {
+                  if (entry.isResumed) navController.navigate(tab.privacyNoticeRoute)
+                },
                 onSessionEnded = { deleted ->
                   leaveApp(if (deleted) onAccountDeleted else onLoggedOut)
                 },
             )
           }
-          composable(tab.privacyNoticeRoute) {
-            FullPrivacyNoticeRoute(onBack = { navController.popBackStack() })
+          composable(tab.privacyNoticeRoute) { entry ->
+            FullPrivacyNoticeRoute(onBack = { if (entry.isResumed) navController.popBackStack() })
           }
           // Friends and QR codes are student-only destinations.
           if (!association) {

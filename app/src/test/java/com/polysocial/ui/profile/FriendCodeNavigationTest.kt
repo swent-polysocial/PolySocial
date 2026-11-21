@@ -2,6 +2,7 @@
 // route, #359); Konstantinos Perdikeas (directed, reviewed and owns them).
 // Contributors: Claude Opus 5.5 (test WorkManager initialization, needed once ProfileViewModel
 // depends on ReminderScheduler for real DI, #123).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (double Back on Privacy test, #381).
 package com.polysocial.ui.profile
 
 import androidx.activity.compose.setContent
@@ -176,5 +177,17 @@ class FriendCodeNavigationTest {
     assertEquals(Tab.PROFILE.myProfileRoute, navController.currentDestination?.route)
     rule.onNodeWithTag(C.Tag.my_profile_back).performClick()
     rule.onNodeWithTag(C.Tag.profile_my_profile_entry).assertIsDisplayed()
+  }
+
+  @Test
+  fun aDoubleTapOnPrivacyBackReturnsToProfileOnlyOnce() {
+    showShell()
+    rule.onNodeWithTag(C.Tag.profile_privacy_entry).performClick()
+    rule.onNodeWithTag(C.Tag.privacy_screen).assertIsDisplayed()
+
+    doubleTap(C.Tag.privacy_back)
+
+    rule.onNodeWithTag(C.Tag.profile_privacy_entry).assertIsDisplayed()
+    rule.runOnIdle { assertEquals(Tab.PROFILE.rootRoute, navController.currentDestination?.route) }
   }
 }
