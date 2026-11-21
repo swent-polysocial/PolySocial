@@ -9,6 +9,8 @@
 // review, #226).
 // Contributors: Claude Fable 5.2 (the notice's new date and its sentence on who sees a student
 // organizer's name, #281).
+// Contributors: Claude (Opus 5.5, Anthropic) (the notice's new date and what a cancelled event and
+// a group's last member leaving delete, #382).
 package com.polysocial.ui.profile
 
 import android.content.Context
@@ -207,7 +209,32 @@ class PrivacyScreenTest {
     rule.onNodeWithTag(C.Tag.privacy_chats).performScrollTo().assertIsDisplayed()
     rule.onNodeWithText(text(R.string.privacy_chats_body)).assertIsDisplayed()
     rule.onNodeWithTag(C.Tag.privacy_full_notice).performScrollTo().performClick()
-    rule.onNodeWithTag(C.Tag.privacy_notice_date).assertTextEquals("Updated 16 November 2026")
+    rule.onNodeWithTag(C.Tag.privacy_notice_date).assertTextEquals("Updated 21 November 2026")
+  }
+
+  @Test
+  fun fullNoticeSaysWhatCancellingAnEventAndAGroupsLastMemberLeavingDelete() {
+    openFromProfile()
+    rule.onNodeWithTag(C.Tag.privacy_full_notice).performScrollTo().performClick()
+    rule
+        .onNodeWithTag(C.Tag.privacy_notice_groups)
+        .performScrollTo()
+        .assertTextContains(
+            "Cancelling an event deletes its groups, their per-event membership records and " +
+                "their chat messages.",
+            substring = true,
+        )
+        .assertTextContains(
+            "the last member leaving removes the group, and its chat messages are then deleted.",
+            substring = true,
+        )
+    rule
+        .onNodeWithTag(C.Tag.privacy_notice_chats)
+        .performScrollTo()
+        .assertTextContains(
+            "deleted once its last member has left or its event is cancelled.",
+            substring = true,
+        )
   }
 
   @Test
