@@ -1,4 +1,5 @@
 <!-- Contributors: Mehdi (@mehdifddl) selected retaining messages with anonymised authors on 2026-11-11; OpenAI Codex documented the implemented cleanup, retained data and deployment order for #241. -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) documented the deletion of a cancelled event's groups and of a deleted group's messages, #382. -->
 
 # Groups, chat and account deletion · #241
 
@@ -22,8 +23,8 @@ them. A marker removes chat read/send access immediately, before membership clea
 Clients cannot forge the empty sender, edit messages or restore an author link.
 
 Membership transactions reread groups to preserve concurrent changes. Removing the last
-member deletes the group; surviving groups retain their original opaque `createdBy`, as
-events do. A malformed array keeps other entries while removing the deleted UID; a list
+member deletes the group, and the `deleteGroupMessages` trigger then deletes its messages
+(below); surviving groups retain their original opaque `createdBy`, as events do. A malformed array keeps other entries while removing the deleted UID; a list
 that became a scalar or disappeared has no remaining UID to remove. These cases emit
 only a generic warning, without data, and the student's marker is removed.
 
@@ -32,5 +33,27 @@ rules and the new collection-group `messages.senderId` index, wait for the index
 ready, then the function and app. The existing `groups.memberUids` index is reused.
 An agent never deploys. No student receives additional access.
 
-Deleting an event's groups/messages, and removing orphaned messages when the last member
-leaves normally, remain separate work. Account deletion still removes their sender link.
+## Cancelled events and emptied groups · #382
+
+Two Firestore triggers (`firebase/functions/groups.js`, `europe-west1`, deployed with
+retries, like #275's `deleteEventRegistrations`) delete what nobody could read or delete
+any more:
+
+- **`deleteEventGroups`**, when `events/{eventId}` is deleted ("Cancel event"): the
+  event's `groups/*`, then its `groupMembers/*` markers.
+- **`deleteGroupMessages`**, when `events/{eventId}/groups/{groupId}` is deleted (its last
+  member left, through the app or `deleteAccount`, or its event was cancelled): that
+  group's `messages/*`. The event and its other groups keep theirs.
+
+Both delete in transactions of 500 that first read the deleted parent and stop as soon as
+it exists again, since the demo seed script writes its events and groups back under the same
+IDs. A failure logs only the trigger's name and the error code and is thrown again, so the
+trigger's retry finishes the job; deleting what is already gone is not an error. A
+client-side batch was rejected: nested messages don't scale, and once the event or group is
+gone no client can list what is under it. No rule changes: the Admin SDK bypasses them.
+Data left behind by events cancelled and groups emptied before the triggers were deployed
+stays until a one-off cleanup, which isn't built.
+
+A deleted account's messages are still **anonymised, not deleted** (#382 keeps #241's
+decision, and #365 chose the same for one-to-one chats): they stay in the conversation
+of the students who remain, with an empty `senderId`, until the group itself is deleted.
