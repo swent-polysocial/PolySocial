@@ -19,11 +19,12 @@ data class MatchProfile(
  * One group of an event, as matching sees it: its unique [id] (the group's document ID), how many
  * students it can hold ([capacity]), its stored [memberUids] and the [members]' profiles the caller
  * could read. The caller maps its group model to this, so matching doesn't depend on how groups are
- * stored. [memberUids] decide how full the group is and whether the student is in it; [members]
- * only score it. A member whose profile is missing (not written yet, a deleted account, a failed
- * read) stays in [memberUids] and is simply absent from [members]: the group still counts as full
- * or as the student's own, and that member adds no points. [memberUids] are distinct: a uid listed
- * twice would count twice.
+ * stored. [memberUids] decide how full the group is, whether the student is in it and which members
+ * are the student's friends; [members] give the other points. A member whose profile is missing
+ * (not written yet, a deleted account, a failed read) stays in [memberUids] and is simply absent
+ * from [members]: the group still counts as full or as the student's own, and that member adds no
+ * points, except a friend's 10 (see [rankGroups]). [memberUids] are distinct: a uid listed twice
+ * would count twice.
  */
 data class MatchGroup(
     val id: String,
@@ -77,11 +78,11 @@ private const val FRIEND_POINTS = 10
  *
  * A group's score is the sum over its members. Friends are counted from [MatchGroup.memberUids], so
  * a friend whose profile couldn't be read still adds their 10 points; the other points come from
- * the profiles in [MatchGroup.members]. A friend is worth more than a member with two shared
- * interests, the same section and the same year (9 points), so a group with a friend usually comes
- * first, but a group whose members share more interests can still outrank it. A blank section or
- * year never matches, so two students who haven't set one don't count as alike. A student without
- * interests is ranked on friends, section and year only.
+ * the profiles in [MatchGroup.members]. A friend outweighs any one member with two shared
+ * interests, the same section and the same year (9 points); several such members, or more shared
+ * interests, can still outrank a group with a friend. A blank section or year never matches, so two
+ * students who haven't set one don't count as alike. A student without interests is ranked on
+ * friends, section and year only.
  *
  * [friendUids] are the UIDs of the student's accepted friends; the caller leaves out pending
  * requests. Empty when the student has none or they couldn't be read: the groups are then ranked
