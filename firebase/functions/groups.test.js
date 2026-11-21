@@ -2,6 +2,8 @@
 // groups and a deleted group's messages, #382.
 // Contributors: Claude (Opus 5.5, Anthropic) (the deletion triggers' deploy manifest, as a tester,
 // #382).
+// Contributors: Claude (Opus 5.5, Anthropic) (a group started again under its ID loses its old
+// chat, after review, #382).
 "use strict";
 
 // Unit tests with fakes, no emulator: node firebase/functions/groups.test.js
@@ -219,19 +221,20 @@ test("a failure deleting messages is thrown again, logs only its code, and the r
   assert.equal(documents.size, 0);
 });
 
-// The demo seed script deletes its groups with their events and writes them back under the same
-// IDs before this trigger may run.
-test("a group written again before the trigger runs keeps its messages", async () => {
-  const paths = ["events/e1/groups/g1", "events/e1/groups/g1/messages/m1"];
-  const { db, documents, state } = fakeFirestore(paths);
+// A client chooses the ID of a group it starts: a group started under a just-emptied group's ID
+// must not bring its old chat back.
+test("a group started again under its ID before the trigger runs still loses the messages", async () => {
+  const { db, documents } = fakeFirestore([
+    "events/e1/groups/g1",
+    "events/e1/groups/g1/messages/m1",
+  ]);
 
   await deleteMessagesOfDeletedGroup({ ...G1, db, logger: fakeLogger().logger });
 
-  assert.deepEqual([...documents], paths);
-  assert.equal(state.commits, 0);
+  assert.deepEqual([...documents], ["events/e1/groups/g1"]);
 });
 
-test("a group written again while deleting keeps the messages written with it", async () => {
+test("a group started again under its ID while deleting still loses every message", async () => {
   const { db, documents, state } = fakeFirestore(
     numbered("events/e1/groups/g1/messages/old", MAX_BATCH_WRITES + 1),
   );
@@ -243,10 +246,7 @@ test("a group written again while deleting keeps the messages written with it", 
 
   await deleteMessagesOfDeletedGroup({ ...G1, db, logger: fakeLogger().logger });
 
-  // The first batch went before the group came back; the rest now belongs to the new group.
-  assert.equal(state.commits, 1);
-  assert.ok(documents.has("events/e1/groups/g1/messages/new"));
-  assert.equal(documents.size, 3);
+  assert.deepEqual([...documents], ["events/e1/groups/g1"]);
 });
 
 // The manifest the Firebase CLI deploys from, for the three triggers index.js builds with
