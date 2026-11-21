@@ -4,7 +4,7 @@
 // Contributors: Claude (Fable 5.2, Anthropic) (other shapes and accounts denied the own-groups query, and the latest-message query of the chat list, #363; groups documents outside an event, and more accounts and membership changes on the latest-message query, from a test audit).
 // Contributors: Claude (Opus 5.5, Anthropic) (co-organizer tests, written test-first, #370).
 // Contributors: Claude (Opus 5.5, Anthropic) (attendeeCount rows and the counted registration writes, #373, from #372's prototype by Claude (Fable 5.2 and Opus 5.5, Anthropic)).
-// Contributors: Claude (Opus 5.5, Anthropic) (the message helpers both chats share, #428).
+// Contributors: Claude (Opus 5.5, Anthropic) (one-to-one chat tests and the message helpers both chats share, #428, from #365's prototype tests by Claude (Fable 5.2 and Opus 5.5, Anthropic)).
 const { after, before, beforeEach, test } = require("node:test");
 // Contributors: OpenAI Codex (deleted-token membership creation/join regression, #241).
 // Contributors: Claude Opus 5.5 (friend requests involving an association, written test-first from the #416 review); Konstantinos Perdikeas (directed, reviewed and owns it).
@@ -4714,3 +4714,717 @@ test("a deleted account can't delete its friendships", async () => {
 
   await assertFails(deleteDoc(friendshipRef(studentDb("u1"), "u1~u2")));
 });
+
+// ---- chats/{pairId} and chats/{pairId}/messages/{id} (#428, designed in #365) ----
+// A chat between two friends, under their friendship's pair ID, holding exactly uids, and its
+// messages, with group chat's fields. The two students read it, friends or not; creating it and
+// sending need an accepted friendship. These are the cases of docs/Architecture-Diagram.md
+// section 3.8 ("Allowed" and "Denied"), from #365's prototype; unsend (#435) and delete for me
+// (#437) add theirs.
+
+/** The pair ID of [a] and [b] (#338): the two UIDs sorted and joined by "~". */
+function pairOf(a, b) {
+  return [a, b].sort().join("~");
+}
+
+/** Stores the friendship of [a] and [b], requested by [a], with the rules off. */
+async function seedFriends(a, b, status = "accepted") {
+  const uids = [a, b].sort();
+  await seedFriendship(uids.join("~"), {
+    uids,
+    requestedBy: a,
+    status,
+    createdAt: Timestamp.fromMillis(1_790_000_000_000),
+    ...(status === "accepted" ? { acceptedAt: Timestamp.fromMillis(1_790_000_001_000) } : {}),
+  });
+}
+
+/** Stores chats/[pairId] holding [uids], by default the ID's two UIDs, with the rules off. */
+async function seedChat(pairId, uids = pairId.split("~")) {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), `chats/${pairId}`), { uids });
+  });
+}
+
+function chatMessagePath(pairId, id) {
+  return `chats/${pairId}/messages/${id}`;
+}
+
+/** Stores the message [id] of chats/[pairId] from [senderId] at [millis], rules off. */
+async function seedChatMessage(pairId, id, senderId, millis) {
+  await seedMessageAt(chatMessagePath(pairId, id), senderId, millis);
+}
+
+/** A chat's history, as the chat screen reads it. */
+function chatHistory(db, pairId) {
+  return historyAt(db, `chats/${pairId}/messages`);
+}
+
+/** A chat's latest message, as the Chats tab reads it. */
+function chatLatest(db, pairId) {
+  return latestAt(db, `chats/${pairId}/messages`);
+}
+
+/** The Chats tab's query: the student's own one-to-one chats. */
+function myChats(db, uid) {
+  return query(collection(db, "chats"), where("uids", "array-contains", uid));
+}
+
+function idsOf(snapshot) {
+  return snapshot.docs.map((document) => document.id);
+}
+
+/**
+ * Sends [message] to chats/[pairId] under the ID [id] the way the repository does (Architecture
+ * Diagram 3.8): one transaction, tried once, that reads the chat and the message ID (#238's retry
+ * check), writes nothing if the ID already holds a message, and creates the chat with the message
+ * if the chat is missing. Returns "sent" or "already stored".
+ */
+function sendToFriendAs(db, pairId, message, id = "new") {
+  return runTransaction(
+    db,
+    async (transaction) => {
+      const chat = doc(db, `chats/${pairId}`);
+      const stored = doc(db, chatMessagePath(pairId, id));
+      const chatSnapshot = await transaction.get(chat);
+      if ((await transaction.get(stored)).exists()) return "already stored";
+      if (!chatSnapshot.exists()) transaction.set(chat, { uids: pairId.split("~") });
+      transaction.set(stored, message);
+      return "sent";
+    },
+    { maxAttempts: 1 },
+  );
+}
+
+/** Writes only the message, without reading or creating its chat. */
+function setChatMessage(db, pairId, message, id = "new") {
+  return setDoc(doc(db, chatMessagePath(pairId, id)), message);
+}
+
+// -- the whole flow, through the rules --
+
+test("two students chat once friends, read-only after unfriending, in the same chat once friends again", async () => {
+  await seedFriendStudents();
+  const request = (from, to) =>
+    setDoc(friendshipRef(studentDb(from), "u1~u2"), friendRequest(from, to));
+  const accept = (uid) => updateDoc(friendshipRef(studentDb(uid), "u1~u2"), acceptance());
+  await assertSucceeds(request("u1", "u2"));
+  // Pending: neither starts the chat.
+  for (const uid of ["u1", "u2"]) {
+    await assertFails(sendToFriendAs(studentDb(uid), "u1~u2", newMessage(uid), "m0"));
+  }
+  await assertSucceeds(accept("u2"));
+  // Friends: the first message creates the chat, the reply only adds a message.
+  await assertSucceeds(sendToFriendAs(studentDb("u1"), "u1~u2", newMessage("u1", "Hi"), "m1"));
+  assert.deepEqual(await storedAt("chats/u1~u2"), { uids: ["u1", "u2"] });
+  await assertSucceeds(sendToFriendAs(studentDb("u2"), "u1~u2", newMessage("u2", "Hello"), "m2"));
+  // u1 removes u2: both keep reading and listing it, neither sends.
+  await assertSucceeds(deleteDoc(friendshipRef(studentDb("u1"), "u1~u2")));
+  for (const uid of ["u1", "u2"]) {
+    const db = studentDb(uid);
+    assert.deepEqual(idsOf(await assertSucceeds(getDocs(chatHistory(db, "u1~u2")))), ["m1", "m2"]);
+    assert.deepEqual(idsOf(await assertSucceeds(getDocs(myChats(db, uid)))), ["u1~u2"]);
+    await assertSucceeds(getDoc(doc(db, "chats/u1~u2")));
+    await assertFails(sendToFriendAs(db, "u1~u2", newMessage(uid), "m3"));
+  }
+  // A new request is pending: still read-only, for both.
+  await assertSucceeds(request("u2", "u1"));
+  for (const uid of ["u1", "u2"]) {
+    await assertFails(sendToFriendAs(studentDb(uid), "u1~u2", newMessage(uid), "m3"));
+  }
+  await expectMissing(chatMessagePath("u1~u2", "m3"));
+  // Friends again: both send in the same chat, after its history.
+  await assertSucceeds(accept("u1"));
+  await assertSucceeds(sendToFriendAs(studentDb("u2"), "u1~u2", newMessage("u2", "Back"), "m3"));
+  await assertSucceeds(sendToFriendAs(studentDb("u1"), "u1~u2", newMessage("u1", "Hey"), "m4"));
+  assert.deepEqual(
+    idsOf(await assertSucceeds(getDocs(chatHistory(studentDb("u2"), "u1~u2")))),
+    ["m1", "m2", "m3", "m4"],
+  );
+});
+
+// -- creating the chat --
+
+for (const uid of ["u1", "u2"]) {
+  test(`a friend (${uid}) creates the chat with the first message in one transaction`, async () => {
+    await seedFriends("u1", "u2");
+    const result = await assertSucceeds(sendToFriendAs(studentDb(uid), "u1~u2", newMessage(uid)));
+    assert.equal(result, "sent");
+    assert.deepEqual(await storedAt("chats/u1~u2"), { uids: ["u1", "u2"] });
+    const message = await storedAt(chatMessagePath("u1~u2", "new"));
+    assert.deepEqual([message.senderId, message.text], [uid, "See you at 6?"]);
+  });
+}
+
+test("a friend creates the chat and the first message in one batch too", async () => {
+  await seedFriends("u1", "u2");
+  const db = studentDb("u1");
+  const batch = writeBatch(db);
+  batch.set(doc(db, "chats/u1~u2"), { uids: ["u1", "u2"] });
+  batch.set(doc(db, chatMessagePath("u1~u2", "new")), newMessage("u1"));
+  await assertSucceeds(batch.commit());
+});
+
+test("a friend may create the chat document alone (the rules can't require a message)", async () => {
+  await seedFriends("u1", "u2");
+  await assertSucceeds(setDoc(doc(studentDb("u2"), "chats/u1~u2"), { uids: ["u1", "u2"] }));
+});
+
+test("a third student, even a friend of both, can't create, read, list or send in a chat", async () => {
+  await seedFriends("u1", "u2");
+  await seedFriends("u1", "u3");
+  await seedFriends("u2", "u3");
+  const db = studentDb("u3");
+  // Before it exists: no create, and no read as missing either.
+  await assertFails(getDoc(doc(db, "chats/u1~u2")));
+  await assertFails(getDocs(chatHistory(db, "u1~u2")));
+  await assertFails(setDoc(doc(db, "chats/u1~u2"), { uids: ["u1", "u2"] }));
+  await assertFails(setDoc(doc(db, "chats/u1~u2"), { uids: ["u1", "u3"] }));
+  await assertFails(sendToFriendAs(db, "u1~u2", newMessage("u3")));
+  await expectMissing("chats/u1~u2");
+  // Once the two started it.
+  await seedChat("u1~u2");
+  await seedChatMessage("u1~u2", "m1", "u1");
+  await assertFails(getDoc(doc(db, "chats/u1~u2")));
+  await assertFails(getDocs(myChats(db, "u1")));
+  await assertFails(getDoc(doc(db, chatMessagePath("u1~u2", "m1"))));
+  await assertFails(getDocs(chatHistory(db, "u1~u2")));
+  await assertFails(getDocs(chatLatest(db, "u1~u2")));
+  await assertFails(setChatMessage(db, "u1~u2", newMessage("u3")));
+  await assertFails(setChatMessage(db, "u1~u2", newMessage("u1")));
+  await expectMissing(chatMessagePath("u1~u2", "new"));
+});
+
+test("a UID that only resembles a participant's reads and sends nothing", async () => {
+  await seedFriends("u1", "u2");
+  await seedChat("u1~u2");
+  await seedChatMessage("u1~u2", "m1", "u1");
+  for (const uid of ["u", "u1~", "u1~u2", "u10", "U1"]) {
+    const db = studentDb(uid);
+    await assertFails(getDoc(doc(db, "chats/u1~u2"))).catch((error) => {
+      throw new Error(`${uid} read the chat: ${error.message}`);
+    });
+    await assertFails(getDocs(chatHistory(db, "u1~u2")));
+    await assertFails(setChatMessage(db, "u1~u2", newMessage(uid)));
+  }
+  await expectMissing(chatMessagePath("u1~u2", "new"));
+});
+
+for (const [name, id] of [
+  ["the two UIDs unsorted", "u2~u1"],
+  ["one UID", "u1"],
+  ["three UIDs", "u1~u2~u3"],
+  ["the same UID twice", "u1~u1"],
+  ["an empty first UID", "~u1"],
+  ["an empty second UID", "u1~"],
+  ["another separator", "u1_u2"],
+  // split('~') drops trailing empty parts in the rules, so these split into the pair [u1, u2].
+  ["a trailing separator", "u1~u2~"],
+  ["several trailing separators", "u1~u2~~~"],
+  ["a doubled separator", "u1~~u2"],
+]) {
+  test(`a chat whose ID is ${name} (${id}) is refused, even with a friendship stored there`, async () => {
+    await seedFriends("u1", "u2");
+    await seedFriendship(id, { uids: ["u1", "u2"], requestedBy: "u1", status: "accepted" });
+    const db = studentDb("u1");
+    await assertFails(setDoc(doc(db, `chats/${id}`), { uids: ["u1", "u2"] }));
+    await assertFails(setDoc(doc(db, `chats/${id}`), { uids: id.split("~") }));
+    await assertFails(sendToFriendAs(db, id, newMessage("u1")));
+    const batch = writeBatch(db);
+    batch.set(doc(db, `chats/${id}`), { uids: ["u1", "u2"] });
+    batch.set(doc(db, chatMessagePath(id, "new")), newMessage("u1"));
+    await assertFails(batch.commit());
+    await expectMissing(`chats/${id}`);
+    // The pair's real chat still starts, and it is the only one either student lists.
+    await assertSucceeds(sendToFriendAs(db, "u1~u2", newMessage("u1"), "real"));
+    assert.deepEqual(idsOf(await assertSucceeds(getDocs(myChats(studentDb("u2"), "u2")))), ["u1~u2"]);
+    // Even stored there with the rules off, nobody reads it or sends in it.
+    await seedChat(id, ["u1", "u2"]);
+    await seedChatMessage(id, "m1", "u2");
+    for (const uid of ["u1", "u2"]) {
+      const other = studentDb(uid);
+      await assertFails(getDoc(doc(other, `chats/${id}`)));
+      await assertFails(getDoc(doc(other, chatMessagePath(id, "m1"))));
+      await assertFails(getDocs(chatHistory(other, id)));
+      await assertFails(getDocs(chatLatest(other, id)));
+      await assertFails(setChatMessage(other, id, newMessage(uid)));
+    }
+    await expectMissing(chatMessagePath(id, "new"));
+  });
+}
+
+test("a student reads a chat with any other UID as missing, and can store nothing there", async () => {
+  const db = studentDb("u1");
+  for (const id of ["u1~u9", "u0~u1"]) {
+    const snapshot = await assertSucceeds(getDoc(doc(db, `chats/${id}`)));
+    assert.equal(snapshot.exists(), false);
+    assert.equal((await assertSucceeds(getDocs(chatHistory(db, id)))).size, 0);
+    await assertFails(setDoc(doc(db, `chats/${id}`), { uids: id.split("~") }));
+    await assertFails(sendToFriendAs(db, id, newMessage("u1")));
+    await expectMissing(`chats/${id}`);
+  }
+});
+
+for (const [name, data] of [
+  ["the two UIDs in the other order", { uids: ["u2", "u1"] }],
+  ["only the caller", { uids: ["u1"] }],
+  ["another pair", { uids: ["u1", "u3"] }],
+  ["a third UID", { uids: ["u1", "u2", "u3"] }],
+  ["uids as a map", { uids: { u1: true, u2: true } }],
+  ["uids as a string", { uids: "u1~u2" }],
+  ["no uids", {}],
+  ["a summary", { uids: ["u1", "u2"], lastMessage: "Hi" }],
+  ["a createdAt", { uids: ["u1", "u2"], createdAt: serverTimestamp() }],
+]) {
+  test(`a chat with ${name} is refused`, async () => {
+    await seedFriends("u1", "u2");
+    await seedFriends("u1", "u3");
+    await assertFails(setDoc(doc(studentDb("u1"), "chats/u1~u2"), data));
+    await expectMissing("chats/u1~u2");
+  });
+}
+
+test("without a friendship, neither student creates the chat or sends", async () => {
+  for (const uid of ["u1", "u2"]) {
+    const db = studentDb(uid);
+    await assertFails(setDoc(doc(db, "chats/u1~u2"), { uids: ["u1", "u2"] }));
+    await assertFails(sendToFriendAs(db, "u1~u2", newMessage(uid)));
+  }
+  await expectMissing("chats/u1~u2");
+  // Nor in a chat stored with the rules off.
+  await seedChat("u1~u2");
+  await assertFails(setChatMessage(studentDb("u1"), "u1~u2", newMessage("u1")));
+  await expectMissing(chatMessagePath("u1~u2", "new"));
+});
+
+test("a pending request lets neither its sender nor its recipient create the chat or send", async () => {
+  await seedFriends("u1", "u2", "pending");
+  for (const uid of ["u1", "u2"]) {
+    const db = studentDb(uid);
+    await assertFails(setDoc(doc(db, "chats/u1~u2"), { uids: ["u1", "u2"] }));
+    await assertFails(sendToFriendAs(db, "u1~u2", newMessage(uid)));
+  }
+  await expectMissing("chats/u1~u2");
+  // Nor in an existing chat (a new request after unfriending).
+  await seedChat("u1~u2");
+  for (const uid of ["u1", "u2"]) {
+    await assertFails(sendToFriendAs(studentDb(uid), "u1~u2", newMessage(uid)));
+  }
+  await expectMissing(chatMessagePath("u1~u2", "new"));
+});
+
+for (const [name, changes] of [
+  ["no status", { status: undefined }],
+  ["a null status", { status: null }],
+  ["another status", { status: "blocked" }],
+  ["ACCEPTED in capitals", { status: "ACCEPTED" }],
+  ["the status true", { status: true }],
+]) {
+  test(`a friendship with ${name} is no friendship: no chat and no message`, async () => {
+    const friendship = { uids: ["u1", "u2"], requestedBy: "u1", ...changes };
+    if (friendship.status === undefined) delete friendship.status;
+    await seedFriendship("u1~u2", friendship);
+    const db = studentDb("u1");
+    await assertFails(setDoc(doc(db, "chats/u1~u2"), { uids: ["u1", "u2"] }));
+    await assertFails(sendToFriendAs(db, "u1~u2", newMessage("u1")));
+    await expectMissing("chats/u1~u2");
+    await seedChat("u1~u2");
+    await assertFails(sendToFriendAs(db, "u1~u2", newMessage("u1")));
+    await expectMissing(chatMessagePath("u1~u2", "new"));
+  });
+}
+
+test("a friendship with someone else opens no chat with a third student", async () => {
+  await seedFriends("u1", "u3");
+  await seedFriends("u2", "u3");
+  const db = studentDb("u1");
+  await assertFails(setDoc(doc(db, "chats/u1~u2"), { uids: ["u1", "u2"] }));
+  await assertFails(sendToFriendAs(db, "u1~u2", newMessage("u1")));
+  await expectMissing("chats/u1~u2");
+});
+
+test("nobody updates or deletes a chat document, not even rewriting the same content", async () => {
+  await seedFriends("u1", "u2");
+  await seedChat("u1~u2");
+  for (const uid of ["u1", "u2", "u3"]) {
+    const chat = doc(studentDb(uid), "chats/u1~u2");
+    await assertFails(setDoc(chat, { uids: ["u1", "u2"] }));
+    await assertFails(updateDoc(chat, { uids: ["u1"] }));
+    await assertFails(updateDoc(chat, { uids: ["u1", "u2", "u3"] }));
+    await assertFails(updateDoc(chat, { hidden: true }));
+    await assertFails(deleteDoc(chat));
+  }
+  assert.deepEqual(await storedAt("chats/u1~u2"), { uids: ["u1", "u2"] });
+});
+
+test("a batch that writes an existing chat again with a message is refused as a whole", async () => {
+  await seedFriends("u1", "u2");
+  await seedChat("u1~u2");
+  const db = studentDb("u1");
+  const batch = writeBatch(db);
+  batch.set(doc(db, "chats/u1~u2"), { uids: ["u1", "u2"] });
+  batch.set(doc(db, chatMessagePath("u1~u2", "new")), newMessage("u1"));
+  await assertFails(batch.commit());
+  await expectMissing(chatMessagePath("u1~u2", "new"));
+});
+
+// -- both send their first message at once --
+
+test("the loser of a first-message race stores nothing, and its second attempt adds only its message", async () => {
+  await seedFriends("u1", "u2");
+  const db = studentDb("u1");
+  // u1 reads the chat as missing; u2's first message creates it before u1 commits.
+  const lost = runTransaction(
+    db,
+    async (transaction) => {
+      const chat = doc(db, "chats/u1~u2");
+      if ((await transaction.get(chat)).exists()) throw new Error("The chat should be missing");
+      // assertSucceeds only passes a refusal on, which would read as u1's lost race below.
+      await assertSucceeds(
+        sendToFriendAs(studentDb("u2"), "u1~u2", newMessage("u2", "First!"), "fromU2"),
+      ).catch((error) => {
+        throw new Error(`u2's first message was refused: ${error.message}`);
+      });
+      transaction.set(chat, { uids: ["u1", "u2"] });
+      transaction.set(doc(db, chatMessagePath("u1~u2", "fromU1")), newMessage("u1", "Me too"));
+    },
+    { maxAttempts: 1 },
+  );
+  const failure = await lost.then(() => null, (error) => error);
+  // The transaction's own check that the chat is still missing fails it on the emulator; a commit
+  // the rules check first is refused instead, since nobody updates a chat.
+  assert.ok(
+    ["already-exists", "permission-denied"].includes(failure?.code),
+    `The losing commit: ${failure ? `${failure.code} ${failure.message}` : "committed"}`,
+  );
+  await expectMissing(chatMessagePath("u1~u2", "fromU1"));
+  // The second attempt reads the chat as existing and writes only its message.
+  const rerun = await assertSucceeds(
+    sendToFriendAs(db, "u1~u2", newMessage("u1", "Me too"), "fromU1"),
+  );
+  assert.equal(rerun, "sent");
+  assert.deepEqual(idsOf(await getDocs(chatHistory(db, "u1~u2"))).sort(), ["fromU1", "fromU2"]);
+  assert.deepEqual(await storedAt("chats/u1~u2"), { uids: ["u1", "u2"] });
+});
+
+// -- reading and listing --
+
+test("both students get the chat document; a chat not created yet reads as missing, with no messages", async () => {
+  for (const uid of ["u1", "u2"]) {
+    const db = studentDb(uid);
+    assert.equal((await assertSucceeds(getDoc(doc(db, "chats/u1~u2")))).exists(), false);
+    assert.equal((await assertSucceeds(getDocs(chatHistory(db, "u1~u2")))).size, 0);
+    assert.equal((await assertSucceeds(getDocs(chatLatest(db, "u1~u2")))).size, 0);
+  }
+  await seedChat("u1~u2");
+  for (const uid of ["u1", "u2"]) {
+    const chat = await assertSucceeds(getDoc(doc(studentDb(uid), "chats/u1~u2")));
+    assert.deepEqual(chat.data(), { uids: ["u1", "u2"] });
+  }
+});
+
+test("both students read a chat's messages in the server's time order, and its latest one", async () => {
+  await seedChat("u1~u2");
+  await seedChatMessage("u1~u2", "later", "u2", 1_790_000_060_000);
+  await seedChatMessage("u1~u2", "earlier", "u1", 1_790_000_000_000);
+  for (const uid of ["u1", "u2"]) {
+    const db = studentDb(uid);
+    await assertSucceeds(getDoc(doc(db, chatMessagePath("u1~u2", "later"))));
+    assert.deepEqual(idsOf(await assertSucceeds(getDocs(chatHistory(db, "u1~u2")))), ["earlier", "later"]);
+    assert.deepEqual(idsOf(await assertSucceeds(getDocs(chatLatest(db, "u1~u2")))), ["later"]);
+  }
+});
+
+test("a student lists exactly their own chats with uids array-contains their UID", async () => {
+  await seedChat("u1~u2");
+  await seedChat("u1~u3");
+  await seedChat("u2~u3");
+  expectIds(idsOf(await assertSucceeds(getDocs(myChats(studentDb("u1"), "u1")))), ["u1~u2", "u1~u3"]);
+  expectIds(idsOf(await assertSucceeds(getDocs(myChats(studentDb("u3"), "u3")))), ["u1~u3", "u2~u3"]);
+  assert.equal((await assertSucceeds(getDocs(myChats(studentDb("u4"), "u4")))).size, 0);
+});
+
+test("a query that can only return the caller's own chats is allowed", async () => {
+  await seedChat("u1~u2");
+  await seedChat("u2~u3");
+  const chats = collection(studentDb("u1"), "chats");
+  const byPair = query(chats, where("uids", "==", ["u1", "u2"]));
+  assert.deepEqual(idsOf(await assertSucceeds(getDocs(byPair))), ["u1~u2"]);
+  const byId = query(chats, where(documentId(), "==", "u1~u2"));
+  assert.deepEqual(idsOf(await assertSucceeds(getDocs(byId))), ["u1~u2"]);
+});
+
+test("nobody lists chats without the filter on their own UID", async () => {
+  await seedChat("u1~u2");
+  await seedChat("u2~u3");
+  const chats = collection(studentDb("u1"), "chats");
+  for (const [name, list] of [
+    ["the whole collection", chats],
+    ["a limit", query(chats, limit(1))],
+    ["array-contains another UID", query(chats, where("uids", "array-contains", "u2"))],
+    ["array-contains-any", query(chats, where("uids", "array-contains-any", ["u1", "u2"]))],
+    ["uids == another pair", query(chats, where("uids", "==", ["u2", "u3"]))],
+    ["another chat's ID", query(chats, where(documentId(), "==", "u2~u3"))],
+    ["a range of IDs", query(chats, where(documentId(), ">=", "u1~"))],
+    ["in on IDs", query(chats, where(documentId(), "in", ["u1~u2", "u2~u3"]))],
+    ["an orderBy", query(chats, orderBy("uids"))],
+  ]) {
+    await assertFails(getDocs(list)).catch((error) => {
+      throw new Error(`Listing with ${name} was allowed: ${error.message}`);
+    });
+  }
+});
+
+test("an unfiltered list is refused even when every stored chat is the caller's", async () => {
+  await seedChat("u1~u2");
+  await seedChat("u1~u3");
+  const chats = collection(studentDb("u1"), "chats");
+  await assertFails(getDocs(chats));
+  await assertFails(getDocs(query(chats, limit(10))));
+});
+
+test("nobody queries chats or their messages across chats (collection group)", async () => {
+  await seedChat("u1~u2");
+  await seedChatMessage("u1~u2", "m1", "u1");
+  const db = studentDb("u1");
+  await assertFails(getDocs(collectionGroup(db, "messages")));
+  await assertFails(getDocs(query(collectionGroup(db, "messages"), where("senderId", "==", "u1"))));
+  await assertFails(getDocs(collectionGroup(db, "chats")));
+  await assertFails(getDocs(query(collectionGroup(db, "chats"), where("uids", "array-contains", "u1"))));
+});
+
+test("no other subcollection of a chat is reachable", async () => {
+  await seedFriends("u1", "u2");
+  await seedChat("u1~u2");
+  await seedChatMessage("u1~u2", "m1", "u1");
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "chats/u1~u2/reads/u1"), { at: 1 });
+  });
+  const db = studentDb("u1");
+  await assertFails(getDoc(doc(db, "chats/u1~u2/reads/u1")));
+  await assertFails(setDoc(doc(db, "chats/u1~u2/reads/u1"), { at: 2 }));
+  await assertFails(getDocs(collection(db, "chats/u1~u2/reads")));
+  await assertFails(setDoc(doc(db, `${chatMessagePath("u1~u2", "m1")}/replies/r1`), newMessage("u1")));
+  // The collection-group list rules of groups and attendees match any path, so such a query under
+  // a chat is allowed, and always empty, since nothing can be written there.
+  await assertFails(setDoc(doc(db, "chats/u1~u2/groups/g1"), newGroup("u1")));
+  const groups = query(collection(db, "chats/u1~u2/groups"), where("memberUids", "array-contains", "u1"));
+  assert.equal((await assertSucceeds(getDocs(groups))).size, 0);
+});
+
+// -- sending --
+
+test("a friend sends in an existing chat, as the app does", async () => {
+  await seedFriends("u1", "u2");
+  await seedChat("u1~u2");
+  await assertSucceeds(sendToFriendAs(studentDb("u1"), "u1~u2", newMessage("u1")));
+  await assertSucceeds(sendToFriendAs(studentDb("u2"), "u1~u2", newMessage("u2", "Yes!"), "reply"));
+  const message = await storedAt(chatMessagePath("u1~u2", "new"));
+  assert.deepEqual([message.senderId, message.text], ["u1", "See you at 6?"]);
+  assert.deepEqual(await storedAt("chats/u1~u2"), { uids: ["u1", "u2"] });
+});
+
+test("a student can't send as the other student, nor with the deleted-author marker", async () => {
+  await seedFriends("u1", "u2");
+  await seedChat("u1~u2");
+  await assertFails(sendToFriendAs(studentDb("u1"), "u1~u2", newMessage("u2")));
+  await assertFails(sendToFriendAs(studentDb("u2"), "u1~u2", newMessage("u1")));
+  await assertFails(sendToFriendAs(studentDb("u1"), "u1~u2", newMessage("")));
+  await expectMissing(chatMessagePath("u1~u2", "new"));
+});
+
+test("after unfriending, neither student sends", async () => {
+  await seedFriends("u1", "u2");
+  await seedChat("u1~u2");
+  await assertSucceeds(sendToFriendAs(studentDb("u2"), "u1~u2", newMessage("u2"), "before"));
+  await assertSucceeds(deleteDoc(friendshipRef(studentDb("u2"), "u1~u2")));
+  for (const uid of ["u1", "u2"]) {
+    await assertFails(sendToFriendAs(studentDb(uid), "u1~u2", newMessage(uid)));
+  }
+  await expectMissing(chatMessagePath("u1~u2", "new"));
+});
+
+test("a message whose chat doesn't exist and isn't created with it is refused", async () => {
+  await seedFriends("u1", "u2");
+  await assertFails(setChatMessage(studentDb("u1"), "u1~u2", newMessage("u1")));
+  await expectMissing(chatMessagePath("u1~u2", "new"));
+});
+
+for (const [name, changes] of [
+  ["an empty text", { text: "" }],
+  ["a text of 1001 characters", { text: "a".repeat(1001) }],
+  ["501 emoji (1002 UTF-16 units)", { text: EMOJI.repeat(501) }],
+  ["a text that isn't a string", { text: 42 }],
+  ["a null text", { text: null }],
+  ["no text", { text: undefined }],
+  ["no sender", { senderId: undefined }],
+  ["a createdAt the client chose", { createdAt: Timestamp.fromMillis(1_790_000_000_000) }],
+  ["no createdAt", { createdAt: undefined }],
+  ["another field", { editedAt: serverTimestamp() }],
+]) {
+  test(`a one-to-one message with ${name} is refused, also as the chat's first`, async () => {
+    await seedFriends("u1", "u2");
+    const message = { ...newMessage("u1"), ...changes };
+    for (const key of Object.keys(message)) {
+      if (message[key] === undefined) delete message[key];
+    }
+    await assertFails(sendToFriendAs(studentDb("u1"), "u1~u2", message));
+    await expectMissing("chats/u1~u2");
+    await seedChat("u1~u2");
+    await assertFails(sendToFriendAs(studentDb("u1"), "u1~u2", message));
+    await expectMissing(chatMessagePath("u1~u2", "new"));
+  });
+}
+
+test("a one-to-one message may have 1 or 1000 characters, or 500 emoji", async () => {
+  await seedFriends("u1", "u2");
+  const db = studentDb("u1");
+  await assertSucceeds(sendToFriendAs(db, "u1~u2", newMessage("u1", "a"), "shortest"));
+  await assertSucceeds(sendToFriendAs(db, "u1~u2", newMessage("u1", "a".repeat(1000)), "longest"));
+  await assertSucceeds(sendToFriendAs(db, "u1~u2", newMessage("u1", EMOJI.repeat(500)), "emoji"));
+});
+
+test("a retry under the same message ID reads the stored message; writing it again is refused", async () => {
+  await seedFriends("u1", "u2");
+  const db = studentDb("u1");
+  assert.equal(await assertSucceeds(sendToFriendAs(db, "u1~u2", newMessage("u1", "Once"), "draft")), "sent");
+  assert.equal(
+    await assertSucceeds(sendToFriendAs(db, "u1~u2", newMessage("u1", "Once"), "draft")),
+    "already stored",
+  );
+  await assertFails(setChatMessage(db, "u1~u2", newMessage("u1", "Once"), "draft"));
+});
+
+test("nobody edits, overwrites or deletes a one-to-one message, not even its sender", async () => {
+  await seedFriends("u1", "u2");
+  await seedChat("u1~u2");
+  await seedChatMessage("u1~u2", "m1", "u1");
+  for (const uid of ["u1", "u2", "u3"]) {
+    const message = doc(studentDb(uid), chatMessagePath("u1~u2", "m1"));
+    await assertFails(updateDoc(message, { text: "Edited" }));
+    await assertFails(updateDoc(message, { senderId: "" }));
+    await assertFails(setDoc(message, newMessage("u1", "Overwritten")));
+    await assertFails(deleteDoc(message));
+  }
+  assert.equal((await storedAt(chatMessagePath("u1~u2", "m1"))).text, "Seeded");
+});
+
+// -- deleted accounts --
+
+test("a caller under a deletion marker can't read, list, create or send; the other student still reads", async () => {
+  await seedFriends("u1", "u2");
+  await seedFriends("u1", "u3");
+  await seedChat("u1~u2");
+  await seedChatMessage("u1~u2", "m1", "u1");
+  await assertSucceeds(getDocs(chatHistory(studentDb("u1"), "u1~u2")));
+  await seedDeletedAccount("u1");
+  const db = studentDb("u1");
+  await assertFails(getDoc(doc(db, "chats/u1~u2")));
+  await assertFails(getDocs(myChats(db, "u1")));
+  await assertFails(getDoc(doc(db, chatMessagePath("u1~u2", "m1"))));
+  await assertFails(getDocs(chatHistory(db, "u1~u2")));
+  await assertFails(getDocs(chatLatest(db, "u1~u2")));
+  await assertFails(sendToFriendAs(db, "u1~u2", newMessage("u1")));
+  // Its friendship with u3 is still stored (deleteAccount hasn't reached it yet): no new chat either.
+  await assertFails(setDoc(doc(db, "chats/u1~u3"), { uids: ["u1", "u3"] }));
+  await assertFails(sendToFriendAs(db, "u1~u3", newMessage("u1")));
+  await expectMissing(chatMessagePath("u1~u2", "new"));
+  await expectMissing("chats/u1~u3");
+  const other = studentDb("u2");
+  await assertSucceeds(getDoc(doc(other, "chats/u1~u2")));
+  assert.deepEqual(idsOf(await assertSucceeds(getDocs(myChats(other, "u2")))), ["u1~u2"]);
+  assert.deepEqual(idsOf(await assertSucceeds(getDocs(chatHistory(other, "u1~u2")))), ["m1"]);
+});
+
+test("until deleteAccount deletes the friendship, the other student still sends", async () => {
+  await seedFriends("u1", "u2");
+  await seedChat("u1~u2");
+  await seedDeletedAccount("u1");
+  await assertSucceeds(sendToFriendAs(studentDb("u2"), "u1~u2", newMessage("u2")));
+  await assertFails(getDocs(chatHistory(studentDb("u1"), "u1~u2")));
+});
+
+test("another student's deletion marker doesn't stop two friends chatting", async () => {
+  await seedFriends("u1", "u2");
+  await seedDeletedAccount("u3");
+  await assertSucceeds(sendToFriendAs(studentDb("u1"), "u1~u2", newMessage("u1")));
+  await assertSucceeds(sendToFriendAs(studentDb("u2"), "u1~u2", newMessage("u2"), "reply"));
+});
+
+test("once the other account is deleted, the remaining student lists and reads the chat but can't send (#429)", async () => {
+  // What deleteAccount leaves of u1: the marker, no friendship, an empty senderId on u1's
+  // messages, and u1 taken out of uids.
+  await seedDeletedAccount("u1");
+  await seedChat("u1~u2", ["u2"]);
+  await seedChatMessage("u1~u2", "theirs", "", 1_790_000_000_000);
+  await seedChatMessage("u1~u2", "mine", "u2", 1_790_000_060_000);
+  const db = studentDb("u2");
+  assert.deepEqual(idsOf(await assertSucceeds(getDocs(myChats(db, "u2")))), ["u1~u2"]);
+  assert.deepEqual((await assertSucceeds(getDoc(doc(db, "chats/u1~u2")))).data(), { uids: ["u2"] });
+  const history = await assertSucceeds(getDocs(chatHistory(db, "u1~u2")));
+  assert.deepEqual(history.docs.map((message) => message.data().senderId), ["", "u2"]);
+  assert.deepEqual(idsOf(await assertSucceeds(getDocs(chatLatest(db, "u1~u2")))), ["mine"]);
+  await assertFails(sendToFriendAs(db, "u1~u2", newMessage("u2")));
+  await assertFails(updateDoc(doc(db, chatMessagePath("u1~u2", "theirs")), { senderId: "u1" }));
+  await assertFails(updateDoc(doc(db, "chats/u1~u2"), { uids: ["u1", "u2"] }));
+  await assertFails(deleteDoc(doc(db, "chats/u1~u2")));
+  // The deleted account's still-valid token reads nothing.
+  await assertFails(getDoc(doc(studentDb("u1"), "chats/u1~u2")));
+  await assertFails(getDocs(chatHistory(studentDb("u1"), "u1~u2")));
+});
+
+// -- accounts that aren't verified students --
+
+for (const verified of [false, true]) {
+  const kind = verified ? "verified" : "unverified";
+  const clubUid = verified ? "verifiedClub" : "club";
+  for (const [name, uid, db, seed] of [
+    ["a non-EPFL association", clubUid, () => associationDb(clubUid), async () => {}],
+    ["an @epfl.ch association", "epflClub", () => epflAssociationDb("epflClub"),
+      () => seedUser("epflClub", { accountType: "association", isAssociationVerified: verified })],
+  ]) {
+    test(`${name} (${kind}) gets nothing of a chat, even named in it and in a friendship`, async () => {
+      await seed();
+      const pairId = pairOf(uid, "u1");
+      await seedFriends(uid, "u1");
+      // Before it exists: no read as missing, no create.
+      await assertFails(getDoc(doc(db(), `chats/${pairId}`)));
+      await assertFails(setDoc(doc(db(), `chats/${pairId}`), { uids: pairId.split("~") }));
+      await assertFails(sendToFriendAs(db(), pairId, newMessage(uid)));
+      await expectMissing(`chats/${pairId}`);
+      // Stored with the rules off: still nothing.
+      await seedChat(pairId);
+      await seedChatMessage(pairId, "m1", "u1");
+      await assertFails(getDoc(doc(db(), `chats/${pairId}`)));
+      await assertFails(getDocs(myChats(db(), uid)));
+      await assertFails(getDoc(doc(db(), chatMessagePath(pairId, "m1"))));
+      await assertFails(getDocs(chatHistory(db(), pairId)));
+      await assertFails(getDocs(chatLatest(db(), pairId)));
+      await assertFails(setChatMessage(db(), pairId, newMessage(uid)));
+      await expectMissing(chatMessagePath(pairId, "new"));
+    });
+  }
+}
+
+for (const [name, db] of [
+  ["an unverified @epfl.ch student", () => firestoreAs("student@epfl.ch", false, "u1")],
+  ["a student without an email_verified claim",
+    () => env.authenticatedContext("u1", { email: "student@epfl.ch" }).firestore()],
+  ["a verified non-EPFL account with a student's profile", () => firestoreAs("student@gmail.com", true, "u1")],
+  ["a signed-out user", () => env.unauthenticatedContext().firestore()],
+]) {
+  test(`${name} gets nothing of a one-to-one chat`, async () => {
+    await seedFriends("u1", "u2");
+    await assertFails(getDoc(doc(db(), "chats/u1~u2")));
+    await assertFails(setDoc(doc(db(), "chats/u1~u2"), { uids: ["u1", "u2"] }));
+    await expectMissing("chats/u1~u2");
+    await seedChat("u1~u2");
+    await seedChatMessage("u1~u2", "m1", "u2");
+    await assertFails(getDoc(doc(db(), "chats/u1~u2")));
+    await assertFails(getDocs(myChats(db(), "u1")));
+    await assertFails(getDoc(doc(db(), chatMessagePath("u1~u2", "m1"))));
+    await assertFails(getDocs(chatHistory(db(), "u1~u2")));
+    await assertFails(setChatMessage(db(), "u1~u2", newMessage("u1")));
+    await expectMissing(chatMessagePath("u1~u2", "new"));
+  });
+}
