@@ -9,6 +9,8 @@
 // #405).
 // Contributors: Claude (Opus 5.5, Anthropic) (the one-to-one chats and delete-for-me markers, and
 // the chats, markers and other accounts' deletion markers in the fake, #429).
+// Contributors: Claude (Opus 5.5, Anthropic) (the fake's query limit, more chats than a page, and a
+// failure at every call followed by a retry, #429).
 
 // Unit tests with fakes, no emulator: node firebase/functions/deleteAccountHandler.test.js
 const { test } = require("node:test");
@@ -158,25 +160,26 @@ function fakeBackend({
           assert.ok(path === "friendships" || path === "chats", path);
           assert.equal(field, "uids");
           assert.equal(op, "array-contains");
-          const query = {
-            limit(size) {
-              assert.equal(size, 500);
-              return query;
+          // As in Firestore, limit returns a new query, which returns at most `size` documents.
+          const query = (size = Infinity) => ({
+            limit(newSize) {
+              assert.equal(newSize, 500);
+              return query(newSize);
             },
             async get() {
               calls.push(`query:${path} ${field} ${op} ${value}`);
               failIfAsked(`${path}-query`);
-              const docs = path === "chats"
+              const docs = (path === "chats"
                 ? Object.entries(state.chats)
                   .filter(([, chat]) => chat.uids.includes(value))
                   .map(([chatPath]) => ({ ref: chatRef(chatPath) }))
                 : Object.entries(state.friendships)
                   .filter(([, uids]) => uids.includes(value))
-                  .map(([friendshipPath]) => ({ ref: { path: friendshipPath } }));
+                  .map(([friendshipPath]) => ({ ref: { path: friendshipPath } }))).slice(0, size);
               return { empty: docs.length === 0, docs };
             },
-          };
-          return query;
+          });
+          return query();
         },
         // A chat's messages or a student's delete-for-me markers, with a limit.
         limit(size) {
@@ -1090,4 +1093,103 @@ test("a failure after the first batch of markers keeps the Auth user, and a retr
   assert.deepEqual(left("hiddenGroupChats"), []);
   assert.equal(Object.keys(backend.state.hidden).length, 2);
   assert.equal(backend.state.authUserExists, false);
+});
+
+test("every chat of the student is found, more than a query page holds", async () => {
+  // One read, without a limit: a limit would leave the chats after the first page listing the UID.
+  const chats = {};
+  for (let i = 0; i < 501; i++) {
+    const friend = `student-uid-x${i}`;
+    chats[chatOf(UID, friend)] = { uids: [UID, friend] };
+  }
+  const backend = fakeBackend({ chats });
+  assert.deepEqual(await call(backend), { deleted: true });
+  assert.equal(Object.keys(backend.state.chats).length, 501);
+  assert.deepEqual(chatsListing(backend, UID), []);
+});
+
+/**
+ * Everything the deletion steps handle at once: the default registrations and friendships, a group
+ * with its markers and a message, and one-to-one chats of every kind (kept, with an unsent message;
+ * kept with the UID second in uids; nobody left, with more messages than a batch holds; another
+ * pair's), with more delete-for-me markers of each kind than a batch holds, and the friend's.
+ */
+function everyKindOfData() {
+  const kept = chatOf(UID, FRIEND);
+  const keptToo = chatOf(UID, "student-uid-0");
+  const nobodyLeft = chatOf(UID, GONE);
+  const othersChat = chatOf(FRIEND, GONE);
+  const both = Object.fromEntries(Array.from({ length: 501 }, (_, i) => [`m${i}`, i % 2 ? UID : GONE]));
+  return {
+    groups: { "events/e1/groups/g1": { memberUids: [UID, FRIEND] } },
+    markers: {
+      [`events/e1/groupMembers/${UID}`]: { groupId: "g1" },
+      [`events/e1/groupMembers/${FRIEND}`]: { groupId: "g1" },
+    },
+    chats: {
+      [kept]: { uids: [UID, FRIEND] },
+      [keptToo]: { uids: ["student-uid-0", UID] },
+      [nobodyLeft]: { uids: [UID, GONE] },
+      [othersChat]: { uids: [FRIEND, GONE] },
+    },
+    deletedUids: [GONE],
+    messages: {
+      ...chatMessages(kept, { a: UID, b: FRIEND }),
+      [`${kept}/messages/unsent`]: { senderId: UID, text: "", createdAt: 1 },
+      ...chatMessages(keptToo, { c: UID }),
+      ...chatMessages(nobodyLeft, both),
+      ...chatMessages(othersChat, { d: GONE }),
+      "events/e1/groups/g1/messages/g": { senderId: UID, text: "Text of g", createdAt: 1 },
+    },
+    hidden: manyMarkers(),
+  };
+}
+
+/**
+ * Makes the backend call at `index` of `backend.calls` fail once, as a lost connection does: the
+ * fake records a call before it changes anything, so nothing of that call is applied.
+ */
+function failAtCall(backend, index) {
+  backend.calls.push = function (entry) {
+    const length = Array.prototype.push.call(this, entry);
+    if (length - 1 === index) {
+      delete this.push;
+      throw backendError(14);
+    }
+    return length;
+  };
+}
+
+test("a failure at any call, then a retry, ends as a deletion without failure", async () => {
+  const clean = fakeBackend(everyKindOfData());
+  assert.deepEqual(await call(clean), { deleted: true });
+  // Every call that reaches Firestore or Auth; getting a collection's reference reaches neither.
+  const reaching = clean.calls.flatMap((c, i) => (c.startsWith("collection") ? [] : [[c, i]]));
+  assert.ok(reaching.some(([c]) => c.startsWith("commit:users/")), "the markers are deleted");
+  for (const [operation, index] of reaching) {
+    const backend = fakeBackend(everyKindOfData());
+    failAtCall(backend, index);
+    await assertHttpsError(call(backend), "unavailable", undefined);
+    assert.equal(backend.state.authUserExists, true, operation);
+    assert.equal(backend.logs.length, 1, operation);
+    assert.equal(backend.logs[0][2].code, 14, operation);
+    // A chat nobody else is left in still lists the UID until it is gone, so the retry finds it.
+    for (const [path, { uids }] of Object.entries(backend.state.chats)) {
+      const keptForSomeone = uids.some((other) => other !== UID && !backend.state.deletedUids.has(other));
+      assert.ok(uids.includes(UID) || keptForSomeone, `${operation}: ${path}`);
+    }
+
+    assert.deepEqual(await call(backend), { deleted: true }, operation);
+    assert.deepEqual(backend.state, clean.state, operation);
+  }
+  // What a deletion without failure leaves, as the steps' own tests check it.
+  assert.deepEqual(clean.state.chats, {
+    [chatOf(UID, FRIEND)]: { uids: [FRIEND] },
+    [chatOf(UID, "student-uid-0")]: { uids: ["student-uid-0"] },
+    [chatOf(FRIEND, GONE)]: { uids: [FRIEND, GONE] },
+  });
+  assert.ok(!Object.keys(clean.state.messages).some((path) => path.startsWith(chatOf(UID, GONE))));
+  assert.ok(!Object.values(clean.state.messages).some((message) => message.senderId === UID));
+  assert.deepEqual(clean.state.messages[`${chatOf(UID, FRIEND)}/messages/unsent`], { senderId: "", text: "", createdAt: 1 });
+  assert.equal(Object.keys(clean.state.hidden).length, 2);
 });
