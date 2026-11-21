@@ -1,5 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the one-to-one chats' account-deletion step,
-// from #365's prototype, #429.
+// from #365's prototype, #429; malformed uids tolerated, after review.
 "use strict";
 
 const { deleteAllMatching } = require("./registrations");
@@ -35,14 +35,18 @@ async function leaveUserChats(db, uid) {
  *   are deleted, then the chat. `uids` keeps the UID until the chat is gone, because that is how
  *   [leaveUserChats]'s query finds a deletion interrupted in between: an empty `uids` written first
  *   would hide it from a retry and keep both students' texts for good.
- * A chat already gone when the transaction reads it (another deletion got there first) is skipped.
+ * A chat already gone when the transaction reads it (another deletion got there first), or no longer
+ * holding a list, is skipped. An entry of `uids` that isn't a non-empty string can't be a UID, so it
+ * isn't an account and is kept as it is, as #241's group step does with `memberUids`: a malformed
+ * chat can't stop the deletion.
  */
 async function leaveChat(db, chat, uid) {
   const nobodyLeft = await db.runTransaction(async (transaction) => {
-    const stored = await transaction.get(chat);
-    if (!stored.exists) return false;
-    const others = stored.get("uids").filter((member) => member !== uid);
+    const uids = (await transaction.get(chat)).get("uids");
+    if (!Array.isArray(uids)) return false;
+    const others = uids.filter((member) => member !== uid);
     for (const other of others) {
+      if (typeof other !== "string" || other === "") continue;
       if (!(await transaction.get(db.collection("deletedAccounts").doc(other))).exists) {
         transaction.update(chat, { uids: others });
         return false;

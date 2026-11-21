@@ -156,6 +156,8 @@ function fakeBackend({
       calls.push(`collection:${path}`);
       return {
         doc(id) {
+          // As in the Admin SDK, a document ID is a non-empty string.
+          if (typeof id !== "string" || id === "") throw new TypeError("Invalid document ID.");
           return { path: `${path}/${id}` };
         },
         // The query `friendships` or `chats` `where uids array-contains <uid>`, with a limit.
@@ -1232,4 +1234,20 @@ test("a batch refused twice with the same messages is a failure, not an endless 
   assert.deepEqual(backend.logs, [["error", "deleteAccount step failed", { step: "anonymise-messages", code: 5 }]]);
   assert.equal(backend.state.messages[path].senderId, UID);
   assert.equal(backend.state.authUserExists, true);
+});
+
+test("uids entries that can't be a UID neither stop the deletion nor count as an account", async () => {
+  const malformedOnly = chatOf(UID, "student-uid-5");
+  const withFriend = chatOf(UID, FRIEND);
+  const backend = fakeBackend({
+    chats: { [malformedOnly]: { uids: [UID, 42, ""] }, [withFriend]: { uids: [42, UID, FRIEND] } },
+    messages: { ...chatMessages(malformedOnly, { a: UID }), ...chatMessages(withFriend, { b: UID }) },
+  });
+  assert.deepEqual(await call(backend), { deleted: true });
+  // Nobody with an account is left in the first: deleted. The friend keeps the second, as it was.
+  assert.deepEqual(backend.state.chats, { [withFriend]: { uids: [42, FRIEND] } });
+  assert.deepEqual(backend.state.messages, {
+    [`${withFriend}/messages/b`]: { senderId: "", text: "Text of b", createdAt: 1 },
+  });
+  assert.deepEqual(backend.logs, []);
 });
