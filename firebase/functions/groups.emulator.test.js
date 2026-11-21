@@ -1,5 +1,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the emulator test of the triggers deleting a
 // cancelled event's groups and a deleted group's messages, #382.
+// Contributors: Claude (Opus 5.5, Anthropic) (an account deletion emptying a group, with the
+// triggers on, as a tester, #382).
 "use strict";
 
 // Deletes events and groups in the Firestore emulator and waits for the deleteEventGroups and
@@ -8,6 +10,7 @@
 // firebase emulators:exec --project demo-polysocial --only firestore,auth,functions "node --test --test-concurrency=1 firebase/functions/*.emulator.test.js"
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const { deleteAccountHandler } = require("./deleteAccountHandler");
 const { pathsIn, useTriggerEmulators, waitFor, waitUntil } = require("./testing/triggerEmulator");
 
 const database = useTriggerEmulators("deleteEventGroups");
@@ -91,6 +94,37 @@ test("a group deleted on its own loses its messages, the event's other groups ke
     "events/e/groups/other",
     "events/e/groups/other/messages/m0",
   ]);
+});
+
+// deleteAccount's own emulator tests run with the triggers off; here they run together, as
+// deployed. The handler is called directly, with the emulator's Admin Firestore and no Auth user.
+test("an account deletion emptying a group deletes its chat, a shared one stays anonymised", async () => {
+  await seedEvent("e", {
+    solo: { members: ["leaving"], messages: 2 },
+    shared: { members: ["leaving", "staying"], messages: 1 },
+  });
+  const db = database();
+
+  const result = await deleteAccountHandler({
+    auth: { uid: "leaving", token: { auth_time: 1_000_000 } },
+    db,
+    adminAuth: { deleteUser: async () => {} },
+    now: () => 1_000_000_000,
+    logger: { error() {}, warn() {} },
+  });
+
+  assert.deepEqual(result, { deleted: true });
+  await waitFor(() => stored("events/e/groups/solo"), []);
+  assert.deepEqual(await stored("events/e"), [
+    "events/e",
+    "events/e/attendees/staying",
+    "events/e/groupMembers/staying",
+    "events/e/groups/shared",
+    "events/e/groups/shared/messages/m0",
+  ]);
+  const kept = await db.doc("events/e/groups/shared/messages/m0").get();
+  assert.equal(kept.get("senderId"), "");
+  assert.equal(kept.get("text"), "Fictional plan");
 });
 
 test("a group with more messages than one batch holds loses them all", async () => {
