@@ -1,6 +1,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the Cloud Functions entry point, #206; Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (the trigger deleting a deleted event's registrations, #275).
 // Contributors: Claude (Fable 5.2, Anthropic) (the scheduled cleanup of unverified accounts, #226).
+// Contributors: Claude (Opus 5.5, Anthropic) (the deletion triggers' shared options, #382).
 "use strict";
 
 const { initializeApp } = require("firebase-admin/app");
@@ -27,16 +28,19 @@ exports.deleteAccount = onCall({ region: REGION }, (request) =>
   }),
 );
 
-/** Trigger: deletes a deleted event's registrations, retried until done. See registrations.js. */
-exports.deleteEventRegistrations = onDocumentDeleted(
-  { document: "events/{eventId}", region: TRIGGER_REGION, retry: true },
-  (event) =>
-    deleteRegistrationsOfDeletedEvent({
-      eventId: event.params.eventId,
-      db: getFirestore(),
-      logger,
-    }),
-);
+/**
+ * A Firestore trigger on the deletion of a `document` matching the pattern, in TRIGGER_REGION and
+ * deployed with retries, so a run that fails is run again until `cleanUp` succeeds. `cleanUp` gets
+ * the pattern's parameters (such as `eventId`), Firestore and the logger.
+ */
+function onDeleted(document, cleanUp) {
+  return onDocumentDeleted({ document, region: TRIGGER_REGION, retry: true }, (event) =>
+    cleanUp({ ...event.params, db: getFirestore(), logger }),
+  );
+}
+
+/** Trigger: deletes a deleted event's registrations. See registrations.js. */
+exports.deleteEventRegistrations = onDeleted("events/{eventId}", deleteRegistrationsOfDeletedEvent);
 
 /**
  * Scheduled: every night, deletes the email and password sign-ups whose email is still unverified
