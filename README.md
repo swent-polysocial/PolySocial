@@ -23,7 +23,7 @@
 <!-- Contributors: Claude (Fable 5.2, Anthropic) (the scheduled deleteUnverifiedAccounts function, its retention period and first deploy, #226). -->
 <!-- Contributors: Claude Opus 5.5 (the friendships' deploy order, #357, deleteAccount first after review); Konstantinos Perdikeas (directed, reviewed and owns it). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the notice's deletion section that states the period, after review, #226). -->
-<!-- Contributors: Claude (Opus 5.5, Anthropic) (one-to-one chats and delete-for-me markers in deleteAccount, #429). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (one-to-one chats and delete-for-me markers in deleteAccount, and their deploy order, #429). -->
 
 # PolySocial
 
@@ -209,6 +209,8 @@ firebase deploy --only firestore:indexes --project <project-id>   # firebase/fir
 **Order depends on the change.** For public-profile deletion (#229), deploy `deleteAccount` first, then the Security Rules, then distribute the app. For #241 group cleanup, deploy its restrictive rules first, as described below under Cloud Functions. For #229 the order matters both ways: with the old function, deleting an account leaves the public profile behind and writes no `deletedAccounts/{uid}` marker; with the old rules, the new app's profile creation (which also writes `publicProfiles/{uid}`) is refused. The function uses the Admin SDK, so it works with either version of the rules.
 
 For friendships (#357), deploy **`deleteAccount` first, then the rules**. Once the rules are live, any client can create friendships, and an account deleted while the previous `deleteAccount` still runs would keep them. The new function deletes friendships with the Admin SDK, so it is safe to deploy before the rules.
+
+For one-to-one chats (#429), deploy **`deleteAccount` first, then #428's rules** (and #437's and #441's marker rules). Once they are live, students can create chats and delete-for-me markers, and an account deleted while the previous `deleteAccount` still runs would stay in its chats' `uids` and keep its markers. The new step finds nothing until then, so it is safe to deploy before the rules.
 
 `<project-id>` is the `project_id` in your `app/google-services.json`. Functions deploy as described in [Cloud Functions](#cloud-functions). A new index takes a few minutes to build (Firebase console → Firestore → Indexes); until it's ready, the query that needs it fails. The local emulator doesn't need indexes.
 
