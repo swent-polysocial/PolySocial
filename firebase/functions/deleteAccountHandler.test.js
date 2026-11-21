@@ -856,3 +856,238 @@ test("malformed group lists do not block erasure or erase other entries", async 
     assert.deepEqual(backend.logs, [["warn", "deleteAccount malformed group members", {code: "invalid-members"}]]);
   }
 });
+
+// One-to-one chats (#429, Architecture Diagram 3.8): the step after the friendships.
+const FRIEND = "student-uid-2";
+const GONE = "student-uid-3";
+
+/** The path of the one-to-one chat of `a` and `b`, under their sorted pair ID (#338). */
+function chatOf(a, b) {
+  return `chats/${[a, b].sort().join("~")}`;
+}
+
+/** Messages of `chat` by ID, from `senders` (ID → senderId), with a fictional text and time. */
+function chatMessages(chat, senders) {
+  return Object.fromEntries(Object.entries(senders).map(([id, senderId]) =>
+    [`${chat}/messages/${id}`, { senderId, text: `Text of ${id}`, createdAt: 1 }]));
+}
+
+/** The chats a retry's query would find for the student: those whose `uids` still list them. */
+function chatsListing(backend, uid) {
+  return Object.keys(backend.state.chats).filter((path) => backend.state.chats[path].uids.includes(uid));
+}
+
+/** The number of documents each batch deleting under `prefix` deleted, in order. */
+function batchSizes(backend, prefix) {
+  return backend.calls.filter((c) => c.startsWith(`commit:${prefix}`)).map((c) => c.split(",").length);
+}
+
+test("the other student keeps the chat, without the deleted UID (#429)", async () => {
+  const chat = chatOf(UID, FRIEND);
+  const backend = fakeBackend({
+    chats: { [chat]: { uids: [UID, FRIEND] } },
+    messages: chatMessages(chat, { a: UID, b: FRIEND }),
+  });
+  assert.deepEqual(await call(backend), { deleted: true });
+  assert.deepEqual(backend.state.chats, { [chat]: { uids: [FRIEND] } });
+  // The messages stay, the deleted account's without their author link (#241's step).
+  assert.deepEqual(backend.state.messages, {
+    [`${chat}/messages/a`]: { senderId: "", text: "Text of a", createdAt: 1 },
+    [`${chat}/messages/b`]: { senderId: FRIEND, text: "Text of b", createdAt: 1 },
+  });
+  // After the friendships, one transaction reads the chat and the friend's deletion marker, then
+  // writes uids; the messages step and the Auth user come after.
+  const steps = backend.calls.filter((c) =>
+    /^(query:friendships|query:chats|get:chats|get:deletedAccounts|update:chats|query:messages|deleteUser)/.test(c));
+  assert.deepEqual(steps, [
+    FRIENDSHIP_CALLS[0],
+    FRIENDSHIP_CALLS[2],
+    `query:chats uids array-contains ${UID}`,
+    `get:${chat}`,
+    `get:deletedAccounts/${FRIEND}`,
+    `update:${chat}`,
+    "query:messages",
+    "query:messages",
+    `deleteUser:${UID}`,
+  ]);
+});
+
+test("several chats are each decided on their own, other pairs' chats untouched", async () => {
+  const kept = chatOf(UID, FRIEND);
+  const keptToo = chatOf(UID, "student-uid-0");
+  const nobodyLeft = chatOf(UID, GONE);
+  const othersChat = chatOf(FRIEND, GONE);
+  const backend = fakeBackend({
+    chats: {
+      [kept]: { uids: [UID, FRIEND] },
+      [keptToo]: { uids: ["student-uid-0", UID] },
+      [nobodyLeft]: { uids: [UID, GONE] },
+      [othersChat]: { uids: [FRIEND, GONE] },
+    },
+    deletedUids: [GONE],
+    messages: {
+      ...chatMessages(kept, { a: UID }),
+      ...chatMessages(keptToo, { b: "student-uid-0" }),
+      ...chatMessages(nobodyLeft, { c: UID, d: GONE }),
+      ...chatMessages(othersChat, { e: FRIEND }),
+    },
+  });
+  assert.deepEqual(await call(backend), { deleted: true });
+  assert.deepEqual(backend.state.chats, {
+    [kept]: { uids: [FRIEND] },
+    [keptToo]: { uids: ["student-uid-0"] },
+    [othersChat]: { uids: [FRIEND, GONE] },
+  });
+  assert.deepEqual(Object.keys(backend.state.messages), [
+    `${kept}/messages/a`, `${keptToo}/messages/b`, `${othersChat}/messages/e`,
+  ]);
+  assert.equal(backend.state.authUserExists, false);
+});
+
+test("a chat already cleaned by an earlier attempt is left as it is", async () => {
+  // An earlier attempt took the UID out of uids, then failed before Auth.
+  const chat = chatOf(UID, FRIEND);
+  const messages = chatMessages(chat, { a: "", b: FRIEND });
+  const backend = fakeBackend({ chats: { [chat]: { uids: [FRIEND] } }, messages });
+  assert.deepEqual(await call(backend), { deleted: true });
+  assert.deepEqual(backend.state.chats, { [chat]: { uids: [FRIEND] } });
+  assert.deepEqual(backend.state.messages, chatMessages(chat, { a: "", b: FRIEND }));
+  assert.ok(!backend.calls.some((c) => c.includes(`:${chat}`)), "the chat is neither read nor written");
+});
+
+test("a chat gone before its transaction reads it is skipped", async () => {
+  // The other student's deletion deleted it between this step's query and its transaction.
+  const chat = chatOf(UID, FRIEND);
+  const backend = fakeBackend({
+    chats: { [chat]: { uids: [UID, FRIEND] } },
+    beforeChatRead(state, path) { delete state.chats[path]; },
+  });
+  assert.deepEqual(await call(backend), { deleted: true });
+  assert.deepEqual(backend.state.chats, {});
+  assert.ok(!backend.calls.some((c) => c.startsWith("update:chats") || c.startsWith("delete:chats")));
+  assert.equal(backend.state.authUserExists, false);
+});
+
+test("once both accounts are deleted, the chat's messages are deleted, then the chat", async () => {
+  // The friend deleted their account first: their own step took their UID out of uids.
+  const chat = chatOf(UID, FRIEND);
+  const backend = fakeBackend({
+    chats: { [chat]: { uids: [UID] } },
+    deletedUids: [FRIEND],
+    messages: chatMessages(chat, { a: "", b: UID }),
+  });
+  assert.deepEqual(await call(backend), { deleted: true });
+  assert.deepEqual(backend.state.chats, {});
+  assert.deepEqual(backend.state.messages, {});
+  // uids is never written: the chat leaves the query only once it is gone.
+  const writes = backend.calls.filter((c) => c.includes(chat) && /^(commit|update|delete):/.test(c));
+  assert.deepEqual(writes, [`commit:${chat}/messages/a,${chat}/messages/b`, `delete:${chat}`]);
+});
+
+test("a chat whose other student's deletion stopped before this step is deleted too", async () => {
+  // The friend's deletion wrote its marker, then stopped: their UID is still in uids, their
+  // messages still name them, and it may never be retried.
+  const chat = chatOf(UID, FRIEND);
+  const backend = fakeBackend({
+    chats: { [chat]: { uids: [UID, FRIEND] } },
+    deletedUids: [FRIEND],
+    messages: chatMessages(chat, { a: UID, b: FRIEND }),
+  });
+  assert.deepEqual(await call(backend), { deleted: true });
+  assert.deepEqual(backend.state.chats, {});
+  assert.deepEqual(backend.state.messages, {});
+  assert.ok(!backend.calls.some((c) => c.startsWith("update:chats")));
+});
+
+test("a failure while deleting a chat keeps it listing the UID, and a retry finishes", async () => {
+  // Between the messages and the chat, and after the first batch of messages.
+  for (const operation of ["chat-delete", "chat-messages-commit"]) {
+    const chat = chatOf(UID, FRIEND);
+    const senders = Object.fromEntries(Array.from({ length: 501 }, (_, i) => [`m${i}`, UID]));
+    const backend = fakeBackend({
+      chats: { [chat]: { uids: [UID, FRIEND] } },
+      deletedUids: [FRIEND],
+      messages: chatMessages(chat, senders),
+    });
+    backend.fail[operation] = { error: backendError(14), once: true, after: operation === "chat-delete" ? 0 : 1 };
+    await assertHttpsError(call(backend), "unavailable", undefined);
+    assert.deepEqual(backend.logs, [["error", "deleteAccount step failed", { step: "leave-chats", code: 14 }]]);
+    assert.equal(backend.state.authUserExists, true);
+    // uids unchanged, so the retry's query still finds the chat.
+    assert.deepEqual(backend.state.chats, { [chat]: { uids: [UID, FRIEND] } });
+    assert.deepEqual(chatsListing(backend, UID), [chat]);
+    assert.equal(Object.keys(backend.state.messages).length, operation === "chat-delete" ? 0 : 1);
+
+    assert.deepEqual(await call(backend), { deleted: true });
+    assert.deepEqual(backend.state.chats, {});
+    assert.deepEqual(backend.state.messages, {});
+    // The failed second batch is tried again by the retry.
+    assert.deepEqual(batchSizes(backend, `${chat}/messages/`), operation === "chat-delete" ? [500, 1] : [500, 1, 1]);
+    assert.equal(backend.state.authUserExists, false);
+  }
+});
+
+test("a failed chats query or uids write keeps the Auth user, and a retry finishes", async () => {
+  for (const operation of ["chats-query", "chat-write"]) {
+    const chat = chatOf(UID, FRIEND);
+    const backend = fakeBackend({ chats: { [chat]: { uids: [UID, FRIEND] } } });
+    backend.fail[operation] = { error: backendError(14), once: true };
+    await assertHttpsError(call(backend), "unavailable", undefined);
+    assert.deepEqual(backend.logs, [["error", "deleteAccount step failed", { step: "leave-chats", code: 14 }]]);
+    assert.deepEqual(backend.state.chats, { [chat]: { uids: [UID, FRIEND] } });
+    assert.equal(backend.state.authUserExists, true);
+
+    assert.deepEqual(await call(backend), { deleted: true });
+    assert.deepEqual(backend.state.chats, { [chat]: { uids: [FRIEND] } });
+    assert.equal(backend.state.authUserExists, false);
+  }
+});
+
+/** 501 delete-for-me markers of each kind for the student, and two of the friend's. */
+function manyMarkers() {
+  const hidden = {
+    [`users/${FRIEND}/hiddenChats/${UID}~${FRIEND}`]: { hiddenUpTo: 1 },
+    [`users/${FRIEND}/hiddenGroupChats/e1~g1`]: { hiddenUpTo: 1 },
+  };
+  for (let i = 0; i < 501; i++) {
+    hidden[`users/${UID}/hiddenChats/pair${i}`] = { hiddenUpTo: 1 };
+    hidden[`users/${UID}/hiddenGroupChats/e${i}~g`] = { hiddenUpTo: 1 };
+  }
+  return hidden;
+}
+
+test("the student's delete-for-me markers of both kinds are deleted after the chats, others' kept", async () => {
+  const chat = chatOf(UID, FRIEND);
+  const backend = fakeBackend({ chats: { [chat]: { uids: [UID, FRIEND] } }, hidden: manyMarkers() });
+  assert.deepEqual(await call(backend), { deleted: true });
+  assert.deepEqual(Object.keys(backend.state.hidden), [
+    `users/${FRIEND}/hiddenChats/${UID}~${FRIEND}`, `users/${FRIEND}/hiddenGroupChats/e1~g1`,
+  ]);
+  assert.deepEqual(batchSizes(backend, `users/${UID}/hiddenChats/`), [500, 1]);
+  assert.deepEqual(batchSizes(backend, `users/${UID}/hiddenGroupChats/`), [500, 1]);
+  const order = backend.calls.filter((c) => c.startsWith(`update:${chat}`) || c.startsWith("commit:users/")
+      || c.startsWith("query:messages"));
+  assert.deepEqual(order.map((c) => c.split("/").slice(0, 3).join("/")), [
+    `update:${chat}`,
+    `commit:users/${UID}/hiddenChats`, `commit:users/${UID}/hiddenChats`,
+    `commit:users/${UID}/hiddenGroupChats`, `commit:users/${UID}/hiddenGroupChats`,
+    "query:messages",
+  ]);
+});
+
+test("a failure after the first batch of markers keeps the Auth user, and a retry finishes", async () => {
+  const backend = fakeBackend({ hidden: manyMarkers() });
+  backend.fail["hidden-commit"] = { error: backendError(14), once: true, after: 1 };
+  await assertHttpsError(call(backend), "unavailable", undefined);
+  assert.deepEqual(backend.logs, [["error", "deleteAccount step failed", { step: "leave-chats", code: 14 }]]);
+  assert.equal(backend.state.authUserExists, true);
+  const left = (kind) => Object.keys(backend.state.hidden).filter((p) => p.startsWith(`users/${UID}/${kind}/`));
+  assert.equal(left("hiddenChats").length, 1);
+  assert.equal(left("hiddenGroupChats").length, 501);
+
+  assert.deepEqual(await call(backend), { deleted: true });
+  assert.deepEqual(left("hiddenChats"), []);
+  assert.deepEqual(left("hiddenGroupChats"), []);
+  assert.equal(Object.keys(backend.state.hidden).length, 2);
+  assert.equal(backend.state.authUserExists, false);
+});
