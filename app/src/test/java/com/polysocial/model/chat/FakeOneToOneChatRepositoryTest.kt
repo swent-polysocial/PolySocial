@@ -77,6 +77,8 @@ class FakeOneToOneChatRepositoryTest {
     repository.seedChat("Zed~alice")
     repository.seedChat("bob~carol")
     repository.seedChat(PAIR)
+    // Only PAIR has a message: a chat is listed with or without one.
+    repository.seedMessage(PAIR, "m1", BOB, "Hi", Instant.EPOCH)
 
     assertEquals(
         MyOneToOneChatsResult.Success(
