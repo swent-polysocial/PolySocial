@@ -2,6 +2,8 @@
 // Khellaf (reviewed and revised).
 // Contributors: Claude (Opus 5.5, Anthropic) covered signing out before confirming, #296.
 // Contributors: Claude Opus 5.5 (passed the new reminder scheduler fake, #123's second PR review).
+// Contributors: Claude (Opus 5.5, Anthropic) (the sheet lists the messages kept in group and
+// one-to-one chats, #433).
 package com.polysocial.ui.profile
 
 import android.content.Context
@@ -9,6 +11,7 @@ import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.hasClickAction
@@ -121,7 +124,10 @@ class DeleteAccountSheetTest {
   fun confirmationStatesTheConsequencesAndCancelChangesNothing() {
     open()
     title(R.string.delete_account_title)
-    rule.onNodeWithText(text(R.string.delete_account_body)).assertIsDisplayed()
+    rule
+        .onNodeWithText(text(R.string.delete_account_body))
+        .assertIsDisplayed()
+        .assertTextContains("Your messages in group and one-to-one chats stay", substring = true)
     tap(DeleteAccountTags.Cancel)
     rule.onNodeWithTag(DeleteAccountTags.Sheet).assertDoesNotExist()
     rule.onNodeWithTag(C.Tag.privacy_screen).assertIsDisplayed()
