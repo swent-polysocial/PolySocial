@@ -11,6 +11,8 @@
 // organizer's name, #281).
 // Contributors: Claude (Opus 5.5, Anthropic) (the notice's new date, what a cancelled event and a
 // group's last member leaving delete, and how long a deleted account's messages stay, #382).
+// Contributors: Claude (Opus 5.5, Anthropic) (the notice's date and its one-to-one chat sentences,
+// #433).
 package com.polysocial.ui.profile
 
 import android.content.Context
@@ -25,6 +27,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsOff
@@ -253,6 +256,44 @@ class PrivacyScreenTest {
         )
         .performScrollTo()
         .assertTextEquals(text(R.string.privacy_notice_deletion_body))
+  }
+
+  /** Asserts that this node's text contains each of [parts]. */
+  private fun SemanticsNodeInteraction.says(vararg parts: String) = parts.forEach {
+    assertTextContains(it, substring = true)
+  }
+
+  @Test
+  fun summaryAndNoticeDescribeOneToOneChatsAndWhatDeletionKeeps() {
+    openFromProfile()
+    rule
+        .onNodeWithText(text(R.string.privacy_chats_body))
+        .performScrollTo()
+        .says(
+            "or the friend you chat with one-to-one",
+            "your account identifier and your friend's",
+            "the chat stays readable by both, but neither can send",
+            "A one-to-one chat is deleted once both accounts are deleted",
+        )
+    rule.onNodeWithTag(C.Tag.privacy_full_notice).performScrollTo().performClick()
+    rule
+        .onNodeWithTag(C.Tag.privacy_notice_chats)
+        .performScrollTo()
+        .says(
+            "A one-to-one chat with a friend stores both students' account identifiers",
+            "Only the two students can read it; associations cannot.",
+            "the conversation stays readable by both, and neither can send",
+            "stay in the other student's conversation, labelled as a deleted account",
+            "the kept text is not redacted",
+            "copies already cached on the other student's device are not wiped",
+            "Once both accounts are deleted, the conversation is deleted.",
+        )
+    rule
+        .onNodeWithText(text(R.string.privacy_notice_deletion_body))
+        .says(
+            "account identifier out of your one-to-one chats",
+            "your retained messages in group and one-to-one chats",
+        )
   }
 
   @Test
