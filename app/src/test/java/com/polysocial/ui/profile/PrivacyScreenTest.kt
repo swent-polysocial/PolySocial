@@ -9,8 +9,8 @@
 // review, #226).
 // Contributors: Claude Fable 5.2 (the notice's new date and its sentence on who sees a student
 // organizer's name, #281).
-// Contributors: Claude (Opus 5.5, Anthropic) (the notice's new date and what a cancelled event and
-// a group's last member leaving delete, #382).
+// Contributors: Claude (Opus 5.5, Anthropic) (the notice's new date, what a cancelled event and a
+// group's last member leaving delete, and how long a deleted account's messages stay, #382).
 package com.polysocial.ui.profile
 
 import android.content.Context
@@ -235,6 +235,24 @@ class PrivacyScreenTest {
             "deleted once its last member has left or its event is cancelled.",
             substring = true,
         )
+  }
+
+  @Test
+  fun summaryAndNoticeKeepADeletedAccountsMessagesOnlyUntilTheirChatIsDeleted() {
+    openFromProfile()
+    // A single node holds each sentence (two would fail the lookup).
+    rule
+        .onNodeWithText("deleted-account label until the chat is deleted.", substring = true)
+        .performScrollTo()
+        .assertTextEquals(text(R.string.privacy_chats_body))
+    rule.onNodeWithTag(C.Tag.privacy_full_notice).performScrollTo().performClick()
+    rule
+        .onNodeWithText(
+            "labelled as a deleted account, until their chat is deleted.",
+            substring = true,
+        )
+        .performScrollTo()
+        .assertTextEquals(text(R.string.privacy_notice_deletion_body))
   }
 
   @Test
