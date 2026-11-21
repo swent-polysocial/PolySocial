@@ -270,6 +270,7 @@ constructor(
                   group.memberUids.mapNotNull { read[it]?.toMatch() },
               )
             },
+            friendUids = emptySet(),
         )
         .map { ranked ->
           val group = byId.getValue(ranked.group.id)
