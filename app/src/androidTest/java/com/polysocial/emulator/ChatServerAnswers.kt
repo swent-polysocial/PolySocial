@@ -5,6 +5,7 @@ package com.polysocial.emulator
 import com.polysocial.model.chat.LatestMessageResult
 import com.polysocial.model.chat.Message
 import com.polysocial.model.chat.MessagesResult
+import com.polysocial.model.chat.MyOneToOneChatsResult
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
@@ -29,6 +30,16 @@ suspend fun Flow<LatestMessageResult>.firstFromServer(): LatestMessageResult =
     withTimeout(SERVER_ANSWER_TIMEOUT_MS) {
       first {
         it !is LatestMessageResult.Loading && (it !is LatestMessageResult.Success || !it.fromCache)
+      }
+    }
+
+/** Like [firstFromServer] for a chat's messages, for a student's one-to-one chats. */
+@JvmName("firstOneToOneChatsFromServer")
+suspend fun Flow<MyOneToOneChatsResult>.firstFromServer(): MyOneToOneChatsResult =
+    withTimeout(SERVER_ANSWER_TIMEOUT_MS) {
+      first {
+        it !is MyOneToOneChatsResult.Loading &&
+            (it !is MyOneToOneChatsResult.Success || !it.fromCache)
       }
     }
 
