@@ -4,6 +4,7 @@
 // friendships, #357).
 // Contributors: Claude (Opus 5.5, Anthropic) (the attendeeCount the deletion lowers, #405).
 // Contributors: Claude (Opus 5.5, Anthropic) (the deletion triggers turned off while it runs, #382).
+// Contributors: Claude (Opus 5.5, Anthropic) (one-to-one chats and delete-for-me markers, #429).
 "use strict";
 // Contributors: OpenAI Codex (real membership cleanup and retryable message anonymisation, #241).
 
@@ -227,6 +228,82 @@ test("each event the student was going to counts one student less (#405)", async
   assert.equal((await db.doc("events/legacy").get()).get("attendeeCount"), undefined);
   const left = await db.collectionGroup("attendees").get();
   assert.deepEqual(left.docs.map((document) => document.ref.path), [`events/shared/attendees/${other}`]);
+});
+
+/** Stores the one-to-one chat of `a` and `b` (#365) under their sorted pair ID, with `messages` by ID. */
+async function seedChat(a, b, messages) {
+  const uids = [a, b].sort();
+  const chat = db.doc(`chats/${uids.join("~")}`);
+  await chat.set({ uids });
+  for (const [id, message] of Object.entries(messages)) {
+    await chat.collection("messages").doc(id).set(message);
+  }
+  return chat;
+}
+
+/** The IDs of the documents in the collection `path`, sorted. */
+async function idsIn(path) {
+  return (await db.collection(path).get()).docs.map((document) => document.id).sort();
+}
+
+test("the other student keeps the one-to-one chat, and the account's markers go (#429)", async () => {
+  const uid = await seedUser("student@epfl.ch", { accountType: "student" });
+  const other = await seedUser("other@epfl.ch", { accountType: "student" });
+  const createdAt = new Date("2026-11-13T10:00:00Z");
+  const chat = await seedChat(uid, other, {
+    sent: { senderId: uid, text: "Fictional plan", createdAt },
+    unsent: { senderId: uid, text: "", createdAt },
+    reply: { senderId: other, text: "Fictional reply", createdAt },
+  });
+  for (const owner of [uid, other]) {
+    await db.doc(`users/${owner}/hiddenChats/${chat.id}`).set({ hiddenUpTo: createdAt });
+    await db.doc(`users/${owner}/hiddenGroupChats/e1~g1`).set({ hiddenUpTo: createdAt });
+  }
+  const idToken = await signIn("student@epfl.ch");
+
+  assert.equal((await callDeleteAccount(idToken)).status, 200);
+
+  assert.deepEqual((await chat.get()).data(), { uids: [other] });
+  // The other student still finds it with the Chats tab's query.
+  const listed = await db.collection("chats").where("uids", "array-contains", other).get();
+  assert.deepEqual(listed.docs.map((document) => document.id), [chat.id]);
+  const at = Timestamp.fromDate(createdAt);
+  const message = async (id) => (await chat.collection("messages").doc(id).get()).data();
+  assert.deepEqual(await message("sent"), { senderId: "", text: "Fictional plan", createdAt: at });
+  assert.deepEqual(await message("unsent"), { senderId: "", text: "", createdAt: at });
+  assert.deepEqual(await message("reply"), { senderId: other, text: "Fictional reply", createdAt: at });
+  // users/{uid} was deleted first, which doesn't delete its subcollections: the step does.
+  assert.deepEqual(await idsIn(`users/${uid}/hiddenChats`), []);
+  assert.deepEqual(await idsIn(`users/${uid}/hiddenGroupChats`), []);
+  assert.deepEqual(await idsIn(`users/${other}/hiddenChats`), [chat.id]);
+  assert.deepEqual(await idsIn(`users/${other}/hiddenGroupChats`), ["e1~g1"]);
+});
+
+test("a one-to-one chat nobody is left in is deleted with its messages (#429)", async () => {
+  const uid = await seedUser("student@epfl.ch", { accountType: "student" });
+  const createdAt = new Date("2026-11-13T10:00:00Z");
+  // The friend's deletion wrote its marker, then stopped before its chats step: still in uids.
+  await db.doc("deletedAccounts/fictional-friend").set({});
+  const stopped = await seedChat(uid, "fictional-friend", {
+    mine: { senderId: uid, text: "Fictional plan", createdAt },
+    theirs: { senderId: "fictional-friend", text: "Fictional reply", createdAt },
+  });
+  // A deletion interrupted between a chat's messages and the chat: only the UID, no message left.
+  const interrupted = db.doc(`chats/${[uid, "fictional-gone"].sort().join("~")}`);
+  await interrupted.set({ uids: [uid] });
+  const othersChat = await seedChat("fictional-friend", "fictional-third", {
+    kept: { senderId: "fictional-third", text: "Fictional note", createdAt },
+  });
+  const idToken = await signIn("student@epfl.ch");
+
+  assert.equal((await callDeleteAccount(idToken)).status, 200);
+
+  assert.equal(await documentExists(stopped.path), false);
+  assert.deepEqual(await idsIn(`${stopped.path}/messages`), []);
+  assert.equal(await documentExists(interrupted.path), false);
+  assert.deepEqual((await othersChat.get()).data(), { uids: ["fictional-friend", "fictional-third"] });
+  assert.deepEqual(await idsIn(`${othersChat.path}/messages`), ["kept"]);
+  assert.equal(await authUserExists(uid), false);
 });
 
 test("an account without a profile is deleted", async () => {
