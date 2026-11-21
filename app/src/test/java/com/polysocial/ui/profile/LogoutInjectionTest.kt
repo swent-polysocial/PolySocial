@@ -34,8 +34,11 @@ import com.polysocial.model.auth.*
 import com.polysocial.model.auth.AssociationSignupStore
 import com.polysocial.model.auth.EmptyAssociationSignupStore
 import com.polysocial.model.chat.FakeMessageRepository
+import com.polysocial.model.chat.FakeOneToOneChatRepository
 import com.polysocial.model.chat.MessageModule
 import com.polysocial.model.chat.MessageRepository
+import com.polysocial.model.chat.OneToOneChatModule
+import com.polysocial.model.chat.OneToOneChatRepository
 import com.polysocial.model.event.*
 import com.polysocial.model.firebase.*
 import com.polysocial.model.friend.FakeFriendRepository
@@ -71,6 +74,7 @@ import org.robolectric.annotation.Config
     UserProfileModule::class,
     FirebaseModule::class,
     MessageModule::class,
+    OneToOneChatModule::class,
     RegistrationModule::class,
     FriendModule::class,
     GroupModule::class,
@@ -80,6 +84,7 @@ import org.robolectric.annotation.Config
 @RunWith(AndroidJUnit4::class)
 class LogoutInjectionTest {
   @BindValue @JvmField val messages: MessageRepository = FakeMessageRepository()
+  @BindValue @JvmField val oneToOneChats: OneToOneChatRepository = FakeOneToOneChatRepository()
   @BindValue
   @JvmField
   val associationSignupStore: AssociationSignupStore = EmptyAssociationSignupStore

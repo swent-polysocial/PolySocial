@@ -36,8 +36,11 @@ import com.polysocial.model.auth.VerificationClock
 import com.polysocial.model.auth.VerificationStore
 import com.polysocial.model.auth.VerificationTiming
 import com.polysocial.model.chat.FakeMessageRepository
+import com.polysocial.model.chat.FakeOneToOneChatRepository
 import com.polysocial.model.chat.MessageModule
 import com.polysocial.model.chat.MessageRepository
+import com.polysocial.model.chat.OneToOneChatModule
+import com.polysocial.model.chat.OneToOneChatRepository
 import com.polysocial.model.event.EventModule
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.FakeEventRepository
@@ -78,6 +81,7 @@ import org.junit.runner.RunWith
     EventModule::class,
     FirebaseModule::class,
     MessageModule::class,
+    OneToOneChatModule::class,
 )
 @RunWith(AndroidJUnit4::class)
 class AssociationTabsDeviceTest {
@@ -94,6 +98,7 @@ class AssociationTabsDeviceTest {
   private val identities = FakeAssociationRepository(AssociationResult.Found(identity))
   private var clears = 0
   @BindValue @JvmField val messages: MessageRepository = FakeMessageRepository()
+  @BindValue @JvmField val oneToOneChats: OneToOneChatRepository = FakeOneToOneChatRepository()
   @BindValue @JvmField val firestore: FirebaseFirestore = mockk()
   @BindValue @JvmField val authSessionSource: AuthSessionSource = FakeAuthSessionSource()
   @BindValue @JvmField val sessionOwner: SessionOwnerStore = FakeSessionOwnerStore()

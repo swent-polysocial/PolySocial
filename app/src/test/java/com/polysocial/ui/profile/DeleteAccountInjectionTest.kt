@@ -46,8 +46,11 @@ import com.polysocial.model.auth.VerificationClock
 import com.polysocial.model.auth.VerificationStore
 import com.polysocial.model.auth.VerificationTiming
 import com.polysocial.model.chat.FakeMessageRepository
+import com.polysocial.model.chat.FakeOneToOneChatRepository
 import com.polysocial.model.chat.MessageModule
 import com.polysocial.model.chat.MessageRepository
+import com.polysocial.model.chat.OneToOneChatModule
+import com.polysocial.model.chat.OneToOneChatRepository
 import com.polysocial.model.event.EventModule
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.FakeEventRepository
@@ -106,6 +109,7 @@ import org.robolectric.annotation.Config
     EventModule::class,
     FirebaseModule::class,
     MessageModule::class,
+    OneToOneChatModule::class,
     NetworkModule::class,
     RegistrationModule::class,
     FriendModule::class,
@@ -123,6 +127,7 @@ class DeleteAccountInjectionTest {
       MemoryVerificationStore().apply { timings[student.uid] = VerificationTiming(1, 2) }
   private var clears = 0
   @BindValue @JvmField val messages: MessageRepository = FakeMessageRepository()
+  @BindValue @JvmField val oneToOneChats: OneToOneChatRepository = FakeOneToOneChatRepository()
   @BindValue @JvmField val verificationStore: VerificationStore = memory
   @BindValue @JvmField val verificationClock: VerificationClock = VerificationClock { 1000 }
   @BindValue @JvmField val sessionGuard: SessionGuard = FakeSessionGuard()

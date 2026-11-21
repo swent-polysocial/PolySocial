@@ -41,8 +41,11 @@ import com.polysocial.model.auth.FakeAuthSessionSource
 import com.polysocial.model.auth.VerificationClock
 import com.polysocial.model.auth.VerificationStore
 import com.polysocial.model.chat.FakeMessageRepository
+import com.polysocial.model.chat.FakeOneToOneChatRepository
 import com.polysocial.model.chat.MessageModule
 import com.polysocial.model.chat.MessageRepository
+import com.polysocial.model.chat.OneToOneChatModule
+import com.polysocial.model.chat.OneToOneChatRepository
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
@@ -136,6 +139,7 @@ import org.junit.runner.RunWith
     EventModule::class,
     FirebaseModule::class,
     MessageModule::class,
+    OneToOneChatModule::class,
     GeocodingModule::class,
     GroupModule::class,
     LocationModule::class,
@@ -167,6 +171,7 @@ class FindGroupAndChatEndToEndTest {
       }
 
   @BindValue @JvmField val messages: MessageRepository = fakeMessages
+  @BindValue @JvmField val oneToOneChats: OneToOneChatRepository = FakeOneToOneChatRepository()
   @BindValue
   @JvmField
   val auth: AuthRepository =

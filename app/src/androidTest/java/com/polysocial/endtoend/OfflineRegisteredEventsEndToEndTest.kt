@@ -33,8 +33,11 @@ import com.polysocial.model.auth.FakeAuthSessionSource
 import com.polysocial.model.auth.VerificationClock
 import com.polysocial.model.auth.VerificationStore
 import com.polysocial.model.chat.FakeMessageRepository
+import com.polysocial.model.chat.FakeOneToOneChatRepository
 import com.polysocial.model.chat.MessageModule
 import com.polysocial.model.chat.MessageRepository
+import com.polysocial.model.chat.OneToOneChatModule
+import com.polysocial.model.chat.OneToOneChatRepository
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
@@ -116,6 +119,7 @@ import org.junit.runner.RunWith
     EventModule::class,
     FirebaseModule::class,
     MessageModule::class,
+    OneToOneChatModule::class,
     GeocodingModule::class,
     GroupModule::class,
     LocationModule::class,
@@ -178,6 +182,9 @@ class OfflineRegisteredEventsEndToEndTest {
   @BindValue @JvmField val sessionOwner: SessionOwnerStore = FakeSessionOwnerStore()
   @BindValue @JvmField val groups: GroupRepository = fakeGroups
   @BindValue @JvmField val messages: MessageRepository = FakeMessageRepository(currentUid = UID)
+  @BindValue
+  @JvmField
+  val oneToOneChats: OneToOneChatRepository = FakeOneToOneChatRepository(currentUid = UID)
   @BindValue @JvmField val friends: FriendRepository = FakeFriendRepository()
   @BindValue @JvmField val reminders: ReminderScheduler = FakeReminderScheduler(clock)
   @BindValue @JvmField val deletion: AccountDeletionRepository = FakeAccountDeletionRepository()
