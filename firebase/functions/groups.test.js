@@ -1,12 +1,14 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the tests of deleting a cancelled event's
 // groups and a deleted group's messages, #382.
+// Contributors: Claude (Opus 5.5, Anthropic) (the deletion triggers' deploy manifest, as a tester,
+// #382).
 "use strict";
 
 // Unit tests with fakes, no emulator: node firebase/functions/groups.test.js
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { deleteGroupsOfDeletedEvent, deleteMessagesOfDeletedGroup } = require("./groups");
-const { MAX_BATCH_WRITES } = require("./registrations");
+const { MAX_BATCH_WRITES, TRIGGER_REGION } = require("./registrations");
 const { backendError, fakeFirestore, fakeLogger } = require("./testing/fakeFirestore");
 
 /** The group whose deletion most tests run deleteGroupMessages for. */
@@ -245,4 +247,26 @@ test("a group written again while deleting keeps the messages written with it", 
   assert.equal(state.commits, 1);
   assert.ok(documents.has("events/e1/groups/g1/messages/new"));
   assert.equal(documents.size, 3);
+});
+
+// The manifest the Firebase CLI deploys from, for the three triggers index.js builds with
+// onDeleted: without retries a failed cleanup never runs again, Eventarc delivers eur3's events
+// only to TRIGGER_REGION, and a trigger on another document never runs for this deletion. The
+// Functions emulator never retries and runs a Firestore trigger in any region, so no emulator test
+// sees these.
+test("the deletion triggers run on their deletion, in TRIGGER_REGION, with retries", () => {
+  const functions = require("./index");
+
+  for (const [name, document] of [
+    ["deleteEventRegistrations", "events/{eventId}"],
+    ["deleteEventGroups", "events/{eventId}"],
+    ["deleteGroupMessages", "events/{eventId}/groups/{groupId}"],
+  ]) {
+    const endpoint = functions[name].__endpoint;
+    assert.deepEqual(endpoint.region, [TRIGGER_REGION], name);
+    const { eventType, eventFilterPathPatterns, retry } = endpoint.eventTrigger;
+    assert.equal(eventType, "google.cloud.firestore.document.v1.deleted", name);
+    assert.deepEqual(eventFilterPathPatterns, { document }, name);
+    assert.equal(retry, true, name);
+  }
 });
