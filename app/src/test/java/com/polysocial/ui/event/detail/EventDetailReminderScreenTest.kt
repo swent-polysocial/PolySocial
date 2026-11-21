@@ -52,6 +52,7 @@ class EventDetailReminderScreenTest {
       reminderOn: Boolean = false,
       remindersBlocked: Boolean = false,
       showReminderExplanation: Boolean = false,
+      reminderTooLate: Boolean = false,
   ) =
       EventDetailUiState.Loaded(
           EventDetails(
@@ -67,6 +68,7 @@ class EventDetailReminderScreenTest {
           reminderOn = reminderOn,
           remindersBlocked = remindersBlocked,
           showReminderExplanation = showReminderExplanation,
+          reminderTooLate = reminderTooLate,
       )
 
   private val calls = mutableListOf<String>()
@@ -109,6 +111,21 @@ class EventDetailReminderScreenTest {
     composeTestRule.onNodeWithText(string(R.string.reminder_toggle_title)).assertIsDisplayed()
     composeTestRule.onNodeWithText(string(R.string.reminder_toggle_subtitle)).assertIsDisplayed()
     node(EventDetailTags.REMINDER_SWITCH).assertIsOff()
+  }
+
+  @Test
+  fun tooLateForAReminder_hasNoReminderRow_butStillOffersToCancelTheRegistration() {
+    show(loaded(reminderTooLate = true))
+
+    node(EventDetailTags.REMINDER_ROW).assertDoesNotExist()
+    node(EventDetailTags.REGISTERED_NOTE).assertIsDisplayed()
+  }
+
+  @Test
+  fun tooLateForAReminder_keepsTheRowWhenAReminderIsAlreadyOn() {
+    show(loaded(reminderTooLate = true, reminderOn = true))
+
+    node(EventDetailTags.REMINDER_SWITCH).assertIsOn()
   }
 
   @Test

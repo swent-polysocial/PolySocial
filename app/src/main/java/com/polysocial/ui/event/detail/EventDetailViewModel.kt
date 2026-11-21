@@ -30,6 +30,8 @@
 // registration, #407; only a refusal counts while the registrations are unreadable, after review).
 // Contributors: Claude (Opus 5.5, Anthropic) (whether check-in has closed, for Show entrance QR,
 // #538 review); Konstantinos Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (whether the reminder is too late to schedule, so
+// the screen doesn't offer a switch that can't turn on, #381).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -58,8 +60,10 @@ import com.polysocial.model.registration.RegisterResult
 import com.polysocial.model.registration.RegistrationRepository
 import com.polysocial.model.reminder.CancelReminderResult
 import com.polysocial.model.reminder.EventReminder
+import com.polysocial.model.reminder.REMINDER_LEAD
 import com.polysocial.model.reminder.ReminderScheduler
 import com.polysocial.model.reminder.ScheduleReminderResult
+import com.polysocial.model.reminder.reminderTime
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.PublicProfileResult
@@ -237,6 +241,10 @@ sealed interface EventDetailUiState {
    *   be read, only that refusal counts, since they may be going: "I'm going" then stays their way
    *   back to "✓ Going". The screen shows "Event full" instead of "I'm going" to a student known
    *   not to be going; always false for organizers.
+   * @property reminderTooLate true once the event starts within [REMINDER_LEAD] (or has started),
+   *   when it was read: no reminder can be scheduled then ([reminderTime] is null), so the screen
+   *   doesn't offer the switch unless a reminder is already on; updated with the event's next
+   *   change, like [isLive].
    * @property reminderOn whether "Remind me 1 h before" is on, shown once going (#123); seeded once
    *   from [ReminderScheduler.isScheduled] the first time attendance is confirmed.
    * @property remindersBlocked true once Android's notification permission is known to be denied,
@@ -257,6 +265,7 @@ sealed interface EventDetailUiState {
       val isLive: Boolean = false,
       val hasEnded: Boolean = false,
       val checkInClosed: Boolean = false,
+      val reminderTooLate: Boolean = false,
       val yourGroup: YourGroup? = null,
       val groupConfirmed: Boolean = false,
       val attendance: Attendance = Attendance.NOT_GOING,
@@ -1221,6 +1230,7 @@ constructor(
                 isLive = result.event.isLive(clock.instant()),
                 hasEnded = result.event.isPast(clock.instant()),
                 checkInClosed = !clock.instant().isBefore(checkInWindow(result.event).closesAt),
+                reminderTooLate = reminderTime(result.event.startTime, clock.instant()) == null,
             )
         EventResult.NotFound -> EventDetailUiState.NotFound
         // Even offline, the cache answers a moment later and may have the event.
