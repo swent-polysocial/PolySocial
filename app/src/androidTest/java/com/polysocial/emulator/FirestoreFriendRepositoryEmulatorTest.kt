@@ -13,7 +13,6 @@ import com.polysocial.model.friend.SendFriendRequestResult
 import com.polysocial.model.friend.friendshipId
 import com.polysocial.model.user.PUBLIC_PROFILES_COLLECTION
 import com.polysocial.model.user.USERS_COLLECTION
-import java.time.Instant
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -59,20 +58,6 @@ class FirestoreFriendRepositoryEmulatorTest {
           ),
       )
 
-  /** Stores a request [from] sent to [to], as the app writes it, with the rules off. */
-  private suspend fun seedRequest(from: String, to: String, accepted: Boolean = false) =
-      emulator.createAsAdmin(
-          FRIENDSHIPS_COLLECTION,
-          friendshipId(from, to)!!,
-          buildMap {
-            put("uids", listOf(from, to).sorted())
-            put("requestedBy", from)
-            put("status", if (accepted) "accepted" else "pending")
-            put("createdAt", Instant.parse("2030-02-01T12:00:00Z"))
-            if (accepted) put("acceptedAt", Instant.parse("2030-02-01T13:00:00Z"))
-          },
-      )
-
   private suspend fun exists(from: String, to: String) =
       emulator.existsAsAdmin(FRIENDSHIPS_COLLECTION, friendshipId(from, to)!!)
 
@@ -115,7 +100,7 @@ class FirestoreFriendRepositoryEmulatorTest {
     )
 
     seedStudent(OTHER_UID)
-    seedRequest(from = OTHER_UID, to = currentUid())
+    emulator.seedFriendship(from = OTHER_UID, to = currentUid())
     assertEquals(SendFriendRequestResult.AlreadyExists, timed { repository.sendRequest(OTHER_UID) })
   }
 
@@ -133,7 +118,7 @@ class FirestoreFriendRepositoryEmulatorTest {
   @Test
   fun accept_ofAnIncomingRequest_makesThemFriends() = runBlocking {
     val uid = signInStudent()
-    seedRequest(from = FRIEND_UID, to = uid)
+    emulator.seedFriendship(from = FRIEND_UID, to = uid)
     val incoming = myFriendships().single()
 
     assertEquals(FriendshipActionResult.Done, timed { repository.accept(incoming) })
@@ -149,7 +134,7 @@ class FirestoreFriendRepositoryEmulatorTest {
     // The transaction reads the missing document, which the rules allow under the student's own
     // pair ID: without that, this would be an UnexpectedError.
     val uid = signInStudent()
-    seedRequest(from = FRIEND_UID, to = uid)
+    emulator.seedFriendship(from = FRIEND_UID, to = uid)
     val incoming = myFriendships().single()
     timed { repository.remove(incoming) }
 
@@ -160,7 +145,7 @@ class FirestoreFriendRepositoryEmulatorTest {
   @Test
   fun aStaleCancel_afterTheRequestWasAccepted_isGoneAndKeepsTheFriendship() = runBlocking {
     val uid = signInStudent()
-    seedRequest(from = FRIEND_UID, to = uid)
+    emulator.seedFriendship(from = FRIEND_UID, to = uid)
     val shown = myFriendships().single()
     timed { repository.accept(shown) }
 
@@ -171,7 +156,7 @@ class FirestoreFriendRepositoryEmulatorTest {
   @Test
   fun remove_deletesAFriendship() = runBlocking {
     val uid = signInStudent()
-    seedRequest(from = uid, to = FRIEND_UID, accepted = true)
+    emulator.seedFriendship(from = uid, to = FRIEND_UID, accepted = true)
 
     assertEquals(FriendshipActionResult.Done, timed { repository.remove(myFriendships().single()) })
 
@@ -182,8 +167,8 @@ class FirestoreFriendRepositoryEmulatorTest {
   @Test
   fun observe_showsOnlyTheStudentsOwnFriendships() = runBlocking {
     val uid = signInStudent()
-    seedRequest(from = FRIEND_UID, to = uid)
-    seedRequest(from = FRIEND_UID, to = OTHER_UID)
+    emulator.seedFriendship(from = FRIEND_UID, to = uid)
+    emulator.seedFriendship(from = FRIEND_UID, to = OTHER_UID)
 
     assertEquals(listOf(friendshipId(uid, FRIEND_UID)), myFriendships().map { it.id })
   }
