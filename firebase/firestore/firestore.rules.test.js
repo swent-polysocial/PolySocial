@@ -5327,6 +5327,8 @@ test("a caller under a deletion marker can't read, list, create or send; the oth
   await assertFails(getDocs(chatHistory(db, "u1~u2")));
   await assertFails(getDocs(chatLatest(db, "u1~u2")));
   await assertFails(sendToFriendAs(db, "u1~u2", newMessage("u1")));
+  // The transaction already stops at its read: the message alone checks the create rule.
+  await assertFails(setChatMessage(db, "u1~u2", newMessage("u1")));
   // Its friendship with u3 is still stored (deleteAccount hasn't reached it yet): no new chat either.
   await assertFails(setDoc(doc(db, "chats/u1~u3"), { uids: ["u1", "u3"] }));
   await assertFails(sendToFriendAs(db, "u1~u3", newMessage("u1")));
