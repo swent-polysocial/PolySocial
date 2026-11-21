@@ -4,7 +4,7 @@
 // Contributors: Claude (Fable 5.2, Anthropic) (other shapes and accounts denied the own-groups query, and the latest-message query of the chat list, #363; groups documents outside an event, and more accounts and membership changes on the latest-message query, from a test audit).
 // Contributors: Claude (Opus 5.5, Anthropic) (co-organizer tests, written test-first, #370).
 // Contributors: Claude (Opus 5.5, Anthropic) (attendeeCount rows and the counted registration writes, #373, from #372's prototype by Claude (Fable 5.2 and Opus 5.5, Anthropic)).
-// Contributors: Claude (Opus 5.5, Anthropic) (one-to-one chat tests and the message helpers both chats share, #428, from #365's prototype tests by Claude (Fable 5.2 and Opus 5.5, Anthropic); the refused messages both chats share, from a test review, #428).
+// Contributors: Claude (Opus 5.5, Anthropic) (one-to-one chat tests and the message helpers both chats share, #428, from #365's prototype tests by Claude (Fable 5.2 and Opus 5.5, Anthropic); the refused messages both chats share, and cases a mutation check found missing, from a test review, #428).
 const { after, before, beforeEach, test } = require("node:test");
 // Contributors: OpenAI Codex (deleted-token membership creation/join regression, #241).
 // Contributors: Claude Opus 5.5 (friend requests involving an association, written test-first from the #416 review); Konstantinos Perdikeas (directed, reviewed and owns it).
@@ -3974,6 +3974,8 @@ const REFUSED_MESSAGE_CHANGES = [
   ["no text", { text: undefined }],
   ["no sender", { senderId: undefined }],
   ["a createdAt the client chose", { createdAt: Timestamp.fromMillis(1_790_000_000_000) }],
+  // Later than the server's time: refused too, not only an earlier one.
+  ["a createdAt in the future", { createdAt: Timestamp.fromDate(new Date("2099-01-01T00:00:00Z")) }],
   ["no createdAt", { createdAt: undefined }],
   ["another field", { editedAt: serverTimestamp() }],
 ];
