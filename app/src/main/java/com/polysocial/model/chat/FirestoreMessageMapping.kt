@@ -1,10 +1,14 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (drafted the Firestore mapping for messages, #237).
+// Contributors: Claude (Opus 5.5, Anthropic) (shared with one-to-one chats, #428).
 package com.polysocial.model.chat
 
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.FieldValue
 
-/** Subcollection of `events/{eventId}/groups/{groupId}` holding the group's chat. */
+/**
+ * Subcollection holding a chat's messages: under `events/{eventId}/groups/{groupId}` for a group's
+ * chat, and under `chats/{pairId}` for a chat between two friends.
+ */
 const val MESSAGES_COLLECTION = "messages"
 
 /** The server's time in a message document, which orders the chat. */
