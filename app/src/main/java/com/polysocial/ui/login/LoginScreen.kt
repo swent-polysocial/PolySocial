@@ -7,6 +7,8 @@
 // Contributors: Claude (the shared field label, #251; accounts helper line and account-neutral
 // email label for associations; the shared TextLink, #208; both fields flagged on wrong
 // credentials, #277).
+// Contributors: Claude (Opus 5.5, Anthropic) centered the header and removed the accounts helper
+// line, #492.
 package com.polysocial.ui.login
 
 import androidx.activity.compose.BackHandler
@@ -60,6 +62,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -87,7 +90,8 @@ import kotlinx.coroutines.launch
 object LoginScreenTestTags {
   const val SCREEN = "login_screen"
   const val BACK = "login_back"
-  const val ACCOUNTS_HINT = "login_accounts_hint"
+  const val TITLE = "login_title"
+  const val SUBTITLE = "login_subtitle"
   const val GOOGLE = "login_google"
   const val GOOGLE_LOADING = "login_google_loading"
   const val EMAIL = "login_email"
@@ -210,17 +214,24 @@ fun LoginContent(
             Image(painterResource(R.drawable.ic_back), stringResource(R.string.login_back))
           }
           Spacer(Modifier.height(11.5.dp))
-          Text(stringResource(R.string.login_title), style = typography.headlineMedium, color = Ink)
-          Spacer(Modifier.height(6.dp))
-          Text(stringResource(R.string.login_subtitle), style = typography.bodyLarge, color = Ink2)
-          // Who logs in with which email: 11 sp on an 18 dp line, right above the Google button.
-          Spacer(Modifier.height(2.5.dp))
+          // The title and the subtitle span the content width with centered text (#491), so a
+          // subtitle that wraps (large text) stays centered line by line.
           Text(
-              stringResource(R.string.login_accounts_hint),
-              style = typography.bodySmall.copy(fontSize = 11.sp, lineHeight = 18.sp),
-              color = Ink2,
-              modifier = Modifier.testTag(LoginScreenTestTags.ACCOUNTS_HINT),
+              stringResource(R.string.login_title),
+              style = typography.headlineMedium,
+              color = Ink,
+              textAlign = TextAlign.Center,
+              modifier = Modifier.fillMaxWidth().testTag(LoginScreenTestTags.TITLE),
           )
+          Spacer(Modifier.height(6.dp))
+          Text(
+              stringResource(R.string.login_subtitle),
+              style = typography.bodyLarge,
+              color = Ink2,
+              textAlign = TextAlign.Center,
+              modifier = Modifier.fillMaxWidth().testTag(LoginScreenTestTags.SUBTITLE),
+          )
+          Spacer(Modifier.height(20.5.dp))
           GoogleSignInButton(
               tag = LoginScreenTestTags.GOOGLE,
               onClick = onGoogle,
