@@ -40,6 +40,7 @@
 <!-- Contributors: Claude Opus 5.5 (3.9 after #445's review: the trigger reads the current friendship, the backfill, both-way username rules, the active-account photo check, the offline count, and the PO's username format and reserved names); Konstantinos Perdikeas (directed, reviewed and owns it). -->
 <!-- Contributors: Claude Opus 5.5 (a group member's public profile marked as built, #368); Konstantinos Perdikeas (directed, reviewed and owns it). -->
 <!-- Contributors: Claude Opus 5.5 (drafted the check-in model, its rules sketch, retention and Sprint 7 tasks, #374); Konstantinos Perdikeas (decided the design, reviewed and owns it). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (the one-to-one chat repository contract marked as built, #428). -->
 
 How PolySocial is built, as we currently envision it. The page follows the [Android App Architecture guide](https://developer.android.com/topic/architecture/intro): a **UI layer** (Compose screens and ViewModels), a **domain layer** of pure Kotlin logic, and a **data layer** of repositories in front of Firebase, the map and geocoding services, and the device sensors.
 
@@ -351,7 +352,7 @@ flowchart TB
   friendsUi["Friends list<br/>#360"]:::pb -- "opens a friend's chat" --> chatS
   tab --> chatS["One-to-one chat<br/>history · composer or read-only note<br/>unsend own messages"]:::pb
   chatS --> chatVM["<b>One-to-one chat ViewModel</b><br/>friends: send · unsend<br/>otherwise read-only"]:::pb
-  tabVM --> repo["<b>One-to-one chat repository</b><br/>my chats · messages · latest message<br/>send · unsend · my hidden chats · hide"]:::pb
+  tabVM --> repo["<b>OneToOneChatRepository</b><br/>my chats · messages · latest message · send<br/>(contract built, #428)<br/>unsend · my hidden chats · hide"]:::pb
   chatVM --> repo
   chatVM --> friendRepo["<b>FriendRepository</b><br/>observeFriendships, #357"]:::pb
   tabVM --> friendRepo
@@ -361,7 +362,9 @@ flowchart TB
   delFn["<b>deleteAccount</b><br/>Cloud Function, built, #206"]:::s1 -. "anonymises senders,<br/>takes the UID out of uids,<br/>deletes its markers" .-> fs
 ```
 
-Decided by the Sprint 6 PO on 2026-11-14 and 2026-11-16 (#365), replacing "a one-to-one chat is a two-member group". Nothing here is built yet: the collections, the fields and the rules are decided, and class and route names are proposals until their tasks fix them.
+Decided by the Sprint 6 PO on 2026-11-14 and 2026-11-16 (#365), replacing "a one-to-one chat is a two-member group". Only the repository's contract is built (#428, below): the collections, the fields and the rules are decided, and the other class and route names are proposals until their tasks fix them.
+
+- **Built so far (#428, the contract):** `OneToOneChatRepository` (`model/chat`) with `observeMyChats()`, each `OneToOneChat(id, otherUid)`: the pair ID and the other student's UID, null once their account was deleted, which is how the app knows to show "Deleted account"; `observeMessages`, `observeLatestMessage` and `sendMessage` take the pair ID and reuse #237's `MessagesResult`, `LatestMessageResult` and `SendMessageResult`. `uidsOfFriendshipId` (`model/friend`) gives a pair ID's two UIDs. `FakeOneToOneChatRepository` is the screens' fake. The Firestore repository and the rules come next.
 
 - **A chat between two friends has its own top-level collection.** `chats/{pairId}` has the ID of the pair's friendship (#338: `{lowerUid}~{higherUid}`, built only by #357's pure function, never by a second one) and holds exactly `uids`, the two UIDs in the ID's order. The ID is exactly that string: the rules refuse every other spelling of the pair (a trailing `~`, for example), so a pair has one chat, as it has one friendship (#357's rule must compare its document ID the same way, see 3.7). `chats/{pairId}/messages/{id}` holds the messages, with exactly group chat's fields (#237): `senderId`, `text` (1 to 1000 UTF-16 units, trimmed) and the server's `createdAt`; unsending only empties `text` (below). No name, summary or counter: names come from the public profiles (#229). The friendship stays as #338 specifies; the chat only reads its `status`, in the rules.
 - **Accepted friends only.** The two students read the chat. Creating it, sending a message or unsending one also needs `friendships/{pairId}` to exist with `status == "accepted"`. Students only: associations never reach it. Group-mates who aren't friends use their group chat.
@@ -1445,7 +1448,7 @@ Every Scrum Board item mapped to the components it touches.
 | #27 Match with other students | Groups & Matchmaking | Match button, MatchRepository | 🟦 |
 | #28 Real-time list of matches | Groups & Matchmaking | Profile matches list, snapshot listener | 🟦 |
 | #15 Ping friends | Groups & Matchmaking | FriendRepository, notifications | ⬜ |
-| #25 Chat | Chat | Chats tab with `ChatsViewModel` (built, #364), `ChatsRepository` (built, #363), group chat with `GroupChatViewModel` and `MessageRepository` (built, #237, #238; `messages` under the group), one-to-one chat (`chats/{pairId}`, decided in #365); reporting and blocking proposed in #376 | 🟦 |
+| #25 Chat | Chat | Chats tab with `ChatsViewModel` (built, #364), `ChatsRepository` (built, #363), group chat with `GroupChatViewModel` and `MessageRepository` (built, #237, #238; `messages` under the group), one-to-one chat (`chats/{pairId}`, decided in #365; `OneToOneChatRepository` contract, #428); reporting and blocking proposed in #376 | 🟦 |
 | #16 Adding friends | Groups & Matchmaking | Friends screen, Friends ViewModel, FriendRepository, `friendships/{pairId}`, rules and `deleteAccount` cleanup (built, #357); Add by @username (`usernames/{name}`, #366) | 🟦 decided in #338 |
 | Public profiles and profile visibility | Groups & Matchmaking | Privacy & data visibility switch, Edit profile (bio, photo, username), a student's profile with their friends, `syncFriendLists`, `usernames/{name}`, Storage `profilePhotos` | 🟦 decided in #366 |
 | #17 Meeting people by QR | Groups & Matchmaking | QrScanner and Scan a friend's code (built, #359), QR payload parsing (built, #337), My friend code (built, #339), FriendRepository (built, #357) | 🟦 S5 #336, #337, #339 |
