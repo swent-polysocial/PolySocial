@@ -517,6 +517,26 @@ class FindGroupViewModelTest {
       }
 
   @Test
+  fun retry_readsTheFriendshipsAgain_withTheGroups() =
+      runTest(main.dispatcher) {
+        seedFigmaGroups()
+        befriend("tom")
+        groups.readFailure = FakeGroupRepository.ReadFailure.NETWORK
+        friends.readFailure = true
+        open()
+        assertEquals(FindGroupUiState.CouldNotLoad, vm.uiState.value)
+
+        // Both can be read again, and the device never went offline: only Retry reads them.
+        groups.readFailure = null
+        friends.readFailure = false
+        vm.retry()
+        advanceUntilIdle()
+
+        assertEquals(listOf("group-2", "group-3", "group-1"), loaded.suggestions.map { it.groupId })
+        assertEquals(listOf("tom"), loaded.suggestions.first().friends.map { it.uid })
+      }
+
+  @Test
   fun friendshipsThatDontAnswer_neverHoldBackTheGroups() =
       runTest(main.dispatcher) {
         seedFigmaGroups()
