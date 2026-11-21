@@ -8,9 +8,10 @@
 "use strict";
 
 /**
- * Region of the deleteEventRegistrations trigger (Belgium). Firestore is in the eur3 multi-region,
- * whose Firestore triggers Eventarc delivers only to europe-west1 or europe-west4, so the trigger
- * can't run in deleteAccount's europe-west6.
+ * Region (Belgium) of the Firestore triggers: deleteEventRegistrations and the deleted groups'
+ * triggers (groups.js, #382). Firestore is in the eur3 multi-region, whose Firestore triggers
+ * Eventarc delivers only to europe-west1 or europe-west4, so they can't run in deleteAccount's
+ * europe-west6.
  */
 const TRIGGER_REGION = "europe-west1";
 
