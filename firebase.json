@@ -8,7 +8,7 @@
       "source": "firebase/functions",
       "codebase": "default",
       "runtime": "nodejs22",
-      "ignore": ["node_modules", "*.test.js", ".git", "scripts"]
+      "ignore": ["node_modules", "*.test.js", ".git", "scripts", "testing"]
     }
   ],
   "emulators": {

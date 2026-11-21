@@ -2,6 +2,7 @@
 // event and account, #275; an event written again keeps its registrations, after review.
 // Contributors: Claude (Opus 5.5, Anthropic) tested the attendeeCount an account deletion lowers,
 // #405.
+// Contributors: Claude (Opus 5.5, Anthropic) moved the fakes to testing/fakeFirestore.js, #382.
 "use strict";
 
 // Unit tests with fakes, no emulator: node firebase/functions/registrations.test.js
@@ -14,109 +15,7 @@ const {
   deleteRegistrationsOfDeletedEvent,
   deleteUserRegistrations,
 } = require("./registrations");
-
-/** An error as the Admin SDK reports it, with a gRPC status code. */
-function backendError(code) {
-  return Object.assign(new Error("raw backend failure for event-1 and student-1"), { code });
-}
-
-/**
- * A fake Firestore holding documents as paths: events `events/{eventId}` and registrations
- * `events/{eventId}/attendees/{uid}`, with each event's `attendeeCount` in `counts` (by path,
- * absent when the event has none). It answers an event's attendees and the collection-group query
- * on `uid`, with `limit`, and runs batches and transactions (reading an event, a query, or several
- * documents with `getAll`) whose deletes and updates apply together at commit. `commits` counts
- * the commits that wrote something; `failCommit` makes the next one throw; `onCommit` runs after
- * each commit, and `onTransaction` before each transaction's reads, to write in between.
- */
-function fakeFirestore(paths, counts = {}) {
-  const documents = new Set(paths);
-  const state = {
-    commits: 0,
-    failCommit: null,
-    onCommit: null,
-    onTransaction: null,
-    counts: new Map(Object.entries(counts)),
-  };
-  const ref = (path) => ({
-    path,
-    parent: { parent: { path: path.split("/").slice(0, 2).join("/") } },
-  });
-  const snapshot = (path) => ({
-    exists: documents.has(path),
-    get: (field) => (field === "attendeeCount" ? state.counts.get(path) : undefined),
-  });
-  const uidOf = (path) => path.split("/")[3];
-  const query = (matches, max = Infinity) => ({
-    limit: (n) => query(matches, n),
-    async get() {
-      const docs = [...documents].filter(matches).slice(0, max).map((path) => ({ ref: ref(path) }));
-      return { empty: docs.length === 0, size: docs.length, docs };
-    },
-  });
-  async function commit(deletes, updates = []) {
-    assert.ok(deletes.length + updates.length <= MAX_BATCH_WRITES, "a commit holds 500 writes");
-    if (state.failCommit) {
-      const error = state.failCommit;
-      state.failCommit = null;
-      throw error;
-    }
-    for (const path of deletes) documents.delete(path);
-    for (const [path, data] of updates) {
-      assert.ok(documents.has(path), `update of a missing document ${path}`);
-      state.counts.set(path, data.attendeeCount);
-    }
-    if (deletes.length + updates.length > 0) state.commits += 1;
-    if (state.onCommit) state.onCommit(documents);
-  }
-  const db = {
-    collection: (events) => ({
-      doc: (eventId) => ({
-        path: `${events}/${eventId}`,
-        collection: (attendees) =>
-          query((path) => path.startsWith(`${events}/${eventId}/${attendees}/`)),
-      }),
-    }),
-    collectionGroup: (group) => ({
-      where: (field, op, value) => {
-        assert.equal(group, "attendees");
-        assert.deepEqual([field, op], ["uid", "=="]);
-        return query((path) => path.split("/")[2] === group && uidOf(path) === value);
-      },
-    }),
-    batch() {
-      const deletes = [];
-      return {
-        delete: (ref) => deletes.push(ref.path),
-        commit: () => commit(deletes),
-      };
-    },
-    async runTransaction(update) {
-      if (state.onTransaction) state.onTransaction(documents);
-      const deletes = [];
-      const updates = [];
-      const result = await update({
-        // A document reference has a path; a query is read with get().
-        get: async (target) => (target.path === undefined ? target.get() : snapshot(target.path)),
-        getAll: async (...targets) => targets.map((target) => snapshot(target.path)),
-        delete: (ref) => deletes.push(ref.path),
-        update: (ref, data) => updates.push([ref.path, data]),
-      });
-      await commit(deletes, updates);
-      return result;
-    },
-  };
-  return { db, documents, state };
-}
-
-function fakeLogger() {
-  const logs = [];
-  const logger = {};
-  for (const level of ["debug", "log", "info", "warn", "error"]) {
-    logger[level] = (...entry) => logs.push([level, ...entry]);
-  }
-  return { logger, logs };
-}
+const { backendError, fakeFirestore, fakeLogger } = require("./testing/fakeFirestore");
 
 test("the trigger runs in a region Eventarc serves for Firestore's eur3", () => {
   assert.ok(["europe-west1", "europe-west4"].includes(TRIGGER_REGION));
