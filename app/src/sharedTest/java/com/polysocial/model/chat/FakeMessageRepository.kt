@@ -2,12 +2,12 @@
 // Contributors: OpenAI Codex (modeled same-ID retries in the chat fake, #238).
 // Contributors: Claude (Fable 5.2, Anthropic) (a group's latest message, #363).
 // Contributors: Claude (Opus 5.5, Anthropic) (members read from the groups, after review, #363).
+// Contributors: Claude (Opus 5.5, Anthropic) (stored messages moved to FakeMessageStore, #428).
 package com.polysocial.model.chat
 
 import com.polysocial.model.event.isReadableEventId
 import java.time.Instant
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flow
@@ -27,11 +27,8 @@ import kotlinx.coroutines.flow.map
  * account change with it. [observeLatestMessage] follows the same checks and emits the last of
  * those messages, with its own results.
  *
- * Messages are listed oldest first, then by ID for equal times, as Firestore orders them. Sent
- * messages get the IDs `message-1`, `message-2`… and deterministic server times that put them
- * last, as the server's time would: n seconds after 2030-01-01 12:00 UTC for the n-th, or 1 s
- * after the group's latest message when that is later. [observeMessages] emits only when its own
- * group changes.
+ * The messages are kept in a [FakeMessageStore], which sets their order, IDs and server times.
+ * [observeMessages] emits only when its own group changes.
  *
  * @property currentUid the signed-in student, or null when nobody is signed in.
  */
@@ -59,9 +56,7 @@ class FakeMessageRepository(var currentUid: String? = "test-student") : MessageR
 
   private val members = mutableMapOf<GroupKey, Set<String>>()
 
-  private val messages = MutableStateFlow<Map<GroupKey, List<Message>>>(emptyMap())
-
-  private var sent = 0
+  private val messages = FakeMessageStore<GroupKey>()
 
   /**
    * Where the members of a group that [setMembers] never named come from, or null (the default) for
@@ -93,13 +88,13 @@ class FakeMessageRepository(var currentUid: String? = "test-student") : MessageR
       createdAt: Instant,
   ): Message {
     val message = Message(id, senderId, text, createdAt)
-    store(GroupKey(eventId, groupId), message)
+    messages.store(GroupKey(eventId, groupId), message)
     return message
   }
 
   /** The stored messages of the group [groupId] of [eventId], oldest first. */
   fun messagesOf(eventId: String, groupId: String): List<Message> =
-      messages.value[GroupKey(eventId, groupId)].orEmpty()
+      messages.messagesOf(GroupKey(eventId, groupId))
 
   override fun observeMessages(eventId: String, groupId: String): Flow<MessagesResult> = flow {
     emit(MessagesResult.Loading)
@@ -115,7 +110,8 @@ class FakeMessageRepository(var currentUid: String? = "test-student") : MessageR
       else ->
           emitAll(
               messages
-                  .map { MessagesResult.Success(it[key].orEmpty(), readFromCache) }
+                  .observe(key)
+                  .map { MessagesResult.Success(it, readFromCache) }
                   .distinctUntilChanged()
           )
     }
@@ -144,16 +140,10 @@ class FakeMessageRepository(var currentUid: String? = "test-student") : MessageR
     val key = GroupKey(eventId, groupId)
     if (!isMember(key, uid)) return SendMessageResult.UnexpectedError
     val trimmed = text.trim()
-    val previous = messagesOf(eventId, groupId).firstOrNull { it.id == messageId }
-    if (previous != null) {
-      return if (previous.senderId == uid && previous.text == trimmed) SendMessageResult.Sent
-      else SendMessageResult.UnexpectedError
+    messages.retryOf(key, uid, trimmed, messageId)?.let {
+      return it
     }
-    sent++
-    // Like the server's time, after every message already stored in the group.
-    val afterLatest = messagesOf(eventId, groupId).lastOrNull()?.createdAt?.plusSeconds(1)
-    val createdAt = listOfNotNull(FIRST_SENT_AT.plusSeconds(sent.toLong()), afterLatest).max()
-    store(key, Message(messageId ?: "message-$sent", uid, trimmed, createdAt))
+    messages.add(key, uid, trimmed, messageId)
     return SendMessageResult.Sent
   }
 
@@ -162,13 +152,4 @@ class FakeMessageRepository(var currentUid: String? = "test-student") : MessageR
           isReadableEventId(key.eventId) &&
           isReadableEventId(key.groupId) &&
           uid in (members[key] ?: membersOf?.invoke(key.eventId, key.groupId)).orEmpty()
-
-  private fun store(key: GroupKey, message: Message) {
-    val stored = messagesOf(key.eventId, key.groupId) + message
-    messages.value += key to stored.sortedWith(compareBy<Message> { it.createdAt }.thenBy { it.id })
-  }
-
-  private companion object {
-    val FIRST_SENT_AT: Instant = Instant.parse("2030-01-01T12:00:00Z")
-  }
 }
