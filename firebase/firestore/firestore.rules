@@ -59,7 +59,7 @@ service cloud.firestore {
 
     // An ID of exactly two non-empty parts joined by one '~'. split('~') drops trailing empty parts
     // ("u1~u2~" splits as "u1~u2" does), so the ID is also compared with its two parts joined
-    // again. Shared with the chat rules prototype (#365).
+    // again. Shared by friendships (#357) and one-to-one chats (#428).
     function isTwoPartId(id) {
       let parts = id.split('~');
       return parts.size() == 2
@@ -75,8 +75,9 @@ service cloud.firestore {
           && pair.hasAny([member]);
     }
 
-    // A chat message as the caller sends it (#237): exactly senderId (the caller's UID), text (1 to
-    // 1000 characters, counted like the app's MAX_MESSAGE_LENGTH) and the server's createdAt.
+    // A chat message as the caller sends it, in a group's chat (#237) or a one-to-one chat (#428):
+    // exactly senderId (the caller's UID), text (1 to 1000 characters, counted like the app's
+    // MAX_MESSAGE_LENGTH) and the server's createdAt.
     function isNewMessage() {
       return request.resource.data.keys().hasAll(['senderId', 'text', 'createdAt'])
           && request.resource.data.keys().hasOnly(['senderId', 'text', 'createdAt'])
@@ -687,6 +688,55 @@ service cloud.firestore {
       // Declining, cancelling or removing: either student. The rules can't tell these apart (a
       // delete carries no data), so the app checks that the document is still the one it showed.
       allow delete: if isActiveStudent() && request.auth.uid in resource.data.uids;
+    }
+
+    // A chat between two friends (#428, designed in #365, Architecture Diagram 3.8):
+    // chats/{pairId} under the pair's friendship ID, holding exactly uids (the two UIDs in the ID's
+    // order), and its messages, with group chat's fields. The pair comes from the document ID,
+    // which must be exactly {lowerUid}~{higherUid} (isPairIdOf), so a chat that doesn't exist yet
+    // reads as missing to the two students (the first message's transaction reads it) and is
+    // refused to anyone else; a query has no single ID to check, so a list checks uids. Students
+    // only, never under a deletion marker (their ID token outlives deleteAccount by up to an hour).
+    // Reading doesn't need the friendship, so the conversation stays readable after unfriending;
+    // creating the chat and sending need friendships/{pairId} to be accepted. The first message
+    // creates the chat in the same write, and no message is stored without its chat. No client
+    // updates or deletes a chat or a message: the step #429 adds to deleteAccount (Admin SDK) takes
+    // a deleted UID out of uids, or deletes the chat once nobody else is left. Each operation has
+    // its own rule, so a block check or a rate limit can be added to one later.
+    match /chats/{pairId} {
+      function isOfThePair() {
+        return isStudent()
+            && !isDeletedAccount(request.auth.uid)
+            && isPairIdOf(pairId, request.auth.uid);
+      }
+
+      // A missing friendship, or one without a status, is "not friends" rather than a rule error.
+      // Read as stored before the write, as group chat reads its group: a batch that accepts a
+      // request can't also send, and one that removes a friend can still send a last message.
+      function areFriends() {
+        let friendship = /databases/$(database)/documents/friendships/$(pairId);
+        return exists(friendship) && get(friendship).data.get('status', null) == 'accepted';
+      }
+
+      allow get: if isOfThePair();
+      // Only a query that can return nothing but the caller's chats, such as uids array-contains
+      // <own UID>. A chat whose other account was deleted holds only the remaining UID, and is
+      // still listed by it.
+      allow list: if isStudent()
+          && !isDeletedAccount(request.auth.uid)
+          && resource.data.uids.hasAny([request.auth.uid]);
+      allow create: if isOfThePair()
+          && areFriends()
+          && request.resource.data.keys().hasOnly(['uids'])
+          && request.resource.data.uids == pairId.split('~');
+
+      match /messages/{messageId} {
+        allow get, list: if isOfThePair();
+        allow create: if isOfThePair()
+            && areFriends()
+            && existsAfter(/databases/$(database)/documents/chats/$(pairId))
+            && isNewMessage();
+      }
     }
 
     // An association's public profile (#126), keyed by the association account's UID. Its
