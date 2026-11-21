@@ -226,6 +226,7 @@ class PrivacyScreenTest {
         .performScrollTo()
         .says(
             "or the friend you chat with one-to-one",
+            "associations can't",
             "your account identifier and your friend's",
             "the chat stays readable by both, but neither can send",
             "A one-to-one chat is deleted once both accounts are deleted",
@@ -236,9 +237,12 @@ class PrivacyScreenTest {
         .performScrollTo()
         .says(
             "A one-to-one chat with a friend stores both students' account identifiers",
+            "for each message, its text, sender account identifier and server send time",
             "Only the two students can read it; associations cannot.",
             "the conversation stays readable by both, and neither can send",
+            "the sender account link from your messages there",
             "stay in the other student's conversation, labelled as a deleted account",
+            "The conversation keeps its internal identifier, made from both account identifiers",
             "the kept text is not redacted",
             "copies already cached on the other student's device are not wiped",
             "Once both accounts are deleted, the conversation is deleted.",
