@@ -1,5 +1,8 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (moved out of FakeMessageRepository, #237 and #238,
-// so the one-to-one chat fake shares it, #428).
+// Contributors: Claude (Opus 5.5, Anthropic) (the stored messages, their order, IDs and server
+// times, in FakeMessageRepository, #237).
+// Contributors: OpenAI Codex (modeled same-ID retries in the chat fake, #238).
+// Contributors: Claude (Opus 5.5, Anthropic) (moved them out of FakeMessageRepository, so the
+// one-to-one chat fake shares them, #428).
 package com.polysocial.model.chat
 
 import java.time.Instant
