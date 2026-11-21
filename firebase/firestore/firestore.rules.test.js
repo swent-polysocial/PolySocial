@@ -4,7 +4,7 @@
 // Contributors: Claude (Fable 5.2, Anthropic) (other shapes and accounts denied the own-groups query, and the latest-message query of the chat list, #363; groups documents outside an event, and more accounts and membership changes on the latest-message query, from a test audit).
 // Contributors: Claude (Opus 5.5, Anthropic) (co-organizer tests, written test-first, #370).
 // Contributors: Claude (Opus 5.5, Anthropic) (attendeeCount rows and the counted registration writes, #373, from #372's prototype by Claude (Fable 5.2 and Opus 5.5, Anthropic)).
-// Contributors: Claude (Opus 5.5, Anthropic) (one-to-one chat tests and the message helpers both chats share, #428, from #365's prototype tests by Claude (Fable 5.2 and Opus 5.5, Anthropic)).
+// Contributors: Claude (Opus 5.5, Anthropic) (one-to-one chat tests and the message helpers both chats share, #428, from #365's prototype tests by Claude (Fable 5.2 and Opus 5.5, Anthropic); the refused messages both chats share, from a test review, #428).
 const { after, before, beforeEach, test } = require("node:test");
 // Contributors: OpenAI Codex (deleted-token membership creation/join regression, #241).
 // Contributors: Claude Opus 5.5 (friend requests involving an association, written test-first from the #416 review); Konstantinos Perdikeas (directed, reviewed and owns it).
@@ -3958,6 +3958,35 @@ function newMessage(uid, text = "See you at 6?") {
   return { senderId: uid, text, createdAt: serverTimestamp() };
 }
 
+/**
+ * The messages both kinds of chat refuse (#237, #428), each as its name and its changes to
+ * newMessage; a change to undefined removes the field (see messageWith).
+ */
+const REFUSED_MESSAGE_CHANGES = [
+  ["an empty text", { text: "" }],
+  ["a text of 1001 characters", { text: "a".repeat(1001) }],
+  ["501 emoji (1002 UTF-16 units)", { text: EMOJI.repeat(501) }],
+  ["a text that isn't a string", { text: 42 }],
+  // A list or a map has a size() too, so only `is string` refuses these.
+  ["a text that is a list", { text: ["See you at 6?"] }],
+  ["a text that is a map", { text: { text: "See you at 6?" } }],
+  ["a null text", { text: null }],
+  ["no text", { text: undefined }],
+  ["no sender", { senderId: undefined }],
+  ["a createdAt the client chose", { createdAt: Timestamp.fromMillis(1_790_000_000_000) }],
+  ["no createdAt", { createdAt: undefined }],
+  ["another field", { editedAt: serverTimestamp() }],
+];
+
+/** newMessage([uid]) with [changes]; a change to undefined removes that field. */
+function messageWith(uid, changes) {
+  const message = { ...newMessage(uid), ...changes };
+  for (const key of Object.keys(message)) {
+    if (message[key] === undefined) delete message[key];
+  }
+  return message;
+}
+
 function messagePath(eventId, groupId, id) {
   return `events/${eventId}/groups/${groupId}/messages/${id}`;
 }
@@ -4248,28 +4277,10 @@ test("another member's deletion marker doesn't stop a member sending", async () 
   await assertSucceeds(sendAs(studentDb("u1"), "e1", "g1", newMessage("u1")));
 });
 
-for (const [name, changes] of [
-  ["an empty text", { text: "" }],
-  ["a text of 1001 characters", { text: "a".repeat(1001) }],
-  ["501 emoji (1002 UTF-16 units)", { text: "\u{1F600}".repeat(501) }],
-  ["a text that isn't a string", { text: 42 }],
-  // A list or a map has a size() too, so only `is string` refuses these.
-  ["a text that is a list", { text: ["See you at 6?"] }],
-  ["a text that is a map", { text: { text: "See you at 6?" } }],
-  ["a null text", { text: null }],
-  ["no text", { text: undefined }],
-  ["no sender", { senderId: undefined }],
-  ["a createdAt the client chose", { createdAt: Timestamp.fromMillis(1_790_000_000_000) }],
-  ["no createdAt", { createdAt: undefined }],
-  ["another field", { editedAt: serverTimestamp() }],
-]) {
+for (const [name, changes] of REFUSED_MESSAGE_CHANGES) {
   test(`a message with ${name} is denied`, async () => {
     await seedGroup("e1", "g1", ["u1"]);
-    const message = { ...newMessage("u1"), ...changes };
-    for (const key of Object.keys(message)) {
-      if (message[key] === undefined) delete message[key];
-    }
-    await assertFails(sendAs(studentDb("u1"), "e1", "g1", message));
+    await assertFails(sendAs(studentDb("u1"), "e1", "g1", messageWith("u1", changes)));
     await expectNoMessage("e1", "g1");
   });
 }
@@ -5253,27 +5264,10 @@ test("a message whose chat doesn't exist and isn't created with it is refused", 
   await expectMissing(chatMessagePath("u1~u2", "new"));
 });
 
-for (const [name, changes] of [
-  ["an empty text", { text: "" }],
-  ["a text of 1001 characters", { text: "a".repeat(1001) }],
-  ["501 emoji (1002 UTF-16 units)", { text: EMOJI.repeat(501) }],
-  ["a text that isn't a string", { text: 42 }],
-  // A list or a map has a size() too, so only `is string` refuses these.
-  ["a text that is a list", { text: ["See you at 6?"] }],
-  ["a text that is a map", { text: { text: "See you at 6?" } }],
-  ["a null text", { text: null }],
-  ["no text", { text: undefined }],
-  ["no sender", { senderId: undefined }],
-  ["a createdAt the client chose", { createdAt: Timestamp.fromMillis(1_790_000_000_000) }],
-  ["no createdAt", { createdAt: undefined }],
-  ["another field", { editedAt: serverTimestamp() }],
-]) {
+for (const [name, changes] of REFUSED_MESSAGE_CHANGES) {
   test(`a one-to-one message with ${name} is refused, also as the chat's first`, async () => {
     await seedFriends("u1", "u2");
-    const message = { ...newMessage("u1"), ...changes };
-    for (const key of Object.keys(message)) {
-      if (message[key] === undefined) delete message[key];
-    }
+    const message = messageWith("u1", changes);
     await assertFails(sendToFriendAs(studentDb("u1"), "u1~u2", message));
     await expectMissing("chats/u1~u2");
     await seedChat("u1~u2");
