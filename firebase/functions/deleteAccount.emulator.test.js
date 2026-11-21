@@ -3,6 +3,7 @@
 // again once deleted, after review, #229; the user's registrations, #275; the user's
 // friendships, #357).
 // Contributors: Claude (Opus 5.5, Anthropic) (the attendeeCount the deletion lowers, #405).
+// Contributors: Claude (Opus 5.5, Anthropic) (the deletion triggers turned off while it runs, #382).
 "use strict";
 // Contributors: OpenAI Codex (real membership cleanup and retryable message anonymisation, #241).
 
@@ -15,6 +16,7 @@ const { deleteApp, initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const { getFirestore, Timestamp } = require("firebase-admin/firestore");
 const { DETAILS, REGION, deleteAccountHandler } = require("./deleteAccountHandler");
+const { setBackgroundTriggers } = require("./testing/triggerEmulator");
 
 // A "demo-" project never reaches a real Firebase project.
 const PROJECT_ID = "demo-polysocial";
@@ -37,6 +39,10 @@ let db;
 let auth;
 
 before(async () => {
+  // These tests call deleteAccount alone. The deletion triggers (#275, #382) would otherwise run on
+  // what each test deletes or clears, late enough to delete what the next one writes under the same
+  // IDs (such as a group seeded without its event).
+  await setBackgroundTriggers(false);
   try {
     // A running emulator can still have failed to discover the function. Probe the callable
     // without an account: its expected 401 proves it loaded, without deleting any data.
@@ -60,6 +66,7 @@ before(async () => {
 });
 
 after(async () => {
+  await setBackgroundTriggers(true);
   if (app) await deleteApp(app);
 });
 
