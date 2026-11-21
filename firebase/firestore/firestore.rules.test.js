@@ -4,6 +4,7 @@
 // Contributors: Claude (Fable 5.2, Anthropic) (other shapes and accounts denied the own-groups query, and the latest-message query of the chat list, #363; groups documents outside an event, and more accounts and membership changes on the latest-message query, from a test audit).
 // Contributors: Claude (Opus 5.5, Anthropic) (co-organizer tests, written test-first, #370).
 // Contributors: Claude (Opus 5.5, Anthropic) (attendeeCount rows and the counted registration writes, #373, from #372's prototype by Claude (Fable 5.2 and Opus 5.5, Anthropic)).
+// Contributors: Claude (Opus 5.5, Anthropic) (the message helpers both chats share, #428).
 const { after, before, beforeEach, test } = require("node:test");
 // Contributors: OpenAI Codex (deleted-token membership creation/join regression, #241).
 // Contributors: Claude Opus 5.5 (friend requests involving an association, written test-first from the #416 review); Konstantinos Perdikeas (directed, reviewed and owns it).
@@ -3968,36 +3969,57 @@ function sendAs(db, eventId, groupId, message, id = "new") {
   });
 }
 
-/** The query FirestoreMessageRepository.observeMessages listens to. */
-function chatOf(db, eventId, groupId) {
-  return query(
-    collection(db, `events/${eventId}/groups/${groupId}/messages`), orderBy("createdAt"),
-  );
+/**
+ * The query FirestoreMessageRepository.observeMessages listens to, on the messages collection at
+ * [path]: a group's (#237) or a one-to-one chat's (#428).
+ */
+function historyAt(db, path) {
+  return query(collection(db, path), orderBy("createdAt"));
 }
 
-/** Stores the message [id] from [senderId] at [millis], rules off. */
-async function seedMessage(eventId, groupId, id, senderId, millis = 1_790_000_000_000) {
+/** A group's chat, as observeMessages reads it. */
+function chatOf(db, eventId, groupId) {
+  return historyAt(db, `events/${eventId}/groups/${groupId}/messages`);
+}
+
+/** Stores a message from [senderId] at [millis] as the document [path], rules off. */
+async function seedMessageAt(path, senderId, millis = 1_790_000_000_000) {
   await env.withSecurityRulesDisabled(async (context) => {
-    await setDoc(doc(context.firestore(), messagePath(eventId, groupId, id)), {
+    await setDoc(doc(context.firestore(), path), {
       senderId, text: "Seeded", createdAt: Timestamp.fromMillis(millis),
     });
   });
 }
 
-/** The stored message [id], or null without it, rules off. */
-async function storedMessage(eventId, groupId, id) {
-  let message;
-  await env.withSecurityRulesDisabled(async (context) => {
-    const snapshot = await getDoc(doc(context.firestore(), messagePath(eventId, groupId, id)));
-    message = snapshot.exists() ? snapshot.data() : null;
-  });
-  return message;
+/** Stores the group message [id] from [senderId] at [millis], rules off. */
+async function seedMessage(eventId, groupId, id, senderId, millis) {
+  await seedMessageAt(messagePath(eventId, groupId, id), senderId, millis);
 }
 
-/** Fails if the message [id] was stored. */
+/** The data stored at the document [path], or null without it, rules off. */
+async function storedAt(path) {
+  let data;
+  await env.withSecurityRulesDisabled(async (context) => {
+    const snapshot = await getDoc(doc(context.firestore(), path));
+    data = snapshot.exists() ? snapshot.data() : null;
+  });
+  return data;
+}
+
+/** The stored group message [id], or null without it, rules off. */
+async function storedMessage(eventId, groupId, id) {
+  return storedAt(messagePath(eventId, groupId, id));
+}
+
+/** Fails if the document [path] is stored. */
+async function expectMissing(path) {
+  const data = await storedAt(path);
+  if (data !== null) throw new Error(`Expected no ${path}, got ${JSON.stringify(data)}`);
+}
+
+/** Fails if the group message [id] was stored. */
 async function expectNoMessage(eventId, groupId, id = "new") {
-  const message = await storedMessage(eventId, groupId, id);
-  if (message !== null) throw new Error(`Expected no message, got ${JSON.stringify(message)}`);
+  await expectMissing(messagePath(eventId, groupId, id));
 }
 
 // -- reading --
@@ -4013,13 +4035,17 @@ test("a member reads their group's chat in the server's time order, as the app d
   if (ids.join(",") !== "earlier,later") throw new Error(`Unexpected order: ${ids}`);
 });
 
-/** The query FirestoreMessageRepository.observeLatestMessage listens to, for the chat list (#363). */
+/**
+ * The query FirestoreMessageRepository.observeLatestMessage listens to, for the chat list (#363),
+ * on the messages collection at [path]: a group's or a one-to-one chat's (#428).
+ */
+function latestAt(db, path) {
+  return query(collection(db, path), orderBy("createdAt", "desc"), limit(1));
+}
+
+/** A group's latest message, as observeLatestMessage reads it. */
 function latestMessageOf(db, eventId, groupId) {
-  return query(
-    collection(db, `events/${eventId}/groups/${groupId}/messages`),
-    orderBy("createdAt", "desc"),
-    limit(1),
-  );
+  return latestAt(db, `events/${eventId}/groups/${groupId}/messages`);
 }
 
 test("a member reads only their group's latest message, as the chat list does", async () => {
