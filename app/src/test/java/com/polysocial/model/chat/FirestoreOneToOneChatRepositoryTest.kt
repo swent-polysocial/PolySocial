@@ -1,4 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #428).
+// Contributors: Claude (Opus 5.5, Anthropic) (tester: a rerun finding its stored message and a
+// cancelled first-message send, #428).
 package com.polysocial.model.chat
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -306,6 +308,44 @@ class FirestoreOneToOneChatRepositoryTest {
 
     assertEquals(listOf(chat, draftMessage, chat, draftMessage), reads)
     assertEquals(listOf(draftMessage to newMessageFirestoreMap(ALICE, "Hi")), writes)
+  }
+
+  @Test
+  fun aRerunThatFindsTheMessageTheFailedCommitStored_isSent_withoutStoringItTwice() = runTest {
+    // The first commit stored the chat and the message, but its answer was a failure that isn't
+    // being offline: the rerun reads the message under the same generated ID and finds it.
+    chatExists += listOf(false, true)
+    commitFailures += failed(Code.INTERNAL)
+    storedMessages[newMessage] = stored(ALICE, "Hi")
+
+    assertEquals(SendMessageResult.Sent, repository.sendMessage(PAIR, "Hi"))
+
+    assertEquals(2, attempts.size)
+    assertTrue("Nothing may be written: $writes", writes.isEmpty())
+  }
+
+  @Test
+  fun cancellingTheCallerWhileTheChatIsBeingCreated_startsNoRerun() = runTest {
+    chatExists += false
+    every {
+      db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<SendMessageResult>>())
+    } answers
+        {
+          attempts += firstArg<TransactionOptions>()
+          // The attempt reads the missing chat and sets it, then waits for its commit.
+          secondArg<Transaction.Function<SendMessageResult>>().apply(transaction)
+          TaskCompletionSource<SendMessageResult>().task
+        }
+    var result: SendMessageResult? = null
+    val call =
+        launch(start = CoroutineStart.UNDISPATCHED) { result = repository.sendMessage(PAIR, "Hi") }
+
+    call.cancel()
+    call.join()
+
+    assertTrue(call.isCancelled)
+    assertEquals(null, result)
+    assertEquals(1, attempts.size)
   }
 
   @Test
