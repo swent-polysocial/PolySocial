@@ -31,7 +31,10 @@ import kotlinx.coroutines.flow.map
  * listeners read the user and are checked by the rules then, and keep emitting for that user:
  * changing [currentUid] later doesn't affect a running collection. They emit when their own data
  * changes and when [readFromCache] does. [observeMyChats] lists the chats by pair ID. The messages
- * are kept in a [FakeMessageStore], which sets their order, IDs and server times.
+ * are kept in a [FakeMessageStore], which sets their order, IDs and server times. Each fake has its
+ * own store, whose server times start at the same instant, so a test of a list merging group and
+ * one-to-one chats newest first seeds their messages with explicit times ([seedMessage]) rather
+ * than sending them.
  *
  * @property currentUid the signed-in student, or null when nobody is signed in.
  */
@@ -53,7 +56,7 @@ class FakeOneToOneChatRepository(var currentUid: String? = "test-student") :
    * The pair's friendship, as the Security Rules read `friendships/{pairId}`: sending needs one
    * that is [FriendshipStatus.ACCEPTED]. None by default. Wire it to a `FakeFriendRepository`, as
    * `friendshipOf = friends::friendship`, so that accepting or removing a friend there changes what
-   * can be sent here.
+   * can be sent here; tests make two students friends with its `seedAcceptedFriendship`.
    */
   var friendshipOf: (pairId: String) -> Friendship? = { null }
 

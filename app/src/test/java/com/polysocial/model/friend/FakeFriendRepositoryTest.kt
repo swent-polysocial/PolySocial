@@ -1,5 +1,6 @@
 // Contributors: Claude Opus 5.5 (wrote these tests, #357); Konstantinos Perdikeas (directed,
 // reviewed and owns them).
+// Contributors: Claude (Opus 5.5, Anthropic) (tests of seedAcceptedFriendship, #428).
 package com.polysocial.model.friend
 
 import java.time.Instant
@@ -16,6 +17,7 @@ import kotlinx.coroutines.withContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 /** The fake follows the [FriendRepository] contracts the friends screens will be tested against. */
@@ -443,6 +445,36 @@ class FakeFriendRepositoryTest {
         assertNull(fake.friendship("alice~bob"))
       }
     }
+  }
+
+  @Test
+  fun seedAcceptedFriendship_storesTheTwoAsFriends_atTheServersTimes() = runTest {
+    val friendship = repository.seedAcceptedFriendship("bob", "alice")
+
+    val expected =
+        Friendship(
+            id = "alice~bob",
+            uids = listOf("alice", "bob"),
+            requestedBy = "bob",
+            status = FriendshipStatus.ACCEPTED,
+            createdAt = now,
+            acceptedAt = now.plusMillis(1),
+        )
+    assertEquals(expected, friendship)
+    assertEquals(FriendshipsResult.Success(listOf(expected), false), myFriendships())
+    // The next write is stamped after it, as on the server.
+    assertEquals(now.plusMillis(2), repository.now)
+  }
+
+  @Test
+  fun seedAcceptedFriendship_refusesTwoUidsThatCannotBeAPair() {
+    assertThrows(IllegalArgumentException::class.java) {
+      repository.seedAcceptedFriendship("alice", "alice")
+    }
+    assertThrows(IllegalArgumentException::class.java) {
+      repository.seedAcceptedFriendship("alice", "b~ob")
+    }
+    assertNull(repository.friendship("alice~alice"))
   }
 
   /** Runs [first] and [second] on two threads, started at the same moment, and returns both. */
