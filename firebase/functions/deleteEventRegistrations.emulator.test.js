@@ -1,59 +1,20 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the emulator test of the trigger deleting a
 // deleted event's registrations, #275; an event written again, after review.
+// Contributors: Claude (Opus 5.5, Anthropic) moved its setup to testing/triggerEmulator.js, #382.
 "use strict";
 
 // Deletes events in the Firestore emulator and waits for the deleteEventRegistrations trigger,
 // running in the Functions emulator. Run from the repository root (see the README):
 // firebase emulators:exec --project demo-polysocial --only firestore,auth,functions "node --test --test-concurrency=1 firebase/functions/*.emulator.test.js"
-const { after, before, beforeEach, test } = require("node:test");
+const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { deleteApp, initializeApp } = require("firebase-admin/app");
-const { getFirestore } = require("firebase-admin/firestore");
+const { pathsIn, useTriggerEmulators, waitFor, waitUntil } = require("./testing/triggerEmulator");
 
-// A "demo-" project never reaches a real Firebase project.
-const PROJECT_ID = "demo-polysocial";
-const FIRESTORE_HOST = process.env.FIRESTORE_EMULATOR_HOST;
-const FUNCTIONS_ORIGIN = "http://127.0.0.1:5001";
-// How long the trigger may take to run in the emulator.
-const TIMEOUT_MS = 15_000;
-
-if (!FIRESTORE_HOST) {
-  throw new Error(
-    "FIRESTORE_EMULATOR_HOST is not set: run this test inside " +
-      '`firebase emulators:exec --project demo-polysocial --only firestore,auth,functions "..."`.',
-  );
-}
-
-let app;
-let db;
-
-before(async () => {
-  try {
-    await fetch(FUNCTIONS_ORIGIN);
-  } catch (error) {
-    throw new Error(
-      `The Functions emulator does not answer at ${FUNCTIONS_ORIGIN}: add "functions" to --only.`,
-      { cause: error },
-    );
-  }
-  app = initializeApp({ projectId: PROJECT_ID }, "deleteEventRegistrations");
-  db = getFirestore(app);
-});
-
-after(async () => {
-  if (app) await deleteApp(app);
-});
-
-beforeEach(async () => {
-  const response = await fetch(
-    `http://${FIRESTORE_HOST}/emulator/v1/projects/${PROJECT_ID}/databases/(default)/documents`,
-    { method: "DELETE" },
-  );
-  if (!response.ok) throw new Error(`Could not clear the emulator (${response.status}).`);
-});
+const database = useTriggerEmulators("deleteEventRegistrations");
 
 /** Stores a fictional event and a registration for it from each of `uids`. */
 async function seedEvent(eventId, uids) {
+  const db = database();
   await db.doc(`events/${eventId}`).set({
     title: "Fictional study session",
     createdBy: "organizer",
@@ -67,38 +28,29 @@ async function seedEvent(eventId, uids) {
 }
 
 /** The paths of every registration left, sorted. */
-async function registrations() {
-  const snapshot = await db.collectionGroup("attendees").get();
-  return snapshot.docs.map((document) => document.ref.path).sort();
+function registrations() {
+  return pathsIn(database(), "attendees");
 }
 
-/** Waits until the registrations left are `expected`, or fails after TIMEOUT_MS. */
-async function waitForRegistrations(expected) {
-  const deadline = Date.now() + TIMEOUT_MS;
-  let left = await registrations();
-  while (JSON.stringify(left) !== JSON.stringify(expected)) {
-    if (Date.now() > deadline) {
-      assert.fail(`The trigger didn't run in time: ${JSON.stringify(left)} are left.`);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 200));
-    left = await registrations();
-  }
+/** Waits until the registrations left are `expected`, or fails after the helper's timeout. */
+function waitForRegistrations(expected) {
+  return waitFor(registrations, expected);
 }
 
 test("deleting an event deletes its registrations, other events' are kept", async () => {
   await seedEvent("deleted", ["u1", "u2"]);
   await seedEvent("kept", ["u1"]);
 
-  await db.doc("events/deleted").delete();
+  await database().doc("events/deleted").delete();
 
   await waitForRegistrations(["events/kept/attendees/u1"]);
-  assert.equal((await db.doc("events/kept").get()).exists, true);
+  assert.equal((await database().doc("events/kept").get()).exists, true);
 });
 
 test("an event with more registrations than one batch holds loses them all", async () => {
   const uids = Array.from({ length: 501 }, (_, i) => `u${i}`);
   await seedEvent("crowded", uids);
-  await db.doc("events/crowded").delete();
+  await database().doc("events/crowded").delete();
   await waitForRegistrations([]);
 });
 
@@ -108,18 +60,14 @@ test("an event written again under its ID keeps its new registrations", async ()
   await seedEvent("again", ["u1"]);
   await seedEvent("gone", ["u1"]);
 
-  await db.doc("events/again").delete();
+  await database().doc("events/again").delete();
   await seedEvent("again", ["u2"]);
-  await db.doc("events/gone").delete();
+  await database().doc("events/gone").delete();
 
   // Wait for the later deletion's trigger, then give the earlier one a margin to run too. The
   // old registration may be gone or kept, depending on whether that trigger ran before the event
   // came back; the new one must stay.
-  const deadline = Date.now() + TIMEOUT_MS;
-  while ((await registrations()).some((path) => path.startsWith("events/gone/"))) {
-    if (Date.now() > deadline) assert.fail("The trigger didn't run in time.");
-    await new Promise((resolve) => setTimeout(resolve, 200));
-  }
+  await waitUntil(registrations, (left) => !left.some((path) => path.startsWith("events/gone/")));
   await new Promise((resolve) => setTimeout(resolve, 1000));
   assert.ok((await registrations()).includes("events/again/attendees/u2"));
 });
