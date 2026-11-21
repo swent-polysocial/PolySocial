@@ -1,6 +1,7 @@
 // Contributors: Claude Opus 5.5 (wrote this fake for tests, #357; the shared pair check, second
 // PR; the response gates, deleteFriendship and failListeners, #359); Konstantinos Perdikeas
 // (directed, reviewed and owns it).
+// Contributors: Claude (Opus 5.5, Anthropic) (seedAcceptedFriendship, shared by the tests, #428).
 package com.polysocial.model.friend
 
 import java.time.Instant
@@ -87,6 +88,27 @@ class FakeFriendRepository(
   fun seedFriendship(friendship: Friendship) {
     synchronized(lock) { friendships.value += friendship.id to friendship }
   }
+
+  /**
+   * Stores an accepted friendship between [uidA] and [uidB] directly, as if [uidA] had sent the
+   * request and [uidB] had accepted it, at the fake's server times ([now]), and returns it. Tests
+   * that need two students to be friends use it rather than building a [Friendship] themselves: the
+   * one-to-one chat's screens (#431, #432) and fakes, through
+   * `FakeOneToOneChatRepository.friendshipOf`.
+   */
+  fun seedAcceptedFriendship(uidA: String, uidB: String): Friendship =
+      synchronized(lock) {
+        val id = requireNotNull(friendshipId(uidA, uidB)) { "$uidA and $uidB can't be a pair" }
+        Friendship(
+                id = id,
+                uids = listOf(uidA, uidB).sorted(),
+                requestedBy = uidA,
+                status = FriendshipStatus.ACCEPTED,
+                createdAt = serverTime(),
+                acceptedAt = serverTime(),
+            )
+            .also(::seedFriendship)
+      }
 
   /** Deletes the friendship with this [id] directly, like the other student declining it. */
   fun deleteFriendship(id: String) {

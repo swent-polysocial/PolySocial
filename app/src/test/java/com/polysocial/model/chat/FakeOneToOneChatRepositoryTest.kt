@@ -3,8 +3,6 @@
 package com.polysocial.model.chat
 
 import com.polysocial.model.friend.FakeFriendRepository
-import com.polysocial.model.friend.Friendship
-import com.polysocial.model.friend.FriendshipStatus
 import java.time.Instant
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
@@ -28,20 +26,8 @@ class FakeOneToOneChatRepositoryTest {
   private val repository =
       FakeOneToOneChatRepository(currentUid = ALICE).apply { friendshipOf = friends::friendship }
 
-  private fun friendship(status: FriendshipStatus, id: String = PAIR) =
-      Friendship(
-          id = id,
-          uids = id.split("~"),
-          requestedBy = id.substringBefore("~"),
-          status = status,
-          createdAt = Instant.parse("2026-11-20T10:00:00Z"),
-          acceptedAt =
-              if (status == FriendshipStatus.ACCEPTED) Instant.parse("2026-11-20T11:00:00Z")
-              else null,
-      )
-
-  private fun befriend(id: String = PAIR) =
-      friends.seedFriendship(friendship(FriendshipStatus.ACCEPTED, id))
+  /** Makes the signed-in student and [other] friends. */
+  private fun befriend(other: String = BOB) = friends.seedAcceptedFriendship(ALICE, other)
 
   /** The first result after Loading. */
   private suspend fun myChats() = repository.observeMyChats().drop(1).first()
@@ -148,7 +134,8 @@ class FakeOneToOneChatRepositoryTest {
   fun withoutAnAcceptedFriendship_sendingIsUnexpected_andCreatesNothing() = runTest {
     assertEquals(SendMessageResult.UnexpectedError, repository.sendMessage(PAIR, "Hi"))
 
-    friends.seedFriendship(friendship(FriendshipStatus.PENDING))
+    // A request Alice sent and Bob hasn't accepted.
+    friends.sendRequest(BOB)
     assertEquals(SendMessageResult.UnexpectedError, repository.sendMessage(PAIR, "Hi"))
     repository.currentUid = BOB
     assertEquals(SendMessageResult.UnexpectedError, repository.sendMessage(PAIR, "Hi"))
@@ -159,7 +146,7 @@ class FakeOneToOneChatRepositoryTest {
 
   @Test
   fun aFriendshipWithSomeoneElse_doesNotLetTheStudentSendHere() = runTest {
-    befriend("alice~carol")
+    befriend(CAROL)
 
     assertEquals(SendMessageResult.UnexpectedError, repository.sendMessage(PAIR, "Hi"))
     assertEquals(SendMessageResult.Sent, repository.sendMessage("alice~carol", "Hi"))
@@ -227,7 +214,7 @@ class FakeOneToOneChatRepositoryTest {
   fun sendsInDifferentChats_getServerTimesInTheirSendOrder() = runTest {
     // The Chats tab orders the chats by their latest message's time.
     befriend()
-    befriend("alice~carol")
+    befriend(CAROL)
 
     repository.sendMessage(PAIR, "First")
     repository.sendMessage("alice~carol", "Second")
@@ -262,7 +249,7 @@ class FakeOneToOneChatRepositoryTest {
   @Test
   fun idsThatAreNotTheStudentsPair_orNobodySignedIn_areUnexpected_beforeTheConnection() = runTest {
     befriend()
-    friends.seedFriendship(friendship(FriendshipStatus.ACCEPTED, id = "bob~carol"))
+    friends.seedAcceptedFriendship(BOB, CAROL)
     repository.online = false
 
     for (pairId in listOf("bob~carol", "bob~alice", "alice~bob~", "alice", "alice~alice")) {
@@ -318,7 +305,7 @@ class FakeOneToOneChatRepositoryTest {
   @Test
   fun observeMessages_emitsEveryNewMessage_oldestFirst() = runTest {
     befriend()
-    befriend("alice~carol")
+    befriend(CAROL)
     val results = mutableListOf<MessagesResult>()
     val collecting =
         launch(UnconfinedTestDispatcher(testScheduler)) {
@@ -451,7 +438,7 @@ class FakeOneToOneChatRepositoryTest {
   @Test
   fun observeLatestMessage_emitsTheChatsNewestMessage_onlyWhenItChanges() = runTest {
     befriend()
-    befriend("alice~carol")
+    befriend(CAROL)
     val time = Instant.parse("2030-01-01T10:00:00Z")
     val results = mutableListOf<LatestMessageResult>()
     val collecting =
