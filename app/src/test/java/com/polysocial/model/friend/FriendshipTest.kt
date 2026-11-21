@@ -1,5 +1,6 @@
 // Contributors: Claude Opus 5.5 (wrote these tests, #357; isFriendshipIdOf, second PR);
 // Konstantinos Perdikeas (directed, reviewed and owns them).
+// Contributors: Claude (Opus 5.5, Anthropic) (tests of uidsOfFriendshipId, #428).
 package com.polysocial.model.friend
 
 import java.time.Instant
@@ -102,6 +103,34 @@ class FriendshipTest {
   fun isFriendshipIdOf_isFalseForSomeoneOutsideThePair() {
     assertFalse(isFriendshipIdOf("alice~bob", "carol"))
     assertFalse(isFriendshipIdOf("alice~bob", "alice~bob"))
+  }
+
+  @Test
+  fun uidsOfFriendshipId_areTheTwoHalvesInTheIdsOrder() {
+    assertEquals(listOf("alice", "bob"), uidsOfFriendshipId("alice~bob"))
+    // By character code, as friendshipId sorts them: not alphabetical.
+    assertEquals(listOf("Zed", "alice"), uidsOfFriendshipId("Zed~alice"))
+  }
+
+  @Test
+  fun uidsOfFriendshipId_isNullForAnIdFriendshipIdWouldNotBuild() {
+    val notPairIds =
+        listOf(
+            "bob~alice",
+            "alice~bob~",
+            "alice~bob~carol",
+            "~alice~bob",
+            "alice~~bob",
+            "alice",
+            "alice~",
+            "~bob",
+            "alice~alice",
+            "alice~b/ob",
+            "",
+        )
+    for (id in notPairIds) {
+      assertNull("\"$id\" must not be a pair ID", uidsOfFriendshipId(id))
+    }
   }
 
   private val friendship =
