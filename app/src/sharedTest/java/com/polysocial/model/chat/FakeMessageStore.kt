@@ -8,9 +8,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 
 /**
- * The stored messages of the in-memory chats of a chat fake ([FakeMessageRepository]), each chat
- * identified by a [K] of that fake: what the server holds once a send got through the fake's
- * checks.
+ * The stored messages of the in-memory chats of a chat fake ([FakeMessageRepository],
+ * [FakeOneToOneChatRepository]), each chat identified by a [K] of that fake: what the server holds
+ * once a send got through the fake's checks.
  *
  * Messages are listed oldest first, then by ID for equal times, as Firestore orders them. Messages
  * [add] stores get the IDs `message-1`, `message-2`… and deterministic server times that put them
