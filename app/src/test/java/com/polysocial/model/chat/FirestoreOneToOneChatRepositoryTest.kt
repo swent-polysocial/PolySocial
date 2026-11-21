@@ -1,4 +1,5 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #428).
+// Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #428; the Firestore mocks shared
+// with the group chat's tests in FirestoreChatMocks.kt).
 // Contributors: Claude (Opus 5.5, Anthropic) (tester: a rerun finding its stored message, a
 // cancelled first-message send, Retry of the message listeners, #428).
 package com.polysocial.model.chat
@@ -7,20 +8,13 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.android.gms.tasks.Tasks
-import com.google.firebase.Timestamp
 import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
-import com.google.firebase.firestore.DocumentSnapshot.ServerTimestampBehavior
-import com.google.firebase.firestore.EventListener
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.FirebaseFirestoreException.Code
-import com.google.firebase.firestore.ListenerRegistration
-import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
-import com.google.firebase.firestore.SnapshotMetadata
 import com.google.firebase.firestore.Transaction
 import com.google.firebase.firestore.TransactionOptions
 import com.polysocial.model.auth.AuthUser
@@ -32,12 +26,9 @@ import io.mockk.verify
 import java.time.Instant
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.async
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -122,11 +113,6 @@ class FirestoreOneToOneChatRepositoryTest {
         }
   }
 
-  private fun failed(code: Code) = FirebaseFirestoreException("failed", code)
-
-  private fun stored(senderId: String, text: String) =
-      mapOf("senderId" to senderId, "text" to text, "createdAt" to Timestamp(1_900_000_000L, 0))
-
   private fun verifyNoFirestore() {
     verify(exactly = 0) { db.collection(any()) }
     verify(exactly = 0) {
@@ -185,7 +171,7 @@ class FirestoreOneToOneChatRepositoryTest {
 
   @Test
   fun aRetryIdHoldingTheSameDraft_isSentWithoutAWrite_andAnythingElseIsUnexpected() = runTest {
-    storedMessages[draftMessage] = stored(ALICE, "Hi")
+    storedMessages[draftMessage] = storedMessage(ALICE, "Hi")
     repeat(4) { chatExists += true }
 
     assertEquals(SendMessageResult.Sent, repository.sendMessage(PAIR, " Hi ", DRAFT))
@@ -193,7 +179,7 @@ class FirestoreOneToOneChatRepositoryTest {
         SendMessageResult.UnexpectedError,
         repository.sendMessage(PAIR, "Hello", DRAFT),
     )
-    storedMessages[draftMessage] = stored(BOB, "Hi")
+    storedMessages[draftMessage] = storedMessage(BOB, "Hi")
     assertEquals(SendMessageResult.UnexpectedError, repository.sendMessage(PAIR, "Hi", DRAFT))
     storedMessages[draftMessage] = mapOf("text" to "Hi")
     assertEquals(SendMessageResult.UnexpectedError, repository.sendMessage(PAIR, "Hi", DRAFT))
@@ -204,11 +190,11 @@ class FirestoreOneToOneChatRepositoryTest {
   @Test
   fun aRetryAfterALostAnswer_findsTheStoredDraft_andWritesNothing() = runTest {
     chatExists += false
-    commitFailures += failed(Code.DEADLINE_EXCEEDED)
+    commitFailures += firestoreFailure(Code.DEADLINE_EXCEEDED)
     assertEquals(SendMessageResult.NetworkError, repository.sendMessage(PAIR, "Hi", DRAFT))
 
     // The server had stored it after all: Try again under the same ID finds it.
-    storedMessages[draftMessage] = stored(ALICE, "Hi")
+    storedMessages[draftMessage] = storedMessage(ALICE, "Hi")
     chatExists += true
     assertEquals(SendMessageResult.Sent, repository.sendMessage(PAIR, "Hi", DRAFT))
 
@@ -285,7 +271,7 @@ class FirestoreOneToOneChatRepositoryTest {
       reads.clear()
       // The first attempt finds no chat; the other student's commit creates it before this one.
       chatExists += listOf(false, true)
-      commitFailures += failed(code)
+      commitFailures += firestoreFailure(code)
 
       assertEquals(code.name, SendMessageResult.Sent, repository.sendMessage(PAIR, "Hi"))
 
@@ -303,7 +289,7 @@ class FirestoreOneToOneChatRepositoryTest {
   @Test
   fun losingTheRaceWithARetryId_storesTheMessageUnderThatIdOnTheSecondAttempt() = runTest {
     chatExists += listOf(false, true)
-    commitFailures += failed(Code.FAILED_PRECONDITION)
+    commitFailures += firestoreFailure(Code.FAILED_PRECONDITION)
 
     assertEquals(SendMessageResult.Sent, repository.sendMessage(PAIR, "Hi", DRAFT))
 
@@ -316,8 +302,8 @@ class FirestoreOneToOneChatRepositoryTest {
     // The first commit stored the chat and the message, but its answer was a failure that isn't
     // being offline: the rerun reads the message under the same generated ID and finds it.
     chatExists += listOf(false, true)
-    commitFailures += failed(Code.INTERNAL)
-    storedMessages[newMessage] = stored(ALICE, "Hi")
+    commitFailures += firestoreFailure(Code.INTERNAL)
+    storedMessages[newMessage] = storedMessage(ALICE, "Hi")
 
     assertEquals(SendMessageResult.Sent, repository.sendMessage(PAIR, "Hi"))
 
@@ -352,13 +338,15 @@ class FirestoreOneToOneChatRepositoryTest {
   @Test
   fun aSecondAttemptThatFailsToo_isReported_andIsTheLast() = runTest {
     chatExists += listOf(false, false)
-    commitFailures += listOf(failed(Code.PERMISSION_DENIED), failed(Code.PERMISSION_DENIED))
+    commitFailures +=
+        listOf(firestoreFailure(Code.PERMISSION_DENIED), firestoreFailure(Code.PERMISSION_DENIED))
     // For example two students who aren't friends: the rules refuse both attempts.
     assertEquals(SendMessageResult.UnexpectedError, repository.sendMessage(PAIR, "Hi"))
     assertEquals(2, attempts.size)
 
     chatExists += listOf(false, false)
-    commitFailures += listOf(failed(Code.ALREADY_EXISTS), failed(Code.UNAVAILABLE))
+    commitFailures +=
+        listOf(firestoreFailure(Code.ALREADY_EXISTS), firestoreFailure(Code.UNAVAILABLE))
     assertEquals(SendMessageResult.NetworkError, repository.sendMessage(PAIR, "Hi"))
     assertEquals(4, attempts.size)
     assertTrue("Nothing may be written: $writes", writes.isEmpty())
@@ -369,7 +357,7 @@ class FirestoreOneToOneChatRepositoryTest {
     for (code in listOf(Code.UNAVAILABLE, Code.DEADLINE_EXCEEDED)) {
       attempts.clear()
       chatExists += false
-      commitFailures += failed(code)
+      commitFailures += firestoreFailure(code)
 
       assertEquals(code.name, SendMessageResult.NetworkError, repository.sendMessage(PAIR, "Hi"))
       assertEquals(code.name, 1, attempts.size)
@@ -380,7 +368,7 @@ class FirestoreOneToOneChatRepositoryTest {
   fun aRefusedMessageInAnExistingChat_isUnexpected_andNotRunAgain() = runTest {
     // For example after the friend was removed: the chat stays, the rules refuse the message.
     chatExists += true
-    commitFailures += failed(Code.PERMISSION_DENIED)
+    commitFailures += firestoreFailure(Code.PERMISSION_DENIED)
 
     assertEquals(SendMessageResult.UnexpectedError, repository.sendMessage(PAIR, "Hi"))
 
@@ -393,7 +381,7 @@ class FirestoreOneToOneChatRepositoryTest {
     // as far as creating the chat.
     every {
       db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<SendMessageResult>>())
-    } returns Tasks.forException(failed(Code.PERMISSION_DENIED))
+    } returns Tasks.forException(firestoreFailure(Code.PERMISSION_DENIED))
 
     assertEquals(SendMessageResult.UnexpectedError, repository.sendMessage(PAIR, "Hi"))
 
@@ -438,35 +426,14 @@ class FirestoreOneToOneChatRepositoryTest {
 
   // observeMyChats, observeMessages and observeLatestMessage
 
-  private val registration = mockk<ListenerRegistration>(relaxed = true)
-  private val listeners = mutableListOf<EventListener<QuerySnapshot>>()
-
-  /** Stubs exactly the query [query] must listen to, so any other query fails the test. */
-  private fun stubListener(query: Query) {
-    every { query.addSnapshotListener(MetadataChanges.INCLUDE, any()) } answers
-        {
-          listeners += secondArg<EventListener<QuerySnapshot>>()
-          registration
-        }
-  }
+  private val listeners = MockedChatListeners()
 
   private val myChatsQuery = mockk<Query>()
 
+  /** Stubs exactly the query observeMyChats must build, so any other query fails the test. */
   private fun stubMyChats() {
     every { chats.whereArrayContains(CHAT_UIDS, ALICE) } returns myChatsQuery
-    stubListener(myChatsQuery)
-  }
-
-  private val ordered = mockk<Query>()
-  private val newestFirst = mockk<Query>()
-  private val newestOnly = mockk<Query>()
-
-  private fun stubMessages() {
-    every { messages.orderBy(MESSAGE_CREATED_AT) } returns ordered
-    every { messages.orderBy(MESSAGE_CREATED_AT, Query.Direction.DESCENDING) } returns newestFirst
-    every { newestFirst.limit(1) } returns newestOnly
-    stubListener(ordered)
-    stubListener(newestOnly)
+    listeners.on(myChatsQuery)
   }
 
   private fun chatDocument(id: String, data: Map<String, Any?>) =
@@ -474,22 +441,6 @@ class FirestoreOneToOneChatRepositoryTest {
         every { it.id } returns id
         every { it.data } returns data
       }
-
-  private fun messageDocument(id: String, data: Map<String, Any?>) =
-      mockk<DocumentSnapshot>().also {
-        every { it.id } returns id
-        every { it.getData(ServerTimestampBehavior.ESTIMATE) } returns data
-      }
-
-  private fun snapshot(vararg documents: DocumentSnapshot, fromCache: Boolean = false) =
-      mockk<QuerySnapshot>().also {
-        every { it.documents } returns documents.toList()
-        every { it.metadata } returns
-            mockk<SnapshotMetadata>().also { m -> every { m.isFromCache } returns fromCache }
-      }
-
-  private fun <T> TestScope.collect(flow: Flow<T>) =
-      async(UnconfinedTestDispatcher(testScheduler)) { flow.toList() }
 
   @Test
   fun observeMyChats_listsTheStudentsReadableChats_withTheOtherStudentOrNone() = runTest {
@@ -500,10 +451,10 @@ class FirestoreOneToOneChatRepositoryTest {
           repository.observeMyChats().collect { results += it }
         }
 
-    listeners
+    listeners.all
         .single()
         .onEvent(
-            snapshot(
+            querySnapshot(
                 chatDocument(PAIR, mapOf("uids" to listOf(ALICE, BOB))),
                 chatDocument("alice~dave", mapOf("uids" to listOf(ALICE))),
                 chatDocument("alice~carol", mapOf("uids" to "broken")),
@@ -511,7 +462,7 @@ class FirestoreOneToOneChatRepositoryTest {
             ),
             null,
         )
-    listeners.single().onEvent(snapshot(), null)
+    listeners.all.single().onEvent(querySnapshot(), null)
     collecting.cancel()
 
     assertEquals(
@@ -525,27 +476,25 @@ class FirestoreOneToOneChatRepositoryTest {
         ),
         results,
     )
-    verify { registration.remove() }
+    verify { listeners.registration.remove() }
   }
 
   @Test
   fun observeMyChats_failures_endTheFlowWithTheirOwnError_andRemoveTheListener() = runTest {
     stubMyChats()
-    val offline = collect(repository.observeMyChats())
-    listeners.last().onEvent(null, failed(Code.UNAVAILABLE))
-    val denied = collect(repository.observeMyChats())
-    listeners.last().onEvent(null, failed(Code.PERMISSION_DENIED))
-    val unreadable = collect(repository.observeMyChats())
-    listeners
-        .last()
-        .onEvent(
-            mockk<QuerySnapshot>().also {
-              every { it.documents } throws IllegalStateException("terminated")
-            },
-            null,
-        )
-    val empty = collect(repository.observeMyChats())
-    listeners.last().onEvent(null, null)
+    val offline = collectAll(repository.observeMyChats())
+    listeners.last.onEvent(null, firestoreFailure(Code.UNAVAILABLE))
+    val denied = collectAll(repository.observeMyChats())
+    listeners.last.onEvent(null, firestoreFailure(Code.PERMISSION_DENIED))
+    val unreadable = collectAll(repository.observeMyChats())
+    listeners.last.onEvent(
+        mockk<QuerySnapshot>().also {
+          every { it.documents } throws IllegalStateException("terminated")
+        },
+        null,
+    )
+    val empty = collectAll(repository.observeMyChats())
+    listeners.last.onEvent(null, null)
 
     assertEquals(
         listOf(MyOneToOneChatsResult.Loading, MyOneToOneChatsResult.NetworkError),
@@ -555,24 +504,25 @@ class FirestoreOneToOneChatRepositoryTest {
     assertEquals(unexpected, denied.await())
     assertEquals(unexpected, unreadable.await())
     assertEquals(unexpected, empty.await())
-    verify(exactly = 4) { registration.remove() }
+    verify(exactly = 4) { listeners.registration.remove() }
   }
 
   @Test
   fun observeMyChats_afterAFailure_aNewCollectionListensAgain() = runTest {
     stubMyChats()
-    val failed = collect(repository.observeMyChats())
-    listeners.last().onEvent(null, failed(Code.UNAVAILABLE))
+    val failed = collectAll(repository.observeMyChats())
+    listeners.last.onEvent(null, firestoreFailure(Code.UNAVAILABLE))
     assertEquals(
         listOf(MyOneToOneChatsResult.Loading, MyOneToOneChatsResult.NetworkError),
         failed.await(),
     )
 
-    val retried = collect(repository.observeMyChats())
-    listeners
-        .last()
-        .onEvent(snapshot(chatDocument(PAIR, mapOf("uids" to listOf(ALICE, BOB)))), null)
-    listeners.last().onEvent(null, failed(Code.UNAVAILABLE))
+    val retried = collectAll(repository.observeMyChats())
+    listeners.last.onEvent(
+        querySnapshot(chatDocument(PAIR, mapOf("uids" to listOf(ALICE, BOB)))),
+        null,
+    )
+    listeners.last.onEvent(null, firestoreFailure(Code.UNAVAILABLE))
 
     assertEquals(
         listOf(
@@ -582,7 +532,7 @@ class FirestoreOneToOneChatRepositoryTest {
         ),
         retried.await(),
     )
-    assertEquals(2, listeners.size)
+    assertEquals(2, listeners.all.size)
   }
 
   @Test
@@ -600,21 +550,21 @@ class FirestoreOneToOneChatRepositoryTest {
 
   @Test
   fun observeMessages_readsTheChatsMessagesInTheServersOrder() = runTest {
-    stubMessages()
-    val results = collect(repository.observeMessages(PAIR))
+    listeners.onMessagesInServerOrder(messages)
+    val results = collectAll(repository.observeMessages(PAIR))
 
-    listeners
+    listeners.all
         .single()
         .onEvent(
-            snapshot(
-                messageDocument("a", stored(BOB, "Hi")),
+            querySnapshot(
+                messageDocument("a", storedMessage(BOB, "Hi")),
                 messageDocument("broken", mapOf("text" to "No sender")),
-                messageDocument("b", stored(DELETED_MESSAGE_SENDER, "Bye")),
+                messageDocument("b", storedMessage(DELETED_MESSAGE_SENDER, "Bye")),
                 fromCache = true,
             ),
             null,
         )
-    listeners.single().onEvent(null, failed(Code.PERMISSION_DENIED))
+    listeners.all.single().onEvent(null, firestoreFailure(Code.PERMISSION_DENIED))
 
     val at = Instant.ofEpochSecond(1_900_000_000L)
     assertEquals(
@@ -631,16 +581,16 @@ class FirestoreOneToOneChatRepositoryTest {
         ),
         results.await(),
     )
-    verify { registration.remove() }
+    verify { listeners.registration.remove() }
   }
 
   @Test
   fun observeMessages_ofAChatThatDoesNotExistYet_isAnEmptyHistory() = runTest {
-    stubMessages()
-    val results = collect(repository.observeMessages(PAIR))
+    listeners.onMessagesInServerOrder(messages)
+    val results = collectAll(repository.observeMessages(PAIR))
 
-    listeners.single().onEvent(snapshot(), null)
-    listeners.single().onEvent(null, failed(Code.DEADLINE_EXCEEDED))
+    listeners.all.single().onEvent(querySnapshot(), null)
+    listeners.all.single().onEvent(null, firestoreFailure(Code.DEADLINE_EXCEEDED))
 
     assertEquals(
         listOf(
@@ -654,12 +604,14 @@ class FirestoreOneToOneChatRepositoryTest {
 
   @Test
   fun observeLatestMessage_readsOnlyTheNewestMessage_orNone() = runTest {
-    stubMessages()
-    val results = collect(repository.observeLatestMessage(PAIR))
+    listeners.onNewestMessage(messages)
+    val results = collectAll(repository.observeLatestMessage(PAIR))
 
-    listeners.single().onEvent(snapshot(), null)
-    listeners.single().onEvent(snapshot(messageDocument("b", stored(BOB, "Newest"))), null)
-    listeners.single().onEvent(null, failed(Code.UNAVAILABLE))
+    listeners.all.single().onEvent(querySnapshot(), null)
+    listeners.all
+        .single()
+        .onEvent(querySnapshot(messageDocument("b", storedMessage(BOB, "Newest"))), null)
+    listeners.all.single().onEvent(null, firestoreFailure(Code.UNAVAILABLE))
 
     assertEquals(
         listOf(
@@ -677,23 +629,24 @@ class FirestoreOneToOneChatRepositoryTest {
 
   @Test
   fun observeMessagesAndLatest_afterAFailure_aNewCollectionReadsTheWholeChatAgain() = runTest {
-    stubMessages()
-    val first = messageDocument("a", stored(ALICE, "Hi"))
-    val second = messageDocument("b", stored(BOB, "Hello"))
-    val failedMessages = collect(repository.observeMessages(PAIR))
-    listeners.last().onEvent(snapshot(first), null)
-    listeners.last().onEvent(null, failed(Code.UNAVAILABLE))
-    val failedLatest = collect(repository.observeLatestMessage(PAIR))
-    listeners.last().onEvent(null, failed(Code.PERMISSION_DENIED))
+    listeners.onMessagesInServerOrder(messages)
+    listeners.onNewestMessage(messages)
+    val first = messageDocument("a", storedMessage(ALICE, "Hi"))
+    val second = messageDocument("b", storedMessage(BOB, "Hello"))
+    val failedMessages = collectAll(repository.observeMessages(PAIR))
+    listeners.last.onEvent(querySnapshot(first), null)
+    listeners.last.onEvent(null, firestoreFailure(Code.UNAVAILABLE))
+    val failedLatest = collectAll(repository.observeLatestMessage(PAIR))
+    listeners.last.onEvent(null, firestoreFailure(Code.PERMISSION_DENIED))
     assertEquals(MessagesResult.NetworkError, failedMessages.await().last())
     assertEquals(LatestMessageResult.UnexpectedError, failedLatest.await().last())
 
     // Retry: each new collection listens again and gets the whole chat, the message that
     // arrived while the first listener was down included.
-    val messages = collect(repository.observeMessages(PAIR).take(2))
-    listeners.last().onEvent(snapshot(first, second), null)
-    val latest = collect(repository.observeLatestMessage(PAIR).take(2))
-    listeners.last().onEvent(snapshot(second), null)
+    val messages = collectAll(repository.observeMessages(PAIR).take(2))
+    listeners.last.onEvent(querySnapshot(first, second), null)
+    val latest = collectAll(repository.observeLatestMessage(PAIR).take(2))
+    listeners.last.onEvent(querySnapshot(second), null)
 
     val at = Instant.ofEpochSecond(1_900_000_000L)
     assertEquals(
@@ -707,8 +660,8 @@ class FirestoreOneToOneChatRepositoryTest {
         LatestMessageResult.Success(Message("b", BOB, "Hello", at), fromCache = false),
         latest.await().last(),
     )
-    assertEquals(4, listeners.size)
-    verify(exactly = 4) { registration.remove() }
+    assertEquals(4, listeners.all.size)
+    verify(exactly = 4) { listeners.registration.remove() }
   }
 
   @Test
