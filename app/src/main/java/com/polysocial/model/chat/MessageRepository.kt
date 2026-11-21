@@ -1,17 +1,18 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (drafted the group chat repository contract, #237).
 // Contributors: OpenAI Codex (added the retry ID and removed its legacy Kotlin bridge, #238).
 // Contributors: Claude (Fable 5.2, Anthropic) (a group's latest message, for the chat list, #363).
+// Contributors: Claude (Opus 5.5, Anthropic) (the results shared with one-to-one chats, #428).
 package com.polysocial.model.chat
 
 import kotlinx.coroutines.flow.Flow
 
-/** What [MessageRepository.observeMessages] emits. */
+/** What [MessageRepository.observeMessages] and [OneToOneChatRepository.observeMessages] emit. */
 sealed interface MessagesResult {
   /** Nothing has been read yet. Emitted first, unless a newer result already replaced it. */
   data object Loading : MessagesResult
 
   /**
-   * The group's messages, oldest first by the server's time. A stored message that can't be read (a
+   * The chat's messages, oldest first by the server's time. A stored message that can't be read (a
    * missing or wrong-typed field) is skipped.
    *
    * @property fromCache true when the messages come from Firestore's offline cache, for example
@@ -23,20 +24,24 @@ sealed interface MessagesResult {
   data object NetworkError : MessagesResult
 
   /**
-   * Any other failure, for example nobody signed in, or a student who isn't a member of the group.
-   * A student who leaves while listening gets it only at the chat's next change (see
+   * Any other failure, for example nobody signed in, or a student who can't read the chat: not a
+   * member of the group, or not one of the pair of a one-to-one chat. A student who leaves a group
+   * while listening gets it only at the chat's next change (see
    * [MessageRepository.observeMessages]). The flow then ends.
    */
   data object UnexpectedError : MessagesResult
 }
 
-/** What [MessageRepository.observeLatestMessage] emits. */
+/**
+ * What [MessageRepository.observeLatestMessage] and [OneToOneChatRepository.observeLatestMessage]
+ * emit.
+ */
 sealed interface LatestMessageResult {
   /** Nothing has been read yet. Emitted first, unless a newer result already replaced it. */
   data object Loading : LatestMessageResult
 
   /**
-   * The group's latest message by the server's time, or null when the group has no message yet. A
+   * The chat's latest message by the server's time, or null when the chat has no message yet. A
    * latest message that can't be read (a missing or wrong-typed field) also reads as null.
    *
    * @property fromCache true when it comes from Firestore's offline cache, like
@@ -48,8 +53,8 @@ sealed interface LatestMessageResult {
   data object NetworkError : LatestMessageResult
 
   /**
-   * Any other failure, for example nobody signed in, or a student who isn't a member of the group.
-   * The flow then ends.
+   * Any other failure, for example nobody signed in, or a student who can't read the chat, like
+   * [MessagesResult.UnexpectedError]. The flow then ends.
    */
   data object UnexpectedError : LatestMessageResult
 }
@@ -66,7 +71,7 @@ fun MessagesResult.toLatestMessage(): LatestMessageResult =
       MessagesResult.UnexpectedError -> LatestMessageResult.UnexpectedError
     }
 
-/** Outcome of [MessageRepository.sendMessage]. */
+/** Outcome of [MessageRepository.sendMessage] and [OneToOneChatRepository.sendMessage]. */
 sealed interface SendMessageResult {
   /** The server stored the message or had already stored this draft under the same ID. */
   data object Sent : SendMessageResult
@@ -82,7 +87,8 @@ sealed interface SendMessageResult {
 
   /**
    * Any other failure, for example nobody signed in, or a write the Security Rules deny because the
-   * student isn't a member of the group. Nothing was written.
+   * student isn't a member of the group or, in a one-to-one chat, the two aren't friends. Nothing
+   * was written.
    */
   data object UnexpectedError : SendMessageResult
 }
