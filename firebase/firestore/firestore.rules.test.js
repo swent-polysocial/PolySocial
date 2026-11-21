@@ -5260,6 +5260,36 @@ test("after unfriending, neither student sends", async () => {
   await expectMissing(chatMessagePath("u1~u2", "new"));
 });
 
+// areFriends() reads the friendship as it was before the write (get(), not getAfter()), as group
+// chat's rules read the group (Architecture Diagram 3.8, Denied 24), so a batch that also changes
+// the friendship is judged by the one it found.
+test("accepting a request and sending in one batch is refused: the request was still pending", async () => {
+  await seedPendingRequest();
+  const db = studentDb("u2");
+  const batch = writeBatch(db);
+  batch.update(friendshipRef(db, "u1~u2"), acceptance());
+  batch.set(doc(db, "chats/u1~u2"), { uids: ["u1", "u2"] });
+  batch.set(doc(db, chatMessagePath("u1~u2", "new")), newMessage("u2"));
+  await assertFails(batch.commit());
+  await expectMissing("chats/u1~u2");
+  // Accepted first, the same first message passes.
+  await assertSucceeds(updateDoc(friendshipRef(db, "u1~u2"), acceptance()));
+  await assertSucceeds(sendToFriendAs(db, "u1~u2", newMessage("u2")));
+});
+
+// The same as sending just before removing the friend.
+test("removing a friend and sending in one batch passes: the friendship was still accepted", async () => {
+  await seedFriends("u1", "u2");
+  await seedChat("u1~u2");
+  const db = studentDb("u1");
+  const batch = writeBatch(db);
+  batch.delete(friendshipRef(db, "u1~u2"));
+  batch.set(doc(db, chatMessagePath("u1~u2", "last")), newMessage("u1"));
+  await assertSucceeds(batch.commit());
+  await assertFails(sendToFriendAs(db, "u1~u2", newMessage("u1")));
+  await expectMissing(chatMessagePath("u1~u2", "new"));
+});
+
 test("a message whose chat doesn't exist and isn't created with it is refused", async () => {
   await seedFriends("u1", "u2");
   await assertFails(setChatMessage(studentDb("u1"), "u1~u2", newMessage("u1")));
