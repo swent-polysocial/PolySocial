@@ -28,6 +28,9 @@ import kotlinx.coroutines.flow.map
  * those messages, with its own results.
  *
  * The messages are kept in a [FakeMessageStore], which sets their order, IDs and server times.
+ * Each fake has its own store, whose server times start at the same instant, so a test of a list
+ * merging group and one-to-one chats newest first seeds their messages with explicit times
+ * ([seedMessage]) rather than sending them.
  * [observeMessages] emits only when its own group changes.
  *
  * @property currentUid the signed-in student, or null when nobody is signed in.
