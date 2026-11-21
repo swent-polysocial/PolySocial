@@ -7,6 +7,8 @@
 // Perdikeas (directed, reviewed and owns them).
 // Contributors: Claude (Opus 5.5, Anthropic) (the attendeeCount each deleted registration lowers,
 // #405).
+// Contributors: Claude (Opus 5.5, Anthropic) (the one-to-one chats and delete-for-me markers, and
+// the chats, markers and other accounts' deletion markers in the fake, #429).
 
 // Unit tests with fakes, no emulator: node firebase/functions/deleteAccountHandler.test.js
 const { test } = require("node:test");
@@ -47,6 +49,15 @@ const FRIENDSHIP_CALLS = [
   `commit:friendships/student-uid-0~${UID},friendships/${UID}~student-uid-2`,
   `query:friendships uids array-contains ${UID}`,
 ];
+/** The calls of the chats step for a student without chats or delete-for-me markers (#429). */
+const CHAT_CALLS = [
+  "collection:chats",
+  `query:chats uids array-contains ${UID}`,
+  `collection:users/${UID}/hiddenChats`,
+  `list:users/${UID}/hiddenChats`,
+  `collection:users/${UID}/hiddenGroupChats`,
+  `list:users/${UID}/hiddenGroupChats`,
+];
 
 /** An error as the Admin SDK reports it: a gRPC status code for Firestore, a string for Auth. */
 function backendError(code) {
@@ -56,10 +67,13 @@ function backendError(code) {
 /**
  * A fake Firestore holding at most the user's private and public profiles, deletion marker and
  * registrations (paths `events/{eventId}/attendees/{uid}`, also other students') with their events'
- * `attendeeCount` (`events`, by path), and a fake Auth.
+ * `attendeeCount` (`events`, by path), one-to-one chats (`chats`, by path, with their `uids`; their
+ * messages in `messages` under `chats/{pairId}/messages/{id}`), other accounts' deletion markers
+ * (`deletedUids`) and delete-for-me markers (`hidden`, by path, also other students'), and a fake
+ * Auth.
  * A transaction's writes are applied together at its end, or none of them when one fails, as in
  * Firestore. `calls` records every operation in order; a failure set in `fail`
- * makes that operation throw (once, when `once`).
+ * makes that operation throw (once, when `once`; only after it succeeded `after` times, if set).
  */
 function fakeBackend({
   profile = { accountType: "student" },
@@ -77,6 +91,10 @@ function fakeBackend({
     [OTHER_FRIENDSHIP]: ["student-uid-2", "student-uid-3"],
   },
   events = { "events/e1": { attendeeCount: 2 }, "events/e2": { attendeeCount: 1 } },
+  chats = {},
+  deletedUids = [],
+  hidden = {},
+  beforeChatRead = () => {},
 } = {}) {
   const calls = [];
   const fail = {};
@@ -89,13 +107,41 @@ function fakeBackend({
     registrations: new Set(registrations),
     friendships: { ...friendships },
     events,
+    chats,
+    deletedUids: new Set(deletedUids),
+    hidden,
   };
   const failIfAsked = (operation) => {
     const error = fail[operation];
     if (error) {
+      if (error.after > 0) {
+        error.after -= 1;
+        return;
+      }
       if (error.once) delete fail[operation];
       throw error.error;
     }
+  };
+  // A chat's reference, as the chats query returns it: its messages and its own deletion.
+  const chatRef = (path) => ({
+    path,
+    collection: (name) => db.collection(`${path}/${name}`),
+    async delete() {
+      calls.push(`delete:${path}`);
+      failIfAsked("chat-delete");
+      delete state.chats[path];
+    },
+  });
+  // The documents directly under the collection `path`, from the map `store`.
+  const documentsIn = (store, path) =>
+    Object.keys(store).filter((documentPath) =>
+      documentPath.slice(0, documentPath.lastIndexOf("/")) === path);
+  // Which failure a batch's commit asks for, by the first document it deletes.
+  const commitFailure = (path) => {
+    if (path.startsWith("friendships/")) return "friendships-commit";
+    if (path.startsWith("chats/")) return "chat-messages-commit";
+    if (path.startsWith("users/")) return "hidden-commit";
+    return "commit";
   };
   const db = {
     doc(path) {
@@ -107,9 +153,9 @@ function fakeBackend({
         doc(id) {
           return { path: `${path}/${id}` };
         },
-        // The query `friendships where uids array-contains <uid>`, with a limit.
+        // The query `friendships` or `chats` `where uids array-contains <uid>`, with a limit.
         where(field, op, value) {
-          assert.equal(path, "friendships");
+          assert.ok(path === "friendships" || path === "chats", path);
           assert.equal(field, "uids");
           assert.equal(op, "array-contains");
           const query = {
@@ -119,14 +165,32 @@ function fakeBackend({
             },
             async get() {
               calls.push(`query:${path} ${field} ${op} ${value}`);
-              failIfAsked("friendships-query");
-              const docs = Object.entries(state.friendships)
-                .filter(([, uids]) => uids.includes(value))
-                .map(([friendshipPath]) => ({ ref: { path: friendshipPath } }));
+              failIfAsked(`${path}-query`);
+              const docs = path === "chats"
+                ? Object.entries(state.chats)
+                  .filter(([, chat]) => chat.uids.includes(value))
+                  .map(([chatPath]) => ({ ref: chatRef(chatPath) }))
+                : Object.entries(state.friendships)
+                  .filter(([, uids]) => uids.includes(value))
+                  .map(([friendshipPath]) => ({ ref: { path: friendshipPath } }));
               return { empty: docs.length === 0, docs };
             },
           };
           return query;
+        },
+        // A chat's messages or a student's delete-for-me markers, with a limit.
+        limit(size) {
+          assert.equal(size, 500);
+          return {
+            async get() {
+              calls.push(`list:${path}`);
+              const store = path.startsWith("chats/") ? state.messages : state.hidden;
+              const docs = documentsIn(store, path)
+                .slice(0, size)
+                .map((documentPath) => ({ ref: { path: documentPath } }));
+              return { empty: docs.length === 0, docs };
+            },
+          };
         },
       };
     },
@@ -194,17 +258,19 @@ function fakeBackend({
             return;
           }
           calls.push(`commit:${deletes.join(",")}`);
-          failIfAsked(deletes[0].startsWith("friendships/") ? "friendships-commit" : "commit");
+          failIfAsked(commitFailure(deletes[0]));
           for (const path of deletes) {
             state.registrations.delete(path);
             delete state.friendships[path];
+            delete state.messages[path];
+            delete state.hidden[path];
           }
         },
       };
     },
     async runTransaction(updateFunction) {
       const writes = [];
-      await updateFunction({
+      const result = await updateFunction({
         // A registration and its event, read together by the registration deletion (#405).
         async getAll(...refs) {
           calls.push(`getAll:${refs.map((ref) => ref.path).join(",")}`);
@@ -220,7 +286,13 @@ function fakeBackend({
           calls.push(`get:${ref.path}`);
           failIfAsked("get");
           if (ref.path.includes("/groups/")) beforeGroupRead(state, ref.path);
-          const data = ref.path.startsWith("users/") ? state.profile : state.groups[ref.path] ?? null;
+          if (ref.path.startsWith("chats/")) beforeChatRead(state, ref.path);
+          let data = state.groups[ref.path] ?? null;
+          if (ref.path.startsWith("users/")) data = state.profile;
+          if (ref.path.startsWith("chats/")) data = state.chats[ref.path] ?? null;
+          if (ref.path.startsWith("deletedAccounts/")) {
+            data = state.deletedUids.has(ref.path.split("/")[1]) ? {} : null;
+          }
           return {
             exists: data !== null,
             get: (field) => (data === null ? undefined : data[field]),
@@ -243,6 +315,7 @@ function fakeBackend({
             write.ref.path.includes("/attendees/") || /^events\/[^/]+$/.test(write.ref.path);
         failIfAsked(registration ? "commit" : write.kind);
         if (write.ref.path.startsWith("events/") && !registration) failIfAsked("group-write");
+        if (write.ref.path.startsWith("chats/")) failIfAsked("chat-write");
       }
       for (const { kind, ref, data } of writes) {
         if (kind === "set" && ref.path.startsWith("deletedAccounts/")) state.deletionMarker = data;
@@ -253,10 +326,13 @@ function fakeBackend({
         }
         if (kind === "update" && /^events\/[^/]+$/.test(ref.path)) {
           Object.assign(state.events[ref.path], data);
+        } else if (kind === "update" && ref.path.startsWith("chats/")) {
+          Object.assign(state.chats[ref.path], data);
         } else if (kind === "update") Object.assign(state.groups[ref.path], data);
         if (kind === "delete" && ref.path.includes("/groups/")) delete state.groups[ref.path];
         if (kind === "delete" && ref.path.includes("/groupMembers/")) delete state.markers[ref.path];
       }
+      return result;
     },
   };
   const adminAuth = {
@@ -360,7 +436,7 @@ test("an association is refused and keeps its profile and Auth user", async () =
   }
 });
 
-test("profiles deleted and marked deleted, then registrations and friendships, then Auth", async () => {
+test("profiles deleted and marked deleted, then registrations, friendships and chats, then Auth", async () => {
   const backend = fakeBackend();
   assert.deepEqual(await call(backend), { deleted: true });
   assert.deepEqual(backend.calls, [
@@ -374,6 +450,7 @@ test("profiles deleted and marked deleted, then registrations and friendships, t
     ...REGISTRATION_CALLS,
     "collection:friendships",
     ...FRIENDSHIP_CALLS,
+    ...CHAT_CALLS,
     "query:messages",
     "query:memberships",
     `deleteUser:${UID}`,
@@ -513,7 +590,7 @@ test("an account without a profile (never verified) can delete itself", async ()
   assert.equal(backend.state.authUserExists, false);
 });
 
-test("only the user's profiles, marker, registrations and friendships are touched, and events' counters", async () => {
+test("only the user's profiles, marker, registrations, friendships, chats and markers are touched, and events' counters", async () => {
   const backend = fakeBackend();
   await call(backend);
   const collections = backend.calls.filter((c) => c.startsWith("collection"));
@@ -523,6 +600,9 @@ test("only the user's profiles, marker, registrations and friendships are touche
     "collection:publicProfiles",
     "collectionGroup:attendees",
     "collection:friendships",
+    "collection:chats",
+    `collection:users/${UID}/hiddenChats`,
+    `collection:users/${UID}/hiddenGroupChats`,
   ]);
   // Events are read and written only by the registrations' transactions, for their attendeeCount.
   const eventCalls = backend.calls.filter((c) => c.includes("events"));

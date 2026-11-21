@@ -7,8 +7,10 @@
 // Contributors: OpenAI Codex (retryable membership cleanup and message author removal before Auth deletion, #241).
 // Contributors: Claude (Fable 5.2, Anthropic) (errorCode shared with the unverified accounts cleanup, and REGION's KDoc for it, #226).
 // Contributors: Claude Opus 5.5 (the user's friendships, #357); Konstantinos Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude (Opus 5.5, Anthropic) (the user's one-to-one chats and delete-for-me markers, #429).
 
 const { HttpsError } = require("firebase-functions/v2/https");
+const { leaveUserChats } = require("./chats");
 const { deleteUserRegistrations, MAX_BATCH_WRITES } = require("./registrations");
 const { deleteUserFriendships } = require("./friendships");
 
@@ -50,7 +52,8 @@ const TRANSIENT_CODES = new Set([
 /**
  * Deletes the signed-in user's account: first their private profile `users/{uid}` and their public
  * profile `publicProfiles/{uid}` (#229), together, then their registrations for events (#275), then
- * their friend requests and friendships (#357), then their messages' author links and group
+ * their friend requests and friendships (#357), then their place in their one-to-one chats and
+ * their delete-for-me markers (#429, see chats.js), then their messages' author links and group
  * memberships (#241), then their Firebase Auth user.
  * Returns `{ deleted: true }` only once all are gone. The same
  * transaction writes the deletion marker `deletedAccounts/{uid}`: the deleted user's ID token stays
@@ -75,6 +78,10 @@ const TRANSIENT_CODES = new Set([
  * going to only counts one student less, its `attendeeCount` lowered with the registration (#405).
  * Group membership cleanup mirrors leaveGroup; the deletion marker prevents rejoining while it
  * runs. Message text and time are retained, with an empty senderId instead of the account link.
+ * The chats step runs before the messages step, so a chat nobody is left in loses its messages
+ * without rewriting them first. The two steps find their work through different fields (a chat's
+ * `uids`, a message's `senderId`), so a retry after either one fails still finds what is left of
+ * both: a chat the other student kept no longer lists the UID, and its messages still have it.
  * Cleanup of further personal data is added here by the issues that store it.
  *
  * Failures are HttpsErrors with a generic message (never the uid or the original error):
@@ -108,6 +115,7 @@ async function deleteAccountHandler({ auth, db, adminAuth, now, logger }) {
   await callBackend("delete-profile", logger, () => deleteStudentProfile(db, uid));
   await callBackend("delete-registrations", logger, () => deleteUserRegistrations(db, uid));
   await callBackend("delete-friendships", logger, () => deleteUserFriendships(db, uid));
+  await callBackend("leave-chats", logger, () => leaveUserChats(db, uid));
   await callBackend("anonymise-messages", logger, () => anonymiseMessages(db, uid));
   await callBackend("delete-group-memberships", logger, () => deleteGroupMemberships(db, uid, logger));
   await callBackend("delete-auth-user", logger, () => deleteAuthUser(adminAuth, uid));
