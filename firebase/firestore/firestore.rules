@@ -19,6 +19,8 @@ rules_version = '2';
 // Contributors: Claude (Opus 5.5, Anthropic) (co-organizers, written test-first, #370).
 // Contributors: Claude (Opus 5.5, Anthropic) (attendeeCount, from #372's sketch and prototype by
 // Claude (Fable 5.2 and Opus 5.5, Anthropic), #373).
+// Contributors: Claude (Opus 5.5, Anthropic) (the message check shared by both chats, and
+// one-to-one chats, from #365's prototype by Claude (Fable 5.2 and Opus 5.5, Anthropic), #428).
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -71,6 +73,18 @@ service cloud.firestore {
       return isTwoPartId(id)
           && pair[0] < pair[1]
           && pair.hasAny([member]);
+    }
+
+    // A chat message as the caller sends it (#237): exactly senderId (the caller's UID), text (1 to
+    // 1000 characters, counted like the app's MAX_MESSAGE_LENGTH) and the server's createdAt.
+    function isNewMessage() {
+      return request.resource.data.keys().hasAll(['senderId', 'text', 'createdAt'])
+          && request.resource.data.keys().hasOnly(['senderId', 'text', 'createdAt'])
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() >= 1
+          && request.resource.data.text.size() <= 1000
+          && request.resource.data.createdAt == request.time;
     }
 
     // The interest codes the app offers (#230): keep them equal to INTERESTS in
@@ -591,14 +605,7 @@ service cloud.firestore {
       }
 
       allow get, list: if isMember();
-      allow create: if isMember()
-          && request.resource.data.keys().hasAll(['senderId', 'text', 'createdAt'])
-          && request.resource.data.keys().hasOnly(['senderId', 'text', 'createdAt'])
-          && request.resource.data.senderId == request.auth.uid
-          && request.resource.data.text is string
-          && request.resource.data.text.size() >= 1
-          && request.resource.data.text.size() <= 1000
-          && request.resource.data.createdAt == request.time;
+      allow create: if isMember() && isNewMessage();
     }
 
     // A friend request or friendship between two students (#357, designed in #338), one document
