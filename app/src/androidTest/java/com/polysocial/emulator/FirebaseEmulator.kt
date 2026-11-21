@@ -108,6 +108,19 @@ class FirebaseEmulator : ExternalResource() {
   }
 
   /**
+   * Deletes the document [id] in [collection] as an administrator would, bypassing the Security
+   * Rules (for example a friendship, so two students are no longer friends). A missing document
+   * isn't an error.
+   */
+  suspend fun deleteAsAdmin(collection: String, id: String) {
+    request(
+        "DELETE",
+        "$FIRESTORE_URL/v1/projects/$PROJECT_ID/databases/(default)/documents/" +
+            "${collectionPath(collection)}/${Uri.encode(id)}",
+    )
+  }
+
+  /**
    * Whether the document [id] exists in [collection], read as an administrator would, bypassing the
    * Security Rules (for example to check that a denied write stored nothing).
    */
