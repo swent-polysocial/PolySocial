@@ -1,5 +1,7 @@
 // Contributors: Claude Opus 5.5 (drafted the friendship model and pair ID, #357; the pair check,
 // second PR); Konstantinos Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude (Opus 5.5, Anthropic) (the two UIDs of a pair ID, for one-to-one chats,
+// #428).
 package com.polysocial.model.friend
 
 import com.polysocial.model.qr.isQrId
@@ -53,14 +55,21 @@ fun friendshipId(uidA: String, uidB: String): String? {
 }
 
 /**
+ * The two UIDs [id] is the [friendshipId] of, in its order (the lower first), or null when [id]
+ * isn't a [friendshipId]: more or fewer than two parts, unsorted halves or an invalid UID. A
+ * one-to-one chat under the pair's ID holds these as its `uids` (#365).
+ */
+fun uidsOfFriendshipId(id: String): List<String>? {
+  val halves = id.split(PAIR_SEPARATOR)
+  return if (halves.size == 2 && friendshipId(halves[0], halves[1]) == id) halves else null
+}
+
+/**
  * Whether [id] is a [friendshipId] with [uid] as one of its two halves: what the Security Rules
  * check before a student may read a pair's document, even a missing one. An ID with more or fewer
- * than two parts, unsorted halves or an invalid UID is nobody's.
+ * than two parts, unsorted halves or an invalid UID is nobody's (see [uidsOfFriendshipId]).
  */
-fun isFriendshipIdOf(id: String, uid: String): Boolean {
-  val halves = id.split(PAIR_SEPARATOR)
-  return halves.size == 2 && uid in halves && friendshipId(halves[0], halves[1]) == id
-}
+fun isFriendshipIdOf(id: String, uid: String): Boolean = uid in uidsOfFriendshipId(id).orEmpty()
 
 /** The other student of the pair, or null when [myUid] isn't one of the two. */
 fun Friendship.otherUid(myUid: String): String? =
