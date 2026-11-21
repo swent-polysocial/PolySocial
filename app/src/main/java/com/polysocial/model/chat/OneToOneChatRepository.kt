@@ -83,9 +83,9 @@ interface OneToOneChatRepository {
    * results, emissions and end of [MessageRepository.observeMessages].
    *
    * [pairId] must be the pair ID of the signed-in student and another student (`friendshipId`); any
-   * other ID ends the flow with [MessagesResult.UnexpectedError], as the Security Rules refuse it.
-   * A chat that doesn't exist yet has no messages: an empty [MessagesResult.Success], so a chat
-   * opened from the friends list shows an empty history until its first message.
+   * other ID ends the flow with [MessagesResult.UnexpectedError] before anything is read. A chat
+   * that doesn't exist yet has no messages: an empty [MessagesResult.Success], so a chat opened
+   * from the friends list shows an empty history until its first message.
    *
    * Reading doesn't depend on the friendship, so removing a friend doesn't end the flow: to know
    * whether the student can send, observe the friendship (`FriendRepository.observeFriendships`).
