@@ -1,5 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) wrote these tests of the Find a group screen, #233,
-// and the refusal, place, starting and initials cases after review.
+// and the refusal, place, starting and initials cases after review; the friends fake, #497.
 package com.polysocial.ui.group
 
 import android.content.Context
@@ -25,6 +25,7 @@ import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.validEvent
+import com.polysocial.model.friend.FakeFriendRepository
 import com.polysocial.model.group.FakeGroupRepository
 import com.polysocial.model.group.GroupWriteResult
 import com.polysocial.model.network.NetworkMonitor
@@ -79,6 +80,7 @@ class FindGroupScreenTest {
             events,
             groups,
             profiles,
+            FakeFriendRepository(currentUid = ME),
             FakeAuthRepository(AuthUser(ME, "fictional.student@epfl.ch", true)),
             object : NetworkMonitor {
               override fun isOnline() = online

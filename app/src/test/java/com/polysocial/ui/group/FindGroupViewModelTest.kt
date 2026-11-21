@@ -1,4 +1,5 @@
-// Contributors: Claude (Opus 5.5, Anthropic) wrote these tests of Find a group's ViewModel, #233.
+// Contributors: Claude (Opus 5.5, Anthropic) wrote these tests of Find a group's ViewModel, #233,
+// and the friends cases, #497.
 package com.polysocial.ui.group
 
 import androidx.lifecycle.SavedStateHandle
@@ -6,11 +7,15 @@ import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.validEvent
+import com.polysocial.model.friend.FakeFriendRepository
+import com.polysocial.model.friend.FriendRepository
+import com.polysocial.model.friend.FriendshipsResult
+import com.polysocial.model.friend.friendshipId
 import com.polysocial.model.group.FakeGroupRepository
 import com.polysocial.model.group.GroupRepository
 import com.polysocial.model.group.GroupWriteResult
 import com.polysocial.model.group.GroupsResult
-import com.polysocial.model.network.NetworkMonitor
+import com.polysocial.model.network.FakeNetworkMonitor
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.ui.event.detail.EventDetailViewModel
@@ -20,7 +25,9 @@ import java.time.Instant
 import java.time.ZoneId
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -38,7 +45,8 @@ class FindGroupViewModelTest {
   private val events = FakeEventRepository()
   private val groups = FakeGroupRepository(currentUid = ME).apply { readableEventIds += EVENT }
   private val profiles = FakePublicProfileRepository()
-  private var online = true
+  private val friends = FakeFriendRepository(currentUid = ME)
+  private val network = FakeNetworkMonitor()
 
   private lateinit var vm: FindGroupViewModel
 
@@ -70,8 +78,22 @@ class FindGroupViewModelTest {
       vararg interests: String,
   ) = PublicProfile(uid, name, section, year, interests.toSet())
 
+  /**
+   * Makes [other] the student's friend through the fake's own calls: [other] sends a request and
+   * the student accepts it.
+   */
+  private suspend fun befriend(other: String) {
+    friends.currentUid = other
+    friends.sendRequest(ME)
+    friends.currentUid = ME
+    friends.accept(checkNotNull(friends.friendship(checkNotNull(friendshipId(ME, other)))))
+  }
+
   /** Builds the ViewModel and collects its state, like the screen does. */
-  private fun TestScope.open(groupRepository: GroupRepository = groups) {
+  private fun TestScope.open(
+      groupRepository: GroupRepository = groups,
+      friendRepository: FriendRepository = friends,
+  ) {
     events.seed(validEvent(title = "Balélec warm-up").copy(id = EVENT))
     vm =
         FindGroupViewModel(
@@ -79,10 +101,9 @@ class FindGroupViewModelTest {
             events,
             groupRepository,
             profiles,
+            friendRepository,
             FakeAuthRepository(AuthUser(ME, "fictional.student@epfl.ch", true)),
-            object : NetworkMonitor {
-              override fun isOnline() = online
-            },
+            network,
             Clock.fixed(Instant.parse("2026-10-01T10:00:00Z"), ZoneId.of("Europe/Zurich")),
         )
     backgroundScope.launch { vm.uiState.collect {} }
@@ -329,7 +350,7 @@ class FindGroupViewModelTest {
   fun offline_disablesJoinAndStart_withoutAnyWrite() =
       runTest(main.dispatcher) {
         val group = groups.seedGroup(EVENT, listOf("lea"))
-        online = false
+        network.online = false
         open()
         assertTrue(loaded.isOffline)
 
@@ -369,6 +390,159 @@ class FindGroupViewModelTest {
         assertEquals(1, joins)
         assertEquals(FindGroupDone.JOINED, vm.done.value)
         assertEquals(1, groups.groupsOf(EVENT).size)
+      }
+
+  /** The order of the Figma groups without friends: Julia's (15), Léa's (7), Marc's (1). */
+  private val withoutFriends = listOf("group-3", "group-2", "group-1")
+
+  @Test
+  fun aGroupWithAFriend_comesFirst_andSaysWhoTheFriendIs() =
+      runTest(main.dispatcher) {
+        seedFigmaGroups()
+        befriend("tom")
+        open()
+
+        // Léa's group: 7 + 10 for Tom, ahead of Julia's 15.
+        assertEquals(listOf("group-2", "group-3", "group-1"), loaded.suggestions.map { it.groupId })
+        val (withTom, julias, marcs) = loaded.suggestions
+        assertEquals(listOf("tom"), withTom.friends.map { it.uid })
+        assertEquals("Tom", withTom.friends.single().profile?.displayName)
+        assertEquals(emptyList<GroupMember>(), julias.friends)
+        assertEquals(emptyList<GroupMember>(), marcs.friends)
+        // The other reasons don't change.
+        assertEquals(
+            Triple(1, "IN", "BA3"),
+            Triple(withTom.sharedInterests, withTom.sameSection, withTom.sameYear),
+        )
+      }
+
+  @Test
+  fun twoFriendsInAGroup_areBothGiven_inMemberOrder() =
+      runTest(main.dispatcher) {
+        seedFigmaGroups()
+        befriend("tom")
+        befriend("lea")
+        open()
+
+        assertEquals(listOf("lea", "tom"), loaded.suggestions.first().friends.map { it.uid })
+      }
+
+  @Test
+  fun aPendingRequest_isNotAFriend() =
+      runTest(main.dispatcher) {
+        seedFigmaGroups()
+        // Tom asked the student, and the student asked Marc: neither has accepted.
+        friends.currentUid = "tom"
+        friends.sendRequest(ME)
+        friends.currentUid = ME
+        friends.sendRequest("marc")
+        open()
+
+        assertEquals(withoutFriends, loaded.suggestions.map { it.groupId })
+        assertTrue(loaded.suggestions.all { it.friends.isEmpty() })
+      }
+
+  @Test
+  fun aFriendWhoseProfileCantBeRead_stillCounts_withoutAName() =
+      runTest(main.dispatcher) {
+        seedFigmaGroups()
+        profiles.profiles.remove("tom")
+        befriend("tom")
+        open()
+
+        // Léa's group: 6 for Léa + 10 for Tom, whose profile is missing, ahead of Julia's 15.
+        assertEquals("group-2", loaded.suggestions.first().groupId)
+        assertEquals(listOf(GroupMember("tom", null)), loaded.suggestions.first().friends)
+      }
+
+  @Test
+  fun aNewOrRemovedFriend_ranksTheGroupsAgain_withoutReadingTheProfilesAgain() =
+      runTest(main.dispatcher) {
+        seedFigmaGroups()
+        open()
+        assertEquals(withoutFriends, loaded.suggestions.map { it.groupId })
+        val reads = profiles.requestedUids.size
+
+        befriend("tom")
+        advanceUntilIdle()
+        assertEquals(listOf("group-2", "group-3", "group-1"), loaded.suggestions.map { it.groupId })
+
+        friends.remove(checkNotNull(friends.friendship(checkNotNull(friendshipId(ME, "tom")))))
+        advanceUntilIdle()
+        assertEquals(withoutFriends, loaded.suggestions.map { it.groupId })
+        assertTrue(loaded.suggestions.all { it.friends.isEmpty() })
+        assertEquals(reads, profiles.requestedUids.size)
+      }
+
+  @Test
+  fun friendshipsThatCantBeRead_rankWithoutFriends_andCountOnceBackOnline() =
+      runTest(main.dispatcher) {
+        seedFigmaGroups()
+        befriend("tom")
+        friends.readFailure = true
+        open()
+
+        assertEquals(withoutFriends, loaded.suggestions.map { it.groupId })
+        assertTrue(loaded.suggestions.all { it.friends.isEmpty() })
+        assertEquals(false, loaded.isOffline)
+
+        // The friendships can be read again once the device is back online.
+        friends.readFailure = false
+        network.online = false
+        advanceUntilIdle()
+        network.online = true
+        advanceUntilIdle()
+
+        assertEquals(listOf("group-2", "group-3", "group-1"), loaded.suggestions.map { it.groupId })
+        assertEquals(listOf("tom"), loaded.suggestions.first().friends.map { it.uid })
+      }
+
+  @Test
+  fun friendshipsThatStopBeingRead_rankWithoutFriends_untilBackOnline() =
+      runTest(main.dispatcher) {
+        seedFigmaGroups()
+        befriend("tom")
+        open()
+        assertEquals("group-2", loaded.suggestions.first().groupId)
+
+        friends.failListeners()
+        advanceUntilIdle()
+        assertEquals(withoutFriends, loaded.suggestions.map { it.groupId })
+
+        network.online = false
+        advanceUntilIdle()
+        network.online = true
+        advanceUntilIdle()
+        assertEquals(listOf("group-2", "group-3", "group-1"), loaded.suggestions.map { it.groupId })
+      }
+
+  @Test
+  fun friendshipsThatDontAnswer_neverHoldBackTheGroups() =
+      runTest(main.dispatcher) {
+        seedFigmaGroups()
+        befriend("tom")
+        open(
+            friendRepository =
+                object : FriendRepository by friends {
+                  override fun observeFriendships() =
+                      flow<FriendshipsResult> { awaitCancellation() }
+                }
+        )
+
+        assertEquals(withoutFriends, loaded.suggestions.map { it.groupId })
+      }
+
+  @Test
+  fun offline_theFriendsSavedOnThePhone_stillCount() =
+      runTest(main.dispatcher) {
+        seedFigmaGroups()
+        befriend("tom")
+        friends.readFromCache = true
+        network.online = false
+        open()
+
+        assertTrue(loaded.isOffline)
+        assertEquals("group-2", loaded.suggestions.first().groupId)
       }
 
   private companion object {
