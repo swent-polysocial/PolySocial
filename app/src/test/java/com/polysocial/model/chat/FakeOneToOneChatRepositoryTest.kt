@@ -1,4 +1,5 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #428).
+// Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #428; the retries after a failed
+// send or read and the live account deletion, as the tester).
 package com.polysocial.model.chat
 
 import com.polysocial.model.friend.FakeFriendRepository
@@ -455,6 +456,79 @@ class FakeOneToOneChatRepositoryTest {
         results,
     )
     assertEquals("Newest", repository.messagesOf(PAIR).last().text)
+  }
+
+  @Test
+  fun aSendThatFailed_isSentOnceWhenRetriedUnderItsId() = runTest {
+    befriend()
+    repository.online = false
+    assertEquals(SendMessageResult.NetworkError, repository.sendMessage(PAIR, "Hi", DRAFT))
+    repository.online = true
+    repository.sendFailure = SendMessageResult.UnexpectedError
+    assertEquals(SendMessageResult.UnexpectedError, repository.sendMessage(PAIR, "Hi", DRAFT))
+    assertNull(repository.uidsOf(PAIR))
+
+    repository.sendFailure = null
+    assertEquals(SendMessageResult.Sent, repository.sendMessage(PAIR, "Hi", DRAFT))
+
+    assertEquals(listOf(ALICE, BOB), repository.uidsOf(PAIR))
+    val stored = repository.messagesOf(PAIR).single()
+    assertEquals(DRAFT, stored.id)
+    assertEquals(MessagesResult.Success(listOf(stored), fromCache = false), messages())
+  }
+
+  @Test
+  fun afterAFailedRead_theNextCollection_readsEverything_sentMeanwhileIncluded() = runTest {
+    befriend()
+    repository.sendMessage(PAIR, "First")
+    repository.seedChat("alice~dave")
+    repository.readFailure = FakeMessageRepository.ReadFailure.NETWORK
+    assertEquals(MyOneToOneChatsResult.NetworkError, myChats())
+    assertEquals(MessagesResult.NetworkError, messages())
+    assertEquals(LatestMessageResult.NetworkError, latest())
+    // A failed listener doesn't stop the other student from writing.
+    repository.currentUid = BOB
+    assertEquals(SendMessageResult.Sent, repository.sendMessage(PAIR, "Sent meanwhile"))
+    repository.currentUid = ALICE
+
+    repository.readFailure = null
+
+    assertEquals(
+        MyOneToOneChatsResult.Success(
+            listOf(OneToOneChat(PAIR, BOB), OneToOneChat("alice~dave", "dave")),
+            fromCache = false,
+        ),
+        myChats(),
+    )
+    val history = repository.messagesOf(PAIR)
+    assertEquals(listOf("First", "Sent meanwhile"), history.map { it.text })
+    assertEquals(MessagesResult.Success(history, fromCache = false), messages())
+    assertEquals(LatestMessageResult.Success(history.last(), fromCache = false), latest())
+  }
+
+  @Test
+  fun observeMyChats_emitsOnlyWhenTheStudentsChatsChange_anAccountDeletionIncluded() = runTest {
+    repository.seedChat(PAIR)
+    val results = mutableListOf<MyOneToOneChatsResult>()
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) {
+          repository.observeMyChats().toList(results)
+        }
+
+    // Another pair's chat changes nothing the student sees.
+    repository.seedChat("bob~carol")
+    // Bob deletes his account: deleteAccount takes his UID out of the chat.
+    repository.seedChat(PAIR, uids = listOf(ALICE))
+    collecting.cancel()
+
+    assertEquals(
+        listOf(
+            MyOneToOneChatsResult.Loading,
+            MyOneToOneChatsResult.Success(listOf(OneToOneChat(PAIR, BOB)), fromCache = false),
+            MyOneToOneChatsResult.Success(listOf(OneToOneChat(PAIR, null)), fromCache = false),
+        ),
+        results,
+    )
   }
 
   @Test
