@@ -1,4 +1,5 @@
-// Contributors: Claude (Opus 5.5, Anthropic) drafted Find a group from #227's Figma frames, #233.
+// Contributors: Claude (Opus 5.5, Anthropic) drafted Find a group from #227's Figma frames, #233,
+// and the friend reason from #496's frames, #497.
 // Contributors: OpenAI Codex (shared the group header, event summary and member presentation,
 // #234).
 // Contributors: OpenAI Codex (shared group navigation header and category tile with chat, #238).
@@ -47,11 +48,13 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
+import com.polysocial.model.user.firstName
 import com.polysocial.ui.common.ErrorState
 import com.polysocial.ui.common.LoadingState
 import com.polysocial.ui.common.OfflineBanner
@@ -92,6 +95,9 @@ object FindGroupTags {
 
   /** One group's Join button, by its group ID. */
   fun join(groupId: String) = "find_group_join_$groupId"
+
+  /** One group's friend reason, by its group ID (#497). */
+  fun friends(groupId: String) = "find_group_friends_$groupId"
 }
 
 /**
@@ -358,6 +364,7 @@ private fun GroupCard(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
+      FriendsReason(suggestion)
       if (suggestion.sharedInterests > 0) {
         Reason(
             pluralStringResource(
@@ -436,16 +443,45 @@ private fun JoinButton(groupId: String, joining: Boolean, enabled: Boolean, onJo
   }
 }
 
-/** One reason the group fits, as a colored chip. */
+/**
+ * The group's friends, first among the reasons (#496's frames): "Your friend Marc" for one friend
+ * whose name could be read, "2 friends" (or "1 friend") otherwise, on one line cut with "…" at the
+ * row's width. Nothing when no member is the student's friend.
+ */
 @Composable
-private fun Reason(text: String, color: Color, background: Color) {
+private fun FriendsReason(suggestion: GroupSuggestion) {
+  val friends = suggestion.friends
+  if (friends.isEmpty()) return
+  val name = friends.singleOrNull()?.profile?.firstName()
+  Reason(
+      if (name != null) stringResource(R.string.find_group_friend, name)
+      else pluralStringResource(R.plurals.find_group_friends, friends.size, friends.size),
+      Warning,
+      WarningSoft,
+      Modifier.testTag(FindGroupTags.friends(suggestion.groupId)),
+      maxLines = 1,
+  )
+}
+
+/** One reason the group fits, as a colored chip, cut with "…" after [maxLines] lines. */
+@Composable
+private fun Reason(
+    text: String,
+    color: Color,
+    background: Color,
+    modifier: Modifier = Modifier,
+    maxLines: Int = Int.MAX_VALUE,
+) {
   Text(
       text,
       style = MaterialTheme.typography.labelSmall,
       fontWeight = FontWeight.Bold,
       color = color,
+      overflow = TextOverflow.Ellipsis,
+      maxLines = maxLines,
       modifier =
-          Modifier.background(background, RoundedCornerShape(12.dp))
+          modifier
+              .background(background, RoundedCornerShape(12.dp))
               .padding(horizontal = 10.dp, vertical = 4.dp),
   )
 }

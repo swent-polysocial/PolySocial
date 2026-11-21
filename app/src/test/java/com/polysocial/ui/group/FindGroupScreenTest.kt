@@ -1,5 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) wrote these tests of the Find a group screen, #233,
-// and the refusal, place, starting and initials cases after review; the friends fake, #497.
+// and the refusal, place, starting and initials cases after review; the friend reason, #497.
 package com.polysocial.ui.group
 
 import android.content.Context
@@ -8,6 +8,8 @@ import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -39,9 +41,12 @@ import java.time.Instant
 import java.time.ZoneId
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 @RunWith(AndroidJUnit4::class)
 class FindGroupScreenTest {
@@ -348,6 +353,101 @@ class FindGroupScreenTest {
     )
 
     rule.onNodeWithTag(FindGroupTags.START).assertIsEnabled()
+  }
+
+  // The friend reason (#497), from #496's frames
+
+  private fun friend(uid: String, name: String) =
+      GroupMember(uid, PublicProfile(uid, name, "GC", "BA3", setOf()))
+
+  /** One group "a" whose [members] are all the student's friends, with the other three reasons. */
+  private fun showFriends(vararg members: GroupMember) =
+      showScreen(
+          FindGroupUiState.Loaded(
+              event = null,
+              suggestions =
+                  listOf(
+                      GroupSuggestion(
+                          "a",
+                          4,
+                          members.toList(),
+                          sharedInterests = 1,
+                          sameSection = "IN",
+                          sameYear = "BA3",
+                          friends = members.toList(),
+                      )
+                  ),
+              isOffline = false,
+          )
+      )
+
+  private fun friendsReason() = rule.onNodeWithTag(FindGroupTags.friends("a"))
+
+  @Test
+  fun oneFriend_isNamedByTheirFirstName_firstAmongTheReasons() {
+    showFriends(friend("marc", "  Marc Dubois "))
+
+    friendsReason().assertIsDisplayed().assertTextEquals("Your friend Marc")
+    // On the same line, before the shared interests.
+    assertTrue(
+        friendsReason().getBoundsInRoot().right <
+            inCard("a", "1 shared interest").getBoundsInRoot().left
+    )
+  }
+
+  @Test
+  fun severalFriends_areCounted() {
+    showFriends(friend("marc", "Marc Dubois"), friend("lea", "Léa Martin"))
+
+    friendsReason().assertTextEquals("2 friends")
+  }
+
+  @Test
+  fun aFriendWhoseNameCantBeRead_isCounted_neverNamed() {
+    showFriends(GroupMember("marc", null))
+    friendsReason().assertTextEquals("1 friend")
+  }
+
+  @Test
+  fun aFriendWithABlankName_isCounted() {
+    showFriends(friend("marc", "   "))
+    friendsReason().assertTextEquals("1 friend")
+  }
+
+  @Test
+  fun noFriend_showsNoFriendReason() {
+    showScreen(
+        FindGroupUiState.Loaded(
+            event = null,
+            suggestions = listOf(GroupSuggestion("a", 4, emptyList(), 1, "IN", null)),
+            isOffline = false,
+        )
+    )
+
+    friendsReason().assertDoesNotExist()
+    inCard("a", "1 shared interest").assertIsDisplayed()
+  }
+
+  // CI's screen width; native graphics measure and cut text like a phone.
+  @Config(qualifiers = "w320dp-h640dp")
+  @GraphicsMode(GraphicsMode.Mode.NATIVE)
+  @Test
+  fun aLongFirstName_staysOnOneLine_withinTheCard() {
+    showFriends(friend("anne", "Anne-Charlotte-Maximilienne Rossi"))
+
+    friendsReason().assertTextEquals("Your friend Anne-Charlotte-Maximilienne")
+    val chip = friendsReason().getBoundsInRoot()
+    // The other chip's node is its text, inside the chip's 4 dp padding above and below.
+    val otherText = inCard("a", "Same year · BA3").getBoundsInRoot()
+    val card = rule.onNodeWithTag(FindGroupTags.card("a")).getBoundsInRoot()
+    // One line, as tall as the other chips, and cut inside the card's 14 dp padding (the card's
+    // node is its content, inside that padding).
+    assertEquals(
+        (otherText.bottom - otherText.top).value + 8f,
+        (chip.bottom - chip.top).value,
+        0.5f,
+    )
+    assertTrue(chip.right <= card.right)
   }
 
   private companion object {
