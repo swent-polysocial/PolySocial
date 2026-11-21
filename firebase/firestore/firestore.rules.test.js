@@ -4253,6 +4253,9 @@ for (const [name, changes] of [
   ["a text of 1001 characters", { text: "a".repeat(1001) }],
   ["501 emoji (1002 UTF-16 units)", { text: "\u{1F600}".repeat(501) }],
   ["a text that isn't a string", { text: 42 }],
+  // A list or a map has a size() too, so only `is string` refuses these.
+  ["a text that is a list", { text: ["See you at 6?"] }],
+  ["a text that is a map", { text: { text: "See you at 6?" } }],
   ["a null text", { text: null }],
   ["no text", { text: undefined }],
   ["no sender", { senderId: undefined }],
@@ -5255,6 +5258,9 @@ for (const [name, changes] of [
   ["a text of 1001 characters", { text: "a".repeat(1001) }],
   ["501 emoji (1002 UTF-16 units)", { text: EMOJI.repeat(501) }],
   ["a text that isn't a string", { text: 42 }],
+  // A list or a map has a size() too, so only `is string` refuses these.
+  ["a text that is a list", { text: ["See you at 6?"] }],
+  ["a text that is a map", { text: { text: "See you at 6?" } }],
   ["a null text", { text: null }],
   ["no text", { text: undefined }],
   ["no sender", { senderId: undefined }],
