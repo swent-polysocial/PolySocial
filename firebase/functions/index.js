@@ -33,11 +33,12 @@ exports.deleteAccount = onCall({ region: REGION }, (request) =>
 /**
  * A Firestore trigger on the deletion of a `document` matching the pattern, in TRIGGER_REGION and
  * deployed with retries, so a run that fails is run again until `cleanUp` succeeds. `cleanUp` gets
- * the pattern's parameters (such as `eventId`), Firestore and the logger.
+ * the pattern's parameters (such as `eventId`), the deleted document's data as `deleted`,
+ * Firestore and the logger.
  */
 function onDeleted(document, cleanUp) {
   return onDocumentDeleted({ document, region: TRIGGER_REGION, retry: true }, (event) =>
-    cleanUp({ ...event.params, db: getFirestore(), logger }),
+    cleanUp({ ...event.params, deleted: event.data?.data(), db: getFirestore(), logger }),
   );
 }
 

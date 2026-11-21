@@ -4,7 +4,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) lowered the event's attendeeCount with each
 // registration an account deletion removes, from #372's prototype, #405.
 // Contributors: Claude (Opus 5.5, Anthropic) shared the guarded batch deletion and the trigger's
-// failure logging with the deleted groups' triggers, #382.
+// failure logging with the deleted groups' triggers, #382; the guard checks the event's creator,
+// after review.
 "use strict";
 
 /**
@@ -35,19 +36,25 @@ async function deleteAllMatching(db, query) {
 
 /**
  * Deletes the documents of the subcollection `collectionId` under the deleted document `parent`
- * (for example a deleted event's `attendees`), MAX_BATCH_WRITES at a time, and stops as soon as
- * `parent` exists again: what is under it then belongs to the new document. The demo seed script
- * (`scripts/seedDemo.js`) deletes its events and groups and writes them back under the same IDs,
- * and a deletion trigger can run after that. Each batch is a transaction that reads `parent`
- * before deleting, so a document written in between can't lose what was written with it.
- * Deleting a document that is already gone is not an error, so a retry after a failure finishes
- * the job.
+ * (a deleted event's `attendees`, `groups` or `groupMembers`), MAX_BATCH_WRITES at a time, and
+ * stops as soon as `parent` exists again **with the deleted one's `createdBy`**: it is then the
+ * same creator's document written back, and what is under it belongs to it. The demo seed script
+ * (`scripts/seedDemo.js`) deletes its events and writes them back under the same IDs, with the
+ * same organizers, and a deletion trigger can run after that. Anyone else's document under that ID
+ * doesn't stop it: a client chooses an event's ID, and the rules make its `createdBy` the creator's
+ * UID, so a student who re-created a cancelled event's ID would otherwise keep its registrations
+ * and groups. Each batch is a transaction that reads `parent` before deleting, so a document
+ * written in between by the same creator can't lose what was written with it. Deleting a document
+ * that is already gone is not an error, so a retry after a failure finishes the job.
+ *
+ * @param {string|undefined} createdBy the deleted document's `createdBy`.
  */
-async function deleteOrphans(db, parent, collectionId) {
+async function deleteOrphans(db, parent, collectionId, createdBy) {
   const children = parent.collection(collectionId).limit(MAX_BATCH_WRITES);
   for (;;) {
     const deleted = await db.runTransaction(async (transaction) => {
-      if ((await transaction.get(parent)).exists) return 0;
+      const stored = await transaction.get(parent);
+      if (stored.exists && stored.get("createdBy") === createdBy) return 0;
       const snapshot = await transaction.get(children);
       for (const document of snapshot.docs) transaction.delete(document.ref);
       return snapshot.size;
@@ -119,17 +126,18 @@ async function deleteCountedRegistration(db, ref) {
  * `events/{eventId}/attendees/*` (#121), which nobody can list once the event is gone (the rules
  * check the event's organizers), with [deleteOrphans]. The rules refuse a new registration for a
  * missing event, so none can appear afterwards, unless the event is written again under the same
- * ID; its registrations are then kept. A failure is logged and thrown again by [runTriggerWork],
- * so the trigger runs again until the registrations are gone.
+ * ID; its registrations are then kept if its creator wrote it again. A failure is logged and
+ * thrown again by [runTriggerWork], so the trigger runs again until the registrations are gone.
  *
  * @param {object} args
  * @param {string} args.eventId the deleted event's ID.
+ * @param {object|undefined} args.deleted the deleted event's data, for its `createdBy`.
  * @param {object} args.db Firestore (Admin SDK), which bypasses the Security Rules.
  * @param {{error: function(string, object): void}} args.logger where a failure is logged.
  */
-function deleteRegistrationsOfDeletedEvent({ eventId, db, logger }) {
+function deleteRegistrationsOfDeletedEvent({ eventId, deleted, db, logger }) {
   return runTriggerWork("deleteEventRegistrations", logger, () =>
-    deleteOrphans(db, db.collection("events").doc(eventId), "attendees"),
+    deleteOrphans(db, db.collection("events").doc(eventId), "attendees", deleted?.createdBy),
   );
 }
 
