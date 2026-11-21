@@ -1,6 +1,7 @@
 // Contributors: Claude Opus 5.5 (wrote these tests, #357; isFriendshipIdOf, second PR);
 // Konstantinos Perdikeas (directed, reviewed and owns them).
-// Contributors: Claude (Opus 5.5, Anthropic) (tests of uidsOfFriendshipId, #428).
+// Contributors: Claude (Opus 5.5, Anthropic) (tests of uidsOfFriendshipId, sharing their
+// invalid IDs with isFriendshipIdOf's, #428).
 package com.polysocial.model.friend
 
 import java.time.Instant
@@ -88,15 +89,31 @@ class FriendshipTest {
     assertTrue(isFriendshipIdOf("alice~bob", "bob"))
   }
 
+  /**
+   * IDs that friendshipId would never build, each with alice as one of its parts or none: unsorted,
+   * a trailing, leading or doubled separator, three parts, one part, an empty half, the same UID
+   * twice, an invalid UID, nothing at all.
+   */
+  private val notPairIds =
+      listOf(
+          "bob~alice",
+          "alice~bob~",
+          "alice~bob~carol",
+          "~alice~bob",
+          "alice~~bob",
+          "alice",
+          "alice~",
+          "~bob",
+          "alice~alice",
+          "alice~b/ob",
+          "",
+      )
+
   @Test
   fun isFriendshipIdOf_isFalseForAnIdFriendshipIdWouldNotBuild() {
-    for (id in listOf("bob~alice", "alice~bob~", "alice~bob~carol", "~alice~bob", "alice~~bob")) {
+    for (id in notPairIds) {
       assertFalse("\"$id\" must not be alice's", isFriendshipIdOf(id, "alice"))
     }
-    assertFalse(isFriendshipIdOf("alice", "alice"))
-    assertFalse(isFriendshipIdOf("alice~", "alice"))
-    assertFalse(isFriendshipIdOf("alice~alice", "alice"))
-    assertFalse(isFriendshipIdOf("alice~b/ob", "alice"))
   }
 
   @Test
@@ -114,20 +131,6 @@ class FriendshipTest {
 
   @Test
   fun uidsOfFriendshipId_isNullForAnIdFriendshipIdWouldNotBuild() {
-    val notPairIds =
-        listOf(
-            "bob~alice",
-            "alice~bob~",
-            "alice~bob~carol",
-            "~alice~bob",
-            "alice~~bob",
-            "alice",
-            "alice~",
-            "~bob",
-            "alice~alice",
-            "alice~b/ob",
-            "",
-        )
     for (id in notPairIds) {
       assertNull("\"$id\" must not be a pair ID", uidsOfFriendshipId(id))
     }
