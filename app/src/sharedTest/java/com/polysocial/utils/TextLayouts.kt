@@ -8,8 +8,8 @@ import androidx.compose.ui.text.TextLayoutResult
 
 /**
  * The layout of the text this node draws, read through its `GetTextLayoutResult` semantics action:
- * its lines and their positions in pixels, for tests of alignment and wrapping. Fails if the node
- * draws no text.
+ * its lines and their positions in pixels, for unit and device tests of alignment and wrapping.
+ * Fails if the node draws no text.
  */
 fun SemanticsNodeInteraction.textLayout(): TextLayoutResult {
   val layouts = mutableListOf<TextLayoutResult>()
