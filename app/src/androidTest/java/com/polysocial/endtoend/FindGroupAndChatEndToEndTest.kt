@@ -4,6 +4,7 @@
 // joining a group and sending a chat message, #380; Claude (Opus 5.5, Anthropic) reordered its
 // group fixtures.
 // Contributors: Claude (Opus 5.5, Anthropic) typed the message through typeText, #427.
+// Contributors: Claude (Opus 5.5, Anthropic) (a friend's group says so, #497).
 package com.polysocial.endtoend
 
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -62,6 +63,9 @@ import com.polysocial.model.firebase.SessionOwnerStore
 import com.polysocial.model.friend.FakeFriendRepository
 import com.polysocial.model.friend.FriendModule
 import com.polysocial.model.friend.FriendRepository
+import com.polysocial.model.friend.Friendship
+import com.polysocial.model.friend.FriendshipStatus
+import com.polysocial.model.friend.friendshipId
 import com.polysocial.model.geocoding.FakeGeocodingService
 import com.polysocial.model.geocoding.GeocodingModule
 import com.polysocial.model.geocoding.GeocodingService
@@ -119,8 +123,8 @@ import org.junit.runner.RunWith
  * 1. The event's detail opens from the Events tab; Find a group is greyed out until the student is
  *    going (#105, #112, #244).
  * 2. "I'm going" registers the student and enables Find a group (#122).
- * 3. Find a group lists the open groups, best match first, with who is in each and why it fits; a
- *    full group isn't offered (#231, #233).
+ * 3. Find a group lists the open groups, best match first, with who is in each and why it fits, a
+ *    friend first among the reasons; a full group isn't offered (#231, #233, #497).
  * 4. Join returns to the detail, which says so and shows the group card instead of Find a group
  *    (#233).
  * 5. The card opens the group's members (#234).
@@ -208,7 +212,23 @@ class FindGroupAndChatEndToEndTest {
   @BindValue @JvmField val sessionOwner: SessionOwnerStore = FakeSessionOwnerStore()
   @BindValue @JvmField val verificationStore: VerificationStore = MemoryVerificationStore()
   @BindValue @JvmField val network: NetworkMonitor = FakeNetworkMonitor()
-  @BindValue @JvmField val friends: FriendRepository = FakeFriendRepository()
+  // Julia is the student's friend: her group says so, and comes first anyway (24 points; the
+  // other groups' order and reasons don't change).
+  @BindValue
+  @JvmField
+  val friends: FriendRepository =
+      FakeFriendRepository(currentUid = UID).apply {
+        seedFriendship(
+            Friendship(
+                checkNotNull(friendshipId(UID, JULIA.uid)),
+                listOf(UID, JULIA.uid).sorted(),
+                requestedBy = JULIA.uid,
+                status = FriendshipStatus.ACCEPTED,
+                createdAt = NOW.minusSeconds(7200),
+                acceptedAt = NOW.minusSeconds(3600),
+            )
+        )
+      }
 
   @BindValue @JvmField val registrations: RegistrationRepository = fakeRegistrations
   @BindValue @JvmField val groups: GroupRepository = fakeGroups
@@ -281,6 +301,8 @@ class FindGroupAndChatEndToEndTest {
     )
     // A full group can't be joined, however well it fits.
     node(FindGroupTags.card(fullGroup.id)).assertDoesNotExist()
+    // The friends are read alongside the groups, which never wait for them (#497).
+    await(FindGroupTags.friends(bestGroup.id))
     // Each card says who is in the group, how full it is and why it fits, and nothing else: a
     // group that has less in common gives fewer reasons, down to none.
     assertEquals(
@@ -291,6 +313,7 @@ class FindGroupAndChatEndToEndTest {
             "2 places left",
             "Join",
             "Julia Example · IN · BA3   Marc Example · IN · MA1",
+            "Your friend Julia",
             "2 shared interests",
             "Same section · IN",
             "Same year · BA3",
