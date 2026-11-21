@@ -1,13 +1,16 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the tests of deleting a cancelled event's
-// groups, #382.
+// groups and a deleted group's messages, #382.
 "use strict";
 
 // Unit tests with fakes, no emulator: node firebase/functions/groups.test.js
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { deleteGroupsOfDeletedEvent } = require("./groups");
+const { deleteGroupsOfDeletedEvent, deleteMessagesOfDeletedGroup } = require("./groups");
 const { MAX_BATCH_WRITES } = require("./registrations");
 const { backendError, fakeFirestore, fakeLogger } = require("./testing/fakeFirestore");
+
+/** The group whose deletion most tests run deleteGroupMessages for. */
+const G1 = { eventId: "e1", groupId: "g1" };
 
 /** `count` paths `${prefix}0`, `${prefix}1`… */
 const numbered = (prefix, count) => Array.from({ length: count }, (_, i) => `${prefix}${i}`);
@@ -124,4 +127,122 @@ test("an event written again while deleting keeps the groups and markers written
   assert.ok(documents.has("events/e1/groups/new"));
   assert.ok(documents.has("events/e1/groupMembers/new"));
   assert.ok(documents.has(`events/e1/groups/old${MAX_BATCH_WRITES}`));
+});
+
+test("a group deleted on its own loses its messages, the event's other groups keep theirs", async () => {
+  // Its last member left (#232): the event and its other group are still there.
+  const { db, documents } = fakeFirestore([
+    "events/e1",
+    "events/e1/groups/g1/messages/m1",
+    "events/e1/groups/g1/messages/m2",
+    "events/e1/groups/g2",
+    "events/e1/groups/g2/messages/m1",
+    "events/e1/groupMembers/u2",
+    "events/e2/groups/g1/messages/m1",
+  ]);
+  const { logger, logs } = fakeLogger();
+
+  await deleteMessagesOfDeletedGroup({ ...G1, db, logger });
+
+  assert.deepEqual([...documents], [
+    "events/e1",
+    "events/e1/groups/g2",
+    "events/e1/groups/g2/messages/m1",
+    "events/e1/groupMembers/u2",
+    "events/e2/groups/g1/messages/m1",
+  ]);
+  assert.deepEqual(logs, []);
+});
+
+test("a cancelled event loses its groups, markers and messages through both triggers", async () => {
+  const { db, documents } = fakeFirestore([
+    "events/e1/groups/g1",
+    "events/e1/groups/g1/messages/m1",
+    "events/e1/groups/g1/messages/m2",
+    "events/e1/groups/g2",
+    "events/e1/groups/g2/messages/m1",
+    "events/e1/groupMembers/u1",
+    "events/e1/groupMembers/u2",
+    "events/e2",
+    "events/e2/groups/g1",
+    "events/e2/groups/g1/messages/m1",
+  ]);
+  const { logger } = fakeLogger();
+  const groupsBefore = [...documents].filter((path) => /^events\/e1\/groups\/[^/]+$/.test(path));
+
+  await deleteGroupsOfDeletedEvent({ eventId: "e1", db, logger });
+  // Firestore then runs deleteGroupMessages once for each group the first trigger deleted.
+  for (const path of groupsBefore.filter((group) => !documents.has(group))) {
+    const [, eventId, , groupId] = path.split("/");
+    await deleteMessagesOfDeletedGroup({ eventId, groupId, db, logger });
+  }
+
+  assert.deepEqual([...documents], [
+    "events/e2",
+    "events/e2/groups/g1",
+    "events/e2/groups/g1/messages/m1",
+  ]);
+});
+
+test("more messages than one batch holds are deleted in several batches", async () => {
+  const { db, documents, state } = fakeFirestore(
+    numbered("events/e1/groups/g1/messages/m", MAX_BATCH_WRITES * 2 + 1),
+  );
+
+  await deleteMessagesOfDeletedGroup({ ...G1, db, logger: fakeLogger().logger });
+
+  assert.equal(documents.size, 0);
+  assert.equal(state.commits, 3);
+});
+
+test("a failure deleting messages is thrown again, logs only its code, and the retry finishes", async () => {
+  const { db, documents, state } = fakeFirestore(
+    numbered("events/e1/groups/g1/messages/m", MAX_BATCH_WRITES + 1),
+  );
+  const { logger, logs } = fakeLogger();
+  // The first batch commits, the second fails.
+  state.onCommit = () => {
+    state.onCommit = null;
+    state.failCommit = backendError(10);
+  };
+
+  await assert.rejects(deleteMessagesOfDeletedGroup({ ...G1, db, logger }), { code: 10 });
+  assert.equal(documents.size, 1);
+  assert.deepEqual(logs, [["error", "deleteGroupMessages failed", { code: 10 }]]);
+  const logged = JSON.stringify(logs);
+  assert.ok(!logged.includes("e1") && !logged.includes("g1"), "no event or group is logged");
+
+  // The trigger's retry finishes the job.
+  await deleteMessagesOfDeletedGroup({ ...G1, db, logger });
+  assert.equal(documents.size, 0);
+});
+
+// The demo seed script deletes its groups with their events and writes them back under the same
+// IDs before this trigger may run.
+test("a group written again before the trigger runs keeps its messages", async () => {
+  const paths = ["events/e1/groups/g1", "events/e1/groups/g1/messages/m1"];
+  const { db, documents, state } = fakeFirestore(paths);
+
+  await deleteMessagesOfDeletedGroup({ ...G1, db, logger: fakeLogger().logger });
+
+  assert.deepEqual([...documents], paths);
+  assert.equal(state.commits, 0);
+});
+
+test("a group written again while deleting keeps the messages written with it", async () => {
+  const { db, documents, state } = fakeFirestore(
+    numbered("events/e1/groups/g1/messages/old", MAX_BATCH_WRITES + 1),
+  );
+  state.onCommit = (stored) => {
+    state.onCommit = null;
+    stored.add("events/e1/groups/g1");
+    stored.add("events/e1/groups/g1/messages/new");
+  };
+
+  await deleteMessagesOfDeletedGroup({ ...G1, db, logger: fakeLogger().logger });
+
+  // The first batch went before the group came back; the rest now belongs to the new group.
+  assert.equal(state.commits, 1);
+  assert.ok(documents.has("events/e1/groups/g1/messages/new"));
+  assert.equal(documents.size, 3);
 });

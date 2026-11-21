@@ -14,7 +14,7 @@ const { onCall } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { REGION, deleteAccountHandler } = require("./deleteAccountHandler");
 const { deleteUnverifiedAccountsHandler } = require("./deleteUnverifiedAccountsHandler");
-const { deleteGroupsOfDeletedEvent } = require("./groups");
+const { deleteGroupsOfDeletedEvent, deleteMessagesOfDeletedGroup } = require("./groups");
 const { TRIGGER_REGION, deleteRegistrationsOfDeletedEvent } = require("./registrations");
 
 initializeApp();
@@ -46,6 +46,15 @@ exports.deleteEventRegistrations = onDeleted("events/{eventId}", deleteRegistrat
 
 /** Trigger: deletes a deleted event's groups and their markers (#382). See groups.js. */
 exports.deleteEventGroups = onDeleted("events/{eventId}", deleteGroupsOfDeletedEvent);
+
+/**
+ * Trigger: deletes a deleted group's chat messages, whether its event was cancelled or its last
+ * member left (#382). See groups.js.
+ */
+exports.deleteGroupMessages = onDeleted(
+  "events/{eventId}/groups/{groupId}",
+  deleteMessagesOfDeletedGroup,
+);
 
 /**
  * Scheduled: every night, deletes the email and password sign-ups whose email is still unverified

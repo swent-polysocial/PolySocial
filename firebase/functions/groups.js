@@ -1,5 +1,5 @@
-// Contributors: Claude (Opus 5.5, Anthropic) drafted the deletion of a cancelled event's groups,
-// #382.
+// Contributors: Claude (Opus 5.5, Anthropic) drafted the deletion of a cancelled event's groups and
+// of a deleted group's messages, #382.
 "use strict";
 
 const { deleteOrphans, runTriggerWork } = require("./registrations");
@@ -30,4 +30,27 @@ function deleteGroupsOfDeletedEvent({ eventId, db, logger }) {
   });
 }
 
-module.exports = { deleteGroupsOfDeletedEvent };
+/**
+ * Runs when `events/{eventId}/groups/{groupId}` is deleted: by its last member leaving (#232's
+ * leave, and deleteAccount's membership step, #241) or by [deleteGroupsOfDeletedEvent]. Deletes
+ * the group's chat messages `.../messages/*` (#237), with [deleteOrphans]: the rules let no client
+ * delete a message, and once the group is gone nobody can read or send one (membership comes
+ * from the group's `memberUids`). Only this group's messages go; the event and its other groups
+ * keep theirs. It stops as soon as the group exists again (the demo seed script writes its groups
+ * back under the same IDs). A failure is logged and thrown again by [runTriggerWork], so the
+ * trigger runs again until the messages are gone.
+ *
+ * @param {object} args
+ * @param {string} args.eventId the deleted group's event ID.
+ * @param {string} args.groupId the deleted group's ID.
+ * @param {object} args.db Firestore (Admin SDK), which bypasses the Security Rules.
+ * @param {{error: function(string, object): void}} args.logger where a failure is logged.
+ */
+function deleteMessagesOfDeletedGroup({ eventId, groupId, db, logger }) {
+  return runTriggerWork("deleteGroupMessages", logger, () => {
+    const group = db.collection("events").doc(eventId).collection("groups").doc(groupId);
+    return deleteOrphans(db, group, "messages");
+  });
+}
+
+module.exports = { deleteGroupsOfDeletedEvent, deleteMessagesOfDeletedGroup };
