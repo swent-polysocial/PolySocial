@@ -1,8 +1,10 @@
-// Contributors: Claude (wrote these tests first, test-driven, for the full name's limit, #143).
+// Contributors: Claude (wrote these tests first, test-driven, for the full name's limit, #143);
+// Claude (Opus 5.5, Anthropic) (the first name's tests, #497).
 package com.polysocial.model.user
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -63,5 +65,21 @@ class DisplayNameTest {
   fun anAccentedLetterCountsAsOneCharacter() {
     assertFalse(isDisplayNameTooLong("é".repeat(50)))
     assertTrue(isDisplayNameTooLong("é".repeat(51)))
+  }
+
+  private fun firstNameOf(name: String) = PublicProfile("uid", name, "IN", "BA3").firstName()
+
+  @Test
+  fun theFirstName_isTheNamesFirstWord_withoutSpacesAround() {
+    assertEquals("Léa", firstNameOf("Léa Martin"))
+    assertEquals("Léa", firstNameOf("  Léa   Martin "))
+    assertEquals("Anne-Charlotte", firstNameOf("Anne-Charlotte Rossi"))
+    assertEquals("Noé", firstNameOf("Noé"))
+  }
+
+  @Test
+  fun aBlankName_hasNoFirstName() {
+    assertNull(firstNameOf(""))
+    assertNull(firstNameOf("   "))
   }
 }
