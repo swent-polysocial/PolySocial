@@ -13,6 +13,8 @@
 // group's last member leaving delete, and how long a deleted account's messages stay, #382).
 // Contributors: Claude (Opus 5.5, Anthropic) (the notice's date and its one-to-one chat sentences,
 // #433).
+// Contributors: Claude (Opus 5.5, Anthropic) (the notice's new date and matching with friends,
+// #497).
 package com.polysocial.ui.profile
 
 import android.content.Context
@@ -316,6 +318,16 @@ class PrivacyScreenTest {
         "any verified EPFL student can read a public profile by its identifier",
         substring = true,
     )
+  }
+
+  @Test
+  fun fullNoticeSaysMatchingUsesFriendsOnTheDevice_andStoresNothingNew() {
+    openFromProfile()
+    rule.onNodeWithTag(C.Tag.privacy_full_notice).performScrollTo().performClick()
+    val groups = rule.onNodeWithTag(C.Tag.privacy_notice_groups).performScrollTo()
+    groups.assertTextContains("and your accepted friends: on your device", substring = true)
+    groups.assertTextContains("Nothing new is stored for this", substring = true)
+    org.junit.Assert.assertFalse(text(R.string.privacy_notice_groups_body).contains("or friends"))
   }
 
   private fun checkUnavailable(tag: String) {
