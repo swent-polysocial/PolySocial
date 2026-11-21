@@ -1,8 +1,9 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the deletion of a cancelled event's groups and
-// of a deleted group's messages, #382.
+// of a deleted group's messages, #382; the messages deleted even under a re-created group, after
+// review.
 "use strict";
 
-const { deleteOrphans, runTriggerWork } = require("./registrations");
+const { deleteAllMatching, deleteOrphans, runTriggerWork } = require("./registrations");
 
 /**
  * Runs when `events/{eventId}` is deleted ("Cancel event" deletes the event, #130): deletes the
@@ -33,12 +34,15 @@ function deleteGroupsOfDeletedEvent({ eventId, db, logger }) {
 /**
  * Runs when `events/{eventId}/groups/{groupId}` is deleted: by its last member leaving (#232's
  * leave, and deleteAccount's membership step, #241) or by [deleteGroupsOfDeletedEvent]. Deletes
- * the group's chat messages `.../messages/*` (#237), with [deleteOrphans]: the rules let no client
- * delete a message, and once the group is gone nobody can read or send one (membership comes
- * from the group's `memberUids`). Only this group's messages go; the event and its other groups
- * keep theirs. It stops as soon as the group exists again (the demo seed script writes its groups
- * back under the same IDs). A failure is logged and thrown again by [runTriggerWork], so the
- * trigger runs again until the messages are gone.
+ * the group's chat messages `.../messages/*` (#237), with [deleteAllMatching]: the rules let no
+ * client delete a message, and once the group is gone nobody can read or send one (membership
+ * comes from the group's `memberUids`). Only this group's messages go; the event and its other
+ * groups keep theirs. It deletes them even if a group exists again under the same ID: a client
+ * chooses the ID of a group it starts (the rules don't check it), so stopping there would let a
+ * student start a group under a just-emptied group's ID and read its old chat. The demo seed
+ * script writes no messages and deletes its groups with everything under them, so it needs no
+ * such stop. A failure is logged and thrown again by [runTriggerWork], so the trigger runs again
+ * until the messages are gone.
  *
  * @param {object} args
  * @param {string} args.eventId the deleted group's event ID.
@@ -49,7 +53,7 @@ function deleteGroupsOfDeletedEvent({ eventId, db, logger }) {
 function deleteMessagesOfDeletedGroup({ eventId, groupId, db, logger }) {
   return runTriggerWork("deleteGroupMessages", logger, () => {
     const group = db.collection("events").doc(eventId).collection("groups").doc(groupId);
-    return deleteOrphans(db, group, "messages");
+    return deleteAllMatching(db, group.collection("messages"));
   });
 }
 

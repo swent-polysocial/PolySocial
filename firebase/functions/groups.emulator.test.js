@@ -2,6 +2,8 @@
 // cancelled event's groups and a deleted group's messages, #382.
 // Contributors: Claude (Opus 5.5, Anthropic) (an account deletion emptying a group, with the
 // triggers on, as a tester, #382).
+// Contributors: Claude (Opus 5.5, Anthropic) (a group started again under its ID loses its old
+// chat, after review, #382).
 "use strict";
 
 // Deletes events and groups in the Firestore emulator and waits for the deleteEventGroups and
@@ -18,9 +20,9 @@ const database = useTriggerEmulators("deleteEventGroups");
 /**
  * Stores, in one batch as the demo seed script does, a fictional event, a registration from each
  * member, and for each group of `groups` (`{ groupId: { members, messages } }`) the group, its
- * members' markers and `messages` messages from its first member (`m0`, `m1`…, or `idPrefix`).
+ * members' markers and `messages` messages from its first member (`m0`, `m1`…).
  */
-async function seedEvent(eventId, groups, idPrefix = "m") {
+async function seedEvent(eventId, groups) {
   const db = database();
   const event = `events/${eventId}`;
   const writes = [];
@@ -34,7 +36,7 @@ async function seedEvent(eventId, groups, idPrefix = "m") {
     }
     for (let i = 0; i < messages; i++) {
       writes.push([
-        `${group}/messages/${idPrefix}${i}`,
+        `${group}/messages/m${i}`,
         { senderId: members[0], text: "Fictional plan", createdAt: new Date() },
       ]);
     }
@@ -134,41 +136,35 @@ test("a group with more messages than one batch holds loses them all", async () 
 });
 
 // The demo seed script deletes its events and writes them back under the same IDs, with the same
-// group IDs, in one batch.
-test("an event written again under its ID keeps its new groups, markers and messages", async () => {
+// group IDs and no messages, in one batch.
+test("an event written again under its ID keeps its new groups and markers", async () => {
   await seedEvent("again", { g1: { members: ["u1"], messages: 1 } });
   await seedEvent("gone", { g1: { members: ["u1"], messages: 1 } });
 
   await database().doc("events/again").delete();
-  await seedEvent("again", { g1: { members: ["u2"], messages: 1 } }, "new");
+  await seedEvent("again", { g1: { members: ["u2"] } });
   await database().doc("events/gone").delete();
 
   // Wait for the later deletion's triggers, then give the earlier ones a margin to run too. The
-  // old marker and message may be gone or kept, depending on whether those triggers ran before
-  // the event came back; the new ones must stay.
+  // old marker may be gone or kept, depending on whether those triggers ran before the event came
+  // back; the new group and marker must stay.
   await waitUntil(() => stored("events/gone"), (left) => left.length === 0);
   await new Promise((resolve) => setTimeout(resolve, 1000));
   const left = await stored("events/again/");
-  for (const path of ["groups/g1", "groupMembers/u2", "groups/g1/messages/new0"]) {
+  for (const path of ["groups/g1", "groupMembers/u2"]) {
     assert.ok(left.includes(`events/again/${path}`), `events/again/${path} was deleted`);
   }
 });
 
-test("a group written again under its ID keeps its new messages", async () => {
-  await seedEvent("e", {
-    g1: { members: ["u1"], messages: 1 },
-    gone: { members: ["u2"], messages: 1 },
-  });
+// A client chooses the ID of a group it starts: one started under a just-emptied group's ID must
+// not bring its old chat back.
+test("a group started again under its ID still loses its old messages", async () => {
+  await seedEvent("e", { g1: { members: ["u1"], messages: 1 } });
   const db = database();
 
   await db.doc("events/e/groups/g1").delete();
-  const again = db.batch();
-  again.set(db.doc("events/e/groups/g1"), { capacity: 4, memberUids: ["u3"], createdBy: "u3" });
-  again.set(db.doc("events/e/groups/g1/messages/new"), { senderId: "u3", text: "Fictional plan" });
-  await again.commit();
-  await db.doc("events/e/groups/gone").delete();
+  await db.doc("events/e/groups/g1").set({ capacity: 4, memberUids: ["u3"], createdBy: "u3" });
 
-  await waitFor(() => stored("events/e/groups/gone"), []);
-  await new Promise((resolve) => setTimeout(resolve, 1000));
-  assert.ok((await stored("events/e/groups/g1/")).includes("events/e/groups/g1/messages/new"));
+  await waitFor(() => stored("events/e/groups/g1/"), []);
+  assert.ok((await stored("events/e/groups/")).includes("events/e/groups/g1"));
 });
