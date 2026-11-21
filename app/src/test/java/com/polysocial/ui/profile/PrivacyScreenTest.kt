@@ -285,6 +285,7 @@ class PrivacyScreenTest {
             "for each message, its text, sender account identifier and server send time",
             "Only the two students can read it; associations cannot.",
             "the conversation stays readable by both, and neither can send",
+            "removes your account identifier from the participant list of your one-to-one chats",
             "the sender account link from your messages there",
             "stay in the other student's conversation, labelled as a deleted account",
             "The conversation keeps its internal identifier, made from both account identifiers",
@@ -295,7 +296,9 @@ class PrivacyScreenTest {
     rule
         .onNodeWithText(text(R.string.privacy_notice_deletion_body))
         .says(
-            "account identifier out of your one-to-one chats",
+            "removes your account identifier from the participant list of your one-to-one chats",
+            "(each chat's internal identifier still contains it)",
+            "deletes those whose other account is already deleted",
             "your retained messages in group and one-to-one chats",
         )
   }
