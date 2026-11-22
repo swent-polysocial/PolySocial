@@ -83,13 +83,13 @@ class FirestoreOneToOneChatRepository(
    * Validates and trims [text], checks the IDs, the user and the connection, then sends in one
    * transaction tried once (see [attempt]).
    *
-   * The contract's "any reason but being offline" is, exactly: an attempt that set `creating` (it
-   * read the chat as missing and wrote it) and failed with a [FirebaseFirestoreException] whose
-   * code isn't `UNAVAILABLE` or `DEADLINE_EXCEEDED` runs once more. Any other exception, the
-   * caller's cancellation included, isn't rerun; nor is an attempt that failed before trying to
-   * create the chat (for example its read denied under a deletion marker). A write the rules deny
-   * is [SendMessageResult.UnexpectedError]; losing the connection is
-   * [SendMessageResult.NetworkError].
+   * The contract's "Firestore error other than being offline" is, exactly: an attempt that set
+   * `creating` (it read the chat as missing and wrote it) and failed with a
+   * [FirebaseFirestoreException] whose code isn't `UNAVAILABLE` or `DEADLINE_EXCEEDED` runs once
+   * more. Any other exception, the caller's cancellation included, isn't rerun; nor is an attempt
+   * that failed before trying to create the chat (for example its read denied under a deletion
+   * marker). A write the rules deny is [SendMessageResult.UnexpectedError]; losing the connection
+   * is [SendMessageResult.NetworkError].
    */
   override suspend fun sendMessage(
       pairId: String,

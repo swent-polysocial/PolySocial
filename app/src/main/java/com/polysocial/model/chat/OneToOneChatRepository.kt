@@ -121,9 +121,9 @@ interface OneToOneChatRepository {
    * [SendMessageResult.UnexpectedError] and nothing is written.
    *
    * If both students send their first message at once, both try to create the chat, and the
-   * transaction that commits second fails. An attempt that tried to create the chat and failed for
-   * any reason but being offline therefore runs once more: it then finds the chat and adds only its
-   * message, so both messages are [SendMessageResult.Sent], in the server's order.
+   * transaction that commits second fails. An attempt that tried to create the chat and failed with
+   * a Firestore error other than being offline therefore runs once more: it then finds the chat and
+   * adds only its message, so both messages are [SendMessageResult.Sent], in the server's order.
    */
   suspend fun sendMessage(
       pairId: String,
