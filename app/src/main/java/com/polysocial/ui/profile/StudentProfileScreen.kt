@@ -1,5 +1,6 @@
 // Contributors: Claude Opus 5.5 (a group member's public profile from Figma's #368 frames);
 // Konstantinos Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (the screen body shared with My profile, #495).
 package com.polysocial.ui.profile
 
 import androidx.compose.foundation.background
@@ -42,36 +43,49 @@ fun StudentProfileRoute(onBack: () -> Unit, viewModel: StudentProfileViewModel =
 fun StudentProfileScreen(state: StudentProfileUiState, onBack: () -> Unit, onRetry: () -> Unit) {
   Column(Modifier.fillMaxSize().background(Bg).testTag(C.Tag.student_profile_screen)) {
     GroupHeader(R.string.student_profile_title, C.Tag.student_profile_back, onBack)
-    Box(Modifier.weight(1f)) {
-      when (state) {
-        StudentProfileUiState.Loading ->
-            LoadingState(
-                stringResource(R.string.student_profile_loading),
-                Modifier.testTag(C.Tag.student_profile_loading),
-            )
-        is StudentProfileUiState.Found ->
-            StudentProfileCard(
-                state.profile,
-                Modifier.fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-                    .padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 24.dp),
-            )
-        StudentProfileUiState.NotFound ->
-            ErrorState(
-                title = stringResource(R.string.student_profile_not_found_title),
-                message = stringResource(R.string.student_profile_not_found_body),
-                onRetry = null,
-                modifier = Modifier.testTag(C.Tag.student_profile_not_found),
-                icon = R.drawable.ic_tab_profile,
-            )
-        StudentProfileUiState.CouldNotLoad ->
-            ErrorState(
-                title = stringResource(R.string.student_profile_error_title),
-                message = stringResource(R.string.student_profile_error_body),
-                onRetry = onRetry,
-                modifier = Modifier.testTag(C.Tag.student_profile_error),
-            )
-      }
-    }
+    Box(Modifier.weight(1f)) { StudentProfileBody(state, onRetry) }
+  }
+}
+
+/**
+ * What a profile screen shows for [state]: the shared loading and couldn't-load states and the
+ * [StudentProfileCard]. [notFound] is what a missing public profile shows: by default the "Can't
+ * find this student" state, which My profile (#495) replaces, since it is the student's own.
+ */
+@Composable
+internal fun StudentProfileBody(
+    state: StudentProfileUiState,
+    onRetry: () -> Unit,
+    notFound: @Composable () -> Unit = {
+      ErrorState(
+          title = stringResource(R.string.student_profile_not_found_title),
+          message = stringResource(R.string.student_profile_not_found_body),
+          onRetry = null,
+          modifier = Modifier.testTag(C.Tag.student_profile_not_found),
+          icon = R.drawable.ic_tab_profile,
+      )
+    },
+) {
+  when (state) {
+    StudentProfileUiState.Loading ->
+        LoadingState(
+            stringResource(R.string.student_profile_loading),
+            Modifier.testTag(C.Tag.student_profile_loading),
+        )
+    is StudentProfileUiState.Found ->
+        StudentProfileCard(
+            state.profile,
+            Modifier.fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 24.dp),
+        )
+    StudentProfileUiState.NotFound -> notFound()
+    StudentProfileUiState.CouldNotLoad ->
+        ErrorState(
+            title = stringResource(R.string.student_profile_error_title),
+            message = stringResource(R.string.student_profile_error_body),
+            onRetry = onRetry,
+            modifier = Modifier.testTag(C.Tag.student_profile_error),
+        )
   }
 }

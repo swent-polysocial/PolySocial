@@ -1,6 +1,8 @@
 // Contributors: Claude Opus 5.5 (a group member's public profile, #368, and the cached fallback
 // after review); Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: OpenAI Codex (6.2 Sol, high; reuse the bounded profile lookup, #360 review).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (the read-result mapping shared with My profile,
+// #495).
 package com.polysocial.ui.profile
 
 import androidx.lifecycle.SavedStateHandle
@@ -32,6 +34,15 @@ sealed interface StudentProfileUiState {
   /** The read failed or didn't answer in time; Retry reads it again. */
   data object CouldNotLoad : StudentProfileUiState
 }
+
+/** How a public profile read is shown, for another student's profile and for My profile (#495). */
+internal fun PublicProfileResult.toUiState(): StudentProfileUiState =
+    when (this) {
+      is PublicProfileResult.Found -> StudentProfileUiState.Found(profile)
+      PublicProfileResult.NotFound -> StudentProfileUiState.NotFound
+      PublicProfileResult.NetworkError,
+      PublicProfileResult.UnexpectedError -> StudentProfileUiState.CouldNotLoad
+    }
 
 /**
  * Another student's public profile, opened from a group member's row (#368) with their UID as the
@@ -70,14 +81,7 @@ constructor(savedStateHandle: SavedStateHandle, private val profiles: PublicProf
             }
     state.value = StudentProfileUiState.Loading
     viewModelScope.launch {
-      val result = profiles.getPublicProfileWithCache(uid, TIMEOUT_MILLIS)
-      state.value =
-          when (result) {
-            is PublicProfileResult.Found -> StudentProfileUiState.Found(result.profile)
-            PublicProfileResult.NotFound -> StudentProfileUiState.NotFound
-            PublicProfileResult.NetworkError,
-            PublicProfileResult.UnexpectedError -> StudentProfileUiState.CouldNotLoad
-          }
+      state.value = profiles.getPublicProfileWithCache(uid, TIMEOUT_MILLIS).toUiState()
     }
   }
 
