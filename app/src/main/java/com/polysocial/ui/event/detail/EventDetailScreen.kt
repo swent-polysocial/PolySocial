@@ -22,7 +22,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (every organizer's name in the row, each in bold, from
 // the Figma "Organizers on the detail" frames, #371).
 // Contributors: Claude (Opus 5.5, Anthropic) ("Event full" and its note, from the Figma "Event
-// detail · full" frame, #407).
+// detail · full" frame, #407; not while the attendance loads, after review).
 package com.polysocial.ui.event.detail
 
 import android.Manifest
@@ -574,8 +574,9 @@ private fun EventContent(
     // group, its card replaces Find a group (#233), and "✓ Going" takes the whole bar (Figma "Event
     // detail · in a group").
     val isGoing = !state.isOrganizer && state.attendance == Attendance.GOING
-    // A full event can't take this student (#407); one already going keeps "✓ Going".
-    val showFull = state.isFull && !state.isOrganizer && !isGoing
+    // A full event can't take this student (#407); one going keeps "✓ Going", and while their
+    // registrations load, the disabled "I'm going" stays instead of flashing "Event full".
+    val showFull = state.isFull && !state.isOrganizer && state.attendance == Attendance.NOT_GOING
     val findGroup = onFindGroup.takeIf { state.yourGroup == null }
     // Matching other students for an event nobody confirmed attending doesn't make sense (#244);
     // an organizer counts as going without needing the attendance flow.

@@ -1,5 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests of "Event full" on the event detail
-// screen, #407).
+// screen, #407; while the attendance loads, after review).
 package com.polysocial.ui.event.detail
 
 import android.content.Context
@@ -151,6 +151,16 @@ class EventDetailFullScreenTest {
     composeTestRule
         .onNodeWithText(string(R.string.event_detail_all_places_taken_no_count))
         .assertIsDisplayed()
+  }
+
+  @Test
+  fun whileTheAttendanceLoads_theDisabledImGoingStays() {
+    // A student going would otherwise see "Event full" flash before "✓ Going".
+    show(full(Attendance.UNKNOWN))
+
+    node(EventDetailTags.IM_GOING).assertIsDisplayed().assertIsNotEnabled()
+    node(EventDetailTags.EVENT_FULL).assertDoesNotExist()
+    node(EventDetailTags.FULL_NOTE).assertDoesNotExist()
   }
 
   @Test

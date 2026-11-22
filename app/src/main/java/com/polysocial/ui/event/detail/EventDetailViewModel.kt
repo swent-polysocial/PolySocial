@@ -25,7 +25,7 @@
 // Contributors: Claude (Sonnet 5.5, Anthropic) asked before a student in a group cancels, then
 // leaves the group and cancels the registration, #318.
 // Contributors: Claude (Opus 5.5, Anthropic) ("Event full", from the event and from a refused
-// registration, #407).
+// registration, #407; only a refusal counts while the registrations are unreadable, after review).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -219,10 +219,12 @@ sealed interface EventDetailUiState {
    * @property attendance whether the student is going (#122); organizers aren't offered "I'm
    *   going", as in Figma's "Event detail · organizer", so theirs stays [Attendance.NOT_GOING].
    * @property isSavingAttendance true while "I'm going" or "Cancel registration" is saved.
-   * @property isFull true when the event has no place left (#407): the event as read is full
-   *   ([Event.isFull]), also from the offline cache, or the last "I'm going" was refused as full
-   *   and the event hasn't changed since. The screen shows "Event full" instead of "I'm going" to a
-   *   student who isn't going; organizers and students going see no change.
+   * @property isFull true when the event has no place left for this student (#407): the event as
+   *   read is full ([Event.isFull]), also from the offline cache, or the last "I'm going" was
+   *   refused as full and the event hasn't changed since. While the student's registrations can't
+   *   be read, only that refusal counts, since they may be going: "I'm going" then stays their way
+   *   back to "✓ Going". The screen shows "Event full" instead of "I'm going" to a student known
+   *   not to be going; always false for organizers.
    * @property reminderOn whether "Remind me 1 h before" is on, shown once going (#123); seeded once
    *   from [ReminderScheduler.isScheduled] the first time attendance is confirmed.
    * @property remindersBlocked true once Android's notification permission is known to be denied,
@@ -559,18 +561,26 @@ constructor(
    * Read alongside the event, so it is usually known when the event shows. An association's read is
    * refused (it never registers) and its own events never offer "I'm going" anyway.
    */
-  private val observedAttendance: Flow<Attendance> =
+  private val observedAttendance: Flow<Attendance?> =
       registrations
           .observeMyRegistrations()
           .map { result ->
             when (result) {
               is MyRegistrationsResult.Registrations ->
                   if (eventId in result.eventIds) Attendance.GOING else Attendance.NOT_GOING
-              // Registering twice changes nothing, so "I'm going" stays safe to offer.
-              MyRegistrationsResult.Error -> Attendance.NOT_GOING
+              // Unreadable: shown as NOT_GOING, since registering twice changes nothing, so
+              // "I'm going" stays safe to offer.
+              MyRegistrationsResult.Error -> null
             }
           }
           .onStart { emit(Attendance.UNKNOWN) }
+
+  /** The attendance shown, whether a save runs, and whether the registrations couldn't be read. */
+  private data class AttendanceRead(
+      val attendance: Attendance,
+      val saving: Boolean,
+      val unreadable: Boolean,
+  )
 
   /**
    * [saved] while the observed registrations haven't caught up to it yet, [observed] once they have
@@ -578,24 +588,16 @@ constructor(
    * confirmed, instead of on every new observed value, keeps an unrelated snapshot from briefly
    * showing the old [observed] value while a save is still catching up.
    */
-  private val attendance: Flow<Pair<Attendance, Boolean>> =
+  private val attendance: Flow<AttendanceRead> =
       combine(observedAttendance, savedAttendance, savingAttendance) { observed, saved, saving ->
         if (saved != null && saved == observed) savedAttendance.value = null
-        (saved ?: observed) to saving
+        AttendanceRead(saved ?: observed ?: Attendance.NOT_GOING, saving, observed == null)
       }
 
   @OptIn(ExperimentalCoroutinesApi::class)
   val uiState: StateFlow<EventDetailUiState> =
       reads
           .flatMapLatest { eventStates().onStart { emit(EventDetailUiState.Loading) } }
-          .combine(refusedFull) { state, refused ->
-            if (state is EventDetailUiState.Loaded) {
-              val event = state.details.event
-              // A newer version decides alone, even one that later goes back to the refused one.
-              if (refused != null && event != refused) refusedFull.compareAndSet(refused, null)
-              state.copy(isFull = event.isFull() || event == refused)
-            } else state
-          }
           .onEach(::loadAssociationName)
           .combine(associationNames.names, ::withAssociationName)
           .onEach(::countGoingOnce)
@@ -616,10 +618,17 @@ constructor(
                 state.copy(yourGroup = read.group, groupConfirmed = read.confirmed)
             else state
           }
-          .combine(attendance) { state, (attendance, saving) ->
-            if (state is EventDetailUiState.Loaded && !state.isOrganizer)
-                state.copy(attendance = attendance, isSavingAttendance = saving)
-            else state
+          .combine(attendance.combine(refusedFull, ::Pair)) { state, (read, refused) ->
+            if (state is EventDetailUiState.Loaded && !state.isOrganizer) {
+              val event = state.details.event
+              // A newer version decides alone, even one that later goes back to the refused one.
+              if (refused != null && event != refused) refusedFull.compareAndSet(refused, null)
+              state.copy(
+                  attendance = read.attendance,
+                  isSavingAttendance = read.saving,
+                  isFull = (event.isFull() && !read.unreadable) || event == refused,
+              )
+            } else state
           }
           .withOrganizerName()
           .onEach(::initReminderOnce)
