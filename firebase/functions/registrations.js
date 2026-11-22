@@ -5,7 +5,7 @@
 // registration an account deletion removes, from #372's prototype, #405.
 // Contributors: Claude (Opus 5.5, Anthropic) shared the guarded batch deletion and the trigger's
 // failure logging with the deleted groups' triggers, #382; the guard checks the event's creator,
-// after review.
+// after review; a deletion without its document still cleans up, after review.
 "use strict";
 
 /**
@@ -47,7 +47,9 @@ async function deleteAllMatching(db, query) {
  * written in between by the same creator can't lose what was written with it. Deleting a document
  * that is already gone is not an error, so a retry after a failure finishes the job.
  *
- * @param {string|undefined} createdBy the deleted document's `createdBy`.
+ * @param {string|undefined} createdBy the deleted document's `createdBy`; undefined when the
+ *   deletion event came without the deleted document, which Firestore always sends. Then only a
+ *   document written back without `createdBy` stops it, so it deletes rather than keeps.
  */
 async function deleteOrphans(db, parent, collectionId, createdBy) {
   const children = parent.collection(collectionId).limit(MAX_BATCH_WRITES);

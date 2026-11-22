@@ -2,7 +2,7 @@
 // Contributors: Claude (the trigger deleting a deleted event's registrations, #275).
 // Contributors: Claude (Fable 5.2, Anthropic) (the scheduled cleanup of unverified accounts, #226).
 // Contributors: Claude (Opus 5.5, Anthropic) (the deletion triggers' shared options and the deleted
-// groups' triggers, #382).
+// groups' triggers, #382; a deletion without its document, after review).
 "use strict";
 
 const { initializeApp } = require("firebase-admin/app");
@@ -34,7 +34,10 @@ exports.deleteAccount = onCall({ region: REGION }, (request) =>
  * A Firestore trigger on the deletion of a `document` matching the pattern, in TRIGGER_REGION and
  * deployed with retries, so a run that fails is run again until `cleanUp` succeeds. `cleanUp` gets
  * the pattern's parameters (such as `eventId`), the deleted document's data as `deleted`,
- * Firestore and the logger.
+ * Firestore and the logger. A Firestore deletion event carries the deleted document (its
+ * `oldValue`), so `deleted` is undefined only if an event ever came without it: the event cleanups
+ * then don't know the creator and delete, as for a document someone else wrote back
+ * ([deleteOrphans]).
  */
 function onDeleted(document, cleanUp) {
   return onDocumentDeleted({ document, region: TRIGGER_REGION, retry: true }, (event) =>
