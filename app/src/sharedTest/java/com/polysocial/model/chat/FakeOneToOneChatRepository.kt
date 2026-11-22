@@ -30,11 +30,12 @@ import kotlinx.coroutines.flow.map
  * The observe flows read [currentUid] and [readFailure] when their collection starts, as the real
  * listeners read the user and are checked by the rules then, and keep emitting for that user:
  * changing [currentUid] later doesn't affect a running collection. They emit when their own data
- * changes and when [readFromCache] does. [observeMyChats] lists the chats by pair ID. The messages
- * are kept in a [FakeMessageStore], which sets their order, IDs and server times. Each fake has its
- * own store, whose server times start at the same instant, so a test of a list merging group and
- * one-to-one chats newest first seeds their messages with explicit times ([seedMessage]) rather
- * than sending them.
+ * changes and when [readFromCache] does. [observeMyChats] lists the chats by pair ID, so that tests
+ * are deterministic, but that order isn't part of the contract (no particular order): a test must
+ * not depend on it. The messages are kept in a [FakeMessageStore], which sets their order, IDs and
+ * server times. Each fake has its own store, whose server times start at the same instant, so a
+ * test of a list merging group and one-to-one chats newest first seeds their messages with explicit
+ * times ([seedMessage]) rather than sending them.
  *
  * @property currentUid the signed-in student, or null when nobody is signed in.
  */
