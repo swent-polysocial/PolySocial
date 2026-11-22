@@ -24,6 +24,8 @@
 // #373).
 // Contributors: Claude (Sonnet 5.5, Anthropic) asked before a student in a group cancels, then
 // leaves the group and cancels the registration, #318.
+// Contributors: Claude (Opus 5.5, Anthropic) ("Event full", from the event and from a refused
+// registration, #407).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -35,6 +37,7 @@ import com.polysocial.model.event.DeleteEventResult
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.EventResult
+import com.polysocial.model.event.isFull
 import com.polysocial.model.event.isLive
 import com.polysocial.model.event.isPast
 import com.polysocial.model.group.Group
@@ -216,6 +219,10 @@ sealed interface EventDetailUiState {
    * @property attendance whether the student is going (#122); organizers aren't offered "I'm
    *   going", as in Figma's "Event detail · organizer", so theirs stays [Attendance.NOT_GOING].
    * @property isSavingAttendance true while "I'm going" or "Cancel registration" is saved.
+   * @property isFull true when the event has no place left (#407): the event as read is full
+   *   ([Event.isFull]), also from the offline cache, or the last "I'm going" was refused as full
+   *   and the event hasn't changed since. The screen shows "Event full" instead of "I'm going" to a
+   *   student who isn't going; organizers and students going see no change.
    * @property reminderOn whether "Remind me 1 h before" is on, shown once going (#123); seeded once
    *   from [ReminderScheduler.isScheduled] the first time attendance is confirmed.
    * @property remindersBlocked true once Android's notification permission is known to be denied,
@@ -239,6 +246,7 @@ sealed interface EventDetailUiState {
       val groupConfirmed: Boolean = false,
       val attendance: Attendance = Attendance.NOT_GOING,
       val isSavingAttendance: Boolean = false,
+      val isFull: Boolean = false,
       val reminderOn: Boolean = false,
       val remindersBlocked: Boolean = false,
       val showReminderExplanation: Boolean = false,
@@ -426,7 +434,8 @@ sealed interface CancelRegistrationState {
  * events) shows here too. If they can't be read, the screen offers "I'm going": registering twice
  * changes nothing. A save that fails changes nothing and reports [attendanceFeedback], whose Retry
  * saves again; each failure gets its own id, so a Retry that fails the same way is reported again
- * too.
+ * too. A registration refused because the event is full reports nothing: the screen shows "Event
+ * full" instead ([EventDetailUiState.Loaded.isFull], #407).
  *
  * A student's public event names its organizers to the viewers [namedOrganizers] allows
  * (#281, #371), from their public profiles, read through [profiles] only for them, then kept while
@@ -496,6 +505,14 @@ constructor(
    * the screen is stopped.
    */
   private var organizerRead: OrganizerRead? = null
+
+  /**
+   * The event as shown when the last "I'm going" was refused as full (#407). The refusal read the
+   * event on the server, which may be newer than the event shown (for example from the cache), so
+   * the event shows as full until its own read delivers a different version, which then decides
+   * alone and clears it: a place freed since then offers "I'm going" again.
+   */
+  private val refusedFull = MutableStateFlow<Event?>(null)
 
   /** The attendance this screen saved, until the registrations' next answer replaces it. */
   private val savedAttendance = MutableStateFlow<Attendance?>(null)
@@ -571,6 +588,14 @@ constructor(
   val uiState: StateFlow<EventDetailUiState> =
       reads
           .flatMapLatest { eventStates().onStart { emit(EventDetailUiState.Loading) } }
+          .combine(refusedFull) { state, refused ->
+            if (state is EventDetailUiState.Loaded) {
+              val event = state.details.event
+              // A newer version decides alone, even one that later goes back to the refused one.
+              if (refused != null && event != refused) refusedFull.compareAndSet(refused, null)
+              state.copy(isFull = event.isFull() || event == refused)
+            } else state
+          }
           .onEach(::loadAssociationName)
           .combine(associationNames.names, ::withAssociationName)
           .onEach(::countGoingOnce)
@@ -1064,8 +1089,12 @@ constructor(
               when (registrations.register(eventId)) {
                 RegisterResult.Registered -> null
                 RegisterResult.NetworkError -> AttendanceMessage.REGISTER_OFFLINE
-                // The usual failure until "Event full" has its own message (#407).
-                RegisterResult.Full,
+                RegisterResult.Full -> {
+                  // No Snackbar: "Event full" replaces "I'm going" and says it, and Retry
+                  // couldn't help until someone cancels.
+                  refusedFull.value = (uiState.value as? EventDetailUiState.Loaded)?.details?.event
+                  return@launch
+                }
                 RegisterResult.NotSignedIn,
                 RegisterResult.NotFound,
                 RegisterResult.UnexpectedError -> AttendanceMessage.REGISTER_FAILED
