@@ -28,6 +28,8 @@
 // Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: OpenAI Codex (wired group chat above the roster in the student graph, #238).
 // Contributors: Claude (Opus 5.5, Anthropic) (the Chats tab's list, opening each group chat, #364).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (My profile row and routes replace the Profile
+// tab's pencil, #495).
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.layout.Box
@@ -107,6 +109,7 @@ import com.polysocial.ui.map.mapViewModel
 import com.polysocial.ui.profile.EditProfileRoute
 import com.polysocial.ui.profile.FriendCodeRoute
 import com.polysocial.ui.profile.FullPrivacyNoticeRoute
+import com.polysocial.ui.profile.MyProfileRoute
 import com.polysocial.ui.profile.PrivacyRoute
 import com.polysocial.ui.profile.ProfileRoute
 import com.polysocial.ui.profile.StudentProfileRoute
@@ -233,6 +236,8 @@ fun AppShell(
           onOpenFriends = dropUnlessResumed { navController.navigate(Tab.PROFILE.friendsRoute) },
           onOpenFriendCode =
               dropUnlessResumed { navController.navigate(Tab.PROFILE.friendCodeRoute) },
+          onOpenMyProfile =
+              dropUnlessResumed { navController.navigate(Tab.PROFILE.myProfileRoute) },
       )
     },
     yourGroupContent:
@@ -247,6 +252,10 @@ fun AppShell(
           ChatsRoute(onOpenChat)
         },
     studentProfileContent: @Composable (() -> Unit) -> Unit = { StudentProfileRoute(it) },
+    myProfileContent: @Composable (onBack: () -> Unit, onEdit: () -> Unit) -> Unit =
+        { onBack, onEdit ->
+          MyProfileRoute(onBack, onEdit)
+        },
     editProfileContent: @Composable (onBack: () -> Unit) -> Unit = { EditProfileRoute(it) },
 ) {
   val association = accountType == AccountType.ASSOCIATION
@@ -272,6 +281,8 @@ fun AppShell(
           destination?.route != currentTab.yourGroupRoute &&
           destination?.route != currentTab.groupChatRoute &&
           destination?.route != currentTab.studentProfileRoute &&
+          destination?.route != currentTab.myProfileRoute &&
+          destination?.route != currentTab.editProfileRoute &&
           !profileRowScreen
   // The app bar action (TabAction, set per tab in Tab.action) shows only on the current tab's root
   // screen: it is hidden on the screens opened from there, including the one the action opens.
@@ -410,15 +421,7 @@ fun AppShell(
           }
         }
         tab.action?.let { action ->
-          composable(tab.routeOf(action)) {
-            // Students edit their section, year and interests (#235); an association has no such
-            // fields.
-            if (tab == Tab.PROFILE && !association && action == TabAction.EDIT_PROFILE) {
-              editProfileContent { navController.popBackStack() }
-            } else {
-              PlaceholderActionScreen(action)
-            }
-          }
+          composable(tab.routeOf(action)) { PlaceholderActionScreen(action) }
         }
         composable(
             tab.eventDetailRoute,
@@ -500,6 +503,19 @@ fun AppShell(
                   ),
           ) { entry ->
             studentProfileContent { if (entry.isResumed) navController.popBackStack() }
+          }
+          composable(tab.myProfileRoute) { entry ->
+            myProfileContent(
+                { if (entry.isResumed) navController.popBackStack() },
+                { if (entry.isResumed) navController.navigate(tab.editProfileRoute) },
+            )
+          }
+          composable(tab.editProfileRoute) { entry ->
+            // Only while this screen is the current one, so Back and the save closing it can't both
+            // pop (a second pop would leave My profile too).
+            editProfileContent {
+              if (navController.currentBackStackEntry == entry) navController.popBackStack()
+            }
           }
           composable(
               tab.groupChatRoute,

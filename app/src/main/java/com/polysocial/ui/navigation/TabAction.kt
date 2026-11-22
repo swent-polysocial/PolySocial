@@ -1,4 +1,5 @@
 // Contributors: Claude (app bar actions from the Figma Events, Chats and Profile frames, #84).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (the Edit profile pencil removed, #495).
 package com.polysocial.ui.navigation
 
 import androidx.annotation.DrawableRes
@@ -32,12 +33,6 @@ enum class TabAction(
       R.drawable.ic_search,
       R.string.action_search_chats,
       C.Tag.app_bar_action_search_chats,
-  ),
-  EDIT_PROFILE(
-      "edit",
-      R.drawable.ic_edit,
-      R.string.action_edit_profile,
-      C.Tag.app_bar_action_edit_profile,
   );
 
   /** Test tag of the action's placeholder screen. */

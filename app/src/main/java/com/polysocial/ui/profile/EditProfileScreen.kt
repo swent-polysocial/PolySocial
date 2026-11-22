@@ -1,4 +1,5 @@
 // Contributors: OpenAI Codex (profile editor reusing setup fields and chips, #235).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (its own screen tag now the pencil is gone, #495).
 package com.polysocial.ui.profile
 
 import androidx.activity.compose.BackHandler
@@ -24,11 +25,11 @@ import com.polysocial.ui.common.ErrorBanner
 import com.polysocial.ui.common.ErrorState
 import com.polysocial.ui.common.LoadingState
 import com.polysocial.ui.common.PrimaryButton
-import com.polysocial.ui.navigation.TabAction
 import com.polysocial.ui.theme.Bg
 import com.polysocial.ui.theme.Ink2
 
 object EditProfileTags {
+  const val SCREEN = "edit_profile_screen"
   const val BACK = "edit_profile_back"
   const val SECTION = "edit_profile_section"
   const val YEAR = "edit_profile_year"
@@ -85,7 +86,7 @@ fun EditProfileScreen(
       Modifier.fillMaxSize()
           .background(Bg)
           .windowInsetsPadding(WindowInsets.safeDrawing)
-          .testTag(TabAction.EDIT_PROFILE.screenTag)
+          .testTag(EditProfileTags.SCREEN)
   ) {
     Column(Modifier.padding(horizontal = 20.dp)) {
       ProfileTopBar(onBack, !locked, step = null, backTag = EditProfileTags.BACK)

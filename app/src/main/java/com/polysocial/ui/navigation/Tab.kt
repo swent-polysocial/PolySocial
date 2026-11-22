@@ -13,6 +13,8 @@
 // Contributors: OpenAI Codex (added the chat route beneath the roster, #238).
 // Contributors: Claude Opus 5.5 (a student's public profile route, #368); Konstantinos Perdikeas
 // (directed, reviewed and owns it).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (My profile and Edit profile routes; no Profile
+// action, #495).
 package com.polysocial.ui.navigation
 
 import android.net.Uri
@@ -78,7 +80,7 @@ enum class Tab(
       R.string.loading_profile,
       C.Tag.nav_item_profile,
       C.Tag.screen_profile,
-      TabAction.EDIT_PROFILE,
+      null,
   );
 
   /** Route of the tab's root screen, the start destination of its graph. */
@@ -174,6 +176,17 @@ enum class Tab(
     get() = "$route/student/{${StudentProfileViewModel.UID_ARG}}"
 
   fun studentProfileRoute(uid: String): String = "$route/student/${Uri.encode(uid)}"
+
+  /**
+   * The signed-in student's own profile as other students see it (#495), in this tab's graph like
+   * [studentProfileRoute], so it can be opened from any tab and Back returns to where it came from.
+   */
+  val myProfileRoute: String
+    get() = "$route/me"
+
+  /** Edit profile (#235), opened from My profile: its Save and Back return there. */
+  val editProfileRoute: String
+    get() = "$route/me/edit"
 }
 
 /** Labels, icons and tags for a tab in the current account's shell. */

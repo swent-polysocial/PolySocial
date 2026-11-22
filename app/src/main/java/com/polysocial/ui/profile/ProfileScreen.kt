@@ -6,6 +6,8 @@
 // the activity-scoped logout confirmation shared with the app-start error, #208).
 // Contributors: Claude Opus 5.5 (the My friend code row, #339); Konstantinos Perdikeas (directed,
 // reviewed and owns it).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (the My profile row, first on the Profile tab,
+// #495).
 package com.polysocial.ui.profile
 
 import androidx.activity.compose.BackHandler
@@ -44,6 +46,7 @@ fun ProfileRoute(
     viewModel: ProfileViewModel = hiltViewModel(),
     onOpenPrivacy: (() -> Unit)? = null,
     onOpenFriends: (() -> Unit)? = null,
+    onOpenMyProfile: (() -> Unit)? = null,
     onOpenFriendCode: (() -> Unit)? = null,
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -58,6 +61,7 @@ fun ProfileRoute(
       actions.confirm,
       onOpenPrivacy,
       onOpenFriends,
+      onOpenMyProfile,
       onOpenFriendCode,
   )
 }
@@ -77,10 +81,22 @@ fun ProfileScreen(
     onConfirm: () -> Unit,
     onOpenPrivacy: (() -> Unit)? = null,
     onOpenFriends: (() -> Unit)? = null,
+    // Before onOpenFriendCode, which callers pass as a trailing lambda.
+    onOpenMyProfile: (() -> Unit)? = null,
     onOpenFriendCode: (() -> Unit)? = null,
 ) {
   Column(Modifier.fillMaxSize().padding(horizontal = 20.dp).testTag(C.Tag.screen_profile)) {
-    // The association's Organization tab supplies neither student-only action.
+    // The association's Organization tab supplies none of the student-only actions.
+    if (onOpenMyProfile != null) {
+      PrivacyActionRow(
+          R.string.my_profile_title,
+          R.drawable.ic_tab_profile,
+          C.Tag.profile_my_profile_entry,
+          onOpenMyProfile,
+          Modifier.fillMaxWidth(),
+          dividerAtBottom = true,
+      )
+    }
     if (onOpenFriendCode != null) {
       PrivacyActionRow(
           R.string.friend_code_title,
