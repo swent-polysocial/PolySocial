@@ -2,6 +2,7 @@
 // what a missing profile means, after review, #229; interests, #230); Claude Opus 5.5 (the
 // cache-only read, #368 review); Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: OpenAI Codex (6.2 Sol, high; shared bounded profile lookup, #360 review).
+// Contributors: Claude (Opus 5.5, Anthropic) (the username field, #448).
 package com.polysocial.model.user
 
 import kotlinx.coroutines.withTimeoutOrNull
@@ -25,7 +26,8 @@ internal suspend fun PublicProfileRepository.getPublicProfileWithCache(
  * What other students see of a student, `publicProfiles/{uid}` (#229): the fields matching needs
  * and a group shows, never the email. [uid] is the document ID, the student's Firebase Auth UID.
  * [section] and [year] are codes such as `IN` and `BA3`, as in [UserProfile]. [interests] are codes
- * from [INTERESTS] (#230), empty when the student picked none.
+ * from [INTERESTS] (#230), empty when the student picked none. [username] is the student's username
+ * without the `@`, or null if they have none (#448).
  *
  * The Security Rules let any student read it and associations none, and let its owner write it only
  * as a copy of their `users/{uid}` in the same write, so it is written by [UserProfileRepository],
@@ -37,6 +39,7 @@ data class PublicProfile(
     val section: String,
     val year: String,
     val interests: Set<String> = emptySet(),
+    val username: String? = null,
 )
 
 /** Outcome of [PublicProfileRepository.getPublicProfile]. */

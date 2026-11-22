@@ -1,6 +1,7 @@
 // Contributors: Claude (profile lookup needed by app-start routing, #32; profile model, create and
 // update, #34; isAssociationVerified, #45; the public profile written with it, #229; interests,
 // #230; the missing public profile repaired, #291).
+// Contributors: Claude (Opus 5.5, Anthropic) (the username field, #448).
 package com.polysocial.model.user
 
 import java.time.Instant
@@ -19,6 +20,9 @@ enum class AccountType(val value: String) {
  *
  * [isAssociationVerified] is set only by a PolySocial admin, by hand in the Firebase console. The
  * app reads it but never writes it, and the Security Rules forbid users to set it (#35).
+ *
+ * [username] is the student's username without the `@`, or null if they have none (#448). Only
+ * [UsernameRepository.setUsername] changes it; [UserProfileRepository.updateProfile] keeps it.
  */
 data class UserProfile(
     val uid: String,
@@ -30,6 +34,7 @@ data class UserProfile(
     val isAssociationVerified: Boolean = false,
     val createdAt: Instant? = null,
     val interests: Set<String> = emptySet(),
+    val username: String? = null,
 ) {
   /** Whether this account may publish events under its association's name, with the badge. */
   val isVerifiedAssociation: Boolean
