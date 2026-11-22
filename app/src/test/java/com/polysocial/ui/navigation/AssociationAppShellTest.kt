@@ -103,7 +103,7 @@ class AssociationAppShellTest {
   }
 
   @Test
-  fun associationHasThreeTabsAndNoStudentGraphsOrEditProfileAction() {
+  fun associationHasThreeTabsAndNoStudentGraphsOrMyProfileRow() {
     show()
     compose.onNodeWithTag(C.Tag.nav_item_events).assertIsSelected()
     compose.onNodeWithTag(C.Tag.nav_item_map).assertExists()
@@ -111,7 +111,7 @@ class AssociationAppShellTest {
     compose.onNodeWithTag(C.Tag.app_bar_title).assertTextEquals("Organization")
     compose.onNodeWithTag(C.Tag.nav_item_chats).assertDoesNotExist()
     compose.onNodeWithTag(C.Tag.nav_item_profile).assertDoesNotExist()
-    compose.onNodeWithTag(TabAction.EDIT_PROFILE.tag).assertDoesNotExist()
+    compose.onNodeWithTag(C.Tag.profile_my_profile_entry).assertDoesNotExist()
     compose.runOnIdle { assertNull(nav.graph.findNode(Tab.CHATS.route)) }
   }
 

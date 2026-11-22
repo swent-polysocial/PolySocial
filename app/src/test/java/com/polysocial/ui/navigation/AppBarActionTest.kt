@@ -18,6 +18,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
 import com.polysocial.resources.C
 import com.polysocial.ui.theme.PolySocialTheme
+import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -38,7 +39,6 @@ class AppBarActionTest {
             eventsContent = { TabRootScreen(Tab.EVENTS) },
             profileContent = { TabRootScreen(Tab.PROFILE) },
             chatsContent = { TabRootScreen(Tab.CHATS) },
-            editProfileContent = { PlaceholderActionScreen(TabAction.EDIT_PROFILE) },
             mapContent = { _, _ -> TabRootScreen(Tab.MAP) },
         )
       }
@@ -59,12 +59,11 @@ class AppBarActionTest {
   private val tabsWithActions = Tab.entries.filter { it.action != null }
 
   @Test
-  fun eventsChatsAndProfile_showTheirFigmaAction() {
+  fun eventsAndChats_showTheirFigmaAction() {
     val expected =
         mapOf(
             Tab.EVENTS to TabAction.NOTIFICATIONS,
             Tab.CHATS to TabAction.SEARCH_CHATS,
-            Tab.PROFILE to TabAction.EDIT_PROFILE,
         )
     expected.forEach { (tab, action) ->
       select(tab)
@@ -84,6 +83,15 @@ class AppBarActionTest {
 
     composeTestRule.onNodeWithTag(Tab.MAP.screenTag).assertIsDisplayed()
     assertNoActionShown()
+  }
+
+  @Test
+  fun theProfileTab_hasNoPencil_itsMyProfileRowReplacesIt() {
+    select(Tab.PROFILE)
+
+    composeTestRule.onNodeWithTag(Tab.PROFILE.screenTag).assertIsDisplayed()
+    assertNoActionShown()
+    assertNull(Tab.PROFILE.action)
   }
 
   @Test

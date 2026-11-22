@@ -11,6 +11,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -25,13 +26,13 @@ import com.polysocial.MainActivity
 import com.polysocial.resources.C
 import com.polysocial.ui.navigation.AppShell
 import com.polysocial.ui.navigation.Tab
-import com.polysocial.ui.navigation.TabAction
 import com.polysocial.ui.theme.PolySocialTheme
 import com.polysocial.utils.FirebaseStartupRule
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import dagger.hilt.android.testing.HiltTestApplication
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -103,7 +104,6 @@ class FriendCodeNavigationTest {
     assertEquals(Tab.PROFILE.friendCodeRoute, navController.currentDestination?.route)
     rule.onNodeWithTag(C.Tag.bottom_nav).assertDoesNotExist()
     rule.onNodeWithTag(C.Tag.app_bar_title).assertDoesNotExist()
-    rule.onNodeWithTag(TabAction.EDIT_PROFILE.tag).assertDoesNotExist()
 
     rule.onNodeWithTag(C.Tag.friend_code_close).performClick()
     rule.onNodeWithTag(C.Tag.profile_friend_code_entry).assertIsDisplayed()
@@ -157,5 +157,24 @@ class FriendCodeNavigationTest {
 
     rule.onNodeWithTag(C.Tag.profile_friend_code_entry).assertIsDisplayed()
     rule.runOnIdle { assertEquals(Tab.PROFILE.rootRoute, navController.currentDestination?.route) }
+  }
+
+  @Test
+  fun myProfileIsTheFirstRow_andOpensTheRealScreenFromTheProfileTab() {
+    showShell()
+
+    val myProfileTop =
+        rule.onNodeWithTag(C.Tag.profile_my_profile_entry).getUnclippedBoundsInRoot().top
+    val friendCodeTop =
+        rule.onNodeWithTag(C.Tag.profile_friend_code_entry).getUnclippedBoundsInRoot().top
+    assertTrue("My profile comes first", myProfileTop < friendCodeTop)
+    rule.onNodeWithTag(C.Tag.profile_my_profile_entry).performClick()
+
+    // The test app has no signed-in student, so My profile shows its "couldn't load" state.
+    rule.onNodeWithTag(C.Tag.my_profile_screen).assertIsDisplayed()
+    rule.onNodeWithTag(C.Tag.student_profile_error).assertIsDisplayed()
+    assertEquals(Tab.PROFILE.myProfileRoute, navController.currentDestination?.route)
+    rule.onNodeWithTag(C.Tag.my_profile_back).performClick()
+    rule.onNodeWithTag(C.Tag.profile_my_profile_entry).assertIsDisplayed()
   }
 }

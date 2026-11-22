@@ -151,10 +151,10 @@ class PrivacyScreenTest {
   @Test
   fun leavingPrivacyKeepsProfileActionsAndCreateEventNavigationWorking() {
     openFromProfile()
-    rule.onNodeWithTag(TabAction.EDIT_PROFILE.tag).assertDoesNotExist()
+    rule.onNodeWithTag(C.Tag.profile_my_profile_entry).assertDoesNotExist()
     rule.onNodeWithTag(C.Tag.privacy_back).performClick()
-    rule.onNodeWithTag(TabAction.EDIT_PROFILE.tag).performClick()
-    rule.onNodeWithTag(TabAction.EDIT_PROFILE.screenTag).assertIsDisplayed()
+    rule.onNodeWithTag(C.Tag.profile_my_profile_entry).performClick()
+    rule.onNodeWithTag(C.Tag.my_profile_screen).assertIsDisplayed()
     rule.runOnIdle { navController.popBackStack() }
     rule.onNodeWithTag(C.Tag.profile_privacy_entry).assertIsDisplayed()
     rule.onNodeWithTag(Tab.EVENTS.navItemTag).performClick()

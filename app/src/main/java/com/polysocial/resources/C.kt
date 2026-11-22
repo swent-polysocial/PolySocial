@@ -86,7 +86,6 @@ object C {
 
     const val app_bar_action_notifications = "app_bar_action_notifications"
     const val app_bar_action_search_chats = "app_bar_action_search_chats"
-    const val app_bar_action_edit_profile = "app_bar_action_edit_profile"
 
     const val nav_item_events = "nav_item_events"
     const val nav_item_map = "nav_item_map"
