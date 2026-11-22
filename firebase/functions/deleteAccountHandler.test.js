@@ -1241,7 +1241,7 @@ test("uids entries that can't be a UID neither stop the deletion nor count as an
   const malformedOnly = chatOf(UID, "student-uid-5");
   const withFriend = chatOf(UID, FRIEND);
   const backend = fakeBackend({
-    chats: { [malformedOnly]: { uids: [UID, 42, ""] }, [withFriend]: { uids: [42, UID, FRIEND] } },
+    chats: { [malformedOnly]: { uids: [UID, 42, "", "a/b"] }, [withFriend]: { uids: [42, UID, FRIEND] } },
     messages: { ...chatMessages(malformedOnly, { a: UID }), ...chatMessages(withFriend, { b: UID }) },
   });
   assert.deepEqual(await call(backend), { deleted: true });
