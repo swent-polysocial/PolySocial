@@ -3,7 +3,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (the deletion triggers' deploy manifest, as a tester,
 // #382).
 // Contributors: Claude (Opus 5.5, Anthropic) (a group started again under its ID loses its old
-// chat, and an event re-created by someone else its groups, after review, #382).
+// chat, and an event re-created by someone else its groups, after review, #382; a deletion
+// without its document, after review).
 "use strict";
 
 // Unit tests with fakes, no emulator: node firebase/functions/groups.test.js
@@ -126,6 +127,21 @@ test("an event another student created again under its ID still loses its groups
 
   const { logger } = fakeLogger();
   await deleteGroupsOfDeletedEvent({ eventId: "e1", deleted: DELETED, db, logger });
+
+  assert.deepEqual([...documents], ["events/e1"]);
+});
+
+// Firestore always sends the deleted document; without it the creator is unknown, so the cleanup
+// deletes rather than keeps, even under an event written back by its organizer.
+test("a deletion that came without the deleted event still deletes its groups and markers", async () => {
+  const { db, documents } = fakeFirestore(
+    ["events/e1", "events/e1/groups/g1", "events/e1/groupMembers/u1"],
+    {},
+    { "events/e1": DELETED },
+  );
+
+  const { logger } = fakeLogger();
+  await deleteGroupsOfDeletedEvent({ eventId: "e1", deleted: undefined, db, logger });
 
   assert.deepEqual([...documents], ["events/e1"]);
 });

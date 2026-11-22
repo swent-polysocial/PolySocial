@@ -3,7 +3,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) tested the attendeeCount an account deletion lowers,
 // #405.
 // Contributors: Claude (Opus 5.5, Anthropic) moved the fakes to testing/fakeFirestore.js, #382;
-// an event re-created by someone else loses its registrations, after review.
+// an event re-created by someone else loses its registrations, after review; a deletion without
+// its document, after review.
 "use strict";
 
 // Unit tests with fakes, no emulator: node firebase/functions/registrations.test.js
@@ -124,6 +125,25 @@ test("an event another student created again under its ID still loses its regist
   await deleteRegistrationsOfDeletedEvent({
     eventId: "e1",
     deleted: DELETED,
+    db,
+    logger: fakeLogger().logger,
+  });
+
+  assert.deepEqual([...documents], ["events/e1"]);
+});
+
+// Firestore always sends the deleted document; without it the creator is unknown, so the cleanup
+// deletes rather than keeps, even under an event written back by its organizer.
+test("a deletion that came without the deleted event still deletes its registrations", async () => {
+  const { db, documents } = fakeFirestore(
+    ["events/e1", "events/e1/attendees/u1"],
+    {},
+    { "events/e1": DELETED },
+  );
+
+  await deleteRegistrationsOfDeletedEvent({
+    eventId: "e1",
+    deleted: undefined,
     db,
     logger: fakeLogger().logger,
   });
