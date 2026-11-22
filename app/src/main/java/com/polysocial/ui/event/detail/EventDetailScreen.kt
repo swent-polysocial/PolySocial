@@ -29,6 +29,7 @@
 // Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: Claude (Sonnet 5.5, Anthropic) (no reminder switch within the hour before the
 // start, #381).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (the Directions button under the place, #391).
 package com.polysocial.ui.event.detail
 
 import android.Manifest
@@ -125,6 +126,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
+import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.EventCategory
 import com.polysocial.ui.common.ConfirmationSheet
 import com.polysocial.ui.common.LoadingState
@@ -167,6 +169,7 @@ object EventDetailTags {
   const val DATE = "event_detail_date"
   const val TIME = "event_detail_time"
   const val LOCATION = "event_detail_location"
+  const val DIRECTIONS = "event_detail_directions"
   const val CAPACITY = "event_detail_capacity"
   const val DESCRIPTION = "event_detail_description"
   const val OFFLINE_BANNER = "event_detail_offline_banner"
@@ -260,11 +263,13 @@ fun EventDetailRoute(
     onShowEntranceQr: () -> Unit = {},
     viewModel: EventDetailViewModel = hiltViewModel(),
     isStudent: Boolean = false,
+    directions: DirectionsViewModel = rememberDirectionsViewModel(),
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   val cancelState by viewModel.cancelState.collectAsStateWithLifecycle()
   val registrationSheet by viewModel.registrationSheet.collectAsStateWithLifecycle()
   val attendanceFeedback by viewModel.attendanceFeedback.collectAsStateWithLifecycle()
+  val directionsUnavailable by directions.unavailable.collectAsStateWithLifecycle()
   val context = LocalContext.current
   val lifecycleOwner = LocalLifecycleOwner.current
   fun hasNotificationPermission() =
@@ -343,6 +348,12 @@ fun EventDetailRoute(
       onFindGroup = onFindGroup,
       onOpenGroup = onOpenGroup,
       checkInPrompt = { entry?.let { CheckInPrompt(it, onOpen = { checkInOpen = true }) } },
+      directions =
+          EventDirections(
+              onOpen = directions::onDirections,
+              unavailable = directionsUnavailable,
+              onUnavailableShown = directions::onUnavailableShown,
+          ),
       attendanceFeedback = attendanceFeedback,
       registrationSheet = registrationSheet,
       attendance =
@@ -406,6 +417,7 @@ fun EventDetailScreen(
     attendance: EventAttendanceActions = EventAttendanceActions(),
     onOpenGroup: () -> Unit = {},
     checkInPrompt: @Composable () -> Unit = {},
+    directions: EventDirections = EventDirections(),
 ) {
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
@@ -416,6 +428,7 @@ fun EventDetailScreen(
     scope.launch { snackbarHostState.showSnackbar(message) }
   }
   AttendanceSnackbar(attendanceFeedback, attendance, snackbarHostState)
+  DirectionsSnackbar(directions, snackbarHostState)
   Box(modifier.fillMaxSize().background(Bg).testTag(EventDetailTags.SCREEN)) {
     when (state) {
       EventDetailUiState.Loading -> {
@@ -443,6 +456,7 @@ fun EventDetailScreen(
                 onOpenGroup = onOpenGroup,
                 attendance = attendance,
                 checkInPrompt = checkInPrompt,
+                onDirections = directions.onOpen,
             )
           }
       EventDetailUiState.NotFound ->
@@ -511,6 +525,7 @@ private fun EventContent(
     onOpenGroup: () -> Unit,
     attendance: EventAttendanceActions,
     checkInPrompt: @Composable () -> Unit,
+    onDirections: (Coordinates) -> Unit,
 ) {
   val details = state.details
   val event = details.event
@@ -580,6 +595,11 @@ private fun EventContent(
                   },
               titleTag = EventDetailTags.LOCATION,
           )
+          // Nobody plans a trip to an event that is over.
+          if (!state.hasEnded) {
+            Spacer(Modifier.height(12.dp))
+            DirectionsButton(onClick = { onDirections(event.location) })
+          }
           event.capacity?.let {
             Spacer(Modifier.height(12.dp))
             InfoRow(

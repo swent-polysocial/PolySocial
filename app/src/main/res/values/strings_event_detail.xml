@@ -33,6 +33,9 @@
         <item quantity="one">Up to %1$d person</item>
         <item quantity="other">Up to %1$d people</item>
     </plurals>
+    <!-- The Directions button under the place (#391). The Snackbar's text is a proposal: Figma has no frame yet (#481). -->
+    <string name="event_detail_directions">Directions</string>
+    <string name="event_detail_directions_unavailable">No app on this phone can open directions.</string>
     <string name="event_detail_find_group">Find a group</string>
     <string name="event_detail_im_going">I\'m going</string>
     <string name="event_detail_going">✓ Going</string>
