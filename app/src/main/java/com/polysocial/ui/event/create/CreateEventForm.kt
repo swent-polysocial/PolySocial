@@ -1,6 +1,7 @@
 // Contributors: Claude (drafted the Create Event form logic; picked place's address, #111; saving
 // the place's name, #112); Mohamed Khellaf (reviewed). Claude (filling the form from an event to
 // edit it, #131; the repository's errors, #131 review).
+// Contributors: Claude (Opus 5.5, Anthropic) (a capacity below the number going, #407).
 package com.polysocial.ui.event.create
 
 import com.polysocial.model.event.Coordinates
@@ -8,6 +9,7 @@ import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.EventValidationError
 import com.polysocial.model.event.MAX_LOCATION_NAME_LENGTH
+import com.polysocial.model.event.MIN_CAPACITY
 import com.polysocial.model.event.validateNewEvent
 import java.time.Instant
 import java.time.LocalDate
@@ -132,6 +134,15 @@ fun CreateEventForm.errors(
   }
   return errors
 }
+
+/**
+ * The capacity entered, when it is valid (a whole number of at least [MIN_CAPACITY]) and below
+ * [going], the number of students going; null otherwise, also for no capacity (no limit). Edit
+ * event then warns that the event stays full until enough of them cancel (#407, Figma's #406
+ * frame). An invalid capacity shows only its field error, never this warning too.
+ */
+fun CreateEventForm.capacityBelow(going: Int): Int? =
+    parseCapacity(capacityText).getOrNull()?.takeIf { it >= MIN_CAPACITY && it < going }
 
 /** The start in [zone], or null until both the date and the start time are picked. */
 private fun CreateEventForm.startIn(zone: ZoneId): ZonedDateTime? = date?.let { day ->

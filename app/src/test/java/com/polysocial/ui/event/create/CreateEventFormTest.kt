@@ -1,5 +1,6 @@
 // Contributors: Claude (wrote these tests; the place name tests, #112); Mohamed Khellaf
 // (reviewed). Claude (filling the form from an event to edit it, #131).
+// Contributors: Claude (Opus 5.5, Anthropic) (a capacity below the number going, #407).
 package com.polysocial.ui.event.create
 
 import com.polysocial.model.event.Coordinates
@@ -140,6 +141,25 @@ class CreateEventFormTest {
           setOf(CreateEventFormError.CAPACITY_NOT_A_NUMBER),
           completeForm().copy(capacityText = text).errors(FORM_NOW, ZURICH),
       )
+    }
+  }
+
+  @Test
+  fun capacityBelow_isTheCapacity_onlyWhenItIsBelowTheNumberGoing() {
+    assertEquals(8, completeForm().copy(capacityText = "8").capacityBelow(going = 12))
+    assertEquals(8, completeForm().copy(capacityText = " 8 ").capacityBelow(going = 9))
+    // At or above the number going, the event isn't over its capacity.
+    assertNull(completeForm().copy(capacityText = "12").capacityBelow(going = 12))
+    assertNull(completeForm().copy(capacityText = "20").capacityBelow(going = 12))
+  }
+
+  @Test
+  fun capacityBelow_isNull_forNoCapacityOrAnInvalidOne() {
+    // No capacity is no limit.
+    assertNull(completeForm().copy(capacityText = "").capacityBelow(going = 12))
+    // Only the field error shows then, never both messages (#406's review).
+    for (text in listOf("1", "0", "-3", "eight", "2.5")) {
+      assertNull("capacity $text", completeForm().copy(capacityText = text).capacityBelow(12))
     }
   }
 

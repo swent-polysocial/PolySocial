@@ -1,6 +1,8 @@
 // Contributors: Claude (wrote these tests of the Edit event screen, #131; the organizer's
 // repositories, #134).
 // Contributors: Claude (Opus 5.5, Anthropic) (the co-organizer repositories, #370).
+// Contributors: Claude (Opus 5.5, Anthropic) (the warning for a capacity below the number going,
+// #407).
 package com.polysocial.ui.event.create
 
 import android.app.Application
@@ -95,6 +97,43 @@ class EditEventScreenTest {
     composeTestRule.onNodeWithText(string(R.string.edit_event_title)).assertIsDisplayed()
     node(C.Tag.create_event_title).assertTextContains(stored.title)
     node(C.Tag.create_event_submit).assertTextEquals(string(R.string.edit_event_submit))
+  }
+
+  @Test
+  fun aCapacityBelowTheNumberGoing_showsTheWarning_andSaveChangesStillSaves() {
+    repository.seed(stored.copy(capacity = 20, attendeeCount = 12))
+    show()
+    node(C.Tag.create_event_capacity_warning).assertDoesNotExist()
+
+    node(C.Tag.create_event_capacity).performTextReplacement("8")
+    composeTestRule.waitForIdle()
+
+    node(C.Tag.create_event_capacity_warning)
+        .performScrollTo()
+        .assertIsDisplayed()
+        .assertTextEquals(
+            "12 students are going, more than the 8 places. " +
+                string(R.string.edit_event_capacity_below_going_detail)
+        )
+    save()
+
+    assertEquals(8, repository.events.single().capacity)
+    assertEquals(1, closes)
+  }
+
+  @Test
+  fun anInvalidCapacity_showsOnlyItsError() {
+    repository.seed(stored.copy(capacity = 8, attendeeCount = 12))
+    show()
+    node(C.Tag.create_event_capacity_warning).performScrollTo().assertIsDisplayed()
+
+    node(C.Tag.create_event_capacity).performTextReplacement("1")
+    composeTestRule.waitForIdle()
+
+    node(C.Tag.create_event_capacity_warning).assertDoesNotExist()
+    node(C.Tag.createEventError(CreateEventFormError.CAPACITY_TOO_SMALL.name))
+        .performScrollTo()
+        .assertIsDisplayed()
   }
 
   @Test

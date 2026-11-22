@@ -1,0 +1,11 @@
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (vector from the Figma "Edit event · capacity below going" frame, #406, for #407). -->
+<!-- Warning marker for a field's warning, exact paths from that frame. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="14dp" android:height="14dp" android:viewportWidth="14" android:viewportHeight="14">
+    <path android:pathData="M6.99996,1.75L1.16663,11.6667H12.8333L6.99996,1.75Z"
+        android:strokeColor="#8A5000" android:strokeWidth="1.28333" android:strokeLineJoin="round" />
+    <path android:pathData="M7,5.83398V8.45898"
+        android:strokeColor="#8A5000" android:strokeWidth="1.28333" android:strokeLineCap="round" />
+    <path android:pathData="M7.00005,10.734C7.38665,10.734 7.70005,10.4206 7.70005,10.034C7.70005,9.64739 7.38665,9.33398 7.00005,9.33398C6.61345,9.33398 6.30005,9.64739 6.30005,10.034C6.30005,10.4206 6.61345,10.734 7.00005,10.734Z"
+        android:fillColor="#8A5000" />
+</vector>
