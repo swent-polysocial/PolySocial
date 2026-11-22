@@ -149,7 +149,9 @@ flowchart TB
   map -- "preview Details" --> detail
   detail --> attend["I'm going / Cancel<br/>#121, #122"]:::s1
   attend --> remind["Optional reminder 1 h before<br/>#120, #123"]:::s1
-  profile["Profile"]:::s1 --> privacy["Privacy & data<br/>#103"]:::s1
+  profile["Profile"]:::s1 --> mine["My profile: as others see it<br/>#495"]:::pb
+  mine --> editp["Edit profile<br/>#235, Save and Back return"]:::s1
+  profile --> privacy["Privacy & data<br/>#103"]:::s1
   profile --> friendcode["My friend code: own QR code<br/>#339"]:::s1
   privacy --> notice["Full dated notice<br/>#103"]:::s1
   profile --> logout["Confirm Log out<br/>#108, #109"]:::s1
