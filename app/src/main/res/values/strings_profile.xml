@@ -5,6 +5,10 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) drafted the Delete account texts, #207; Mohamed Khellaf (reviewed and revised). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (messages kept in group and one-to-one chats, in the Delete account sheet, #433). -->
 <resources>
+    <string name="my_profile_title">My profile</string>
+    <string name="my_profile_edit">Edit profile</string>
+    <string name="my_profile_not_ready_title">Your public profile isn\'t ready</string>
+    <string name="my_profile_not_ready_body">Edit your profile and save it, so other students can see it.</string>
     <string name="profile_back">Back</string>
     <string name="profile_step">Step %1$d of 2</string>
     <string name="profile_title">Complete your profile</string>
