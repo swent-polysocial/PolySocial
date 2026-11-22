@@ -1,5 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests of "Event full" on the event
-// detail, #407).
+// detail, #407; unreadable registrations and organizers, after review).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -177,6 +177,42 @@ class EventDetailFullTest {
     // The screen keeps "✓ Going" and Cancel registration for them.
     assertTrue(state.isFull)
     assertEquals(Attendance.GOING, state.attendance)
+  }
+
+  @Test
+  fun unreadableRegistrations_keepImGoing_untilTheServerRefusesItAsFull() = runTest {
+    // The student may be going: "I'm going" is their way back to "✓ Going" (#513's review).
+    registrations.readFailure = true
+    val vm = open(event(attendeeCount = 8))
+    assertEquals(Attendance.NOT_GOING, vm.loaded.attendance)
+    assertFalse(vm.loaded.isFull)
+
+    registrations.registerFailure = RegisterResult.Full
+    vm.onImGoing()
+    runCurrent()
+
+    // The server says they aren't registered and there's no place.
+    assertTrue(vm.loaded.isFull)
+  }
+
+  @Test
+  fun unreadableRegistrations_aGoingStudentGetsGoingBack() = runTest {
+    registrations.seedRegistration(EVENT_ID, STUDENT)
+    registrations.readFailure = true
+    val vm = open(event(attendeeCount = 8))
+
+    vm.onImGoing()
+    runCurrent()
+
+    assertEquals(Attendance.GOING, vm.loaded.attendance)
+  }
+
+  @Test
+  fun anOrganizer_isNeverFull() = runTest {
+    auth.user = AuthUser(ORGANIZER, "organizer@example.com", true)
+    registrations.currentUid = ORGANIZER
+
+    assertFalse(open(event(attendeeCount = 8)).loaded.isFull)
   }
 
   private companion object {
