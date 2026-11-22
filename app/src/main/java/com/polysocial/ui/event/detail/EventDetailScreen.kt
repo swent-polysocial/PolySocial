@@ -21,6 +21,8 @@
 // read, at any font size, #281's review).
 // Contributors: Claude (Opus 5.5, Anthropic) (every organizer's name in the row, each in bold, from
 // the Figma "Organizers on the detail" frames, #371).
+// Contributors: Claude (Opus 5.5, Anthropic) ("Event full" and its note, from the Figma "Event
+// detail · full" frame, #407).
 package com.polysocial.ui.event.detail
 
 import android.Manifest
@@ -132,6 +134,7 @@ import com.polysocial.ui.theme.Border
 import com.polysocial.ui.theme.Disabled
 import com.polysocial.ui.theme.Ink
 import com.polysocial.ui.theme.Ink2
+import com.polysocial.ui.theme.Ink3
 import com.polysocial.ui.theme.PlusJakartaSans
 import com.polysocial.ui.theme.Surface
 import com.polysocial.ui.theme.exact
@@ -171,6 +174,8 @@ object EventDetailTags {
   const val GOING = "event_detail_going"
   const val ATTENDANCE_SAVING = "event_detail_attendance_saving"
   const val REGISTERED_NOTE = "event_detail_registered_note"
+  const val EVENT_FULL = "event_detail_event_full"
+  const val FULL_NOTE = "event_detail_full_note"
   const val CANCEL_REGISTRATION = "event_detail_cancel_registration"
   const val CANCEL_REGISTRATION_SHEET = "event_detail_cancel_registration_sheet"
   const val CONFIRM_CANCEL_REGISTRATION = "event_detail_confirm_cancel_registration"
@@ -569,6 +574,8 @@ private fun EventContent(
     // group, its card replaces Find a group (#233), and "✓ Going" takes the whole bar (Figma "Event
     // detail · in a group").
     val isGoing = !state.isOrganizer && state.attendance == Attendance.GOING
+    // A full event can't take this student (#407); one already going keeps "✓ Going".
+    val showFull = state.isFull && !state.isOrganizer && !isGoing
     val findGroup = onFindGroup.takeIf { state.yourGroup == null }
     // Matching other students for an event nobody confirmed attending doesn't make sense (#244);
     // an organizer counts as going without needing the attendance flow.
@@ -615,7 +622,13 @@ private fun EventContent(
           )
         }
       }
-      ActionBar(state, attendance.onImGoing, findGroup, findGroupEnabled)
+      if (showFull) {
+        FullNote(
+            capacity = state.details.event.capacity,
+            modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
+        )
+      }
+      ActionBar(state, showFull, attendance.onImGoing, findGroup, findGroupEnabled)
     }
   }
 }
@@ -703,6 +716,37 @@ private fun RegisteredNote(
                   .testTag(EventDetailTags.CANCEL_REGISTRATION),
       )
     }
+  }
+}
+
+/**
+ * Figma "Event detail · full" (558:60): the "Full" chip and "All [capacity] places are taken." A
+ * [capacity] of null (the event shown has none yet, but the server refused a registration as full)
+ * leaves the number out.
+ */
+@Composable
+private fun FullNote(capacity: Int?, modifier: Modifier = Modifier) {
+  Row(
+      modifier
+          .fillMaxWidth()
+          .semantics(mergeDescendants = true) {}
+          .testTag(EventDetailTags.FULL_NOTE),
+      horizontalArrangement = Arrangement.spacedBy(8.dp),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Pill(
+        text = stringResource(R.string.event_detail_full),
+        color = Ink2,
+        background = Disabled,
+        height = 23.dp,
+        horizontalPadding = 10.dp,
+    )
+    Text(
+        if (capacity == null) stringResource(R.string.event_detail_all_places_taken_no_count)
+        else pluralStringResource(R.plurals.event_detail_all_places_taken, capacity, capacity),
+        style = NOTE_STYLE,
+        color = Ink2,
+    )
   }
 }
 
@@ -1148,11 +1192,12 @@ internal fun DetailOfflineBanner(
  * detail · organizer"), and without [onFindGroup], for a student in a group, the attendance button
  * takes the whole width (Figma "Event detail · in a group"). While visible but not
  * [findGroupEnabled] (not yet going), it shows greyed out instead of hidden, so a student knows the
- * option exists (#244).
+ * option exists (#244). With [showFull], "Event full" takes the attendance button's place (#407).
  */
 @Composable
 private fun ActionBar(
     state: EventDetailUiState.Loaded,
+    showFull: Boolean,
     onImGoing: () -> Unit,
     onFindGroup: (() -> Unit)?,
     findGroupEnabled: Boolean,
@@ -1163,7 +1208,9 @@ private fun ActionBar(
         Modifier.padding(horizontal = 20.dp, vertical = 12.dp).fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-      if (!state.isOrganizer) {
+      if (showFull) {
+        EventFullButton(Modifier.weight(137.5f))
+      } else if (!state.isOrganizer) {
         AttendanceButton(
             state.attendance,
             state.isSavingAttendance,
@@ -1246,6 +1293,30 @@ private fun AttendanceButton(
           color = content,
       )
     }
+  }
+}
+
+/**
+ * Figma "Event detail · full": "Event full" in grey where "I'm going" was (#407). It is a status,
+ * not a control, so like "✓ Going" it isn't clickable, and TalkBack reads it as text.
+ */
+@Composable
+private fun EventFullButton(modifier: Modifier = Modifier) {
+  Box(
+      modifier =
+          modifier
+              .height(52.dp)
+              .clip(ACTION_SHAPE)
+              .background(Disabled)
+              .semantics(mergeDescendants = true) {}
+              .testTag(EventDetailTags.EVENT_FULL),
+      contentAlignment = Alignment.Center,
+  ) {
+    Text(
+        stringResource(R.string.event_detail_event_full),
+        style = MaterialTheme.typography.titleSmall,
+        color = Ink3,
+    )
   }
 }
 
