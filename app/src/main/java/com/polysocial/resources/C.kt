@@ -8,6 +8,7 @@
 // Contributors: Claude Opus 5.5 (My friend code tags, #339); Konstantinos Perdikeas (directed,
 // reviewed and owns them).
 // Contributors: OpenAI Codex (group and chat privacy notice tags, #241).
+// Contributors: Claude (Opus 5.5, Anthropic) (Edit event's capacity warning tag, #407).
 // Contributors: Claude Opus 5.5 (student profile tags, #368); Konstantinos Perdikeas (directed,
 // reviewed and owns them).
 package com.polysocial.resources
@@ -108,6 +109,7 @@ object C {
     const val create_event_end_next_day = "create_event_end_next_day"
     const val create_event_location = "create_event_location"
     const val create_event_capacity = "create_event_capacity"
+    const val create_event_capacity_warning = "create_event_capacity_warning"
     const val create_event_private = "create_event_private"
     const val create_event_public = "create_event_public"
     const val create_event_submit = "create_event_submit"

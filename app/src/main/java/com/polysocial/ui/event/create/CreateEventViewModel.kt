@@ -4,6 +4,8 @@
 // and the "Add a co-organizer" sheet, #370).
 // Contributors: Claude (Opus 5.5, Anthropic) (Edit event's own organizer and the organizer read's
 // timeout, #249 in #371).
+// Contributors: Claude (Opus 5.5, Anthropic) (the warning for a capacity below the number going,
+// #407).
 package com.polysocial.ui.event.create
 
 import androidx.lifecycle.SavedStateHandle
@@ -104,6 +106,13 @@ sealed interface Organizer {
 }
 
 /**
+ * Edit event's warning (#407, Figma's #406 frame): the [capacity] entered is below the [going]
+ * students the event had when the form opened. It doesn't stop the save: nobody is removed, and the
+ * event stays full until enough of them cancel.
+ */
+data class CapacityWarning(val going: Int, val capacity: Int)
+
+/**
  * Everything the Create Event screen shows.
  *
  * @property visibleErrors the errors to show now: those of the fields the organizer has changed, or
@@ -116,6 +125,8 @@ sealed interface Organizer {
  * @property organizer who the form says organizes the event.
  * @property coOrganizers Edit event's organizers block (#370), or null when the form has none:
  *   creating an event, or editing an association's, which keeps its single organizer.
+ * @property capacityWarning Edit event only: shown while the capacity entered is valid and below
+ *   the event's `attendeeCount` as read when the form opened ([capacityBelow]); null otherwise.
  */
 data class CreateEventUiState(
     val today: LocalDate,
@@ -126,6 +137,7 @@ data class CreateEventUiState(
     val status: CreateEventStatus = CreateEventStatus.Editing,
     val organizer: Organizer = Organizer.Loading,
     val coOrganizers: CoOrganizersUiState? = null,
+    val capacityWarning: CapacityWarning? = null,
 )
 
 /**
@@ -140,7 +152,9 @@ data class CreateEventUiState(
  * (#131): it reads the event once ([CreateEventStatus.Loading]) to fill in the form, then saves the
  * changes with [EventRepository.updateEvent]. Edit event opens from the event detail, which has
  * already read the event, so the read normally answers at once from Firestore's cache. A start that
- * is already past is accepted while it is the stored one (see [errors]).
+ * is already past is accepted while it is the stored one (see [errors]). A capacity below the
+ * number going, as read then, is allowed with a warning
+ * ([CreateEventUiState.capacityWarning], #407): the count isn't read again while the form is open.
  *
  * It also reads who organizes the event (#134): a verified association sees its name, from its
  * profile ([UserProfileRepository]) and its association ([AssociationRepository]); everyone else,
@@ -483,8 +497,15 @@ constructor(
           status = status,
           organizer = it.organizer,
           coOrganizers = coOrganizersState(),
+          capacityWarning = capacityWarning(form),
       )
     }
+  }
+
+  /** The warning for [form]'s capacity, against the number going when the form opened (#407). */
+  private fun capacityWarning(form: CreateEventForm): CapacityWarning? {
+    val going = stored?.attendeeCount ?: return null
+    return form.capacityBelow(going)?.let { CapacityWarning(going, it) }
   }
 
   private fun currentErrors(form: CreateEventForm) =

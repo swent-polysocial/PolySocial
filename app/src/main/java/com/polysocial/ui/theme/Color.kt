@@ -1,5 +1,6 @@
 // Contributors: Claude (v2 design-system colour tokens from Figma "First proposal revamped"; the
 // confirmation sheets' icon background, #296).
+// Contributors: Claude (Opus 5.5, Anthropic) (a warning's field outline, #407).
 package com.polysocial.ui.theme
 
 import androidx.compose.ui.graphics.Color
@@ -27,6 +28,8 @@ val Info = Color(0xFF2F5FD0)
 val InfoSoft = Color(0xFFE8EEFC)
 val Warning = Color(0xFF8A5000)
 val WarningSoft = Color(0xFFFDF1DC)
+// Figma color/amber: the outline of a field with a warning (#406)
+val WarningOutline = Color(0xFFC9821A)
 
 // Map style
 val MapLand = Color(0xFFEEF0EA)

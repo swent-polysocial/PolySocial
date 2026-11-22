@@ -3,6 +3,8 @@
 // its field label, failure banner and button shared through ui/common, #251; the organizer row,
 // #134).
 // Contributors: Claude (Opus 5.5, Anthropic) (Edit event's organizers block, #370).
+// Contributors: Claude (Opus 5.5, Anthropic) (Edit event's capacity warning, from Figma's #406
+// frame, #407).
 package com.polysocial.ui.event.create
 
 import androidx.activity.compose.BackHandler
@@ -69,13 +71,16 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.error
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -101,6 +106,8 @@ import com.polysocial.ui.theme.Ink
 import com.polysocial.ui.theme.Ink2
 import com.polysocial.ui.theme.Ink3
 import com.polysocial.ui.theme.SuccessSoft
+import com.polysocial.ui.theme.Warning
+import com.polysocial.ui.theme.WarningOutline
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
@@ -414,12 +421,14 @@ fun CreateEventFormContent(
                 tag = C.Tag.create_event_capacity,
                 keyboardType = KeyboardType.Number,
                 suffix = stringResource(R.string.create_event_capacity_suffix),
+                isWarning = state.capacityWarning != null,
             )
             Errors(
                 state,
                 CreateEventFormError.CAPACITY_NOT_A_NUMBER,
                 CreateEventFormError.CAPACITY_TOO_SMALL,
             )
+            state.capacityWarning?.let { CapacityWarningNote(it) }
           }
 
           Section(R.string.create_event_visibility_label, labelGap = 8.dp) {
@@ -527,10 +536,25 @@ private fun Section(
   content()
 }
 
-/** The outline every Figma field shares: white, 12 dp corners, a 2 dp accent border on error. */
-private fun Modifier.fieldOutline(isError: Boolean, shape: RoundedCornerShape) =
+/**
+ * The outline every Figma field shares: white, 12 dp corners, a 2 dp accent border on error, or a 2
+ * dp amber one on a warning (#407).
+ */
+private fun Modifier.fieldOutline(
+    isError: Boolean,
+    shape: RoundedCornerShape,
+    isWarning: Boolean = false,
+) =
     background(Bg, shape)
-        .border(if (isError) 2.dp else 1.dp, if (isError) Accent else Border, shape)
+        .border(
+            if (isError || isWarning) 2.dp else 1.dp,
+            when {
+              isError -> Accent
+              isWarning -> WarningOutline
+              else -> Border
+            },
+            shape,
+        )
 
 @Composable
 private fun fieldTextStyle(): TextStyle =
@@ -547,6 +571,7 @@ private fun InputField(
     minHeight: Dp = FIELD_HEIGHT,
     keyboardType: KeyboardType = KeyboardType.Text,
     suffix: String? = null,
+    isWarning: Boolean = false,
 ) {
   val singleLine = minHeight == FIELD_HEIGHT
   val textStyle = fieldTextStyle()
@@ -567,7 +592,7 @@ private fun InputField(
         Row(
             Modifier.fillMaxWidth()
                 .heightIn(min = minHeight)
-                .fieldOutline(isError, shape)
+                .fieldOutline(isError, shape, isWarning)
                 .padding(horizontal = 14.dp, vertical = if (singleLine) 0.dp else 13.dp),
             verticalAlignment = if (singleLine) Alignment.CenterVertically else Alignment.Top,
         ) {
@@ -802,6 +827,45 @@ private fun Errors(state: CreateEventUiState, vararg errors: CreateEventFormErro
           Text(error.message(state), style = MaterialTheme.typography.bodySmall, color = AccentText)
         }
       }
+}
+
+/**
+ * Edit event's warning under the capacity (#407, Figma "Edit event · capacity below going"): where
+ * the field errors go, with an amber marker, the number going and the capacity in bold, then why
+ * nothing else happens. It doesn't block Save changes.
+ */
+@Composable
+private fun CapacityWarningNote(warning: CapacityWarning) {
+  val headline =
+      pluralStringResource(
+          R.plurals.edit_event_capacity_below_going,
+          warning.going,
+          warning.going,
+          warning.capacity,
+      )
+  val detail = stringResource(R.string.edit_event_capacity_below_going_detail)
+  Row(
+      Modifier.padding(top = 6.dp)
+          .semantics(mergeDescendants = true) {}
+          .testTag(C.Tag.create_event_capacity_warning),
+      horizontalArrangement = Arrangement.spacedBy(6.dp),
+  ) {
+    Image(
+        painterResource(R.drawable.ic_warning),
+        contentDescription = null,
+        // Level with the first line, as in Figma.
+        modifier = Modifier.padding(top = 1.dp),
+    )
+    Text(
+        buildAnnotatedString {
+          withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) { append(headline) }
+          append(" ")
+          append(detail)
+        },
+        style = MaterialTheme.typography.bodySmall,
+        color = Warning,
+    )
+  }
 }
 
 @Composable

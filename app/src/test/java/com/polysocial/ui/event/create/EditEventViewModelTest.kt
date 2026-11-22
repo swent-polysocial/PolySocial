@@ -1,6 +1,8 @@
 // Contributors: Claude (wrote these tests of Edit event, #131; the repository's errors, #131
 // review; the organizer's repositories, #134).
 // Contributors: Claude (Opus 5.5, Anthropic) (the co-organizer repositories, #370).
+// Contributors: Claude (Opus 5.5, Anthropic) (the warning for a capacity below the number going,
+// #407).
 package com.polysocial.ui.event.create
 
 import androidx.lifecycle.SavedStateHandle
@@ -20,6 +22,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -105,6 +108,63 @@ class EditEventViewModelTest {
     assertEquals("event-1", repository.updateRequests.single().id)
     assertEquals("Exam review", repository.events.single().title)
     assertEquals(stored.startTime, repository.events.single().startTime)
+  }
+
+  @Test
+  fun aCapacityBelowTheNumberGoing_warns_andStillSaves() {
+    repository.seed(stored.copy(capacity = 20, attendeeCount = 12))
+    val viewModel = editing()
+    runPending()
+    assertNull(viewModel.state().capacityWarning)
+
+    viewModel.onCapacityChange("8")
+    assertEquals(CapacityWarning(going = 12, capacity = 8), viewModel.state().capacityWarning)
+    // A warning, not an error.
+    assertTrue(viewModel.state().visibleErrors.isEmpty())
+    assertTrue(viewModel.state().canSubmit)
+
+    viewModel.onSubmit()
+    runPending()
+
+    assertEquals(CreateEventStatus.Saved, viewModel.state().status)
+    assertEquals(8, repository.events.single().capacity)
+    assertEquals(12, repository.events.single().attendeeCount)
+  }
+
+  @Test
+  fun anEventAlreadyOverItsCapacity_warnsAsSoonAsItOpens() {
+    repository.seed(stored.copy(capacity = 8, attendeeCount = 12))
+
+    val viewModel = editing().also { runPending() }
+
+    assertEquals(CapacityWarning(going = 12, capacity = 8), viewModel.state().capacityWarning)
+  }
+
+  @Test
+  fun theWarningGoes_withEnoughPlaces_noLimit_orAnInvalidCapacity() {
+    repository.seed(stored.copy(capacity = 8, attendeeCount = 12))
+    val viewModel = editing().also { runPending() }
+
+    viewModel.onCapacityChange("12")
+    assertNull(viewModel.state().capacityWarning)
+
+    viewModel.onCapacityChange("")
+    assertNull(viewModel.state().capacityWarning)
+
+    // Only "Enter at least 2 people" then, not both messages.
+    viewModel.onCapacityChange("1")
+    assertNull(viewModel.state().capacityWarning)
+    assertEquals(setOf(CreateEventFormError.CAPACITY_TOO_SMALL), viewModel.state().visibleErrors)
+  }
+
+  @Test
+  fun anEventNobodyIsGoingTo_neverWarns() {
+    repository.seed(stored.copy(capacity = 20, attendeeCount = 0))
+    val viewModel = editing().also { runPending() }
+
+    viewModel.onCapacityChange("2")
+
+    assertNull(viewModel.state().capacityWarning)
   }
 
   @Test
