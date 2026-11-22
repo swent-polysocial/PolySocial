@@ -1,8 +1,12 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the one-to-one chats' account-deletion step,
-// from #365's prototype, #429; malformed uids tolerated, after review.
+// from #365's prototype, #429; malformed uids tolerated, and entries that can't be a UID, after
+// review.
 "use strict";
 
 const { deleteAllMatching } = require("./registrations");
+
+/** What a Firebase Auth UID can be: 1 to 128 letters, digits, `-` or `_`. */
+const UID_PATTERN = /^[A-Za-z0-9_-]{1,128}$/;
 
 /**
  * Takes the deleted account `uid` out of its one-to-one chats `chats/{pairId}` (#365), each with
@@ -36,9 +40,10 @@ async function leaveUserChats(db, uid) {
  *   [leaveUserChats]'s query finds a deletion interrupted in between: an empty `uids` written first
  *   would hide it from a retry and keep both students' texts for good.
  * A chat already gone when the transaction reads it (another deletion got there first), or no longer
- * holding a list, is skipped. An entry of `uids` that isn't a non-empty string can't be a UID, so it
- * isn't an account and is kept as it is, as #241's group step does with `memberUids`: a malformed
- * chat can't stop the deletion.
+ * holding a list, is skipped. An entry of `uids` that can't be a Firebase Auth UID (1 to 128
+ * letters, digits, `-` or `_`; not a number, an empty string or a path such as `a/b`, which `doc()`
+ * refuses) isn't an account and is kept as it is, as #241's group step does with `memberUids`: a
+ * malformed chat can't stop the deletion.
  */
 async function leaveChat(db, chat, uid) {
   const nobodyLeft = await db.runTransaction(async (transaction) => {
@@ -46,7 +51,7 @@ async function leaveChat(db, chat, uid) {
     if (!Array.isArray(uids)) return false;
     const others = uids.filter((member) => member !== uid);
     for (const other of others) {
-      if (typeof other !== "string" || other === "") continue;
+      if (typeof other !== "string" || !UID_PATTERN.test(other)) continue;
       if (!(await transaction.get(db.collection("deletedAccounts").doc(other))).exists) {
         transaction.update(chat, { uids: others });
         return false;
