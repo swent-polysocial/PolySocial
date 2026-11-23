@@ -7,6 +7,8 @@
 // Contributors: Claude Opus 5.5 (tests for a pending reminder notification's event, #123's second
 // PR review).
 // Contributors: Claude (Opus 5.5, Anthropic) (the Chats tab's stand-in, #364).
+// Contributors: Claude (Opus 5.5, Anthropic) (the Chats tab's stand-in takes the one-to-one opener,
+// #432).
 package com.polysocial.ui.navigation
 
 import android.content.Context
@@ -79,7 +81,7 @@ class AppShellTest {
               TabRootScreen(Tab.PROFILE)
             },
             onLoggedOut = { loggedOut++ },
-            chatsContent = { TabRootScreen(Tab.CHATS) },
+            chatsContent = { _, _ -> TabRootScreen(Tab.CHATS) },
             eventsContent = {
               Box(Modifier.testTag("injected_events_content")) { TabRootScreen(Tab.EVENTS) }
             },

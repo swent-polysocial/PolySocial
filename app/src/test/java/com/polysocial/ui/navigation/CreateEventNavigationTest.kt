@@ -5,6 +5,8 @@
 // #134).
 // Contributors: Claude (Opus 5.5, Anthropic) (the co-organizer repositories, #370).
 // Contributors: Claude (Opus 5.5, Anthropic) (the Chats tab's stand-in, #364).
+// Contributors: Claude (Opus 5.5, Anthropic) (the Chats tab's stand-in takes the one-to-one opener,
+// #432).
 package com.polysocial.ui.navigation
 
 import android.app.Application
@@ -86,7 +88,7 @@ class CreateEventNavigationTest {
             navController = navController,
             eventsContent = { TabRootScreen(Tab.EVENTS) },
             profileContent = { TabRootScreen(Tab.PROFILE) },
-            chatsContent = { TabRootScreen(Tab.CHATS) },
+            chatsContent = { _, _ -> TabRootScreen(Tab.CHATS) },
             mapContent = { onViewDetails, onCreateEvent ->
               MapScreen(
                   state =
