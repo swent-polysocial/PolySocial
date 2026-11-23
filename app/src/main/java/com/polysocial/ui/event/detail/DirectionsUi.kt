@@ -37,9 +37,9 @@ import com.polysocial.ui.theme.Border
 import com.polysocial.ui.theme.Ink
 
 /**
- * What the event detail does about directions (#391): [onOpen] opens public-transport directions to
- * a place, and [unavailable], while not null, is a Snackbar saying no app could open them, which
- * calls [onUnavailableShown] once it has been shown.
+ * What the event detail does about directions (#391): [onOpen] opens a place in the maps app, and
+ * [unavailable], while not null, is a Snackbar saying no app could open them, which calls
+ * [onUnavailableShown] once it has been shown.
  */
 data class EventDirections(
     val onOpen: (Coordinates) -> Unit = {},
@@ -78,7 +78,7 @@ internal fun DirectionsSnackbar(directions: EventDirections, snackbarHostState: 
   }
 }
 
-/** "Directions", under the event's place: an outlined pill with the public-transport icon. */
+/** "Directions", under the event's place: an outlined pill with the navigation arrow. */
 @Composable
 internal fun DirectionsButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
   val shape = RoundedCornerShape(26.dp)
@@ -95,7 +95,7 @@ internal fun DirectionsButton(onClick: () -> Unit, modifier: Modifier = Modifier
       verticalAlignment = Alignment.CenterVertically,
   ) {
     Icon(
-        painterResource(R.drawable.ic_transit),
+        painterResource(R.drawable.ic_navigation),
         contentDescription = null,
         tint = Ink,
         modifier = Modifier.size(18.dp),

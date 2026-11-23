@@ -126,7 +126,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
-import com.polysocial.model.directions.transitDirectionsLink
+import com.polysocial.model.directions.directionsLink
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.EventCategory
 import com.polysocial.ui.common.ConfirmationSheet
@@ -598,7 +598,7 @@ private fun EventContent(
           )
           // Nobody plans a trip to an event that is over, nor to a place with no usable
           // coordinates.
-          if (!state.hasEnded && transitDirectionsLink(event.location) != null) {
+          if (!state.hasEnded && directionsLink(event.location) != null) {
             Spacer(Modifier.height(12.dp))
             DirectionsButton(onClick = { onDirections(event.location) })
           }
