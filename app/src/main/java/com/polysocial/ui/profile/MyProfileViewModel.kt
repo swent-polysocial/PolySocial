@@ -42,10 +42,7 @@ constructor(private val auth: AuthRepository, private val profiles: PublicProfil
     }
     read?.cancel()
     read = viewModelScope.launch {
-      state.value =
-          profiles
-              .getPublicProfileWithCache(uid, StudentProfileViewModel.TIMEOUT_MILLIS)
-              .toUiState()
+      state.value = profiles.getPublicProfileWithCache(uid, PROFILE_READ_TIMEOUT_MILLIS).toUiState()
     }
   }
 

@@ -1,5 +1,5 @@
 // Contributors: Claude (Sonnet 5.5, Anthropic) (the signed-in student's own profile and its Edit
-// profile button, #495; the Figma frames are still to be drawn).
+// profile button, #495, from the Figma frames of #494).
 package com.polysocial.ui.profile
 
 import androidx.compose.foundation.background

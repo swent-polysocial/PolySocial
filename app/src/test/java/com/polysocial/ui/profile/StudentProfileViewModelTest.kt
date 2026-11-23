@@ -119,7 +119,7 @@ class StudentProfileViewModelTest {
         val vm = viewModel(repository = NeverAnswers)
         runCurrent()
 
-        advanceTimeBy(StudentProfileViewModel.TIMEOUT_MILLIS - 1)
+        advanceTimeBy(PROFILE_READ_TIMEOUT_MILLIS - 1)
         runCurrent()
         assertEquals(StudentProfileUiState.Loading, vm.uiState.value)
 
@@ -134,7 +134,7 @@ class StudentProfileViewModelTest {
         val answer = CompletableDeferred<PublicProfileResult>()
         val vm = viewModel(repository = Answers(answer))
         runCurrent()
-        advanceTimeBy(StudentProfileViewModel.TIMEOUT_MILLIS - 1)
+        advanceTimeBy(PROFILE_READ_TIMEOUT_MILLIS - 1)
 
         answer.complete(PublicProfileResult.Found(lea))
         runCurrent()
@@ -152,7 +152,7 @@ class StudentProfileViewModelTest {
         runCurrent()
         assertEquals(emptyList<String>(), stalled.cacheReads)
 
-        advanceTimeBy(StudentProfileViewModel.TIMEOUT_MILLIS)
+        advanceTimeBy(PROFILE_READ_TIMEOUT_MILLIS)
         runCurrent()
 
         assertEquals(StudentProfileUiState.Found(lea), vm.uiState.value)
@@ -172,7 +172,7 @@ class StudentProfileViewModelTest {
           val vm = viewModel(repository = Stalled(cached))
           runCurrent()
 
-          advanceTimeBy(StudentProfileViewModel.TIMEOUT_MILLIS)
+          advanceTimeBy(PROFILE_READ_TIMEOUT_MILLIS)
           runCurrent()
 
           assertEquals("$cached", StudentProfileUiState.CouldNotLoad, vm.uiState.value)
@@ -202,7 +202,7 @@ class StudentProfileViewModelTest {
 
         answer.complete(PublicProfileResult.NotFound)
         runCurrent()
-        advanceTimeBy(StudentProfileViewModel.TIMEOUT_MILLIS)
+        advanceTimeBy(PROFILE_READ_TIMEOUT_MILLIS)
         runCurrent()
 
         assertEquals(StudentProfileUiState.NotFound, vm.uiState.value)
