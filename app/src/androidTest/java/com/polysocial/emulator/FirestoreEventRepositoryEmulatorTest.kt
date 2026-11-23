@@ -717,6 +717,7 @@ class FirestoreEventRepositoryEmulatorTest {
             "organizerIds",
             "allowedUids",
             "isAssociationEvent",
+            "allowedSections",
         )
 
     fun publicEvent(startsIn: Duration) =
