@@ -13,6 +13,7 @@
 // failure at every call followed by a retry, #429).
 // Contributors: Claude (Opus 5.5, Anthropic) (a message deleted while the messages step runs, and
 // malformed uids, after review, #429).
+// Contributors: Claude (Opus 5.5, Anthropic) (the username freed with the profile, #448).
 
 // Unit tests with fakes, no emulator: node firebase/functions/deleteAccountHandler.test.js
 const { test } = require("node:test");
@@ -100,6 +101,8 @@ function fakeBackend({
   hidden = {},
   beforeChatRead = () => {},
   beforeAnonymise = () => {},
+  // Username documents by path, with their data (#448).
+  usernames = {},
 } = {}) {
   const calls = [];
   const fail = {};
@@ -115,6 +118,7 @@ function fakeBackend({
     chats,
     deletedUids: new Set(deletedUids),
     hidden,
+    usernames: { ...usernames },
   };
   const failIfAsked = (operation) => {
     const error = fail[operation];
@@ -301,6 +305,7 @@ function fakeBackend({
           let data = state.groups[ref.path] ?? null;
           if (ref.path.startsWith("users/")) data = state.profile;
           if (ref.path.startsWith("chats/")) data = state.chats[ref.path] ?? null;
+          if (ref.path.startsWith("usernames/")) data = state.usernames[ref.path] ?? null;
           if (ref.path.startsWith("deletedAccounts/")) {
             data = state.deletedUids.has(ref.path.split("/")[1]) ? {} : null;
           }
@@ -332,6 +337,7 @@ function fakeBackend({
         if (kind === "set" && ref.path.startsWith("deletedAccounts/")) state.deletionMarker = data;
         if (kind === "delete" && ref.path.startsWith("users/")) state.profile = null;
         if (kind === "delete" && ref.path.startsWith("publicProfiles/")) state.publicProfile = null;
+        if (kind === "delete" && ref.path.startsWith("usernames/")) delete state.usernames[ref.path];
         if (kind === "delete" && ref.path.includes("/attendees/")) {
           state.registrations.delete(ref.path);
         }
@@ -469,6 +475,70 @@ test("profiles deleted and marked deleted, then registrations, friendships and c
   assert.equal(backend.state.profile, null);
   assert.equal(backend.state.publicProfile, null);
   assert.equal(backend.state.authUserExists, false);
+});
+
+// ---- The username (#448) ----
+
+test("the student's username is freed in the profile's transaction, before the other steps", async () => {
+  const backend = fakeBackend({
+    profile: { accountType: "student", username: "franek" },
+    usernames: { "usernames/franek": { uid: UID } },
+  });
+  assert.deepEqual(await call(backend), { deleted: true });
+  assert.deepEqual(backend.calls.slice(0, 10), [
+    "collection:users",
+    `get:users/${UID}`,
+    "collection:usernames",
+    "get:usernames/franek",
+    "collection:deletedAccounts",
+    "collection:publicProfiles",
+    `set:deletedAccounts/${UID}`,
+    `delete:users/${UID}`,
+    `delete:publicProfiles/${UID}`,
+    "delete:usernames/franek",
+  ]);
+  assert.deepEqual(backend.state.usernames, {});
+});
+
+test("a username document held by another UID is kept", async () => {
+  const backend = fakeBackend({
+    profile: { accountType: "student", username: "franek" },
+    usernames: { "usernames/franek": { uid: "student-uid-2" } },
+  });
+  assert.deepEqual(await call(backend), { deleted: true });
+  assert.deepEqual(backend.state.usernames, { "usernames/franek": { uid: "student-uid-2" } });
+  assert.ok(!backend.calls.includes("delete:usernames/franek"));
+});
+
+test("a profile naming a username that isn't stored is deleted too", async () => {
+  const backend = fakeBackend({ profile: { accountType: "student", username: "franek" } });
+  assert.deepEqual(await call(backend), { deleted: true });
+  assert.equal(backend.state.profile, null);
+  assert.ok(!backend.calls.includes("delete:usernames/franek"));
+});
+
+for (const username of ["Franek", "a/b", "", 42, null]) {
+  test(`a username that can't be a name (${JSON.stringify(username)}) neither stops the deletion nor is read`, async () => {
+    const backend = fakeBackend({ profile: { accountType: "student", username } });
+    assert.deepEqual(await call(backend), { deleted: true });
+    assert.equal(backend.state.profile, null);
+    assert.ok(!backend.calls.includes("collection:usernames"));
+  });
+}
+
+test("a failed transaction keeps the profile and the username, and a retry frees both", async () => {
+  const backend = fakeBackend({
+    profile: { accountType: "student", username: "franek" },
+    usernames: { "usernames/franek": { uid: UID } },
+  });
+  backend.fail.delete = { error: backendError(14), once: true };
+  await assertHttpsError(call(backend), "unavailable", undefined);
+  assert.notEqual(backend.state.profile, null);
+  assert.deepEqual(backend.state.usernames, { "usernames/franek": { uid: UID } });
+
+  assert.deepEqual(await call(backend), { deleted: true });
+  assert.equal(backend.state.profile, null);
+  assert.deepEqual(backend.state.usernames, {});
 });
 
 test("only the student's registrations are deleted, other students' are kept", async () => {

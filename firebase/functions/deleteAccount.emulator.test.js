@@ -7,6 +7,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (one-to-one chats and delete-for-me markers, #429; a
 // message deleted while the messages step runs, and one pair ID helper, after review, #429).
 // Contributors: Claude (Opus 5.5, Anthropic) (two accounts deleted together, stopping partway, #429).
+// Contributors: Claude (Opus 5.5, Anthropic) (the username freed, idempotently, #448).
 "use strict";
 // Contributors: OpenAI Codex (real membership cleanup and retryable message anonymisation, #241).
 
@@ -169,6 +170,34 @@ test("a student's profiles and Auth user are deleted, their event is kept", asyn
   assert.equal(await documentExists(`deletedAccounts/${uid}`), true);
   assert.equal(await authUserExists(uid), false);
   assert.equal(await documentExists(`events/event-of-${uid}`), true);
+});
+
+test("a student's username is freed with the profile, another student's is kept (#448)", async () => {
+  const uid = await seedUser("student@epfl.ch", { accountType: "student", username: "franek" });
+  const other = await seedUser("other@epfl.ch", { accountType: "student", username: "lea" });
+  await db.doc("usernames/franek").set({ uid });
+  await db.doc("usernames/lea").set({ uid: other });
+  const idToken = await signIn("student@epfl.ch");
+
+  assert.equal((await callDeleteAccount(idToken)).status, 200);
+
+  assert.equal(await documentExists("usernames/franek"), false);
+  assert.deepEqual((await db.doc("usernames/lea").get()).data(), { uid: other });
+});
+
+test("calling again after the username was freed succeeds, and leaves a new holder's name (#448)", async () => {
+  const uid = await seedUser("student@epfl.ch", { accountType: "student", username: "franek" });
+  await db.doc("usernames/franek").set({ uid });
+  const idToken = await signIn("student@epfl.ch");
+  assert.equal((await callDeleteAccount(idToken)).status, 200);
+  // Someone else claims the freed name before the retry.
+  await db.doc("usernames/franek").set({ uid: "another-student" });
+
+  const { status, body } = await callDeleteAccount(idToken);
+
+  assert.equal(status, 200);
+  assert.deepEqual(body, { result: { deleted: true } });
+  assert.deepEqual((await db.doc("usernames/franek").get()).data(), { uid: "another-student" });
 });
 
 /** Stores a registration `events/{eventId}/attendees/{uid}`, as the app writes it. */
