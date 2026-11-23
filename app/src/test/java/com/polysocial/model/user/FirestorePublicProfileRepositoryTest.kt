@@ -3,6 +3,7 @@
 // parallel, one failing read failing them all, after review, #229; unknown interest codes left
 // out, after review, #230); Claude Opus 5.5 (the cache-only read, #368 review); Konstantinos
 // Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude (Opus 5.5, Anthropic) (the username read, #448).
 package com.polysocial.model.user
 
 import com.google.android.gms.tasks.TaskCompletionSource
@@ -84,6 +85,25 @@ class FirestorePublicProfileRepositoryTest {
   private fun documentsSee(vararg uids: String, stored: Map<String, Map<String, Any?>>) {
     for (uid in uids) every { refFor(uid).get() } returns
         Tasks.forResult(snapshot(uid, stored[uid]))
+  }
+
+  // ---- the username (#448) ----
+
+  @Test
+  fun getPublicProfile_readsTheUsername() = runTest {
+    documentsSee("u1", stored = mapOf("u1" to storedFields + ("username" to "franek")))
+
+    assertEquals(
+        PublicProfileResult.Found(profile.copy(username = "franek")),
+        repository.getPublicProfile("u1"),
+    )
+  }
+
+  @Test
+  fun getPublicProfile_aUsernameThatIsntAString_readsAsNone() = runTest {
+    documentsSee("u1", stored = mapOf("u1" to storedFields + ("username" to 42L)))
+
+    assertEquals(PublicProfileResult.Found(profile), repository.getPublicProfile("u1"))
   }
 
   // ---- getCachedPublicProfile ----

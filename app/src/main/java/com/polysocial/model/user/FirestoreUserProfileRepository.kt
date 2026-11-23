@@ -4,6 +4,7 @@
 // reported as errors, #182; the student's public profile written in the same transaction, #229;
 // reportFailures moved to FirestoreFailures.kt to share it, after review, #229; interests, #230;
 // the missing public profile repaired, #291).
+// Contributors: Claude (Opus 5.5, Anthropic) (the username read and kept in the public copy, #448).
 package com.polysocial.model.user
 
 import com.google.firebase.firestore.DocumentReference
@@ -14,6 +15,9 @@ import kotlinx.coroutines.tasks.await
 
 /** Firestore collection holding the private profiles, one document per Firebase Auth UID. */
 const val USERS_COLLECTION = "users"
+
+/** The field of `users/{uid}` and `publicProfiles/{uid}` naming the student's username (#448). */
+internal const val USERNAME_FIELD = "username"
 
 /**
  * [UserProfileRepository] backed by Firestore. Documents are converted to and from maps by hand, so
@@ -57,10 +61,11 @@ class FirestoreUserProfileRepository(private val database: () -> FirebaseFiresto
                   if (transaction.get(ref).exists()) false
                   else {
                     transaction.set(ref, profile.toNewDocument())
+                    // A new profile has no username: it is claimed once the profile exists.
                     if (profile.accountType == AccountType.STUDENT)
                         transaction.set(
                             publicDocument(profile.uid),
-                            profile.toPublicProfileDocument(),
+                            profile.toPublicProfileDocument(username = null),
                         )
                     true
                   }
@@ -78,11 +83,12 @@ class FirestoreUserProfileRepository(private val database: () -> FirebaseFiresto
                   if (!stored.exists()) false
                   else {
                     transaction.update(ref, profile.toEditableFields())
-                    // Also writes one a student saved before #229 lacks.
+                    // Also writes one a student saved before #229 lacks. The stored username is
+                    // kept: it isn't an editable field.
                     if (stored.getString("accountType") != AccountType.ASSOCIATION.value)
                         transaction.set(
                             publicDocument(profile.uid),
-                            profile.toPublicProfileDocument(),
+                            profile.toPublicProfileDocument(stored.get(USERNAME_FIELD) as? String),
                         )
                     true
                   }
@@ -108,7 +114,7 @@ class FirestoreUserProfileRepository(private val database: () -> FirebaseFiresto
                     EnsurePublicProfileResult.NotNeeded
                 transaction.get(publicRef).exists() -> EnsurePublicProfileResult.NotNeeded
                 else -> {
-                  transaction.set(publicRef, profile.toPublicProfileDocument())
+                  transaction.set(publicRef, profile.toPublicProfileDocument(profile.username))
                   EnsurePublicProfileResult.Created
                 }
               }
@@ -162,6 +168,8 @@ private fun DocumentSnapshot.readUserProfile(): UserProfile? {
       isAssociationVerified = get("isAssociationVerified") == true,
       createdAt = getTimestamp("createdAt")?.toInstant(),
       interests = readInterests() ?: return null,
+      // The rules only store a string; anything else reads as no username.
+      username = get(USERNAME_FIELD) as? String,
   )
 }
 

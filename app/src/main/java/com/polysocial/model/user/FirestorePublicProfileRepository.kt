@@ -2,6 +2,7 @@
 // profiles read one document each, in parallel, after review, #229; interests, and unknown codes
 // left out after review, #230); Claude Opus 5.5 (the cache-only read, #368 review); Konstantinos
 // Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude (Opus 5.5, Anthropic) (the username copied and read, #448).
 package com.polysocial.model.user
 
 import com.google.android.gms.tasks.Task
@@ -72,15 +73,17 @@ class FirestorePublicProfileRepository(private val database: () -> FirebaseFires
 /**
  * The `publicProfiles/{uid}` document of this private profile: exactly the fields the Security
  * Rules require, copied from it, with the interests in the same order as in `users/{uid}`
- * ([orderedInterests]). It never holds the email.
+ * ([orderedInterests]), and [username] when the stored `users/{uid}` names one (#448). The caller
+ * passes the stored name, not [UserProfile.username]: only [UsernameRepository] changes it, and the
+ * rules refuse a copy that differs. It never holds the email.
  */
-internal fun UserProfile.toPublicProfileDocument(): Map<String, Any> =
+internal fun UserProfile.toPublicProfileDocument(username: String?): Map<String, Any> =
     mapOf(
         "displayName" to displayName,
         "section" to section,
         "year" to year,
         "interests" to orderedInterests(interests),
-    )
+    ) + listOfNotNull(username?.let { USERNAME_FIELD to it })
 
 /**
  * The public profile in this document, or `null` if a field is missing or stored with the wrong
@@ -103,5 +106,7 @@ private fun DocumentSnapshot.readPublicProfile(): PublicProfile? {
       year = getString("year") ?: return null,
       // A code no longer in INTERESTS is left out, so no screen gets one it has no label for.
       interests = interests.map { it as? String ?: return null }.filter { it in INTERESTS }.toSet(),
+      // The rules only store a string; anything else reads as no username.
+      username = get(USERNAME_FIELD) as? String,
   )
 }
