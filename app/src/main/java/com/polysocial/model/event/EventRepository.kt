@@ -4,6 +4,8 @@
 // Claude (NotCached KDoc, #194).
 // Contributors: Claude (Opus 5.5, Anthropic) added getReadablePrivateEvents and its result, #320.
 // Contributors: Claude (Opus 5.5, Anthropic) added organizer changes to updateEvent, #370.
+// Contributors: Claude (Sonnet 5.5, Anthropic) (the upcoming events open to the student's section,
+// #369).
 package com.polysocial.model.event
 
 import kotlinx.coroutines.flow.Flow
@@ -225,7 +227,10 @@ interface EventRepository {
 
   /**
    * Observes the public events that start within the next [windowDays] days (see
-   * [isUpcomingPublicEvent]), for the map. Private events are never returned.
+   * [isUpcomingPublicEvent]), for the map. Private events are never returned, and neither are the
+   * events restricted to other sections than the signed-in student's
+   * ([Event.allowedSections], #369): the Security Rules only accept a query that asks for the
+   * events open to their section.
    *
    * The flow emits a new [PublicEventsResult.Events] whenever the events change, including from the
    * offline cache while the device is offline. A slow collector gets only the latest result. It

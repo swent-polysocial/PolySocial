@@ -7,10 +7,13 @@
 // Contributors: Claude (Opus 5.5, Anthropic) saved co-organizer changes with an update, #370.
 // Contributors: Claude (Opus 5.5, Anthropic) (a new event's attendee count, and organizer writes
 // with the SDK's default attempts, #373).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (the upcoming events open to the student's section,
+// #369).
 package com.polysocial.model.event
 
 import com.google.firebase.FirebaseException
 import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.Filter
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.MetadataChanges
@@ -35,6 +38,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.tasks.await
 
@@ -264,24 +269,58 @@ class FirestoreEventRepository(
 
   /**
    * Listens to the query Firestore needs for [isUpcomingPublicEvent]: `isPrivate == false` (the
-   * Security Rules reject a query that could return a private event) and a `startTime` range. This
-   * equality plus range needs the composite index in `firebase/firestore/firestore.indexes.json`.
-   * The window is fixed when collection starts. See [listenToEvents] for how it emits and fails.
+   * Security Rules reject a query that could return a private event), a `startTime` range, and the
+   * events open to the student's section (#369): `allowedSections == []` (every section) or
+   * `allowedSections` array-contains their section. The rules accept a list only if its constraints
+   * prove each result readable, so a query without that part is denied, and a student whose section
+   * can't be read (no profile yet, or offline without a cached one) gets only the events open to
+   * every section. The section is read once when collection starts, like the window. This needs the
+   * composite indexes in `firebase/firestore/firestore.indexes.json`. See [listenToEvents] for how
+   * it emits and fails.
    */
   override fun getUpcomingPublicEvents(windowDays: Int): Flow<PublicEventsResult> {
     require(windowDays > 0) { "windowDays must be positive, was $windowDays" }
-    return listenToEvents(
-        query = {
-          val now = clock.instant()
-          db.collection(EVENTS_COLLECTION)
-              .whereEqualTo("isPrivate", false)
-              .whereGreaterThanOrEqualTo("startTime", now.toTimestamp())
-              .whereLessThan("startTime", upcomingWindowEnd(now, windowDays).toTimestamp())
-              .orderBy("startTime")
-        },
-        events = PublicEventsResult::Events,
-        error = PublicEventsResult.Error,
-    )
+    return flow {
+      val section = viewerSection()
+      emitAll(
+          listenToEvents(
+              query = {
+                val now = clock.instant()
+                db.collection(EVENTS_COLLECTION)
+                    .where(
+                        Filter.and(
+                            Filter.equalTo("isPrivate", false),
+                            Filter.greaterThanOrEqualTo("startTime", now.toTimestamp()),
+                            Filter.lessThan(
+                                "startTime",
+                                upcomingWindowEnd(now, windowDays).toTimestamp(),
+                            ),
+                            openToSection(section),
+                        )
+                    )
+                    .orderBy("startTime")
+              },
+              events = PublicEventsResult::Events,
+              error = PublicEventsResult.Error,
+          )
+      )
+    }
+  }
+
+  /** The signed-in student's section, or null when it can't be read (see [openToSection]). */
+  private suspend fun viewerSection(): String? {
+    val user = auth.currentUser() ?: return null
+    return (profiles.getProfile(user.uid) as? ProfileResult.Found)?.profile?.section
+  }
+
+  /**
+   * The part of a list query that makes every result readable under the rules: events open to every
+   * section, and, when [section] is known, those open to it.
+   */
+  private fun openToSection(section: String?): Filter {
+    val everyone = Filter.equalTo("allowedSections", emptyList<String>())
+    return if (section == null) everyone
+    else Filter.or(everyone, Filter.arrayContains("allowedSections", section))
   }
 
   /**

@@ -124,6 +124,80 @@ class FirestoreEventRepositoryEmulatorTest {
     assertEquals(listOf("atNow", "sooner", "later", "lastMinute"), firstServerResult().ids())
   }
 
+  /** The student's private and public profile in [section], as an admin writes them. */
+  private suspend fun seedStudentProfile(uid: String, section: String) {
+    emulator.createAsAdmin(
+        USERS_COLLECTION,
+        uid,
+        mapOf(
+            "uid" to uid,
+            "email" to STUDENT_EMAIL,
+            "displayName" to "Fictional Student",
+            "section" to section,
+            "year" to "BA3",
+            "accountType" to "student",
+            "interests" to emptyList<String>(),
+        ),
+    )
+    emulator.createAsAdmin(
+        "publicProfiles",
+        uid,
+        mapOf(
+            "displayName" to "Fictional Student",
+            "section" to section,
+            "year" to "BA3",
+            "interests" to emptyList<String>(),
+        ),
+    )
+  }
+
+  @Test
+  fun emitsTheEventsOpenToTheStudentsSection_notThoseOfOtherSections() = runBlocking {
+    val uid = signInStudent()
+    seedStudentProfile(uid, "IN")
+    seed("everyone", publicEvent(startsIn = Duration.ofHours(1)))
+    seed("inOnly", publicEvent(startsIn = Duration.ofHours(2)).copy(allowedSections = listOf("IN")))
+    seed(
+        "inOrSc",
+        publicEvent(startsIn = Duration.ofHours(3)).copy(allowedSections = listOf("IN", "SC")),
+    )
+    seed("maOnly", publicEvent(startsIn = Duration.ofHours(4)).copy(allowedSections = listOf("MA")))
+
+    assertEquals(listOf("everyone", "inOnly", "inOrSc"), firstServerResult().ids())
+  }
+
+  @Test
+  fun aStudentWhoseSectionCantBeRead_getsOnlyTheEventsOpenToEverySection() = runBlocking {
+    signInStudent()
+    seed("everyone", publicEvent(startsIn = Duration.ofHours(1)))
+    seed("inOnly", publicEvent(startsIn = Duration.ofHours(2)).copy(allowedSections = listOf("IN")))
+
+    assertEquals(listOf("everyone"), firstServerResult().ids())
+  }
+
+  @Test
+  fun anEventRestrictedToOtherSections_isNotFoundForTheStudent_butFoundForItsOrganizer() =
+      runBlocking {
+        val uid = signInStudent()
+        seedStudentProfile(uid, "IN")
+        seed(
+            "maOnly",
+            publicEvent(startsIn = Duration.ofHours(1)).copy(allowedSections = listOf("MA")),
+        )
+        seed(
+            "organized",
+            publicEvent(startsIn = Duration.ofHours(1))
+                .copy(
+                    allowedSections = listOf("MA"),
+                    organizerIds = listOf(ORGANIZER_UID, uid),
+                    allowedUids = listOf(ORGANIZER_UID, uid),
+                ),
+        )
+
+        assertEquals(EventResult.NotFound, serverEvent("maOnly"))
+        assertTrue(serverEvent("organized") is EventResult.Found)
+      }
+
   @Test
   fun readsBackEveryStoredField() = runBlocking {
     signInStudent()
