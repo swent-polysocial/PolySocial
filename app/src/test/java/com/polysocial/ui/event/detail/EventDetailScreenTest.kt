@@ -8,6 +8,8 @@
 // Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: Claude (Opus 5.5, Anthropic) (the Entrance QR until check-in closes, #538
 // review); Konstantinos Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (the pill of the sections an event is open to,
+// #369).
 package com.polysocial.ui.event.detail
 
 import android.content.Context
@@ -145,6 +147,27 @@ class EventDetailScreenTest {
         .assertTextEquals("Music and snacks before the festival.")
     composeTestRule.onNodeWithTag(EventDetailTags.FIND_GROUP).assertIsDisplayed()
     composeTestRule.onNodeWithText(string(R.string.event_detail_find_group)).assertExists()
+  }
+
+  @Test
+  fun anEventOpenToEverySection_hasNoSectionsPill() {
+    showLoaded()
+
+    assertAbsent(EventDetailTags.SECTIONS)
+  }
+
+  @Test
+  fun anEventRestrictedToSections_saysWhichInAPill() {
+    showLoaded(details(party.copy(allowedSections = listOf("IN", "SC"))))
+
+    composeTestRule.onNodeWithTag(EventDetailTags.SECTIONS).assertTextEquals("Only IN, SC")
+  }
+
+  @Test
+  fun aLongListOfSections_isShortenedInThePill() {
+    showLoaded(details(party.copy(allowedSections = listOf("AR", "IN", "MA", "SC", "SV"))))
+
+    composeTestRule.onNodeWithTag(EventDetailTags.SECTIONS).assertTextEquals("Only AR, IN, MA +2")
   }
 
   @Test
