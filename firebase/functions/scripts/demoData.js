@@ -1,5 +1,6 @@
 // Contributors: Claude (the fictional demo data for the M2 review, #243).
 // Contributors: Claude (Opus 5.5, Anthropic) (each demo event's attendeeCount, #405).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (each demo event's allowedSections, #369).
 "use strict";
 
 // The fictional data seedDemo.js writes for a demo: a verified association, eight public events
@@ -166,6 +167,8 @@ function buildDemoData({ now, geoPoint, timestamp, serverTime }) {
         organizerIds: [event.by],
         allowedUids: [event.by],
         isAssociationEvent: event.by === ASSOCIATION,
+        // Open to every section: the Security Rules close an event without the field (#369).
+        allowedSections: [],
         attendeeCount: going.get(event.id).size,
       },
     });
