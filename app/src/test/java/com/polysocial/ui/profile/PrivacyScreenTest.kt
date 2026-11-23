@@ -15,6 +15,7 @@
 // #433).
 // Contributors: Claude (Opus 5.5, Anthropic) (the notice's new date and matching with friends,
 // #497).
+// Contributors: Claude (Opus 5.5, Anthropic) (the notice's new date, for the number going, #407).
 package com.polysocial.ui.profile
 
 import android.content.Context
