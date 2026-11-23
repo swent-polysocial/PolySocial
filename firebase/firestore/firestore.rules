@@ -21,6 +21,7 @@ rules_version = '2';
 // Claude (Fable 5.2 and Opus 5.5, Anthropic), #373).
 // Contributors: Claude (Opus 5.5, Anthropic) (the message check shared by both chats, and
 // one-to-one chats, from #365's prototype by Claude (Fable 5.2 and Opus 5.5, Anthropic), #428).
+// Contributors: Claude (Opus 5.5, Anthropic) (usernames and their tie to the profiles, #448).
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -131,7 +132,7 @@ service cloud.firestore {
       // has no public copy yet, and an association never gets one: neither needs it. Removing a
       // copied field fails the comparison too.
       function keepsPublicProfile() {
-        let copied = ['displayName', 'section', 'year', 'interests'];
+        let copied = ['displayName', 'section', 'year', 'interests', 'username'];
         let publicProfile = /databases/$(database)/documents/publicProfiles/$(uid);
         let data = request.resource.data;
         return !data.diff(resource.data).affectedKeys().hasAny(copied)
@@ -139,12 +140,38 @@ service cloud.firestore {
             || (getAfter(publicProfile).data.displayName == data.get('displayName', null)
                 && getAfter(publicProfile).data.section == data.get('section', null)
                 && getAfter(publicProfile).data.year == data.get('year', null)
-                && getAfter(publicProfile).data.interests == data.get('interests', []));
+                && getAfter(publicProfile).data.interests == data.get('interests', [])
+                && getAfter(publicProfile).data.get('username', null)
+                    == data.get('username', null));
+      }
+
+      function usernameDocument(name) {
+        return /databases/$(database)/documents/usernames/$(name);
+      }
+
+      // A username (#448) is tied to its usernames/{name} both ways, so nobody keeps two names or
+      // names one they don't hold: a write that changes or removes username must free the old name
+      // in the same write (#445 review), and one that sets a name must hold it after the write
+      // (claimed in the same write, see usernames/{name}).
+      function keepsUsername() {
+        let before = resource.data.get('username', null);
+        let after = request.resource.data.get('username', null);
+        return before == after
+            || ((before == null || !existsAfter(usernameDocument(before)))
+                && (after == null
+                    || (after is string
+                        && existsAfter(usernameDocument(after))
+                        && getAfter(usernameDocument(after)).data.uid == uid)));
       }
 
       allow read: if isOwner();
+      // A profile that names a username frees it in the same write (#448), so a deleted profile
+      // can't leave a name reserved.
       allow delete: if isOwner()
-          && (resource == null || resource.data.get('accountType', 'student') != 'association');
+          && (resource == null || resource.data.get('accountType', 'student') != 'association')
+          && (resource == null
+              || resource.data.get('username', null) == null
+              || !existsAfter(usernameDocument(resource.data.username)));
       allow create: if isOwner()
           && !isDeletedAccount(uid)
           && request.resource.data.uid == uid
@@ -153,21 +180,24 @@ service cloud.firestore {
           && (!('isAssociationVerified' in request.resource.data)
               || request.resource.data.isAssociationVerified == false)
           && hasValidDisplayName()
-          && hasKnownInterests(request.resource.data);
+          && hasKnownInterests(request.resource.data)
+          // A username is claimed once the profile exists (#448).
+          && !('username' in request.resource.data);
       allow update: if isOwner()
           && !request.resource.data.diff(resource.data).affectedKeys()
               .hasAny(['uid', 'accountType', 'isAssociationVerified'])
           && hasValidDisplayName()
           && hasKnownInterests(request.resource.data)
-          && keepsPublicProfile();
+          && keepsPublicProfile()
+          && keepsUsername();
     }
 
     // What other students see of a student (#229): exactly displayName, section, year and
-    // interests, never the email. Any student reads one by its UID, to match with and show group
-    // members, but can't list the collection, so no student directory is exposed; associations
-    // read none. Only its owner writes it, a student, and only as a copy of their users/{uid} as it
-    // is after the same write (getAfter), so it is written with the private profile and can't say
-    // anything else. Because others read them, section and year must be codes the app offers.
+    // interests, and the username when they have one (#448), never the email. Any student reads
+    // one by its UID, to match with and show group members, but can't list the collection, so no
+    // student directory is exposed; associations read none. Only its owner writes it, a student,
+    // and only as a copy of their users/{uid} as it is after the same write (getAfter), so it is
+    // written with the private profile and can't say anything else. Because others read them, section and year must be codes the app offers.
     // users/{uid} can't change a copied field without it (keepsPublicProfile), and a deleted
     // account can't write it again (isDeletedAccount).
     // interests are codes from the fixed list (#230), in the private profile's order; a private
@@ -194,7 +224,7 @@ service cloud.firestore {
 
       function copiesPrivateProfile() {
         let data = request.resource.data;
-        let fields = ['displayName', 'section', 'year', 'interests'];
+        let fields = ['displayName', 'section', 'year', 'interests', 'username'];
         let owner = privateProfileAfter().data;
         return data.keys().hasOnly(fields)
             && owner.get('accountType', 'student') == 'student'
@@ -204,7 +234,8 @@ service cloud.firestore {
             && isKnownSection(data.section)
             && isKnownYear(data.year)
             && data.interests == owner.get('interests', [])
-            && hasKnownInterests(data);
+            && hasKnownInterests(data)
+            && data.get('username', null) == owner.get('username', null);
       }
 
       allow get: if isStudent();
@@ -212,6 +243,39 @@ service cloud.firestore {
           && request.auth.uid == uid
           && !isDeletedAccount(uid)
           && copiesPrivateProfile();
+    }
+
+    // Usernames (#448, decided in #366): usernames/{name} holds the uid of the student whose
+    // users/{uid}.username names it, so the ID makes each name unique. A student gets one name they
+    // typed but never lists them, so there is no student directory. A student claims a name only
+    // as their own, with their profile naming it after the same write, and frees it only when their
+    // profile no longer names it after the write: a rename, a removal or the profile deleted.
+    // users/{uid} ties it back (keepsUsername). Nobody updates one; deleteAccount frees a deleted
+    // account's name (Admin SDK). The format and the reserved names are Username.kt's: the rules
+    // tests read that file and fail if they differ.
+    match /usernames/{name} {
+      function reservedUsernames() {
+        return ['polysocial', 'admin', 'support', 'epfl', 'agepoly', 'staff', 'moderator',
+            'official', 'help'];
+      }
+
+      function ownProfile() {
+        return /databases/$(database)/documents/users/$(request.auth.uid);
+      }
+
+      allow get: if isStudent() && !isDeletedAccount(request.auth.uid);
+      allow create: if isStudent()
+          && !isDeletedAccount(request.auth.uid)
+          && name.matches('[a-z][a-z0-9_.]{2,19}')
+          && !(name in reservedUsernames())
+          && request.resource.data.keys().hasOnly(['uid'])
+          && request.resource.data.uid == request.auth.uid
+          && existsAfter(ownProfile())
+          && getAfter(ownProfile()).data.get('username', null) == name;
+      allow delete: if hasVerifiedEmail()
+          && resource.data.uid == request.auth.uid
+          && (!existsAfter(ownProfile())
+              || getAfter(ownProfile()).data.get('username', null) != name);
     }
 
     // Of the event subcollections, only attendees (below), groups, their messages and
