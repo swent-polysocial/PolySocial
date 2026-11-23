@@ -11,6 +11,7 @@
 const { after, before, beforeEach, test } = require("node:test");
 // Contributors: OpenAI Codex (deleted-token membership creation/join regression, #241).
 // Contributors: Claude Opus 5.5 (friend requests involving an association, written test-first from the #416 review); Konstantinos Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude (Opus 5.5, Anthropic) (fixed client times in the friendship tests, #522).
 const assert = require("node:assert/strict");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
@@ -4799,9 +4800,9 @@ test("a request is sent only as yourself, pending, at the server's time", async 
 
   await assertFails(setDoc(ref, friendRequest("u1", "u2", { requestedBy: "u2" })));
   await assertFails(setDoc(ref, friendRequest("u1", "u2", { status: "accepted" })));
-  await assertFails(
-    setDoc(ref, friendRequest("u1", "u2", { createdAt: Timestamp.fromDate(new Date()) })),
-  );
+  // A time the client chose: a fixed one, since the client's clock can fall in the same
+  // millisecond as the server's request.time and make this write allowed (#522).
+  await assertFails(setDoc(ref, friendRequest("u1", "u2", { createdAt: Timestamp.fromMillis(0) })));
 });
 
 test("a request holds exactly its four fields", async () => {
@@ -4991,7 +4992,8 @@ test("accepting changes only status to accepted and sets acceptedAt to the serve
   await seedPendingRequest();
   const ref = friendshipRef(studentDb("u2"), "u1~u2");
 
-  await assertFails(updateDoc(ref, acceptance({ acceptedAt: Timestamp.fromDate(new Date()) })));
+  // A fixed time the client chose, never the server's request.time (#522).
+  await assertFails(updateDoc(ref, acceptance({ acceptedAt: Timestamp.fromMillis(0) })));
   await assertFails(updateDoc(ref, { status: "accepted" }));
   await assertFails(updateDoc(ref, acceptance({ status: "pending" })));
   await assertFails(updateDoc(ref, acceptance({ status: "blocked" })));
