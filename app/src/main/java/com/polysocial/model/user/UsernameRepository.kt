@@ -36,7 +36,10 @@ sealed interface SetUsernameResult {
   /** [usernameError] refuses the name. Nothing was read or written. */
   data class Invalid(val error: UsernameError) : SetUsernameResult
 
-  /** The server couldn't be reached or didn't confirm the write. Nothing was written or queued. */
+  /**
+   * The server couldn't be reached or didn't confirm the write. Nothing was queued. If the write
+   * did reach the server, trying again returns [Saved].
+   */
   data object NetworkError : SetUsernameResult
 
   /**
