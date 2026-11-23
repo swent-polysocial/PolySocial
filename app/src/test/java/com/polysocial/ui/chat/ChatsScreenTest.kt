@@ -248,6 +248,21 @@ class ChatsScreenTest {
   }
 
   @Test
+  fun aFriendWhoseProfileHasntAnswered_hasNoNameYet_butTheRowShows() {
+    show(
+        ChatsUiState.Chats(
+            listOf(pairRow("lea~me", ChatListFriend.Loading, Sender.Unknown, "Hi")),
+            isOffline = false,
+        )
+    )
+
+    val row = composeTestRule.onNodeWithTag(ChatsTags.oneToOneRow("lea~me"))
+    row.assert(hasText("Hi"))
+    row.assert(hasText("Léa Martin").not())
+    row.assert(hasText("Profile unavailable").not())
+  }
+
+  @Test
   fun aPartlyFailedList_showsTheNote_andItsRetry() {
     show(ChatsUiState.Chats(listOf(row("g1")), isOffline = false, partlyFailed = true))
 
