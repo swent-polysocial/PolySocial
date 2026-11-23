@@ -49,6 +49,7 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the one-to-one chat repository contract and its Firestore repository marked as built, #428). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the one-to-one chat's privacy notice marked as written, #433). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the username rules and deleteAccount's step marked as built, #448; the profile rows' username, after #517's review). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (the username repository marked as built, #448). -->
 
 How PolySocial is built, as we currently envision it. The page follows the [Android App Architecture guide](https://developer.android.com/topic/architecture/intro): a **UI layer** (Compose screens and ViewModels), a **domain layer** of pure Kotlin logic, and a **data layer** of repositories in front of Firebase, the map and geocoding services, and the device sensors.
 
@@ -665,7 +666,7 @@ flowchart TB
   add["Friends · Add by @username"]:::pb --> friendsVM["<b>Friends ViewModel</b>"]:::pb
   profVM --> userRepo["<b>UserProfileRepository</b><br/>built, #34, #229"]:::s1
   otherVM --> pub["<b>PublicProfileRepository</b><br/>by UID only, built, #229"]:::s1
-  friendsVM --> names["<b>UsernameRepository</b><br/>get one name, never list"]:::pb
+  friendsVM --> names["<b>UsernameRepository</b><br/>get one name, never list (built, #448)"]:::pb
   userRepo --> fs[("Firestore<br/>users · publicProfiles<br/>usernames/{name}")]:::ext
   pub --> fs
   names --> fs
