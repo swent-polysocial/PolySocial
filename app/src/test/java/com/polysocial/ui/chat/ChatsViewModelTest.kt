@@ -1,13 +1,17 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #364).
+// Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #364; one-to-one chats in the
+// list, #432).
 package com.polysocial.ui.chat
 
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.chat.ChatsRepository
 import com.polysocial.model.chat.FakeMessageRepository
+import com.polysocial.model.chat.FakeOneToOneChatRepository
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.validEvent
+import com.polysocial.model.friend.FakeFriendRepository
+import com.polysocial.model.friend.friendshipId
 import com.polysocial.model.group.FakeGroupRepository
 import com.polysocial.model.group.GroupRepository
 import com.polysocial.model.group.MyGroupsResult
@@ -47,6 +51,9 @@ class ChatsViewModelTest {
               .toMutableMap()
       )
   private val network = FakeNetworkMonitor()
+  private val friends = FakeFriendRepository(currentUid = ME)
+  private val oneToOne =
+      FakeOneToOneChatRepository(currentUid = ME).apply { friendshipOf = friends::friendship }
 
   /** 2030-01-02, 12:00 in Lausanne, a day after the fake groups' creation times. */
   private val clock = SettableClock(Instant.parse("2030-01-02T11:00:00Z"))
@@ -61,6 +68,7 @@ class ChatsViewModelTest {
   private fun viewModel(groupRepository: GroupRepository = groups) =
       ChatsViewModel(
           ChatsRepository(groupRepository, messages),
+          oneToOne,
           events,
           profiles,
           FakeAuthRepository(AuthUser(ME, "me@epfl.ch", true)),
@@ -70,7 +78,8 @@ class ChatsViewModelTest {
 
   private fun runPending() = mainDispatcherRule.dispatcher.scheduler.runCurrent()
 
-  private fun ChatsViewModel.rows() = (state.value as ChatsUiState.Chats).rows
+  private fun ChatsViewModel.rows() =
+      (state.value as ChatsUiState.Chats).rows.filterIsInstance<ChatRow>()
 
   @Test
   fun eachChat_hasItsEventMembersAndLatestMessage_newestFirst() {
@@ -307,6 +316,155 @@ class ChatsViewModelTest {
     mainDispatcherRule.dispatcher.scheduler.advanceTimeBy(60 * 60 * 1000L + 1)
 
     assertEquals(ChatTime.Yesterday, viewModel.rows().single().latest?.time)
+  }
+
+  // ---- One-to-one chats in the list (#432) ----
+
+  private val leaChat = checkNotNull(friendshipId(ME, "lea"))
+  private val tomChat = checkNotNull(friendshipId(ME, "tom"))
+
+  private fun ChatsViewModel.allRows() = (state.value as ChatsUiState.Chats).rows
+
+  private fun ChatsViewModel.oneToOneRows() = allRows().filterIsInstance<OneToOneChatRow>()
+
+  @Test
+  fun groupAndOneToOneChats_shareOneList_newestActivityFirst() {
+    val party = groups.seedGroup("party", listOf(ME, "lea"))
+    groups.seedGroup("climb", listOf(ME, "tom")) // no message: its creation time, a day earlier
+    messages.seedMessage("party", party.id, "m1", "lea", "Group news", NOON.minusSeconds(60))
+    oneToOne.seedChat(leaChat)
+    oneToOne.seedMessage(leaChat, "p1", "lea", "Newest", NOON)
+    oneToOne.seedChat(tomChat)
+    oneToOne.seedMessage(tomChat, "p2", "tom", "Oldest message", NOON.minusSeconds(3_600))
+
+    val viewModel = viewModel()
+    runPending()
+
+    assertEquals(
+        listOf("pair/$leaChat", "group/${party.id}", "pair/$tomChat", "group/group-2"),
+        viewModel.allRows().map {
+          when (it) {
+            is ChatRow -> "group/${it.groupId}"
+            is OneToOneChatRow -> "pair/${it.pairId}"
+          }
+        },
+    )
+  }
+
+  @Test
+  fun aOneToOneRow_namesTheFriend_andPrefixesOnlyTheStudentsOwnMessage() {
+    oneToOne.seedChat(leaChat)
+    oneToOne.seedMessage(leaChat, "p1", ME, "On my way, 5 min", NOON)
+    oneToOne.seedChat(tomChat)
+    oneToOne.seedMessage(tomChat, "p2", "tom", "Thanks!", NOON.minusSeconds(60))
+
+    val viewModel = viewModel()
+    runPending()
+
+    assertEquals(
+        listOf(
+            OneToOneChatRow(
+                leaChat,
+                ChatListFriend.Named("Léa Martin"),
+                LatestMessage(Sender.You, "On my way, 5 min", ChatTime.Today(LocalTime.of(12, 0))),
+            ),
+            OneToOneChatRow(
+                tomChat,
+                ChatListFriend.Named("Tom Rossi"),
+                LatestMessage(Sender.Unknown, "Thanks!", ChatTime.Today(LocalTime.of(11, 59))),
+            ),
+        ),
+        viewModel.oneToOneRows(),
+    )
+  }
+
+  @Test
+  fun aDeletedAccount_isNamedSo_andAnUnreadableProfile_stillShowsItsRow() {
+    oneToOne.seedChat(leaChat, uids = listOf(ME))
+    oneToOne.seedMessage(leaChat, "p1", "", "Bye", NOON)
+    val ghostChat = checkNotNull(friendshipId(ME, "ghost"))
+    oneToOne.seedChat(ghostChat)
+    oneToOne.seedMessage(ghostChat, "p2", "ghost", "Hi", NOON.minusSeconds(60))
+
+    val viewModel = viewModel()
+    runPending()
+
+    assertEquals(
+        listOf(ChatListFriend.Deleted, ChatListFriend.Unavailable),
+        viewModel.oneToOneRows().map { it.friend },
+    )
+  }
+
+  @Test
+  fun aOneToOneChatWithoutAMessage_isNotListed() {
+    oneToOne.seedChat(leaChat)
+
+    val viewModel = viewModel()
+    runPending()
+
+    assertEquals(ChatsUiState.Chats(emptyList(), isOffline = false), viewModel.state.value)
+  }
+
+  @Test
+  fun oneToOneChatsThatCantBeRead_leaveTheGroupsListed_andRetryReadsBoth() {
+    groups.seedGroup("party", listOf(ME))
+    oneToOne.seedChat(leaChat)
+    oneToOne.seedMessage(leaChat, "p1", "lea", "Hi", NOON)
+    oneToOne.readFailure = FakeMessageRepository.ReadFailure.UNEXPECTED
+    val viewModel = viewModel()
+    runPending()
+
+    val partial = viewModel.state.value as ChatsUiState.Chats
+    assertTrue(partial.partlyFailed)
+    assertEquals(1, viewModel.rows().size)
+    assertEquals(emptyList<OneToOneChatRow>(), viewModel.oneToOneRows())
+
+    oneToOne.readFailure = null
+    viewModel.retry()
+    runPending()
+
+    assertFalse((viewModel.state.value as ChatsUiState.Chats).partlyFailed)
+    assertEquals(2, viewModel.allRows().size)
+  }
+
+  @Test
+  fun groupChatsThatCantBeRead_leaveTheOneToOneChatsListed() {
+    groups.readFailure = FakeGroupRepository.ReadFailure.NETWORK
+    oneToOne.seedChat(leaChat)
+    oneToOne.seedMessage(leaChat, "p1", "lea", "Hi", NOON)
+
+    val viewModel = viewModel()
+    runPending()
+
+    val partial = viewModel.state.value as ChatsUiState.Chats
+    assertTrue(partial.partlyFailed)
+    assertEquals(listOf(leaChat), viewModel.oneToOneRows().map { it.pairId })
+  }
+
+  @Test
+  fun bothKindsFailing_isTheError() {
+    groups.readFailure = FakeGroupRepository.ReadFailure.NETWORK
+    oneToOne.readFailure = FakeMessageRepository.ReadFailure.NETWORK
+
+    val viewModel = viewModel()
+    runPending()
+
+    assertEquals(ChatsUiState.Error, viewModel.state.value)
+  }
+
+  @Test
+  fun offline_theCachedOneToOneChatsShow_withTheBanner() {
+    oneToOne.seedChat(leaChat)
+    oneToOne.seedMessage(leaChat, "p1", "lea", "Saved", NOON)
+    oneToOne.readFromCache = true
+    network.online = false
+
+    val viewModel = viewModel()
+    runPending()
+
+    val chats = viewModel.state.value as ChatsUiState.Chats
+    assertTrue(chats.isOffline)
+    assertEquals(1, chats.rows.size)
   }
 
   /** A clock tests move by hand, in Lausanne. */

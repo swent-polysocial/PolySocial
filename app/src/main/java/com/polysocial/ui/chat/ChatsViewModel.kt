@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (the Chats list, from #362's Figma section 16, #364;
-// the first name moved to model/user for Find a group, #497).
+// the first name moved to model/user for Find a group, #497; one-to-one chats merged into it, from
+// #430's Figma section 25, #432).
 package com.polysocial.ui.chat
 
 import androidx.lifecycle.ViewModel
@@ -9,6 +10,10 @@ import com.polysocial.model.chat.ChatPreview
 import com.polysocial.model.chat.ChatsRepository
 import com.polysocial.model.chat.DELETED_MESSAGE_SENDER
 import com.polysocial.model.chat.MyChatsResult
+import com.polysocial.model.chat.OneToOneChatPreview
+import com.polysocial.model.chat.OneToOneChatPreviewsResult
+import com.polysocial.model.chat.OneToOneChatRepository
+import com.polysocial.model.chat.observeChatPreviews
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.EventResult
@@ -26,7 +31,6 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.cancelChildren
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -49,14 +53,24 @@ sealed interface ChatsUiState {
   data object OfflineNothingSaved : ChatsUiState
 
   /**
-   * The student's chats, newest activity first, as [ChatsRepository] orders them; empty when they
-   * are in no group ("Join a group to chat"). Offline with none saved is [OfflineNothingSaved].
+   * The student's group and one-to-one chats in one list, newest activity first (a group without a
+   * message by its creation time, as [ChatsRepository] orders them); empty when they have none
+   * ("Join a group to chat"). Offline with none saved is [OfflineNothingSaved].
    *
    * @property isOffline true when the list comes from the cache and the device is offline: the
    *   screen shows its offline banner above the chats.
+   * @property partlyFailed true when one of the two kinds of chats couldn't be read: the other is
+   *   listed, with a note and Retry (#432).
    */
-  data class Chats(val rows: List<ChatRow>, val isOffline: Boolean) : ChatsUiState
+  data class Chats(
+      val rows: List<ChatListRow>,
+      val isOffline: Boolean,
+      val partlyFailed: Boolean = false,
+  ) : ChatsUiState
 }
+
+/** One row of the Chats list: a group chat ([ChatRow]) or a one-to-one chat ([OneToOneChatRow]). */
+sealed interface ChatListRow
 
 /**
  * One row of the Chats list: a group the student is in.
@@ -74,7 +88,36 @@ data class ChatRow(
     val otherNames: List<String>,
     val otherCount: Int,
     val latest: LatestMessage?,
-)
+) : ChatListRow
+
+/**
+ * One row of the Chats list: a chat with a friend (#432, Figma section 25), which is listed only
+ * once it has a message. A read-only chat looks like any other (decided in #365).
+ *
+ * @property pairId the chat's pair ID, which opens it (#431).
+ * @property latest the latest message: "You: …" for the student's own, the text alone for the
+ *   friend's, since the row names them.
+ */
+data class OneToOneChatRow(
+    val pairId: String,
+    val friend: ChatListFriend,
+    val latest: LatestMessage,
+) : ChatListRow
+
+/** Who a one-to-one row is with, as it names them. */
+sealed interface ChatListFriend {
+  /** Their public profile hasn't answered yet. */
+  data object Loading : ChatListFriend
+
+  /** Their public-profile name. */
+  data class Named(val name: String) : ChatListFriend
+
+  /** Their public profile couldn't be read: the row still shows. */
+  data object Unavailable : ChatListFriend
+
+  /** Their account was deleted: "Deleted account". */
+  data object Deleted : ChatListFriend
+}
 
 /** A chat's event, read separately from the chat. */
 sealed interface ChatEvent {
@@ -114,19 +157,22 @@ sealed interface Sender {
  * Holds the Chats tab (#364, Figma section 16): every group chat the student is in
  * ([ChatsRepository.observeMyChats]), each with its event's title and category
  * ([EventRepository.getEvent], one listener per event) and its members' and latest sender's first
- * names ([PublicProfileRepository.getPublicProfiles], read once per student).
+ * names ([PublicProfileRepository.getPublicProfiles], read once per student), and their one-to-one
+ * chats with a message ([observeChatPreviews], #432), each named by the friend's public profile.
  *
- * The list shows as soon as the chats answer; titles and names fill in as their own reads answer.
- * If the chats don't answer within [LOAD_TIMEOUT], or can't be read, it shows the error state, and
- * [retry] reads them again. A name that can't be read leaves its member unnamed; an event that
- * can't be read gives the row "Group chat". Times are taken from [clock] when each list is built,
- * and again at midnight, so "23:58" turns into "Yesterday".
+ * The two kinds share one list, ordered by their latest activity. It shows once both have answered;
+ * titles and names fill in as their own reads answer. If one kind can't be read, or hasn't answered
+ * within [LOAD_TIMEOUT], the other is listed with a note; if neither can, it shows the error state.
+ * [retry] reads both again. A name that can't be read leaves its member unnamed (a friend's row
+ * says so); an event that can't be read gives the row "Group chat". Times are taken from [clock]
+ * when each list is built, and again at midnight, so "23:58" turns into "Yesterday".
  */
 @HiltViewModel
 class ChatsViewModel
 @Inject
 constructor(
     private val chats: ChatsRepository,
+    private val oneToOneChats: OneToOneChatRepository,
     private val events: EventRepository,
     private val profiles: PublicProfileRepository,
     private val auth: AuthRepository,
@@ -140,9 +186,13 @@ constructor(
   private var session: Job? = null
 
   private var me: String? = null
-  private var latest: MyChatsResult.Success? = null
+  private var groups: Read<MyChatsResult.Success> = Read.Waiting
+  private var oneToOne: Read<OneToOneChatPreviewsResult.Success> = Read.Waiting
   private var eventsById: Map<String, ChatEvent> = emptyMap()
   private var profilesById: Map<String, PublicProfile> = emptyMap()
+
+  /** The profiles whose last read failed: a friend's row says so until a read succeeds. */
+  private var unreadable: Set<String> = emptySet()
 
   /** The events listened to and the profiles read or being read, so each is read once. */
   private val listened = mutableSetOf<String>()
@@ -152,10 +202,16 @@ constructor(
     observe()
   }
 
-  /** Reads the chats again, after the error or offline state. Does nothing otherwise. */
+  /**
+   * Reads the chats again, after the error, offline or partly failed state. Does nothing otherwise.
+   */
   fun retry() {
     val state = _state.value
-    if (state != ChatsUiState.Error && state != ChatsUiState.OfflineNothingSaved) return
+    val failed =
+        state == ChatsUiState.Error ||
+            state == ChatsUiState.OfflineNothingSaved ||
+            (state as? ChatsUiState.Chats)?.partlyFailed == true
+    if (!failed) return
     _state.value = ChatsUiState.Loading
     observe()
   }
@@ -163,14 +219,17 @@ constructor(
   private fun observe() {
     session?.cancel()
     me = auth.currentUser()?.uid
-    latest = null
+    groups = Read.Waiting
+    oneToOne = Read.Waiting
     listened.clear()
     requested.clear()
     session = viewModelScope.launch {
       val reads = this
       launch {
         delay(LOAD_TIMEOUT)
-        if (latest == null) _state.value = ChatsUiState.Error
+        if (groups == Read.Waiting) groups = Read.Failed
+        if (oneToOne == Read.Waiting) oneToOne = Read.Failed
+        show()
       }
       // At midnight "23:58" becomes "Yesterday", as the group chat's days turn (#444 review).
       launch {
@@ -179,21 +238,39 @@ constructor(
           show()
         }
       }
+      launch {
+        oneToOneChats.observeChatPreviews().collect { result ->
+          when (result) {
+            OneToOneChatPreviewsResult.Loading -> Unit
+            is OneToOneChatPreviewsResult.Success -> {
+              oneToOne = Read.Done(result)
+              reads.readProfiles(result.previews.mapNotNull { it.chat.otherUid })
+              show()
+            }
+            OneToOneChatPreviewsResult.Failed -> {
+              oneToOne = Read.Failed
+              show()
+            }
+          }
+        }
+      }
       chats.observeMyChats().collect { result ->
         when (result) {
           MyChatsResult.Loading -> Unit
           is MyChatsResult.Success -> {
-            latest = result
+            groups = Read.Done(result)
             reads.listenToEvents(result.chats)
-            reads.readProfiles(result.chats)
+            reads.readProfiles(
+                result.chats.flatMap {
+                  it.group.memberUids + listOfNotNull(it.latestMessage?.senderId)
+                }
+            )
             show()
           }
           MyChatsResult.NetworkError,
           MyChatsResult.UnexpectedError -> {
-            // The other reads have nothing left to show: stop them, and the timeout.
-            reads.coroutineContext.cancelChildren()
-            latest = null
-            _state.value = ChatsUiState.Error
+            groups = Read.Failed
+            show()
           }
         }
       }
@@ -222,23 +299,25 @@ constructor(
   }
 
   /**
-   * Reads the public profiles of the members and latest senders not read yet. A failed read forgets
-   * them, so the next list tries again.
+   * Reads the public profiles of [uids] not read yet: the members, latest senders and friends. A
+   * failed read forgets them, so the next list tries again.
    */
-  private fun CoroutineScope.readProfiles(previews: List<ChatPreview>) {
-    val uids =
-        previews
-            .flatMap { it.group.memberUids + listOfNotNull(it.latestMessage?.senderId) }
-            .filter { it != DELETED_MESSAGE_SENDER && it != me && requested.add(it) }
-    if (uids.isEmpty()) return
+  private fun CoroutineScope.readProfiles(uids: List<String>) {
+    val wanted = uids.filter { it != DELETED_MESSAGE_SENDER && it != me && requested.add(it) }
+    if (wanted.isEmpty()) return
     launch {
-      when (val result = profiles.getPublicProfiles(uids)) {
+      when (val result = profiles.getPublicProfiles(wanted)) {
         is PublicProfilesResult.Found -> {
           profilesById = profilesById + result.profiles
+          unreadable = unreadable - wanted.toSet() + wanted.filterNot(result.profiles::containsKey)
           show()
         }
         PublicProfilesResult.NetworkError,
-        PublicProfilesResult.UnexpectedError -> requested.removeAll(uids.toSet())
+        PublicProfilesResult.UnexpectedError -> {
+          requested.removeAll(wanted.toSet())
+          unreadable = unreadable + wanted
+          show()
+        }
       }
     }
   }
@@ -251,12 +330,33 @@ constructor(
   }
 
   private fun show() {
-    val result = latest ?: return
+    val groups = groups
+    val oneToOne = oneToOne
+    // The first list waits for both kinds, so its order doesn't change when the slower one answers.
+    if (groups == Read.Waiting || oneToOne == Read.Waiting) return
+    if (groups == Read.Failed && oneToOne == Read.Failed) {
+      _state.value = ChatsUiState.Error
+      return
+    }
+    val groupChats = (groups as? Read.Done)?.value
+    val friendChats = (oneToOne as? Read.Done)?.value
     val now = clock.instant()
-    val isOffline = result.fromCache && !network.isOnline()
+    val rows =
+        (groupChats?.chats.orEmpty().map {
+              (it.latestMessage?.createdAt ?: it.group.createdAt) to row(it, now)
+            } + friendChats?.previews.orEmpty().map { it.latestMessage.createdAt to row(it, now) })
+            .sortedWith(compareByDescending(nullsLast()) { it.first })
+            .map { it.second }
+    val isOffline =
+        (groupChats?.fromCache == true || friendChats?.fromCache == true) && !network.isOnline()
+    val partlyFailed = groups == Read.Failed || oneToOne == Read.Failed
     _state.value =
-        if (result.chats.isEmpty() && isOffline) ChatsUiState.OfflineNothingSaved
-        else ChatsUiState.Chats(rows = result.chats.map { row(it, now) }, isOffline = isOffline)
+        when {
+          // Nothing to list beside the failure: the error state, with Retry.
+          rows.isEmpty() && partlyFailed -> ChatsUiState.Error
+          rows.isEmpty() && isOffline -> ChatsUiState.OfflineNothingSaved
+          else -> ChatsUiState.Chats(rows, isOffline, partlyFailed)
+        }
   }
 
   private fun row(preview: ChatPreview, now: Instant): ChatRow {
@@ -284,6 +384,38 @@ constructor(
               )
             },
     )
+  }
+
+  private fun row(preview: OneToOneChatPreview, now: Instant): OneToOneChatRow {
+    val friend = preview.chat.otherUid
+    val message = preview.latestMessage
+    return OneToOneChatRow(
+        pairId = preview.chat.id,
+        friend =
+            when {
+              friend == null -> ChatListFriend.Deleted
+              friend in profilesById ->
+                  ChatListFriend.Named(profilesById.getValue(friend).displayName)
+              friend in unreadable -> ChatListFriend.Unavailable
+              else -> ChatListFriend.Loading
+            },
+        latest =
+            LatestMessage(
+                // The row names the friend, so only the student's own message gets a sender.
+                sender = if (message.senderId == me) Sender.You else Sender.Unknown,
+                text = message.text,
+                time = chatTime(message.createdAt, now, clock.zone),
+            ),
+    )
+  }
+
+  /** Where one kind of chats stands. */
+  private sealed interface Read<out T> {
+    data object Waiting : Read<Nothing>
+
+    data class Done<T>(val value: T) : Read<T>
+
+    data object Failed : Read<Nothing>
   }
 
   companion object {
