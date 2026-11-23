@@ -7,6 +7,7 @@
 // frame, #407).
 // Contributors: Claude (Opus 5.5, Anthropic) (the banner for refused organizer changes, from
 // #483's frames, #443).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (the sections picker, #369).
 package com.polysocial.ui.event.create
 
 import androidx.activity.compose.BackHandler
@@ -221,6 +222,7 @@ private fun EventFormScreen(
                     onEndTimePick = viewModel::onEndTimePick,
                     onCapacityChange = viewModel::onCapacityChange,
                     onVisibilityChange = viewModel::onVisibilityChange,
+                    onSectionToggle = viewModel::onSectionToggle,
                     onSubmit = viewModel::onSubmit,
                     onClose = onClose,
                     onPickLocation = {
@@ -254,6 +256,7 @@ data class CreateEventFormActions(
     val onSubmit: () -> Unit,
     val onClose: () -> Unit,
     val onPickLocation: () -> Unit,
+    val onSectionToggle: (section: String) -> Unit = {},
 )
 
 /**
@@ -456,6 +459,13 @@ fun CreateEventFormContent(
                 tag = C.Tag.create_event_public,
             ) {
               actions.onVisibilityChange(false)
+            }
+          }
+
+          // Who can see a public event, by section (#369). An association's event has none.
+          if (!form.isPrivate && state.organizer !is Organizer.Association) {
+            Section(R.string.create_event_sections_label, labelGap = 8.dp) {
+              EventSectionsPicker(form.allowedSections, editable, actions.onSectionToggle)
             }
           }
 

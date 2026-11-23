@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (Sonnet 5.5, Anthropic) (who can see an event, by section, #369). The texts are proposals: docs/mockups/369-event-sections. -->
+<resources>
+    <string name="create_event_sections_label">Sections</string>
+    <string name="create_event_sections_all">Open to all sections. Pick sections to limit who can see it.</string>
+    <string name="create_event_sections_only">Only students in %1$s can see it.</string>
+    <string name="event_detail_sections_only">Only %1$s</string>
+</resources>
