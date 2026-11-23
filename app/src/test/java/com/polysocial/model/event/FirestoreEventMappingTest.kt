@@ -1,6 +1,7 @@
 // Contributors: Claude (wrote these tests, including reading events back, #49; the place name's
 // read, write and round-trip tests, #112).
 // Contributors: Claude (Opus 5.5, Anthropic) (reading the attendee count, never writing it, #373).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (the sections an event is open to, #369).
 package com.polysocial.model.event
 
 import com.google.firebase.Timestamp
@@ -34,8 +35,34 @@ class FirestoreEventMappingTest {
             "organizerIds" to listOf("creator"),
             "allowedUids" to listOf("creator"),
             "isAssociationEvent" to true,
+            "allowedSections" to emptyList<String>(),
         ),
         event.toFirestoreMap(),
+    )
+  }
+
+  @Test
+  fun toFirestoreMap_alwaysStoresAllowedSections_inTheOrderOfTheSectionList() {
+    val open = validEvent().toFirestoreMap()
+    val restricted =
+        validEvent().copy(allowedSections = listOf("SC", "IN", "SC", "XX")).toFirestoreMap()
+
+    assertEquals(emptyList<String>(), open["allowedSections"])
+    assertEquals(listOf("IN", "SC"), restricted["allowedSections"])
+  }
+
+  @Test
+  fun eventFromFirestore_readsTheAllowedSections_andAnEventWithoutThemIsOpenToEverySection() {
+    val data = validEvent().copy(allowedSections = listOf("IN", "SC")).toFirestoreMap()
+
+    assertEquals(listOf("IN", "SC"), eventFromFirestore("event-1", data)?.allowedSections)
+    assertEquals(
+        emptyList<String>(),
+        eventFromFirestore("event-1", data - "allowedSections")?.allowedSections,
+    )
+    assertEquals(
+        emptyList<String>(),
+        eventFromFirestore("event-1", data + ("allowedSections" to "IN"))?.allowedSections,
     )
   }
 

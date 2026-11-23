@@ -1,10 +1,12 @@
 // Contributors: Claude (drafted the Firestore mapping for events, and reading it back, #49; the
 // place name, #112).
 // Contributors: Claude (Opus 5.5, Anthropic) (reading the attendee count, #373).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (the sections an event is open to, #369).
 package com.polysocial.model.event
 
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.GeoPoint
+import com.polysocial.model.user.orderedSections
 import java.time.Instant
 
 /**
@@ -40,6 +42,8 @@ fun Event.toFirestoreMap(): Map<String, Any?> =
         "organizerIds" to organizerIds,
         "allowedUids" to allowedUids,
         "isAssociationEvent" to isAssociationEvent,
+        // Always stored, [] for every section: the Security Rules and the list queries need it.
+        "allowedSections" to orderedSections(allowedSections),
     )
 
 /**
@@ -78,6 +82,8 @@ fun eventFromFirestore(id: String, data: Map<String, Any?>): Event? {
       organizerIds = data["organizerIds"].stringList(),
       allowedUids = data["allowedUids"].stringList(),
       isAssociationEvent = data["isAssociationEvent"] as? Boolean ?: false,
+      // An event stored before #369 has none, so it reads as open to every section.
+      allowedSections = data["allowedSections"].stringList(),
   )
 }
 
