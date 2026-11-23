@@ -183,8 +183,9 @@ data class EventDetailNavigation(
  * @param associationHeader the verified association's header on its Events and Map tabs, given the
  *   tab's title (#322). Its ViewModels belong to the Events graph, so logout clears them. Tests
  *   replace it, because the real one needs Hilt.
- * @param chatsContent the Chats tab's root, given what opens a group chat (its event and group).
- *   Tests replace it, because the real one needs Hilt.
+ * @param chatsContent the Chats tab's root, given what opens a group chat (its event and group) and
+ *   what opens a one-to-one chat (its pair ID, #432). Tests replace it, because the real one needs
+ *   Hilt.
  * @param pendingEventId an event to open on top of the start destination, once the graph is ready
  *   (a reminder notification tap, second PR of #123's review). Consumed once through
  *   [onPendingEventIdConsumed], so it is not applied again on recomposition or rotation; null for
@@ -252,18 +253,14 @@ fun AppShell(
         },
     groupChatContent: @Composable (() -> Unit) -> Unit = { GroupChatRoute(it) },
     oneToOneChatContent: @Composable (() -> Unit) -> Unit = { OneToOneChatRoute(it) },
-    chatsContent: @Composable (onOpenChat: (eventId: String, groupId: String) -> Unit) -> Unit =
-        { onOpenChat ->
-          ChatsRoute(
-              onOpenChat,
-              // A friend's chat (#432), in the Chats tab's graph like a group's; only from the
-              // list,
-              // so a second quick tap doesn't open it twice.
-              onOpenOneToOneChat = { pairId ->
-                if (navController.currentDestination?.route == Tab.CHATS.rootRoute)
-                    navController.navigate(Tab.CHATS.oneToOneChatRoute(pairId))
-              },
-          )
+    chatsContent:
+        @Composable
+        (
+            onOpenChat: (eventId: String, groupId: String) -> Unit,
+            onOpenOneToOneChat: (pairId: String) -> Unit,
+        ) -> Unit =
+        { onOpenChat, onOpenOneToOneChat ->
+          ChatsRoute(onOpenChat, onOpenOneToOneChat = onOpenOneToOneChat)
         },
     studentProfileContent: @Composable (() -> Unit) -> Unit = { StudentProfileRoute(it) },
     myProfileContent: @Composable (onBack: () -> Unit, onEdit: () -> Unit) -> Unit =
@@ -368,10 +365,16 @@ fun AppShell(
                 else profileContent(loggedOut)
               }
               Tab.CHATS ->
-                  chatsContent { eventId, groupId ->
-                    if (entry.isResumed)
-                        navController.navigate(tab.groupChatRoute(eventId, groupId))
-                  }
+                  chatsContent(
+                      { eventId, groupId ->
+                        if (entry.isResumed)
+                            navController.navigate(tab.groupChatRoute(eventId, groupId))
+                      },
+                      // A friend's chat (#432), in the Chats tab's graph like a group's.
+                      { pairId ->
+                        if (entry.isResumed) navController.navigate(tab.oneToOneChatRoute(pairId))
+                      },
+                  )
             }
           }
         }

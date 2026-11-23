@@ -1,4 +1,5 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #431).
+// Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #431; the Chats tab's stand-in
+// takes the one-to-one opener, #432).
 package com.polysocial.ui.navigation
 
 import androidx.activity.ComponentActivity
@@ -41,7 +42,7 @@ class OneToOneChatNavigationTest {
             eventsContent = { TabRootScreen(Tab.EVENTS) },
             profileContent = { TabRootScreen(Tab.PROFILE) },
             mapContent = { _, _ -> TabRootScreen(Tab.MAP) },
-            chatsContent = { TabRootScreen(Tab.CHATS) },
+            chatsContent = { _, _ -> TabRootScreen(Tab.CHATS) },
             oneToOneChatContent = { onBack ->
               TextButton(onBack, Modifier.testTag(CHAT)) { Text("Chat with Léa") }
             },

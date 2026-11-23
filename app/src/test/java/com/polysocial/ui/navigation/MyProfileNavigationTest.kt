@@ -1,5 +1,7 @@
 // Contributors: Claude (Sonnet 5.5, Anthropic) (wrote these tests of opening My profile from the
 // Profile tab or any tab, and Edit profile above it, #495).
+// Contributors: Claude (Opus 5.5, Anthropic) (the Chats tab's stand-in takes the one-to-one opener,
+// #432).
 package com.polysocial.ui.navigation
 
 import androidx.activity.ComponentActivity
@@ -49,7 +51,7 @@ class MyProfileNavigationTest {
             navController = navController,
             eventsContent = { TabRootScreen(Tab.EVENTS) },
             mapContent = { _, _ -> TabRootScreen(Tab.MAP) },
-            chatsContent = { TabRootScreen(Tab.CHATS) },
+            chatsContent = { _, _ -> TabRootScreen(Tab.CHATS) },
             profileContent = {
               ProfileScreen(
                   LogoutState.Idle,

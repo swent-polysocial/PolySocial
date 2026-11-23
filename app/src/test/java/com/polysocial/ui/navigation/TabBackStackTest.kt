@@ -3,6 +3,8 @@
 // without Hilt, #105; map stub given the "+" action, #110).
 // Contributors: OpenAI Codex (inject an offline Map placeholder while testing shared navigation).
 // Contributors: Claude (Opus 5.5, Anthropic) (the Chats tab's stand-in, #364).
+// Contributors: Claude (Opus 5.5, Anthropic) (the Chats tab's stand-in takes the one-to-one opener,
+// #432).
 package com.polysocial.ui.navigation
 
 import androidx.activity.ComponentActivity
@@ -41,7 +43,7 @@ class TabBackStackTest {
             navController = navController,
             eventsContent = { TabRootScreen(Tab.EVENTS) },
             profileContent = { TabRootScreen(Tab.PROFILE) },
-            chatsContent = { TabRootScreen(Tab.CHATS) },
+            chatsContent = { _, _ -> TabRootScreen(Tab.CHATS) },
             mapContent = { _, _ -> TabRootScreen(Tab.MAP) },
         )
       }
