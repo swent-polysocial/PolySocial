@@ -1,6 +1,7 @@
 // Contributors: OpenAI Codex (group chat UI and Figma avatar colors, #236 and #238; neutral
 // deleted author label, #241); Claude (Opus 5.5, Anthropic) (moved here from GroupChatScreen.kt to
-// share them with the one-to-one chat, #431; their tags moved here, from the #519 review).
+// share them with the one-to-one chat, #431; their tags moved here, from the #519 review; the
+// timeline without sender names and with its own empty state, for the one-to-one chat, #431).
 package com.polysocial.ui.chat
 
 import androidx.compose.foundation.background
@@ -78,7 +79,8 @@ internal object ChatTags {
 /**
  * A chat's messages in the server's order, with a day label where the day changes, and the draft
  * being sent at the end. [members] name and color the other senders; a deleted author gets the
- * neutral label (#241).
+ * neutral label (#241). Without [showSenders] (a one-to-one chat, whose header names the friend),
+ * the other student's bubbles have no name or avatar. [empty] shows while there is no message.
  */
 @Composable
 internal fun ChatTimeline(
@@ -89,6 +91,10 @@ internal fun ChatTimeline(
     today: LocalDate,
     zone: ZoneId,
     offline: Boolean,
+    showSenders: Boolean = true,
+    empty: @Composable () -> Unit = {
+      ChatMessageState(R.string.chat_empty, R.string.chat_empty_body)
+    },
 ) {
   val pending = draft.takeIf { it.stage == ChatDraft.Stage.SENDING }
   val shown = messages.filterNot { pending?.id == it.id }
@@ -102,7 +108,7 @@ internal fun ChatTimeline(
       )
     }
     if (shown.isEmpty() && pending == null) {
-      ChatMessageState(R.string.chat_empty, R.string.chat_empty_body)
+      empty()
     } else {
       val rowCount = shown.size + if (pending == null) 0 else 1
       val list = rememberLazyListState(initialFirstVisibleItemIndex = rowCount - 1)
@@ -134,14 +140,15 @@ internal fun ChatTimeline(
           val mine = message.senderId == me
           val peerIndex = peers.indexOfFirst { it.uid == message.senderId }
           val name =
-              if (message.senderId == DELETED_MESSAGE_SENDER)
+              if (!showSenders) null
+              else if (message.senderId == DELETED_MESSAGE_SENDER)
                   stringResource(R.string.chat_deleted_author)
               else if (mine || (!newDay && previous.senderId == message.senderId)) null
               else
                   peers.getOrNull(peerIndex)?.profile?.displayName
                       ?: stringResource(R.string.group_unknown_member)
           val color = OTHERS_COLORS.getOrElse(peerIndex) { OTHERS_COLORS.first() }
-          ChatBubble(message.text, mine, name, avatarColor = color)
+          ChatBubble(message.text, mine, name, avatarColor = color, avatarSpace = showSenders)
         }
         if (pending != null)
             item { ChatBubble(pending.text.trim(), mine = true, name = null, sending = true) }
@@ -157,6 +164,7 @@ private fun ChatBubble(
     name: String?,
     sending: Boolean = false,
     avatarColor: Int = OTHERS_COLORS.first(),
+    avatarSpace: Boolean = true,
 ) {
   Column(
       Modifier.fillMaxWidth(),
@@ -170,7 +178,7 @@ private fun ChatBubble(
             style = MaterialTheme.typography.labelMedium,
         )
     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      if (!mine) {
+      if (!mine && avatarSpace) {
         Box(Modifier.size(28.dp)) {
           if (name != null) MemberAvatar(initials(name), avatarColor, size = 28.dp)
         }
