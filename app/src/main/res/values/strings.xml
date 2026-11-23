@@ -290,7 +290,7 @@
     <string name="privacy_matching_unavailable">Not available yet</string>
     <string name="privacy_download">Download my data</string>
     <string name="privacy_full_notice">Full privacy notice</string>
-    <string name="privacy_updated">Updated 21 November 2026</string>
+    <string name="privacy_updated">Updated 23 November 2026</string>
     <string name="privacy_groups_title">Groups</string>
     <string name="privacy_groups_body">Joining a group stores your account identifier with the event and group. Students who can read the event can see its groups and their members. Leaving removes your membership.</string>
     <string name="privacy_chats_title">Chat messages</string>

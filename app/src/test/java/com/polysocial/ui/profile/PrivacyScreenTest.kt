@@ -214,7 +214,7 @@ class PrivacyScreenTest {
     rule.onNodeWithTag(C.Tag.privacy_chats).performScrollTo().assertIsDisplayed()
     rule.onNodeWithText(text(R.string.privacy_chats_body)).assertIsDisplayed()
     rule.onNodeWithTag(C.Tag.privacy_full_notice).performScrollTo().performClick()
-    rule.onNodeWithTag(C.Tag.privacy_notice_date).assertTextEquals("Updated 21 November 2026")
+    rule.onNodeWithTag(C.Tag.privacy_notice_date).assertTextEquals("Updated 23 November 2026")
   }
 
   @Test
