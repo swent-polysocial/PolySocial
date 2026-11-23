@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (the one-to-one chat's copy from #430's Figma
+     section 25, #431). -->
+<resources>
+    <string name="one_to_one_chat_empty_named">No messages yet. Say hi to %1$s.</string>
+    <string name="one_to_one_chat_empty">No messages yet.</string>
+    <string name="one_to_one_chat_not_friends_named">You’re no longer friends with %1$s, so you can’t send messages here.</string>
+    <string name="one_to_one_chat_not_friends">You’re no longer friends, so you can’t send messages here.</string>
+    <string name="one_to_one_chat_account_deleted">This account was deleted, so you can’t send messages here.</string>
+</resources>
