@@ -74,6 +74,7 @@ import com.polysocial.ui.event.checkin.checkInAvailability
 import com.polysocial.ui.group.GroupMember
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
+import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
@@ -195,6 +196,7 @@ private data class ReminderUiState(
     val blocked: Boolean = false,
     val showExplanation: Boolean = false,
     val requestPermission: Boolean = false,
+    val tooLateFor: Instant? = null,
 )
 
 /** What the event detail screen shows (Figma section 03, "Event detail" and its states). */
@@ -244,7 +246,8 @@ sealed interface EventDetailUiState {
    * @property reminderTooLate true once the event starts within [REMINDER_LEAD] (or has started),
    *   when it was read: no reminder can be scheduled then ([reminderTime] is null), so the screen
    *   doesn't offer the switch unless a reminder is already on; updated with the event's next
-   *   change, like [isLive].
+   *   change, like [isLive]. It also turns true when a tap on the switch finds it too late, for a
+   *   screen that stayed open past the hour mark.
    * @property reminderOn whether "Remind me 1 h before" is on, shown once going (#123); seeded once
    *   from [ReminderScheduler.isScheduled] the first time attendance is confirmed.
    * @property remindersBlocked true once Android's notification permission is known to be denied,
@@ -570,13 +573,23 @@ constructor(
   private val showReminderExplanation = MutableStateFlow(false)
   private val requestReminderPermission = MutableStateFlow(false)
 
+  /**
+   * The start time of the event for which a tap found it too late to schedule a reminder, when the
+   * screen had not noticed yet (it stayed open past the hour mark). The switch is then not offered
+   * any more, instead of turning itself off again without a word; an event moved to another time
+   * offers it again.
+   */
+  private val tooLateFor = MutableStateFlow<Instant?>(null)
+
   private val reminderUi: Flow<ReminderUiState> =
-      combine(reminderOn, remindersBlocked, showReminderExplanation, requestReminderPermission) {
-          on,
-          blocked,
-          showExplanation,
-          requestPermission ->
-        ReminderUiState(on, blocked, showExplanation, requestPermission)
+      combine(
+          reminderOn,
+          remindersBlocked,
+          showReminderExplanation,
+          requestReminderPermission,
+          tooLateFor,
+      ) { on, blocked, showExplanation, requestPermission, tooLate ->
+        ReminderUiState(on, blocked, showExplanation, requestPermission, tooLate)
       }
 
   /**
@@ -662,6 +675,9 @@ constructor(
                     remindersBlocked = reminder.blocked,
                     showReminderExplanation = reminder.showExplanation,
                     requestReminderPermission = reminder.requestPermission,
+                    reminderTooLate =
+                        state.reminderTooLate ||
+                            reminder.tooLateFor == state.details.event.startTime,
                 )
             else state
           }
@@ -1137,7 +1153,9 @@ constructor(
     viewModelScope.launch {
       val result = reminders.schedule(reminder)
       // TooLate or UnexpectedError: the switch simply doesn't turn on, like a save that fails
-      // changes nothing elsewhere on this screen; Figma has no frame for this failure.
+      // changes nothing elsewhere on this screen; Figma has no frame for this failure. A TooLate
+      // also stops the screen offering the switch, which could only fail the same way again.
+      if (result == ScheduleReminderResult.TooLate) tooLateFor.value = event.startTime
       reminderOn.value = result is ScheduleReminderResult.Scheduled
     }
   }
