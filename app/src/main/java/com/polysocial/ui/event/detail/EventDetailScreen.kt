@@ -30,6 +30,8 @@
 // Contributors: Claude (Sonnet 5.5, Anthropic) (no reminder switch within the hour before the
 // start, #381).
 // Contributors: Claude (Sonnet 5.5, Anthropic) (the Directions button under the place, #391).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (the pill of the sections an event is open to,
+// #369).
 package com.polysocial.ui.event.detail
 
 import android.Manifest
@@ -49,6 +51,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -129,6 +133,7 @@ import com.polysocial.R
 import com.polysocial.model.directions.transitDirectionsLink
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.EventCategory
+import com.polysocial.model.event.isOpenToAllSections
 import com.polysocial.ui.common.ConfirmationSheet
 import com.polysocial.ui.common.LoadingState
 import com.polysocial.ui.common.OfflineBanner
@@ -182,6 +187,7 @@ object EventDetailTags {
   const val RETRY = "event_detail_retry"
   const val EDIT = "event_detail_edit"
   const val ORGANIZED_BY_YOU = "event_detail_organized_by_you"
+  const val SECTIONS = "event_detail_sections"
   const val CANCEL_EVENT = "event_detail_cancel_event"
   const val SHOW_ENTRANCE_QR = "event_detail_show_entrance_qr"
   const val CANCEL_SHEET = "event_detail_cancel_sheet"
@@ -516,6 +522,7 @@ fun EventDetailScreen(
   }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun EventContent(
     state: EventDetailUiState.Loaded,
@@ -545,7 +552,10 @@ private fun EventContent(
         }
         Column(Modifier.padding(horizontal = 20.dp)) {
           Spacer(Modifier.height(16.dp))
-          Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+          FlowRow(
+              horizontalArrangement = Arrangement.spacedBy(6.dp),
+              verticalArrangement = Arrangement.spacedBy(6.dp),
+          ) {
             Pill(
                 text = stringResource(category.label),
                 color = category.color,
@@ -554,6 +564,21 @@ private fun EventContent(
                 horizontalPadding = 10.dp,
                 modifier = Modifier.testTag(EventDetailTags.CATEGORY),
             )
+            // An event restricted to sections says which (#369). Nobody outside them reads it.
+            if (!event.isOpenToAllSections()) {
+              Pill(
+                  text =
+                      stringResource(
+                          R.string.event_detail_sections_only,
+                          sectionsSummary(event.allowedSections),
+                      ),
+                  color = Ink2,
+                  background = Disabled,
+                  height = 24.dp,
+                  horizontalPadding = 10.dp,
+                  modifier = Modifier.testTag(EventDetailTags.SECTIONS),
+              )
+            }
             if (state.isOrganizer) {
               Pill(
                   text = stringResource(R.string.event_detail_organized_by_you),
