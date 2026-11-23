@@ -30,7 +30,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (the Chats tab's list, opening each group chat, #364).
 // Contributors: Claude (Sonnet 5.5, Anthropic) (My profile row and routes replace the Profile
 // tab's pencil, #495).
-// Contributors: Claude (Opus 5.5, Anthropic) (the one-to-one chat route, from Friends, #431).
+// Contributors: Claude (Opus 5.5, Anthropic) (the one-to-one chat route, from Friends, #431, and
+// from the Chats list, #432).
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.layout.Box
@@ -253,7 +254,16 @@ fun AppShell(
     oneToOneChatContent: @Composable (() -> Unit) -> Unit = { OneToOneChatRoute(it) },
     chatsContent: @Composable (onOpenChat: (eventId: String, groupId: String) -> Unit) -> Unit =
         { onOpenChat ->
-          ChatsRoute(onOpenChat)
+          ChatsRoute(
+              onOpenChat,
+              // A friend's chat (#432), in the Chats tab's graph like a group's; only from the
+              // list,
+              // so a second quick tap doesn't open it twice.
+              onOpenOneToOneChat = { pairId ->
+                if (navController.currentDestination?.route == Tab.CHATS.rootRoute)
+                    navController.navigate(Tab.CHATS.oneToOneChatRoute(pairId))
+              },
+          )
         },
     studentProfileContent: @Composable (() -> Unit) -> Unit = { StudentProfileRoute(it) },
     myProfileContent: @Composable (onBack: () -> Unit, onEdit: () -> Unit) -> Unit =

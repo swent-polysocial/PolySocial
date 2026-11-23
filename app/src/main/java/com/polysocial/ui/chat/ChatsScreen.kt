@@ -1,4 +1,5 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (the Chats list, from #362's Figma section 16, #364).
+// Contributors: Claude (Opus 5.5, Anthropic) (the Chats list, from #362's Figma section 16, #364;
+// one-to-one rows and the partly failed note, from #430's Figma section 25, #432).
 package com.polysocial.ui.chat
 
 import androidx.compose.foundation.background
@@ -22,6 +23,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -46,6 +48,8 @@ import com.polysocial.ui.common.LoadingState
 import com.polysocial.ui.common.OfflineBanner
 import com.polysocial.ui.common.secondaryTextStyle
 import com.polysocial.ui.event.style
+import com.polysocial.ui.group.MemberAvatar
+import com.polysocial.ui.group.initials
 import com.polysocial.ui.theme.Border
 import com.polysocial.ui.theme.Disabled
 import com.polysocial.ui.theme.Ink
@@ -60,29 +64,37 @@ object ChatsTags {
   const val LIST = "chats_list"
   const val EMPTY = "chats_empty"
   const val OFFLINE_BANNER = "chats_offline_banner"
+  const val PARTLY_FAILED = "chats_partly_failed"
+  const val PARTLY_FAILED_RETRY = "chats_partly_failed_retry"
 
   /** The row of the group [groupId] of the event [eventId]. */
   fun row(eventId: String, groupId: String) = "chats_row_${eventId}_$groupId"
+
+  /** The row of the one-to-one chat [pairId] (#432). */
+  fun oneToOneRow(pairId: String) = "chats_one_to_one_row_$pairId"
 }
 
 /**
- * The Chats tab (#364): the student's group chats, newest activity first. [onOpenChat] opens a
- * chat, given its event and group.
+ * The Chats tab (#364): the student's group and one-to-one chats (#432), newest activity first.
+ * [onOpenChat] opens a group chat, given its event and group; [onOpenOneToOneChat] a chat with a
+ * friend, given its pair ID.
  */
 @Composable
 fun ChatsRoute(
     onOpenChat: (eventId: String, groupId: String) -> Unit,
     modifier: Modifier = Modifier,
+    onOpenOneToOneChat: (pairId: String) -> Unit = {},
     viewModel: ChatsViewModel = hiltViewModel(),
 ) {
   val state by viewModel.state.collectAsStateWithLifecycle()
-  ChatsScreen(state, onOpenChat, viewModel::retry, modifier)
+  ChatsScreen(state, onOpenChat, viewModel::retry, modifier, onOpenOneToOneChat)
 }
 
 /**
  * The Chats list from [state] alone (Figma section 16): loading, couldn't load with [onRetry],
  * offline with nothing saved (also with [onRetry]), "Join a group to chat", or the chats with the
- * offline banner above them when offline.
+ * offline banner above them when offline, and a note with [onRetry] when one kind of chats couldn't
+ * be read (#432).
  */
 @Composable
 fun ChatsScreen(
@@ -90,6 +102,7 @@ fun ChatsScreen(
     onOpenChat: (eventId: String, groupId: String) -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier,
+    onOpenOneToOneChat: (pairId: String) -> Unit = {},
 ) {
   when (state) {
     ChatsUiState.Loading -> LoadingState(stringResource(R.string.loading_chats), modifier)
@@ -118,6 +131,7 @@ fun ChatsScreen(
                 verticalAlignment = Alignment.Top,
             )
           }
+          if (state.partlyFailed) PartlyFailedNote(onRetry)
           if (state.rows.isEmpty()) {
             EmptyChats(Modifier.weight(1f))
           } else {
@@ -125,8 +139,11 @@ fun ChatsScreen(
                 Modifier.fillMaxSize().testTag(ChatsTags.LIST),
                 contentPadding = PaddingValues(horizontal = 20.dp),
             ) {
-              items(state.rows, key = { "${it.eventId}/${it.groupId}" }) { row ->
-                ChatRowItem(row) { onOpenChat(row.eventId, row.groupId) }
+              items(state.rows, key = ::rowKey) { row ->
+                when (row) {
+                  is ChatRow -> ChatRowItem(row) { onOpenChat(row.eventId, row.groupId) }
+                  is OneToOneChatRow -> OneToOneRowItem(row) { onOpenOneToOneChat(row.pairId) }
+                }
               }
             }
           }
@@ -175,6 +192,91 @@ private fun ChatRowItem(row: ChatRow, onClick: () -> Unit) {
       }
     }
     HorizontalDivider(color = Border)
+  }
+}
+
+/** A unique key per row: a pair ID has a `~`, which no event or group ID needs. */
+private fun rowKey(row: ChatListRow): String =
+    when (row) {
+      is ChatRow -> "group/${row.eventId}/${row.groupId}"
+      is OneToOneChatRow -> "pair/${row.pairId}"
+    }
+
+/** A one-to-one row (Figma section 25): the friend's avatar and name, the time, the latest text. */
+@Composable
+private fun OneToOneRowItem(row: OneToOneChatRow, onClick: () -> Unit) {
+  val name =
+      when (val friend = row.friend) {
+        is ChatListFriend.Named -> friend.name
+        ChatListFriend.Deleted -> stringResource(R.string.chat_deleted_author)
+        ChatListFriend.Unavailable -> stringResource(R.string.group_profile_unavailable)
+        ChatListFriend.Loading -> null
+      }
+  Column(
+      Modifier.fillMaxWidth()
+          .clickable(role = Role.Button, onClick = onClick)
+          .testTag(ChatsTags.oneToOneRow(row.pairId))
+  ) {
+    Row(
+        Modifier.padding(vertical = 12.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+      // "?" for a deleted account, as in Figma.
+      MemberAvatar(
+          if (row.friend is ChatListFriend.Named && name != null) initials(name) else "?",
+          0,
+          size = 48.dp,
+      )
+      Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+          if (name == null) {
+            // A grey bar until the profile answers, as for a group's event.
+            Box(
+                Modifier.weight(1f).heightIn(min = 19.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+              Box(Modifier.size(width = 110.dp, height = 10.dp).background(Disabled, CircleShape))
+            }
+          } else {
+            TitleText(name, Modifier.weight(1f))
+          }
+          Text(row.latest.time.label(), style = smallTextStyle(), color = Ink3, maxLines = 1)
+        }
+        Text(
+            preview(row.latest),
+            style = secondaryTextStyle(),
+            color = Ink2,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+      }
+    }
+    HorizontalDivider(color = Border)
+  }
+}
+
+/** One kind of chats couldn't be read: the other is listed above nothing but this note (#432). */
+@Composable
+private fun PartlyFailedNote(onRetry: () -> Unit) {
+  Row(
+      Modifier.fillMaxWidth()
+          .padding(start = 20.dp, end = 8.dp, bottom = 8.dp)
+          .testTag(ChatsTags.PARTLY_FAILED),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Text(
+        stringResource(R.string.chats_partly_failed),
+        Modifier.weight(1f),
+        style = secondaryTextStyle(),
+        color = Ink2,
+    )
+    TextButton(onRetry, Modifier.testTag(ChatsTags.PARTLY_FAILED_RETRY)) {
+      Text(stringResource(R.string.retry), color = Ink)
+    }
   }
 }
 

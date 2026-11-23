@@ -1,4 +1,5 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #364).
+// Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #364; one-to-one rows and the
+// partly failed note, #432).
 package com.polysocial.ui.chat
 
 import android.app.Application
@@ -30,12 +31,18 @@ class ChatsScreenTest {
   @get:Rule val composeTestRule = createComposeRule()
 
   private val opened = mutableListOf<Pair<String, String>>()
+  private val openedPairs = mutableListOf<String>()
   private var retries = 0
 
   private fun show(state: ChatsUiState) {
     composeTestRule.setContent {
       PolySocialTheme {
-        ChatsScreen(state, onOpenChat = { e, g -> opened += e to g }, onRetry = { retries++ })
+        ChatsScreen(
+            state,
+            onOpenChat = { e, g -> opened += e to g },
+            onRetry = { retries++ },
+            onOpenOneToOneChat = { openedPairs += it },
+        )
       }
     }
   }
@@ -185,5 +192,76 @@ class ChatsScreenTest {
     show(ChatsUiState.Loading)
 
     composeTestRule.onNodeWithText("Loading chats…").assertIsDisplayed()
+  }
+
+  // ---- One-to-one rows (#432, Figma section 25) ----
+
+  private fun pairRow(pairId: String, friend: ChatListFriend, sender: Sender, text: String) =
+      OneToOneChatRow(
+          pairId,
+          friend,
+          LatestMessage(sender, text, ChatTime.Today(LocalTime.of(20, 6))),
+      )
+
+  @Test
+  fun aOneToOneRow_namesTheFriend_prefixesYourMessage_andOpensTheChat() {
+    show(
+        ChatsUiState.Chats(
+            listOf(
+                pairRow("lea~me", ChatListFriend.Named("Léa Martin"), Sender.You, "On my way"),
+                row("g1"),
+            ),
+            isOffline = false,
+        )
+    )
+
+    val lea = composeTestRule.onNodeWithTag(ChatsTags.oneToOneRow("lea~me"))
+    lea.assert(hasText("Léa Martin"))
+    lea.assert(hasText("You: On my way"))
+    lea.assert(hasText("20:06"))
+    lea.performClick()
+
+    assertEquals(listOf("lea~me"), openedPairs)
+    assertEquals(emptyList<Pair<String, String>>(), opened)
+  }
+
+  @Test
+  fun theFriendsOwnMessage_hasNoPrefix_andADeletedAccountIsNamedSo() {
+    show(
+        ChatsUiState.Chats(
+            listOf(
+                pairRow("lea~me", ChatListFriend.Named("Léa Martin"), Sender.Unknown, "Thanks!"),
+                pairRow("gone~me", ChatListFriend.Deleted, Sender.Unknown, "Bye"),
+                pairRow("x~me", ChatListFriend.Unavailable, Sender.Unknown, "Hi"),
+            ),
+            isOffline = false,
+        )
+    )
+
+    composeTestRule.onNodeWithTag(ChatsTags.oneToOneRow("lea~me")).assert(hasText("Thanks!"))
+    val deleted = composeTestRule.onNodeWithTag(ChatsTags.oneToOneRow("gone~me"))
+    deleted.assert(hasText("Deleted account"))
+    deleted.assert(hasText("Bye"))
+    composeTestRule
+        .onNodeWithTag(ChatsTags.oneToOneRow("x~me"))
+        .assert(hasText("Profile unavailable"))
+  }
+
+  @Test
+  fun aPartlyFailedList_showsTheNote_andItsRetry() {
+    show(ChatsUiState.Chats(listOf(row("g1")), isOffline = false, partlyFailed = true))
+
+    composeTestRule.onNodeWithTag(ChatsTags.PARTLY_FAILED).assertIsDisplayed()
+    composeTestRule.onNodeWithTag(ChatsTags.PARTLY_FAILED_RETRY).performClick()
+
+    assertEquals(1, retries)
+    assertInRow("g1", "Balélec warm-up")
+  }
+
+  @Test
+  fun aFullList_hasNoPartlyFailedNote() {
+    show(ChatsUiState.Chats(listOf(row("g1")), isOffline = false))
+
+    composeTestRule.onNodeWithTag(ChatsTags.PARTLY_FAILED).assertDoesNotExist()
   }
 }

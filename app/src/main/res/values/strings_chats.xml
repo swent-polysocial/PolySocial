@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the Chats list, from #362's Figma section 16,
      #364). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (the partly failed note, #432). -->
 <resources>
     <string name="chats_empty_title">Join a group to chat</string>
     <string name="chats_empty_body">Find a group on an event you\'re going to. Its chat appears here, to plan the outing together.</string>
@@ -18,4 +19,6 @@
     <string name="chats_latest">%1$s: %2$s</string>
     <string name="chats_you">You</string>
     <string name="chats_yesterday">Yesterday</string>
+    <!-- Group chats or one-to-one chats couldn't be read; the others are listed under it. -->
+    <string name="chats_partly_failed">Some of your chats couldn\'t load.</string>
 </resources>

@@ -1,4 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #364).
+// Contributors: Claude (Opus 5.5, Anthropic) (the one-to-one chats' fake, #432).
 package com.polysocial.ui.chat
 
 import android.app.Application
@@ -12,6 +13,7 @@ import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.chat.ChatsRepository
 import com.polysocial.model.chat.FakeMessageRepository
+import com.polysocial.model.chat.FakeOneToOneChatRepository
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.validEvent
@@ -52,6 +54,7 @@ class ChatsRouteTest {
     val viewModel =
         ChatsViewModel(
             ChatsRepository(groups, messages),
+            FakeOneToOneChatRepository(currentUid = "me"),
             events,
             FakePublicProfileRepository(
                 mutableMapOf("lea" to PublicProfile("lea", "Léa Martin", "IN", "BA3"))
