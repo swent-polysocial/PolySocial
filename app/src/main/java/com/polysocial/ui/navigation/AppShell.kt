@@ -30,6 +30,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (the Chats tab's list, opening each group chat, #364).
 // Contributors: Claude (Sonnet 5.5, Anthropic) (My profile row and routes replace the Profile
 // tab's pencil, #495).
+// Contributors: Claude (Opus 5.5, Anthropic) (the one-to-one chat route, from Friends, #431).
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.layout.Box
@@ -93,6 +94,8 @@ import com.polysocial.ui.association.OrganizationRoute
 import com.polysocial.ui.chat.ChatsRoute
 import com.polysocial.ui.chat.GroupChatRoute
 import com.polysocial.ui.chat.GroupChatViewModel
+import com.polysocial.ui.chat.OneToOneChatRoute
+import com.polysocial.ui.chat.OneToOneChatViewModel
 import com.polysocial.ui.event.create.CreateEventButton
 import com.polysocial.ui.event.create.CreateEventScreen
 import com.polysocial.ui.event.create.EditEventScreen
@@ -247,6 +250,7 @@ fun AppShell(
           YourGroupRoute(onBack, onLeft, onOpenChat = onOpenChat, onOpenMember = onOpenMember)
         },
     groupChatContent: @Composable (() -> Unit) -> Unit = { GroupChatRoute(it) },
+    oneToOneChatContent: @Composable (() -> Unit) -> Unit = { OneToOneChatRoute(it) },
     chatsContent: @Composable (onOpenChat: (eventId: String, groupId: String) -> Unit) -> Unit =
         { onOpenChat ->
           ChatsRoute(onOpenChat)
@@ -280,6 +284,7 @@ fun AppShell(
           destination?.route != currentTab.findGroupRoute &&
           destination?.route != currentTab.yourGroupRoute &&
           destination?.route != currentTab.groupChatRoute &&
+          destination?.route != currentTab.oneToOneChatRoute &&
           destination?.route != currentTab.studentProfileRoute &&
           destination?.route != currentTab.myProfileRoute &&
           destination?.route != currentTab.editProfileRoute &&
@@ -407,6 +412,9 @@ fun AppShell(
                     if (entry.isResumed) navController.navigate(tab.studentProfileRoute(uid))
                   },
                   onScan = { if (entry.isResumed) navController.navigate(tab.scanFriendRoute) },
+                  onOpenChat = { pairId ->
+                    if (entry.isResumed) navController.navigate(tab.oneToOneChatRoute(pairId))
+                  },
               )
             }
             composable(tab.friendCodeRoute) { entry ->
@@ -526,6 +534,16 @@ fun AppShell(
                   ),
           ) { entry ->
             groupChatContent { if (entry.isResumed) navController.popBackStack() }
+          }
+          // Students only: an association's graph has no one-to-one chat (#365).
+          composable(
+              tab.oneToOneChatRoute,
+              arguments =
+                  listOf(
+                      navArgument(OneToOneChatViewModel.PAIR_ID_ARG) { type = NavType.StringType }
+                  ),
+          ) { entry ->
+            oneToOneChatContent { if (entry.isResumed) navController.popBackStack() }
           }
         }
         composable(

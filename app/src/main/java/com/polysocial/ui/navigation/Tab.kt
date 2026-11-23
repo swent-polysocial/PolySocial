@@ -15,6 +15,7 @@
 // (directed, reviewed and owns it).
 // Contributors: Claude (Sonnet 5.5, Anthropic) (My profile and Edit profile routes; no Profile
 // action, #495).
+// Contributors: Claude (Opus 5.5, Anthropic) (the one-to-one chat route, #431).
 package com.polysocial.ui.navigation
 
 import android.net.Uri
@@ -23,6 +24,7 @@ import androidx.annotation.StringRes
 import com.polysocial.R
 import com.polysocial.resources.C
 import com.polysocial.ui.chat.GroupChatViewModel
+import com.polysocial.ui.chat.OneToOneChatViewModel
 import com.polysocial.ui.event.detail.EventDetailViewModel
 import com.polysocial.ui.profile.StudentProfileViewModel
 
@@ -167,6 +169,15 @@ enum class Tab(
 
   fun groupChatRoute(eventId: String, groupId: String): String =
       "${yourGroupRoute(eventId)}/chat/${Uri.encode(groupId)}"
+
+  /**
+   * The chat with a friend (#431), by the pair's ID, in this tab's graph: opened from Friends in
+   * Profile, and from the Chats list (#432), so Back returns there.
+   */
+  val oneToOneChatRoute: String
+    get() = "$route/chat/{${OneToOneChatViewModel.PAIR_ID_ARG}}"
+
+  fun oneToOneChatRoute(pairId: String): String = "$route/chat/${Uri.encode(pairId)}"
 
   /**
    * A student's public profile (#368), by UID, in this tab's graph so Back returns to the screen

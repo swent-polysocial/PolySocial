@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #452); Konstantinos Perdikeas
 // (directed, reviewed and owns them).
+// Contributors: Claude (Opus 5.5, Anthropic) (the chat callback, #431).
 package com.polysocial.ui.friend
 
 import androidx.activity.ComponentActivity
@@ -155,6 +156,7 @@ class AddByUsernameScreenTest {
             onBack = {},
             onOpenProfile = {},
             onScan = {},
+            onOpenChat = {},
             viewModel = friendsList,
             addByUsername = lookup,
         )
