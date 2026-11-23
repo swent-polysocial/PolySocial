@@ -8,7 +8,8 @@
 // written test-first, #229; reads by ID only and fixed section and year lists, after review, #229;
 // deleted accounts stay deleted and private edits keep the public copy, after review, #229;
 // interests from the fixed list, written test-first, #230);
-// OpenAI Codex (public/private event read rules, #52); Claude Opus 5.5 (event write rules, #47;
+// OpenAI Codex (public/private event read rules, #52); Claude (Sonnet 5.5, Anthropic) (events
+// restricted to sections, written test-first, #369); Claude Opus 5.5 (event write rules, #47;
 // badge and locationName checks after review; isStudent for writes after #161; organizers
 // stay allowed readers after review; event registrations, #121; deleted accounts can't
 // register, #275); Claude (Opus 5.5, Anthropic) (event groups and their groupMembers markers,
@@ -50,6 +51,31 @@ service cloud.firestore {
       let profile = /databases/$(database)/documents/users/$(request.auth.uid);
       return isEpflUser()
           && !(exists(profile) && get(profile).data.get('accountType', 'student') == 'association');
+    }
+
+    // The sections the app offers: keep them equal to SECTIONS in
+    // app/src/main/java/com/polysocial/model/user/ProfileOptions.kt. The rules tests read that file
+    // and fail if a code it offers is refused here. Public profiles and events (#369) use it.
+    function isKnownSection(section) {
+      return section in ['AR', 'CGC', 'CMS', 'EL', 'GC', 'GM', 'IF', 'IN', 'MA', 'MT', 'MTE',
+          'MX', 'NX', 'PH', 'SC', 'SIE', 'SIQ', 'SV'];
+    }
+
+    // The signed-in student's section, from their public profile. Without one the get fails, and
+    // an event restricted to sections stays closed to them (#369).
+    function mySection() {
+      return get(/databases/$(database)/documents/publicProfiles/$(request.auth.uid)).data.section;
+    }
+
+    // Whether an event's section restriction lets in the signed-in student: it is open to every
+    // section (allowedSections == []) or lists theirs (#369). `data` is the event's fields. There
+    // is deliberately no default for a missing allowedSections (no data.get(...)) and no test of
+    // the field's absence: a list query is accepted when the rule holds for what the query
+    // constrains, and either of those holds for a query that doesn't mention allowedSections, so
+    // it would return events restricted to other sections (shown in the rules tests). An event
+    // without the field is closed until backfillAllowedSections.js sets it.
+    function sectionsOpenTo(data) {
+      return data.allowedSections == [] || mySection() in data.allowedSections;
     }
 
     // Whether deleteAccount deleted this account: it writes deletedAccounts/{uid} in the transaction
@@ -246,13 +272,8 @@ service cloud.firestore {
     // app never does, would leave it behind until then). Each copied field is compared, so a
     // missing one, or a missing users/{uid}, makes the rule fail and deny.
     match /publicProfiles/{uid} {
-      // The codes the app offers: keep them equal to SECTIONS and YEARS in
-      // app/src/main/java/com/polysocial/model/user/ProfileOptions.kt. The rules tests read that
-      // file and fail if a code it offers is refused here.
-      function isKnownSection(section) {
-        return section in ['AR', 'CGC', 'CMS', 'EL', 'GC', 'GM', 'IF', 'IN', 'MA', 'MT', 'MTE',
-            'MX', 'NX', 'PH', 'SC', 'SIE', 'SIQ', 'SV'];
-      }
+      // The years the app offers: keep them equal to YEARS in
+      // app/src/main/java/com/polysocial/model/user/ProfileOptions.kt, like isKnownSection above.
 
       function isKnownYear(year) {
         return year in ['BA1', 'BA2', 'BA3', 'BA4', 'BA5', 'BA6', 'MA1', 'MA2', 'MA3', 'MA4'];
@@ -344,7 +365,9 @@ service cloud.firestore {
 
     // Of the event subcollections, only attendees (below), groups, their messages and
     // groupMembers (after this block) are reachable. Private queries also need isPrivate == true
-    // and allowedUids array-contains auth.uid; public queries need isPrivate == false.
+    // and allowedUids array-contains auth.uid; public queries need isPrivate == false and, to
+    // prove the section restriction (#369), allowedSections == [] or allowedSections
+    // array-contains the student's section, joined with OR.
     match /events/{eventId} {
       function isVerifiedAssociationOwner() {
         let profile = get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
@@ -355,8 +378,13 @@ service cloud.firestore {
             && resource.data.createdBy == request.auth.uid;
       }
 
+      // A public event is readable by the students of its sections, and by its organizers
+      // whatever their section (#369). A list query must ask for what proves it: see
+      // sectionsOpenTo, and EventRepository.getUpcomingPublicEvents.
       allow read: if (isStudent()
-          && (resource.data.isPrivate == false
+          && ((resource.data.isPrivate == false
+                  && (sectionsOpenTo(resource.data)
+                      || resource.data.organizerIds.hasAny([request.auth.uid])))
               || (resource.data.isPrivate == true
                   && resource.data.allowedUids.hasAny([request.auth.uid]))))
           || (hasVerifiedEmail() && isVerifiedAssociationOwner());
@@ -402,7 +430,21 @@ service cloud.firestore {
             && data.organizerIds is list
             && data.organizerIds.hasAny([data.createdBy])
             && data.allowedUids is list
-            && data.allowedUids.hasAll(data.organizerIds);
+            && data.allowedUids.hasAll(data.organizerIds)
+            && hasValidAllowedSections(data);
+      }
+
+      // The sections a public event of a student is open to (#369): a list of distinct codes the
+      // app offers, [] for every section. Always present, because the read rule and the list
+      // queries rely on it; a private event or an association's has none.
+      function hasValidAllowedSections(data) {
+        return data.allowedSections is list
+            && data.allowedSections.size() <= 18
+            && data.allowedSections.toSet().size() == data.allowedSections.size()
+            && data.allowedSections.hasOnly(['AR', 'CGC', 'CMS', 'EL', 'GC', 'GM', 'IF', 'IN', 'MA',
+                'MT', 'MTE', 'MX', 'NX', 'PH', 'SC', 'SIE', 'SIQ', 'SV'])
+            && (data.allowedSections.size() == 0
+                || (data.isPrivate == false && data.isAssociationEvent == false));
       }
 
       function isOrganizer() {
@@ -431,7 +473,9 @@ service cloud.firestore {
       // and is public or lists them in allowedUids. For attendees and checkIns.
       function canReadEvent() {
         return exists(event())
-            && (get(event()).data.isPrivate == false
+            && ((get(event()).data.isPrivate == false
+                    && (sectionsOpenTo(get(event()).data)
+                        || get(event()).data.organizerIds.hasAny([request.auth.uid])))
                 || (get(event()).data.isPrivate == true
                     && get(event()).data.allowedUids.hasAny([request.auth.uid])));
       }
@@ -479,7 +523,9 @@ service cloud.firestore {
 
       // The student branch of the event's read rule, on the stored event.
       function studentCanReadThisEvent() {
-        return resource.data.isPrivate == false
+        return (resource.data.isPrivate == false
+                && (sectionsOpenTo(resource.data)
+                    || resource.data.organizerIds.hasAny([request.auth.uid])))
             || (resource.data.isPrivate == true
                 && resource.data.allowedUids.hasAny([request.auth.uid]));
       }
@@ -754,7 +800,9 @@ service cloud.firestore {
 
       function canReadEvent() {
         return exists(event())
-            && (get(event()).data.isPrivate == false
+            && ((get(event()).data.isPrivate == false
+                    && (sectionsOpenTo(get(event()).data)
+                        || get(event()).data.organizerIds.hasAny([request.auth.uid])))
                 || (get(event()).data.isPrivate == true
                     && get(event()).data.allowedUids.hasAny([request.auth.uid])));
       }

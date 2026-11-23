@@ -24,6 +24,7 @@ const {
   initializeTestEnvironment,
 } = require("@firebase/rules-unit-testing");
 const {
+  and,
   collection,
   collectionGroup,
   deleteDoc,
@@ -35,6 +36,7 @@ const {
   getDocs,
   increment,
   limit,
+  or,
   orderBy,
   query,
   runTransaction,
@@ -89,7 +91,9 @@ beforeEach(async () => {
         isAssociationEvent: true,
       },
     })) {
-      await setDoc(doc(db, `events/${id}`), event);
+      // The events as the app writes them (#369), so they stay readable: allowedSections always
+      // exists, [] for every section.
+      await setDoc(doc(db, `events/${id}`), { allowedSections: [], ...event });
     }
     await setDoc(doc(db, "events/e1/messages/m1"), { text: "Seeded" });
     await setDoc(doc(db, "users/u1"), { uid: "u1", displayName: "Student One" });
@@ -829,19 +833,34 @@ test("the map's public upcoming query is allowed and keeps its sorted time windo
     ]) {
       await setDoc(doc(db, `events/${id}`), {
         isPrivate, startTime: Timestamp.fromDate(new Date(date)), allowedUids: ["u2"],
+        allowedSections: [],
       });
     }
+    await setDoc(doc(db, "publicProfiles/u1"), {
+      displayName: "Student One", section: "IN", year: "BA3", interests: [],
+    });
   });
   const events = collection(studentDb("u1"), "events");
   const constraints = [
     where("startTime", ">=", start), where("startTime", "<", end), orderBy("startTime"),
   ];
-  const snapshot = await assertSucceeds(getDocs(query(events, where("isPrivate", "==", false), ...constraints)));
+  // The query the app sends (#369): public, in the window, and open to every section or to theirs.
+  const openToMe = or(
+    where("allowedSections", "==", []), where("allowedSections", "array-contains", "IN"),
+  );
+  const snapshot = await assertSucceeds(getDocs(query(
+    events,
+    and(where("isPrivate", "==", false), where("startTime", ">=", start),
+      where("startTime", "<", end), openToMe),
+    orderBy("startTime"),
+  )));
   const ids = snapshot.docs.map((event) => event.id);
   if (JSON.stringify(ids) !== JSON.stringify(["sooner", "later"])) {
     throw new Error(`Unexpected public upcoming events: ${JSON.stringify(ids)}`);
   }
   await assertFails(getDocs(query(events, ...constraints)));
+  // Without the part that proves the section, a public query could return restricted events.
+  await assertFails(getDocs(query(events, where("isPrivate", "==", false), ...constraints)));
 });
 
 test("any verified EPFL student can get a public event", async () => {
@@ -871,13 +890,17 @@ test("a creator omitted from allowedUids can't bypass the private allowlist", as
 test("the public query explicitly filters out private events", async () => {
   const db = studentDb();
   const snapshot = await assertSucceeds(
-    getDocs(query(collection(db, "events"), where("isPrivate", "==", false))),
+    getDocs(query(
+      collection(db, "events"), where("isPrivate", "==", false), where("allowedSections", "==", []),
+    )),
   );
   if (snapshot.docs.map((item) => item.id).sort().join(",") !== "clubPublic,e1") {
     throw new Error("The public query returned unexpected events");
   }
   await assertFails(getDocs(collection(db, "events")));
   await assertFails(getDocs(query(collection(db, "events"), where("isPrivate", "==", true))));
+  // Open to every section is part of what a public query has to ask for (#369).
+  await assertFails(getDocs(query(collection(db, "events"), where("isPrivate", "==", false))));
 });
 
 test("the private query requires the current student's allowedUids membership", async () => {
@@ -1099,7 +1122,9 @@ for (const [name, profile] of [
 
     await assertSucceeds(getDoc(doc(db, "events/e1")));
     await assertSucceeds(getDoc(doc(db, "events/private")));
-    await assertSucceeds(getDocs(query(collection(db, "events"), where("isPrivate", "==", false))));
+    await assertSucceeds(getDocs(query(
+      collection(db, "events"), where("isPrivate", "==", false), where("allowedSections", "==", []),
+    )));
   });
 }
 
@@ -1130,6 +1155,7 @@ function eventBy(uid, overrides = {}) {
     organizerIds: [uid],
     allowedUids: [uid],
     isAssociationEvent: false,
+    allowedSections: [],
     ...overrides,
   };
 }
@@ -2892,7 +2918,8 @@ function restEventFields(uid, overrides = {}) {
     capacity: restInt(10), isPrivate: { booleanValue: false }, createdBy: string(uid),
     organizerIds: { arrayValue: { values: [string(uid)] } },
     allowedUids: { arrayValue: { values: [string(uid)] } },
-    isAssociationEvent: { booleanValue: false }, ...overrides,
+    isAssociationEvent: { booleanValue: false }, allowedSections: { arrayValue: {} },
+    ...overrides,
   };
 }
 
@@ -2980,6 +3007,214 @@ test("a counted registration may send the stored capacity back as 10.0, not anot
   );
   assert.equal(await restCommitted("u3", [restRegistration("open", "u3"), raise]), false);
   assert.deepEqual(await restField("events/open", "attendeeCount"), restInt(4));
+});
+
+// ---- events restricted to sections (#369) ----
+// A public event lists the sections whose students may read it (allowedSections, [] for every
+// section). Its organizers read it whatever their section. The field always exists: the read rule
+// and the list queries rely on it, so an event without it is closed to students until
+// backfillAllowedSections.js sets it.
+
+/** Stores the private and the public profile of a fictional student [uid] in [section]. */
+async function seedStudentInSection(uid, section) {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    const fields = { displayName: "Fictional Student", section, year: "BA3", interests: [] };
+    await setDoc(doc(db, `users/${uid}`), { uid, accountType: "student", ...fields });
+    await setDoc(doc(db, `publicProfiles/${uid}`), fields);
+  });
+}
+
+/**
+ * u2 created every event below; u5 (section SC) co-organizes "inOnly". u1 is in IN and u3 in MA.
+ */
+async function seedSectionEvents() {
+  await seedEvent("everyone", upcomingEventBy("u2"));
+  await seedEvent("inOnly", upcomingEventBy("u2", {
+    allowedSections: ["IN"], organizerIds: ["u2", "u5"], allowedUids: ["u2", "u5"],
+  }));
+  await seedEvent("inOrSc", upcomingEventBy("u2", { allowedSections: ["IN", "SC"] }));
+  await seedEvent("maOnly", upcomingEventBy("u2", { allowedSections: ["MA"] }));
+  await seedStudentInSection("u1", "IN");
+  await seedStudentInSection("u3", "MA");
+  await seedStudentInSection("u5", "SC");
+}
+
+const SINCE_2026 = Timestamp.fromDate(new Date("2026-01-01T00:00:00Z"));
+
+/** What the app asks for (#369): public, upcoming, and open to every section or to [section]. */
+function openToSectionQuery(db, section) {
+  return query(
+    collection(db, "events"),
+    and(
+      where("isPrivate", "==", false),
+      where("startTime", ">=", SINCE_2026),
+      or(where("allowedSections", "==", []), where("allowedSections", "array-contains", section)),
+    ),
+    orderBy("startTime"),
+  );
+}
+
+const sortedIdsOf = (snapshot) => snapshot.docs.map((item) => item.id).sort();
+
+test("S1 a student reads the events open to every section and to their own, not other sections'", async () => {
+  await seedSectionEvents();
+  const db = studentDb("u1");
+  await assertSucceeds(getDoc(doc(db, "events/everyone")));
+  await assertSucceeds(getDoc(doc(db, "events/inOnly")));
+  await assertSucceeds(getDoc(doc(db, "events/inOrSc")));
+  await assertFails(getDoc(doc(db, "events/maOnly")));
+});
+
+test("S2 a student whose public profile is missing reads only the events open to every section", async () => {
+  await seedSectionEvents();
+  const db = studentDb("u6");
+  await assertSucceeds(getDoc(doc(db, "events/everyone")));
+  await assertFails(getDoc(doc(db, "events/inOnly")));
+});
+
+test("S3 an organizer reads their event whatever their section", async () => {
+  await seedSectionEvents();
+  // u5 co-organizes inOnly from SC, u2 created everything and has no public profile at all.
+  await assertSucceeds(getDoc(doc(studentDb("u5"), "events/inOnly")));
+  await assertSucceeds(getDoc(doc(studentDb("u2"), "events/maOnly")));
+  await assertFails(getDoc(doc(studentDb("u5"), "events/maOnly")));
+});
+
+test("S4 an event without allowedSections is closed to students until it is backfilled", async () => {
+  await seedSectionEvents();
+  const legacy = upcomingEventBy("u2");
+  delete legacy.allowedSections;
+  await seedEvent("legacy", legacy);
+  await assertFails(getDoc(doc(studentDb("u1"), "events/legacy")));
+  await assertFails(getDoc(doc(studentDb("u6"), "events/legacy")));
+});
+
+test("S5 the list query for a student's section returns what is open to every section and to theirs", async () => {
+  await seedSectionEvents();
+  const snapshot = await assertSucceeds(getDocs(openToSectionQuery(studentDb("u1"), "IN")));
+  // e1 is the event every test starts with, open to every section.
+  assert.deepEqual(sortedIdsOf(snapshot), ["e1", "everyone", "inOnly", "inOrSc"]);
+  const other = await assertSucceeds(getDocs(openToSectionQuery(studentDb("u3"), "MA")));
+  assert.deepEqual(sortedIdsOf(other), ["e1", "everyone", "maOnly"]);
+});
+
+test("S6 a list query that doesn't prove the student's section is denied, so restricted events can't leak", async () => {
+  await seedSectionEvents();
+  const events = collection(studentDb("u1"), "events");
+  const upcoming = [where("isPrivate", "==", false), where("startTime", ">=", SINCE_2026)];
+  // The shape the map used before #369, and the same with no time window at all.
+  await assertFails(getDocs(query(events, ...upcoming, orderBy("startTime"))));
+  await assertFails(getDocs(query(events, where("isPrivate", "==", false))));
+  // Asking for another section's events, alone or next to the student's own.
+  await assertFails(getDocs(query(
+    events, where("isPrivate", "==", false), where("allowedSections", "array-contains", "MA"),
+  )));
+  await assertFails(getDocs(openToSectionQuery(studentDb("u1"), "MA")));
+});
+
+test("S7 each half of the section query is allowed on its own", async () => {
+  await seedSectionEvents();
+  const events = collection(studentDb("u1"), "events");
+  const everyone = await assertSucceeds(getDocs(query(
+    events, where("isPrivate", "==", false), where("allowedSections", "==", []),
+  )));
+  assert.deepEqual(sortedIdsOf(everyone), ["clubPublic", "e1", "everyone"]);
+  const mine = await assertSucceeds(getDocs(query(
+    events, where("isPrivate", "==", false), where("allowedSections", "array-contains", "IN"),
+  )));
+  assert.deepEqual(sortedIdsOf(mine), ["inOnly", "inOrSc"]);
+});
+
+test("S8 a student with no public profile can list the events open to every section", async () => {
+  await seedSectionEvents();
+  const snapshot = await assertSucceeds(getDocs(query(
+    collection(studentDb("u6"), "events"),
+    where("isPrivate", "==", false), where("allowedSections", "==", []),
+  )));
+  assert.deepEqual(sortedIdsOf(snapshot), ["clubPublic", "e1", "everyone"]);
+});
+
+test("S9 an organizer lists the public events they organize, whatever their section", async () => {
+  await seedSectionEvents();
+  const snapshot = await assertSucceeds(getDocs(query(
+    collection(studentDb("u5"), "events"),
+    where("isPrivate", "==", false), where("organizerIds", "array-contains", "u5"),
+  )));
+  assert.deepEqual(sortedIdsOf(snapshot), ["inOnly"]);
+});
+
+test("S10 a student outside an event's sections can't register for it, and one inside can", async () => {
+  await seedSectionEvents();
+  await assertFails(registerCounted(studentDb("u3"), "inOnly", "u3"));
+  await assertSucceeds(registerCounted(studentDb("u1"), "inOnly", "u1"));
+  await expectStored("inOnly", 1, ["u1"]);
+});
+
+test("S11 the groups of a restricted event are listed only to the sections that can read it", async () => {
+  await seedSectionEvents();
+  await assertFails(getDocs(collection(studentDb("u3"), "events/inOnly/groups")));
+  await assertSucceeds(getDocs(collection(studentDb("u1"), "events/inOnly/groups")));
+});
+
+test("S12 an association's events stay open to every section", async () => {
+  await seedStudentInSection("u1", "IN");
+  await assertSucceeds(getDoc(doc(studentDb("u1"), "events/clubPublic")));
+});
+
+test("S13 a student creates a public event restricted to some sections", async () => {
+  const db = studentDb("u1");
+  await assertSucceeds(setDoc(doc(db, "events/new"), eventBy("u1", { allowedSections: ["IN", "SC"] })));
+  await assertSucceeds(setDoc(doc(db, "events/open"), eventBy("u1", { allowedSections: [] })));
+});
+
+test("S14 the sections of an event are a list of distinct codes the app offers", async () => {
+  const db = studentDb("u1");
+  let count = 0;
+  const create = (sections) => setDoc(doc(db, `events/new${count++}`), eventBy("u1", { allowedSections: sections }));
+  await assertFails(create(["XX"]));
+  await assertFails(create(["IN", "IN"]));
+  await assertFails(create(["in"]));
+  await assertFails(create("IN"));
+  await assertFails(create(null));
+  const missing = eventBy("u1");
+  delete missing.allowedSections;
+  await assertFails(setDoc(doc(db, "events/missing"), missing));
+});
+
+test("S15 every section the app offers is accepted", async () => {
+  const { sections } = appProfileOptions();
+  assert.equal(sections.length, 18);
+  const db = studentDb("u1");
+  await assertSucceeds(setDoc(doc(db, "events/all"), eventBy("u1", { allowedSections: sections })));
+  for (const section of sections) {
+    await assertSucceeds(setDoc(doc(db, `events/only${section}`), eventBy("u1", { allowedSections: [section] })));
+  }
+});
+
+test("S16 only a public event of a student can be restricted", async () => {
+  const db = studentDb("u1");
+  await assertFails(setDoc(doc(db, "events/privateOnIn"), eventBy("u1", { isPrivate: true, allowedSections: ["IN"] })));
+  await assertSucceeds(setDoc(doc(db, "events/privateOpen"), eventBy("u1", { isPrivate: true })));
+  const club = associationDb("verifiedClub");
+  await assertFails(setDoc(doc(club, "events/clubIn"), eventBy("verifiedClub", { isAssociationEvent: true, allowedSections: ["IN"] })));
+  await assertSucceeds(setDoc(doc(club, "events/clubOpen"), eventBy("verifiedClub", { isAssociationEvent: true })));
+});
+
+test("S17 an organizer changes the sections of their event, a student who isn't one can't", async () => {
+  await seedSectionEvents();
+  await assertSucceeds(updateDoc(doc(studentDb("u2"), "events/inOrSc"), { allowedSections: ["IN"] }));
+  await assertSucceeds(updateDoc(doc(studentDb("u5"), "events/inOnly"), { allowedSections: [] }));
+  await assertFails(updateDoc(doc(studentDb("u1"), "events/inOnly"), { allowedSections: [] }));
+  await assertFails(updateDoc(doc(studentDb("u2"), "events/inOrSc"), { allowedSections: ["XX"] }));
+  await assertFails(updateDoc(doc(studentDb("u2"), "events/inOrSc"), { isPrivate: true }));
+});
+
+test("S18 an organizer can't drop allowedSections by overwriting the event without it", async () => {
+  await seedSectionEvents();
+  const without = eventBy("u2");
+  delete without.allowedSections;
+  await assertFails(setDoc(doc(studentDb("u2"), "events/everyone"), without));
 });
 
 // ---- publicProfiles/{uid} (#229) ----
