@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Contributors: OpenAI Codex (6.2 Sol, high; Friends screen copy from Figma #358 and failure feedback, #360). -->
 <!-- Contributors: OpenAI Codex (6.2 Sol, high; request actions and feedback, #361). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (the Message action, #431). -->
 <resources>
     <string name="friends_title">Friends</string>
     <string name="friends_incoming">Incoming requests</string>
@@ -18,6 +19,7 @@
     <string name="friends_saved_request">Saved request</string>
     <string name="friends_options">More options for %1$s</string>
     <string name="friends_remove">Remove friend</string>
+    <string name="friends_message">Message</string>
     <string name="friends_remove_named">Remove %1$s as a friend?</string>
     <string name="friends_remove_unnamed">Remove this friend?</string>
     <string name="friends_remove_body">You’ll be removed from each other’s friends lists. You can send a new request later.</string>

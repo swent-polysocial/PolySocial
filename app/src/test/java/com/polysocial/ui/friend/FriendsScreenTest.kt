@@ -1,5 +1,6 @@
 // Contributors: OpenAI Codex (6.2 Sol, high; request action interaction tests, #361).
 // Contributors: OpenAI Codex (6.2 Sol, high; Compose Friends screen tests, #360).
+// Contributors: Claude (Opus 5.5, Anthropic) (the Message action, #431).
 package com.polysocial.ui.friend
 
 import androidx.activity.ComponentActivity
@@ -57,6 +58,7 @@ class FriendsScreenTest {
                 onRetryAction = { calls += "retry" },
                 onDismissNotice = { calls += "dismiss" },
                 onAnswer = { row, action -> calls += "$action:${row.uid}" },
+                onMessage = { calls += "message:${it.friendship.id}" },
             ),
         )
       }
@@ -74,6 +76,15 @@ class FriendsScreenTest {
     tag(FriendsTags.SCAN).performClick()
     tag(FriendsTags.BACK).performClick()
     assertEquals(listOf("profile:lea", "scan", "back"), calls)
+  }
+
+  @Test
+  fun aFriendsMenuOpensTheirChat_byThePairId() {
+    render(FriendsUiState(FriendsContent.ListContent(listOf(friend), false)))
+    tag(FriendsTags.options("lea")).performClick()
+    tag(FriendsTags.MESSAGE).performClick()
+    tag(FriendsTags.MESSAGE).assertDoesNotExist()
+    assertEquals(listOf("message:${friend.friendship.id}"), calls)
   }
 
   @Test

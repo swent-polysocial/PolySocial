@@ -6,7 +6,8 @@
 // Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: Claude Opus 5.5 (a pending reminder notification's event never navigates for an
 // association, #123's second PR review).
-// Contributors: Claude (Opus 5.5, Anthropic) (the Chats tab's stand-in, #364).
+// Contributors: Claude (Opus 5.5, Anthropic) (the Chats tab's stand-in, #364; the student-only
+// one-to-one chat destination, #431).
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.layout.Column
@@ -122,6 +123,25 @@ class AssociationAppShellTest {
     show()
     compose.runOnIdle { assertNull(friendCodeDestination()) }
   }
+
+  // Associations get no one-to-one chat (#365): no tab of theirs holds the route.
+  @Test
+  fun onlyStudentsHaveTheOneToOneChatDestination() {
+    show()
+    compose.runOnIdle {
+      assertNull(oneToOneChatIn(Tab.PROFILE))
+      assertNull(oneToOneChatIn(Tab.EVENTS))
+    }
+  }
+
+  @Test
+  fun studentsHaveTheOneToOneChatDestination() {
+    show(AccountType.STUDENT)
+    compose.runOnIdle { assertNotNull(oneToOneChatIn(Tab.PROFILE)) }
+  }
+
+  private fun oneToOneChatIn(tab: Tab) =
+      (nav.graph.findNode(tab.route) as NavGraph).findNode(tab.oneToOneChatRoute)
 
   @Test
   fun studentsKeepTheFriendCodeDestination() {

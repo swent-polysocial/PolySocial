@@ -3,6 +3,7 @@
 // profile-link modifier, and review fixes for fallback copy and confirmation).
 // Contributors: Claude (Opus 5.5, Anthropic) (Add by @username above the list, and its card, #452);
 // Konstantinos Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude (Opus 5.5, Anthropic) (the Message action opening the chat, #431).
 package com.polysocial.ui.friend
 
 import androidx.activity.compose.BackHandler
@@ -93,6 +94,7 @@ object FriendsTags {
   const val SCAN = "friends_scan"
   const val RETRY = "friends_retry"
   const val REMOVE = "friends_remove"
+  const val MESSAGE = "friends_message"
   const val CONFIRM = "friends_confirm_remove"
   const val KEEP = "friends_keep"
   const val NOTICE = "friends_notice"
@@ -114,6 +116,7 @@ fun FriendsRoute(
     onBack: () -> Unit,
     onOpenProfile: (String) -> Unit,
     onScan: () -> Unit,
+    onOpenChat: (pairId: String) -> Unit,
     viewModel: FriendsViewModel = hiltViewModel(),
     addByUsername: AddByUsernameViewModel = hiltViewModel(),
 ) {
@@ -135,7 +138,7 @@ fun FriendsRoute(
         AddByUsernameActions(addByUsername::onInput, addByUsername::onLookUp)
       }
   val actions =
-      remember(viewModel, onBack, onOpenProfile, onScan) {
+      remember(viewModel, onBack, onOpenProfile, onScan, onOpenChat) {
         FriendsActions(
             onBack,
             onOpenProfile,
@@ -147,6 +150,7 @@ fun FriendsRoute(
             viewModel::retryAction,
             viewModel::dismissNotice,
             viewModel::answerRequest,
+            onMessage = { row -> onOpenChat(row.friendship.id) },
         )
       }
   FriendsScreen(state, actions) { offline -> AddByUsername(lookup, offline, lookupActions) }
@@ -163,6 +167,8 @@ internal data class FriendsActions(
     val onRetryAction: () -> Unit,
     val onDismissNotice: () -> Unit,
     val onAnswer: (FriendRow, FriendListAction) -> Unit,
+    /** Opens the chat with a friend (#431). */
+    val onMessage: (FriendRow) -> Unit = {},
 )
 
 /**
@@ -328,7 +334,8 @@ private fun FriendCard(
       ) {
         FriendIdentity(row, offline)
       }
-      if (accepted && !offline) FriendOptions(row, enabled = !writing, actions.onRemove)
+      if (accepted && !offline)
+          FriendOptions(row, enabled = !writing, actions.onRemove, actions.onMessage)
     }
     if (!accepted && !offline) RequestActions(row, enabled = !writing, actions.onAnswer)
   }
@@ -459,7 +466,12 @@ private fun FriendIdentity(row: FriendRow, offline: Boolean) {
 }
 
 @Composable
-private fun FriendOptions(row: FriendRow, enabled: Boolean, onRemove: (FriendRow) -> Unit) {
+private fun FriendOptions(
+    row: FriendRow,
+    enabled: Boolean,
+    onRemove: (FriendRow) -> Unit,
+    onMessage: (FriendRow) -> Unit,
+) {
   var expanded by remember(enabled) { mutableStateOf(false) }
   val name = row.profile?.displayName ?: stringResource(R.string.group_profile_unavailable)
   Box {
@@ -481,6 +493,21 @@ private fun FriendOptions(row: FriendRow, enabled: Boolean, onRemove: (FriendRow
         shape = RoundedCornerShape(14.dp),
         containerColor = Bg,
     ) {
+      // Chats start here (decided in #365), above Remove friend as in Figma section 25.
+      DropdownMenuItem(
+          text = {
+            Text(
+                stringResource(R.string.friends_message),
+                style = privacyTextStyle(14, 18f, FontWeight.Bold),
+                color = Ink,
+            )
+          },
+          onClick = {
+            expanded = false
+            onMessage(row)
+          },
+          modifier = Modifier.testTag(FriendsTags.MESSAGE),
+      )
       DropdownMenuItem(
           text = {
             Text(
