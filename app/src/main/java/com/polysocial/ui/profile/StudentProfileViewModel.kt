@@ -45,14 +45,20 @@ internal fun PublicProfileResult.toUiState(): StudentProfileUiState =
     }
 
 /**
+ * How long the server may take before a profile screen shows the cached profile, or Couldn't load:
+ * for another student's profile and for My profile (#495).
+ */
+internal const val PROFILE_READ_TIMEOUT_MILLIS = 5_000L
+
+/**
  * Another student's public profile, opened from a group member's row (#368) with their UID as the
  * route argument [UID_ARG]. It reads only `publicProfiles/{uid}` through [PublicProfileRepository]
  * (name, section, year and interests, never the email), once when the screen opens and again on
  * [retry]. Firestore's cache answers offline when the profile was read before (the group just read
  * it). On a connection that stalls, Firestore waits about ten seconds before it treats the device
- * as offline, so a read that doesn't answer within [TIMEOUT_MILLIS] falls back to the cached
- * profile; without one the screen shows Couldn't load, so it never stays loading. Only the server
- * can say a profile is missing: a cached miss may be out of date.
+ * as offline, so a read that doesn't answer within [PROFILE_READ_TIMEOUT_MILLIS] falls back to the
+ * cached profile; without one the screen shows Couldn't load, so it never stays loading. Only the
+ * server can say a profile is missing: a cached miss may be out of date.
  */
 @HiltViewModel
 class StudentProfileViewModel
@@ -81,17 +87,12 @@ constructor(savedStateHandle: SavedStateHandle, private val profiles: PublicProf
             }
     state.value = StudentProfileUiState.Loading
     viewModelScope.launch {
-      state.value = profiles.getPublicProfileWithCache(uid, TIMEOUT_MILLIS).toUiState()
+      state.value = profiles.getPublicProfileWithCache(uid, PROFILE_READ_TIMEOUT_MILLIS).toUiState()
     }
   }
 
   companion object {
     /** The route argument holding the student's UID. */
     const val UID_ARG = "studentUid"
-
-    /**
-     * How long the server may take before the screen shows the cached profile, or Couldn't load.
-     */
-    const val TIMEOUT_MILLIS = 5_000L
   }
 }
