@@ -116,9 +116,9 @@ interface UserProfileRepository {
    * Creates `users/{profile.uid}` from [profile], once: if the document already exists it is left
    * unchanged and [CreateProfileResult.AlreadyExists] is returned. The server sets
    * [UserProfile.createdAt]. A student's public profile (`publicProfiles/{uid}`, see
-   * [PublicProfile]) is created in the same write; an association's isn't. Offline, nothing is
-   * queued and [CreateProfileResult.NetworkError] is returned, so a profile is never left
-   * half-created.
+   * [PublicProfile]) is created in the same write; an association's isn't. [UserProfile.username]
+   * isn't saved: a username is claimed once the profile exists. Offline, nothing is queued and
+   * [CreateProfileResult.NetworkError] is returned, so a profile is never left half-created.
    */
   suspend fun createProfile(profile: UserProfile): CreateProfileResult
 
@@ -126,10 +126,11 @@ interface UserProfileRepository {
    * Saves the fields a user can edit ([UserProfile.displayName], [UserProfile.section],
    * [UserProfile.year] and [UserProfile.interests]) in the existing `users/{profile.uid}`, all of
    * them: start from the profile [getProfile] returned, or an edit of the name erases the
-   * interests. The other fields never change after creation. Unless the stored profile is an
-   * association's, the public profile is saved with the same values in the same write, and created
-   * if it is missing (a profile saved before #229). Offline, nothing is queued and
-   * [UpdateProfileResult.NetworkError] is returned.
+   * interests. The other fields never change after creation, except the username, which only
+   * [UsernameRepository.setUsername] changes: the stored one is kept. Unless the stored profile is
+   * an association's, the public profile is saved with the same values and the stored username in
+   * the same write, and created if it is missing (a profile saved before #229). Offline, nothing is
+   * queued and [UpdateProfileResult.NetworkError] is returned.
    */
   suspend fun updateProfile(profile: UserProfile): UpdateProfileResult
 

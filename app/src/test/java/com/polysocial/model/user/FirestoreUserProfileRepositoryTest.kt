@@ -4,6 +4,7 @@
 // #230); Claude (testing agent: edited interests stored in the fixed order, #230); Claude
 // (ensurePublicProfile, the missing public profile of a profile saved before #229, test-first,
 // #291).
+// Contributors: Claude (Opus 5.5, Anthropic) (the username read and kept in the public copy, #448).
 package com.polysocial.model.user
 
 import com.google.android.gms.tasks.TaskCompletionSource
@@ -110,6 +111,24 @@ class FirestoreUserProfileRepositoryTest {
   }
 
   // ---- getProfile ----
+
+  @Test
+  fun getProfile_readsTheUsername() = runTest {
+    every { ref.get() } returns Tasks.forResult(snapshot(storedFields + ("username" to "franek")))
+
+    val result = repository.getProfile("u1") as ProfileResult.Found
+
+    assertEquals("franek", result.profile.username)
+  }
+
+  @Test
+  fun getProfile_aUsernameThatIsntAString_readsAsNone() = runTest {
+    every { ref.get() } returns Tasks.forResult(snapshot(storedFields + ("username" to 42L)))
+
+    val result = repository.getProfile("u1") as ProfileResult.Found
+
+    assertEquals(null, result.profile.username)
+  }
 
   @Test
   fun getProfile_readsTheDocumentOfTheGivenUid() = runTest {
@@ -344,7 +363,45 @@ class FirestoreUserProfileRepositoryTest {
     verify(exactly = 0) { transaction.set(publicRef, any()) }
   }
 
+  @Test
+  fun createProfile_neverWritesAUsername_evenOneTheCallerGives() = runTest {
+    transactionsSee(snapshot(null))
+    val private = slot<Map<String, Any>>()
+    val public = slot<Any>()
+    every { transaction.set(ref, capture(private)) } returns transaction
+    every { transaction.set(publicRef, capture(public)) } returns transaction
+
+    repository.createProfile(profile.copy(username = "franek"))
+
+    assertFalse("username" in private.captured)
+    assertEquals(publicFieldsOf(profile), public.captured)
+  }
+
   // ---- updateProfile ----
+
+  @Test
+  fun updateProfile_keepsTheStoredUsernameInThePublicCopy_whateverTheCallerSays() = runTest {
+    transactionsSee(snapshot(storedFields + ("username" to "franek")))
+    val private = slot<Map<String, Any>>()
+    val public = slot<Any>()
+    every { transaction.update(ref, capture(private)) } returns transaction
+    every { transaction.set(publicRef, capture(public)) } returns transaction
+    val edited = profile.copy(displayName = "New Name", username = "other")
+
+    assertEquals(UpdateProfileResult.Updated, repository.updateProfile(edited))
+
+    assertFalse("username" in private.captured)
+    assertEquals(publicFieldsOf(edited) + ("username" to "franek"), public.captured)
+  }
+
+  @Test
+  fun updateProfile_withoutAStoredUsername_writesNoneToThePublicCopy() = runTest {
+    transactionsSee(snapshot(storedFields))
+
+    repository.updateProfile(profile.copy(username = "franek"))
+
+    verify(exactly = 1) { transaction.set(publicRef, publicFieldsOf(profile)) }
+  }
 
   @Test
   fun updateProfile_aStudent_alsoWritesTheirPublicProfile_withTheNewValues() = runTest {
@@ -659,6 +716,17 @@ class FirestoreUserProfileRepositoryTest {
           )
         }
       }
+
+  @Test
+  fun ensurePublicProfile_copiesTheStoredUsername() = runTest {
+    ensureTransactionsSee(snapshot(storedFields + ("username" to "franek")))
+
+    repository.ensurePublicProfile("u1")
+
+    verify(exactly = 1) {
+      transaction.set(publicRef, publicFieldsOf(profile) + ("username" to "franek"))
+    }
+  }
 
   @Test
   fun ensurePublicProfile_neverWritesThePrivateProfile() = runTest {
