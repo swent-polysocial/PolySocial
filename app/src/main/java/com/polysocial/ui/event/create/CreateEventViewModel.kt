@@ -8,6 +8,7 @@
 // #407).
 // Contributors: Claude (Opus 5.5, Anthropic) (refused organizer changes explained, from #483's
 // frames, #443).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (picking the sections an event is open to, #369).
 package com.polysocial.ui.event.create
 
 import androidx.lifecycle.SavedStateHandle
@@ -32,6 +33,7 @@ import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.PublicProfileResult
 import com.polysocial.model.user.PublicProfilesResult
+import com.polysocial.model.user.SECTIONS
 import com.polysocial.model.user.UserProfileRepository
 import com.polysocial.ui.event.detail.EventDetailViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -437,6 +439,21 @@ constructor(
   fun onCapacityChange(text: String) = edit(Field.CAPACITY) { it.copy(capacityText = text) }
 
   fun onVisibilityChange(isPrivate: Boolean) = edit(null) { it.copy(isPrivate = isPrivate) }
+
+  /**
+   * Picks [section] as one the event is open to, or unpicks it; with none picked the event is open
+   * to every section (#369). A code the app doesn't offer is ignored.
+   */
+  fun onSectionToggle(section: String) {
+    if (section !in SECTIONS) return
+    edit(null) {
+      it.copy(
+          allowedSections =
+              if (section in it.allowedSections) it.allowedSections - section
+              else it.allowedSections + section
+      )
+    }
+  }
 
   /**
    * Creates the event (or saves the changes, when editing) if the form has no errors; otherwise
