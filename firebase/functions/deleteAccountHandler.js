@@ -9,6 +9,7 @@
 // Contributors: Claude Opus 5.5 (the user's friendships, #357); Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: Claude (Opus 5.5, Anthropic) (the user's one-to-one chats and delete-for-me markers,
 // and the messages step querying again for a message deleted meanwhile, #429).
+// Contributors: Claude (Opus 5.5, Anthropic) (the username freed with the profile, #448).
 
 const { HttpsError } = require("firebase-functions/v2/https");
 const { leaveUserChats } = require("./chats");
@@ -54,10 +55,10 @@ const TRANSIENT_CODES = new Set([
 
 /**
  * Deletes the signed-in user's account: first their private profile `users/{uid}` and their public
- * profile `publicProfiles/{uid}` (#229), together, then their registrations for events (#275), then
- * their friend requests and friendships (#357), then their place in their one-to-one chats and
- * their delete-for-me markers (#429, see chats.js), then their messages' author links and group
- * memberships (#241), then their Firebase Auth user.
+ * profile `publicProfiles/{uid}` (#229), together, with their username (#448), then their
+ * registrations for events (#275), then their friend requests and friendships (#357), then their
+ * place in their one-to-one chats and their delete-for-me markers (#429, see chats.js), then their
+ * messages' author links and group memberships (#241), then their Firebase Auth user.
  * Returns `{ deleted: true }` only once all are gone. The same
  * transaction writes the deletion marker `deletedAccounts/{uid}`: the deleted user's ID token stays
  * valid until it expires (up to an hour), and the Security Rules refuse to recreate either profile
@@ -202,6 +203,11 @@ function isRecentSignIn(token, nowMillis) {
  * account is an association's, in one transaction, so no public copy outlives the account. The
  * transaction also writes the empty marker `deletedAccounts/{uid}`, which the Security Rules check,
  * so neither profile can be written again for this UID. It holds no data besides its ID.
+ *
+ * The same transaction frees the student's username, `usernames/{name}` (#448), so someone else can
+ * claim it at once (Sprint 6 PO, #445). Only the profile says which name it is, so freeing it with
+ * the profile means a retry never finds a profile gone and its name still held. A name document
+ * held by another UID is left alone.
  */
 async function deleteStudentProfile(db, uid) {
   const profile = db.collection("users").doc(uid);
@@ -214,13 +220,27 @@ async function deleteStudentProfile(db, uid) {
         DETAILS.ASSOCIATION,
       );
     }
+    const name = snapshot.exists ? snapshot.get("username") : undefined;
+    const username = isUsername(name) ? db.collection("usernames").doc(name) : null;
+    // Read before any write, as a transaction requires.
+    const held = username === null ? null : await transaction.get(username);
     // Writing the marker again and deleting a missing document are no-ops, so a retry after this
     // step still succeeds, and so does a student whose profile was saved before public profiles
     // existed.
     transaction.set(db.collection("deletedAccounts").doc(uid), {});
     transaction.delete(profile);
     transaction.delete(db.collection("publicProfiles").doc(uid));
+    if (held?.exists && held.get("uid") === uid) transaction.delete(username);
   });
+}
+
+/**
+ * Whether `name` can be a username document's ID: the format the Security Rules require (#448). A
+ * profile the rules let the student write never holds another value; this also keeps a malformed one
+ * from failing the deletion.
+ */
+function isUsername(name) {
+  return typeof name === "string" && /^[a-z][a-z0-9_.]{2,19}$/.test(name);
 }
 
 /** Deletes the Auth user; one that no longer exists counts as deleted. */
