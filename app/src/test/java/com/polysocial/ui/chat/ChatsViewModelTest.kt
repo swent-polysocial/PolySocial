@@ -396,6 +396,22 @@ class ChatsViewModelTest {
   }
 
   @Test
+  fun aFriendsProfileThatFailsToLoad_saysSo_andTheNextListReadsItAgain() {
+    oneToOne.seedChat(leaChat)
+    oneToOne.seedMessage(leaChat, "p1", "lea", "Hi", NOON)
+    profiles.failure = FakePublicProfileRepository.Failure.Unexpected
+    val viewModel = viewModel()
+    runPending()
+    assertEquals(ChatListFriend.Unavailable, viewModel.oneToOneRows().single().friend)
+
+    profiles.failure = null
+    oneToOne.seedMessage(leaChat, "p2", ME, "Still there?", NOON.plusSeconds(60))
+    runPending()
+
+    assertEquals(ChatListFriend.Named("Léa Martin"), viewModel.oneToOneRows().single().friend)
+  }
+
+  @Test
   fun aOneToOneChatWithoutAMessage_isNotListed() {
     oneToOne.seedChat(leaChat)
 
