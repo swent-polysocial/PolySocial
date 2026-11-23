@@ -259,6 +259,29 @@ class EventDetailReminderTest {
   }
 
   @Test
+  fun aTapThatFindsItTooLate_stopsOfferingTheSwitch_andTheEventMovingLaterOffersItAgain() =
+      runTest {
+        val tooLate =
+            object : ReminderScheduler by reminders {
+              override suspend fun schedule(reminder: EventReminder) =
+                  ScheduleReminderResult.TooLate
+            }
+        val vm = open(scheduler = tooLate)
+        assertFalse(vm.loaded.reminderTooLate)
+
+        vm.onReminderToggle(true)
+        runCurrent()
+
+        assertTrue(vm.loaded.reminderTooLate)
+        assertFalse(vm.loaded.reminderOn)
+
+        edit(event.copy(startTime = Instant.parse("2026-10-11T13:00:00Z")))
+        runCurrent()
+
+        assertFalse(vm.loaded.reminderTooLate)
+      }
+
+  @Test
   fun turningItOff_cancelsTheReminder() = runTest {
     reminders.scheduled[EVENT_ID] = EventReminder(EVENT_ID, event.title, event.startTime, STUDENT)
     val vm = open()

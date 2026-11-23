@@ -710,17 +710,20 @@ class EventDetailViewModelTest {
 
   @Test
   fun anEventStartingWithinTheHour_isTooLateForAReminder_andOneLaterIsNot() = runTest {
-    // The clock reads 7 October 2026, 10:00 UTC, so 11:00 is exactly the reminder lead before
-    // 12:00.
-    repository.seed(event.copy(id = "soon", startTime = Instant.parse("2026-10-07T10:30:00Z")))
-    val soon = viewModel(args = mapOf("eventId" to "soon"))
-    observe(soon)
-    assertTrue(soon.uiState.value.loaded().reminderTooLate)
+    // The clock reads 7 October 2026, 10:00 UTC. A reminder fires one hour before the start and
+    // only counts if that time is after now: 11:00 gives exactly 10:00, which is too late, and one
+    // second later is not.
+    fun tooLate(id: String, start: String): Boolean {
+      repository.seed(event.copy(id = id, startTime = Instant.parse(start)))
+      val vm = viewModel(args = mapOf("eventId" to id))
+      observe(vm)
+      return vm.uiState.value.loaded().reminderTooLate
+    }
 
-    repository.seed(event.copy(id = "later", startTime = Instant.parse("2026-10-07T12:00:00Z")))
-    val later = viewModel(args = mapOf("eventId" to "later"))
-    observe(later)
-    assertFalse(later.uiState.value.loaded().reminderTooLate)
+    assertTrue(tooLate("soon", "2026-10-07T10:30:00Z"))
+    assertTrue(tooLate("boundary", "2026-10-07T11:00:00Z"))
+    assertFalse(tooLate("just-after", "2026-10-07T11:00:01Z"))
+    assertFalse(tooLate("later", "2026-10-07T12:00:00Z"))
   }
 
   @Test
