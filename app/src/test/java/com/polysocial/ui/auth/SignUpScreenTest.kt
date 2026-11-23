@@ -131,6 +131,23 @@ class SignUpScreenTest {
   }
 
   @Test
+  fun anAssociationHasNoFullName_andDoneOnItsLastFieldStillCreatesTheAccount() {
+    viewModel.reset(com.polysocial.model.user.AccountType.ASSOCIATION)
+    launch()
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.FullName)).assertDoesNotExist()
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.Email)).performTextInput("club@example.org")
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.Password)).performTextInput("password1")
+    compose
+        .onNodeWithTag(SignUpTags.input(SignUpField.ConfirmPassword))
+        .performTextInput("password1")
+
+    compose.onNodeWithTag(SignUpTags.input(SignUpField.ConfirmPassword)).performImeAction()
+    compose.waitForIdle()
+
+    assertEquals(1, auth.signUpCalls)
+  }
+
+  @Test
   fun doneOnAnIncompleteFormDoesNotCreateTheAccount() {
     launch()
     compose
