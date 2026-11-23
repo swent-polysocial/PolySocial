@@ -705,56 +705,56 @@ private fun SignUpFields(
   val association = state.form.accountType == AccountType.ASSOCIATION
   val backendError = (state.status as? SignUpStatus.Error)?.reason
   Column(Modifier.alpha(if (state.status is SignUpStatus.Loading) 0.5f else 1f)) {
-    SignUpField.entries
-        .filter { !association || it != SignUpField.FullName }
-        .forEach { field ->
-          val fieldError = state.visibleError(field)
-          val isEmailFailure =
-              field == SignUpField.Email &&
-                  backendError in listOf(SignUpResult.AlreadyInUse, SignUpResult.InvalidDomain)
-          FormField(
-              field,
-              state.form,
-              fieldError != null || isEmailFailure,
-              editingEnabled,
-              { onChange(field, it) },
-              { onBlur(field) },
-              onSubmit,
-          )
-          if (fieldError != null) {
-            ErrorLabel(fieldError.text(), SignUpTags.error(field))
-          }
-          if (field == SignUpField.Email) {
-            when {
-              isEmailFailure -> {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                  ErrorLabel(
-                      stringResource(backendError!!.message()),
-                      SignUpTags.BackendError,
-                      Modifier.weight(1f),
-                  )
-                  if (backendError == SignUpResult.AlreadyInUse) {
-                    Link(
-                        stringResource(R.string.signup_log_in_instead),
-                        SignUpTags.LogInInstead,
-                        onLogIn,
-                    )
-                  }
-                }
+    val fields = SignUpField.entries.filter { !association || it != SignUpField.FullName }
+    fields.forEach { field ->
+      val fieldError = state.visibleError(field)
+      val isEmailFailure =
+          field == SignUpField.Email &&
+              backendError in listOf(SignUpResult.AlreadyInUse, SignUpResult.InvalidDomain)
+      FormField(
+          field,
+          state.form,
+          fieldError != null || isEmailFailure,
+          editingEnabled,
+          { onChange(field, it) },
+          { onBlur(field) },
+          field == fields.last(),
+          onSubmit,
+      )
+      if (fieldError != null) {
+        ErrorLabel(fieldError.text(), SignUpTags.error(field))
+      }
+      if (field == SignUpField.Email) {
+        when {
+          isEmailFailure -> {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+              ErrorLabel(
+                  stringResource(backendError!!.message()),
+                  SignUpTags.BackendError,
+                  Modifier.weight(1f),
+              )
+              if (backendError == SignUpResult.AlreadyInUse) {
+                Link(
+                    stringResource(R.string.signup_log_in_instead),
+                    SignUpTags.LogInInstead,
+                    onLogIn,
+                )
               }
-              !association &&
-                  state.form.email.isNotEmpty() &&
-                  state.form.error(SignUpField.Email) == null ->
-                  Rule(
-                      stringResource(R.string.signup_epfl_address),
-                      true,
-                      "sign_up_epfl_address",
-                  )
             }
           }
-          if (field == SignUpField.Password) SignUpPasswordHint(state.form)
-          Spacer(Modifier.height(14.dp))
+          !association &&
+              state.form.email.isNotEmpty() &&
+              state.form.error(SignUpField.Email) == null ->
+              Rule(
+                  stringResource(R.string.signup_epfl_address),
+                  true,
+                  "sign_up_epfl_address",
+              )
         }
+      }
+      if (field == SignUpField.Password) SignUpPasswordHint(state.form)
+      Spacer(Modifier.height(14.dp))
+    }
   }
 }
 
@@ -802,6 +802,7 @@ private fun FormField(
     enabled: Boolean,
     onChange: (String) -> Unit,
     onBlur: () -> Unit,
+    isLast: Boolean,
     onSubmit: () -> Unit,
 ) {
   val label =
@@ -847,8 +848,7 @@ private fun FormField(
                     else -> KeyboardType.Text
                   },
               // Next moves to the following field by itself; the last one submits the form.
-              imeAction =
-                  if (field == SignUpField.ConfirmPassword) ImeAction.Done else ImeAction.Next,
+              imeAction = if (isLast) ImeAction.Done else ImeAction.Next,
           ),
       keyboardActions = KeyboardActions(onDone = { onSubmit() }),
       visualTransformation =
