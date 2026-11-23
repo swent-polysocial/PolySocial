@@ -88,6 +88,19 @@ class EventDetailDirectionsScreenTest {
   }
 
   @Test
+  fun aPlaceWithNoUsableCoordinates_offersNoDirections() {
+    show(
+        loaded().let {
+          it.copy(
+              details = it.details.copy(event = event.copy(location = Coordinates(Double.NaN, 6.5)))
+          )
+        }
+    )
+
+    composeTestRule.onNodeWithTag(EventDetailTags.DIRECTIONS).assertDoesNotExist()
+  }
+
+  @Test
   fun withNoAppToOpenThem_aMessageIsShownOnce() {
     val message = DirectionsUnavailable(0)
     show(unavailable = message)
