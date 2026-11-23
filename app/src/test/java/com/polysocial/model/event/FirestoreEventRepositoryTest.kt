@@ -18,6 +18,7 @@ import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.EventListener
+import com.google.firebase.firestore.Filter
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ListenerRegistration
@@ -299,9 +300,8 @@ class FirestoreEventRepositoryTest {
 
   // Reading the public upcoming events (#49)
 
-  private val publicQuery = mockk<Query>()
-  private val fromNow = mockk<Query>()
   private val inWindow = mockk<Query>()
+  private val filter = slot<Filter>()
   private val sorted = mockk<Query>()
   private val registration = mockk<ListenerRegistration>(relaxed = true)
   private val listener = slot<EventListener<QuerySnapshot>>()
@@ -309,11 +309,12 @@ class FirestoreEventRepositoryTest {
   private val windowStart = Timestamp(TEST_NOW.epochSecond, 0)
   private val windowEnd = Timestamp(TEST_NOW.plus(Duration.ofDays(14)).epochSecond, 0)
 
-  /** Stubs exactly the query the repository must build, so any other query fails the test. */
+  /**
+   * Stubs the query the repository must build: one filter (public, in the window, open to the
+   * student's section, see [filter]) sorted by start, so any other query fails the test.
+   */
   private fun stubPublicEventsQuery() {
-    every { collection.whereEqualTo("isPrivate", false) } returns publicQuery
-    every { publicQuery.whereGreaterThanOrEqualTo("startTime", windowStart) } returns fromNow
-    every { fromNow.whereLessThan("startTime", windowEnd) } returns inWindow
+    every { collection.where(capture(filter)) } returns inWindow
     every { inWindow.orderBy("startTime") } returns sorted
     every { sorted.addSnapshotListener(MetadataChanges.INCLUDE, capture(listener)) } returns
         registration
@@ -344,12 +345,55 @@ class FirestoreEventRepositoryTest {
         }
 
     verify {
-      collection.whereEqualTo("isPrivate", false)
-      publicQuery.whereGreaterThanOrEqualTo("startTime", windowStart)
-      fromNow.whereLessThan("startTime", windowEnd)
+      collection.where(any<Filter>())
       inWindow.orderBy("startTime")
     }
+    // One composite filter: public, in the window, and open to the student's section (the rules
+    // and the emulator tests check what it returns, since a Filter can't be read back here).
+    assertEquals("CompositeFilter", filter.captured.javaClass.simpleName)
     collecting.cancel()
+  }
+
+  @Test
+  fun upcomingEvents_aStudentWhoseSectionCantBeRead_stillGetsTheEventsOpenToEverySection() =
+      runTest {
+        val noProfile = FakeUserProfileRepository(ProfileResult.NotFound)
+        val withoutSection =
+            FirestoreEventRepository(
+                db,
+                auth,
+                noProfile,
+                network,
+                Clock.fixed(TEST_NOW, ZoneOffset.UTC),
+            )
+        stubPublicEventsQuery()
+        val results = mutableListOf<PublicEventsResult>()
+        val collecting =
+            launch(UnconfinedTestDispatcher(testScheduler)) {
+              withoutSection.getUpcomingPublicEvents().toList(results)
+            }
+
+        listener.captured.onEvent(snapshot(document("e1", stored.toFirestoreMap())), null)
+
+        assertTrue(filter.isCaptured)
+        assertEquals(1, (results.single() as PublicEventsResult.Events).events.size)
+        collecting.cancel()
+      }
+
+  @Test
+  fun upcomingEvents_nobodySignedIn_isAnErrorWithoutAnyQuery() = runTest {
+    val signedOut =
+        FirestoreEventRepository(
+            db,
+            FakeAuthRepository(user = null),
+            profiles,
+            network,
+            Clock.fixed(TEST_NOW, ZoneOffset.UTC),
+        )
+
+    val results = signedOut.getUpcomingPublicEvents().toList()
+
+    assertEquals(listOf<PublicEventsResult>(PublicEventsResult.Error), results)
   }
 
   @Test
