@@ -1,6 +1,8 @@
 // Contributors: Claude (wrote these tests of the fake's getEvent contract, #112; updateEvent and
 // deleteEvent, #130; its own association events, #132); Franciszek Najda (reviewed #130).
 // Contributors: Claude (Opus 5.5, Anthropic) tested the fake's readable private events, #320.
+// Contributors: Claude (Sonnet 5.5, Anthropic) tested the fake's events restricted to sections,
+// #369.
 // Contributors: Claude (Opus 5.5, Anthropic) tested the fake's organizer changes, #370; read the
 // registrations from FakeRegistrationRepository, #370 review.
 package com.polysocial.model.event
@@ -13,6 +15,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -23,6 +26,57 @@ import org.junit.Test
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class FakeEventRepositoryTest {
+
+  // Events restricted to sections (#369): what the fake shows a student of a given section.
+
+  private fun restricted(id: String, vararg sections: String) =
+      validEvent()
+          .copy(
+              id = id,
+              isPrivate = false,
+              organizerIds = listOf("organizer"),
+              allowedSections = sections.toList(),
+          )
+
+  @Test
+  fun upcomingEvents_showAStudentTheEventsOpenToEverySectionAndToTheirs() = runTest {
+    val repository = FakeEventRepository(currentUid = "student", now = TEST_NOW)
+    repository.viewerSection = "IN"
+    repository.seed(restricted("open"), restricted("inOnly", "IN"), restricted("maOnly", "MA"))
+
+    val ids =
+        (repository.getUpcomingPublicEvents().first() as PublicEventsResult.Events).events.map {
+          it.id
+        }
+
+    assertEquals(listOf("inOnly", "open"), ids.sorted())
+  }
+
+  @Test
+  fun upcomingEvents_showAStudentWithoutASectionOnlyTheEventsOpenToEverySection() = runTest {
+    val repository = FakeEventRepository(currentUid = "student", now = TEST_NOW)
+    repository.seed(restricted("open"), restricted("inOnly", "IN"))
+
+    val ids =
+        (repository.getUpcomingPublicEvents().first() as PublicEventsResult.Events).events.map {
+          it.id
+        }
+
+    assertEquals(listOf("open"), ids)
+  }
+
+  @Test
+  fun getEvent_isNotFoundForAnotherSection_butFoundForAnOrganizerAnywhere() = runTest {
+    val repository = FakeEventRepository(currentUid = "student", now = TEST_NOW)
+    repository.viewerSection = "IN"
+    repository.seed(restricted("maOnly", "MA"))
+    assertEquals(EventResult.NotFound, repository.getEvent("maOnly").first())
+
+    repository.currentUid = "organizer"
+
+    assertTrue(repository.getEvent("maOnly").first() is EventResult.Found)
+  }
+
   private val registrations = FakeRegistrationRepository()
   private val repository = FakeEventRepository(registeredUids = registrations::attendeesOf)
   private val event = validEvent().copy(id = "event-1")

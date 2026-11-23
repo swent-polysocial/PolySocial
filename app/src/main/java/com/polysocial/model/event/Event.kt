@@ -2,8 +2,10 @@
 // Khellaf (reviewed). Claude (keeping the stored organizers on update, #130); Franciszek Najda
 // (reviewed).
 // Contributors: Claude (Opus 5.5, Anthropic) (the attendee count and when an event is full, #373).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (the sections an event is open to, #369).
 package com.polysocial.model.event
 
+import com.polysocial.model.user.orderedSections
 import java.time.Instant
 
 /** A point on the map in degrees (WGS 84), independent of the map SDK. */
@@ -41,6 +43,10 @@ enum class EventCategory {
  *   with the rest of the event. 0 for an event stored before the counter existed.
  * @property locationName the name of the place picked on the map ("Rolex Learning Center"), shown
  *   with the location. Blank for events created before it was stored.
+ * @property allowedSections the EPFL sections (codes of [com.polysocial.model.user.SECTIONS]) whose
+ *   students can read this public event, or empty for every section (#369). Always stored, so the
+ *   Security Rules and the list queries can rely on it; only a student's public event has any.
+ *   Organizers read the event whatever their section.
  */
 data class Event(
     val id: String = "",
@@ -58,7 +64,14 @@ data class Event(
     val organizerIds: List<String> = emptyList(),
     val allowedUids: List<String> = emptyList(),
     val isAssociationEvent: Boolean = false,
+    val allowedSections: List<String> = emptyList(),
 )
+
+/**
+ * Whether the event is open to every section: it has no [Event.allowedSections] restriction. Only a
+ * public event of a student can be restricted (#369).
+ */
+fun Event.isOpenToAllSections(): Boolean = allowedSections.isEmpty()
 
 /**
  * Whether the event has no place left: it has a [Event.capacity] and [Event.attendeeCount] has
@@ -72,18 +85,20 @@ fun Event.isFull(): Boolean = capacity != null && attendeeCount >= capacity
  * Returns this event as newly created by [uid]: [uid] becomes [Event.createdBy], the only organizer
  * and the only allowed reader, [Event.attendeeCount] is 0, and [Event.isAssociationEvent] is true
  * only if the creator [isVerifiedAssociation]. The caller's values for these fields are replaced,
- * so the form can't add organizers or readers, or give itself the verified badge.
+ * so the form can't add organizers or readers, or give itself the verified badge. The sections are
+ * kept only for a public event of a student (see [withSectionRestriction]).
  *
  * Repositories call this with the signed-in user's UID and the creator's profile.
  */
 fun Event.withCreator(uid: String, isVerifiedAssociation: Boolean): Event =
     copy(
-        createdBy = uid,
-        organizerIds = listOf(uid),
-        allowedUids = listOf(uid),
-        attendeeCount = 0,
-        isAssociationEvent = isVerifiedAssociation,
-    )
+            createdBy = uid,
+            organizerIds = listOf(uid),
+            allowedUids = listOf(uid),
+            attendeeCount = 0,
+            isAssociationEvent = isVerifiedAssociation,
+        )
+        .withSectionRestriction()
 
 /**
  * Returns this event as an update of [stored]: it keeps [stored]'s [Event.id], [Event.createdBy],
@@ -95,10 +110,23 @@ fun Event.withCreator(uid: String, isVerifiedAssociation: Boolean): Event =
  */
 fun Event.withOwnershipOf(stored: Event): Event =
     copy(
-        id = stored.id,
-        createdBy = stored.createdBy,
-        organizerIds = stored.organizerIds,
-        allowedUids = stored.allowedUids,
-        attendeeCount = stored.attendeeCount,
-        isAssociationEvent = stored.isAssociationEvent,
+            id = stored.id,
+            createdBy = stored.createdBy,
+            organizerIds = stored.organizerIds,
+            allowedUids = stored.allowedUids,
+            attendeeCount = stored.attendeeCount,
+            isAssociationEvent = stored.isAssociationEvent,
+        )
+        .withSectionRestriction()
+
+/**
+ * Returns this event with its [Event.allowedSections] in the order of
+ * [com.polysocial.model.user.SECTIONS], without duplicates or unknown codes, and none at all for a
+ * private event or an association's: the restriction is for a student's public event (#369), which
+ * the Security Rules also enforce.
+ */
+fun Event.withSectionRestriction(): Event =
+    copy(
+        allowedSections =
+            if (isPrivate || isAssociationEvent) emptyList() else orderedSections(allowedSections)
     )
