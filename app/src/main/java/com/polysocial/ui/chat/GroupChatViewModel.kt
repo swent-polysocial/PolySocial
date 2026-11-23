@@ -1,17 +1,16 @@
 // Contributors: OpenAI Codex (live chat, membership gating, stable sender names, connectivity
 // and retry state, #238).
+// Contributors: Claude (Opus 5.5, Anthropic) (the draft and today's date moved to ChatDraft.kt, to
+// share them with the one-to-one chat, #431).
 package com.polysocial.ui.chat
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.polysocial.model.auth.AuthRepository
-import com.polysocial.model.chat.MAX_MESSAGE_LENGTH
 import com.polysocial.model.chat.Message
 import com.polysocial.model.chat.MessageRepository
 import com.polysocial.model.chat.MessagesResult
-import com.polysocial.model.chat.SendMessageResult
-import com.polysocial.model.chat.validateMessageText
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.group.GroupRepository
 import com.polysocial.model.group.MyGroupResult
@@ -24,11 +23,8 @@ import com.polysocial.ui.group.observeGroupEvent
 import com.polysocial.ui.group.readGroupMembers
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
-import java.time.Duration
 import java.time.LocalDate
-import java.util.UUID
 import javax.inject.Inject
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,7 +34,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.shareIn
@@ -66,22 +61,6 @@ internal sealed interface ChatHistory {
   ) : ChatHistory
 }
 
-internal data class ChatDraft(
-    val text: String = "",
-    val id: String? = null,
-    val stage: Stage = Stage.EDITING,
-) {
-  enum class Stage {
-    EDITING,
-    SENDING,
-    OFFLINE,
-    FAILED,
-  }
-
-  val canSend
-    get() = stage != Stage.SENDING && validateMessageText(text) == null
-}
-
 /**
  * Holds the route's draft and observes messages while the student belongs to the selected group. An
  * unchanged failed draft keeps its document ID across manual retries.
@@ -104,27 +83,21 @@ constructor(
   private val groupId = savedStateHandle.get<String>(GROUP_ID_ARG).orEmpty()
   internal val myUid = auth.currentUser()?.uid
   internal val zone = clock.zone
-  internal val today = flow {
-    while (true) {
-      val now = clock.instant()
-      val date = now.atZone(zone).toLocalDate()
-      emit(date)
-      val midnight = date.plusDays(1).atStartOfDay(zone).toInstant()
-      delay(Duration.between(now, midnight).toMillis().coerceAtLeast(1))
-    }
-  }
-      .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), LocalDate.now(clock))
+  internal val today =
+      chatToday(clock)
+          .stateIn(viewModelScope, SharingStarted.WhileSubscribed(), LocalDate.now(clock))
   private val reads = MutableStateFlow(0)
-  private val draft = MutableStateFlow(ChatDraft())
+  private val drafts = ChatDrafts(viewModelScope)
 
   private val history = reads.flatMapLatest { observeHistory(groups) }
 
   internal val state =
-      combine(events.observeGroupEvent(eventId, zone), history, draft, network.observeOnline()) {
-              event,
+      combine(
+              events.observeGroupEvent(eventId, zone),
               history,
-              draft,
-              online ->
+              drafts.draft,
+              network.observeOnline(),
+          ) { event, history, draft, online ->
             ChatState(event, history, draft, offline = !online)
           }
           .stateIn(
@@ -137,49 +110,11 @@ constructor(
     reads.value++
   }
 
-  internal fun edit(text: String) {
-    val current = draft.value
-    if (current.stage == ChatDraft.Stage.SENDING) return
-    val prefix = text.take(MAX_MESSAGE_LENGTH)
-    val limited =
-        if (text.length > prefix.length && prefix.last().isHighSurrogate()) prefix.dropLast(1)
-        else prefix
-    val sameMessage = current.text.trim() == limited.trim()
-    draft.value = current.copy(text = limited, id = current.id.takeIf { sameMessage })
-  }
+  internal fun edit(text: String) = drafts.edit(text)
 
   internal fun send() {
-    val current = draft.value
-    if (
-        !current.canSend ||
-            state.value.history !is ChatHistory.Ready ||
-            auth.currentUser()?.uid != myUid
-    )
-        return
-    val pending =
-        current.copy(
-            id = current.id ?: UUID.randomUUID().toString(),
-            stage = ChatDraft.Stage.SENDING,
-        )
-    if (!draft.compareAndSet(current, pending)) return
-    viewModelScope.launch {
-      val result =
-          try {
-            messages.sendMessage(eventId, groupId, pending.text, pending.id)
-          } catch (cancelled: CancellationException) {
-            draft.compareAndSet(pending, current)
-            throw cancelled
-          } catch (_: Exception) {
-            SendMessageResult.UnexpectedError
-          }
-      val next =
-          when (result) {
-            SendMessageResult.Sent -> ChatDraft()
-            SendMessageResult.NetworkError -> pending.copy(stage = ChatDraft.Stage.OFFLINE)
-            else -> pending.copy(stage = ChatDraft.Stage.FAILED)
-          }
-      draft.compareAndSet(pending, next)
-    }
+    if (state.value.history !is ChatHistory.Ready || auth.currentUser()?.uid != myUid) return
+    drafts.send { text, id -> messages.sendMessage(eventId, groupId, text, id) }
   }
 
   /** Share one membership listener, but only restart messages when access itself changes. */
@@ -205,7 +140,7 @@ constructor(
                     Access.WAITING -> emit(ChatHistory.Loading)
                     Access.FAILED -> emit(ChatHistory.Failed)
                     Access.LEFT -> {
-                      draft.value = ChatDraft()
+                      drafts.clear()
                       emit(ChatHistory.Left)
                     }
                     Access.MEMBER -> emitAll(observeMessages())
