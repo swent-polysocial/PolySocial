@@ -3,6 +3,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (a non-EPFL association in allowedUids can't run My events' private query, #320).
 // Contributors: Claude (Fable 5.2, Anthropic) (other shapes and accounts denied the own-groups query, and the latest-message query of the chat list, #363; groups documents outside an event, and more accounts and membership changes on the latest-message query, from a test audit).
 // Contributors: Claude (Opus 5.5, Anthropic) (co-organizer tests, written test-first, #370).
+// Contributors: Claude (Opus 5.5, Anthropic) (username tests, #448).
 // Contributors: Claude (Opus 5.5, Anthropic) (attendeeCount rows and the counted registration writes, #373, from #372's prototype by Claude (Fable 5.2 and Opus 5.5, Anthropic)).
 // Contributors: Claude (Opus 5.5, Anthropic) (one-to-one chat tests and the message helpers both chats share, #428, from #365's prototype tests by Claude (Fable 5.2 and Opus 5.5, Anthropic); the refused messages both chats share, and cases a mutation check found missing, from a test review, #428).
 const { after, before, beforeEach, test } = require("node:test");
@@ -3401,6 +3402,326 @@ test("an unknown interest can't be made public, even copied from a private profi
   await assertFails(
     setDoc(doc(studentDb("u5"), "publicProfiles/u5"), publicProfile({ interests: ["chess"] })),
   );
+});
+
+// ---- usernames/{name} (#448) ----
+// usernames/{name} holds the uid of the student whose users/{uid}.username names it, copied to
+// their public profile. Students get one name, never list them; a name and its profile are tied
+// both ways, so no write keeps two names or a name the profile doesn't hold.
+
+/** The reserved names and the format in Username.kt, so these tests fail if the app's change. */
+function appUsernameRules() {
+  const source = readFileSync(
+    path.join(__dirname, "../../app/src/main/java/com/polysocial/model/user/Username.kt"),
+    "utf8",
+  );
+  const reserved = source.match(/val RESERVED_USERNAMES: Set<String> =\s*setOf\(([^)]*)\)/);
+  const pattern = source.match(/val USERNAME_PATTERN = Regex\("([^"]+)"\)/);
+  if (!reserved || !pattern) throw new Error("Username.kt changed shape: update this test");
+  return {
+    reserved: [...reserved[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]),
+    pattern: pattern[1],
+  };
+}
+
+test("the rules refuse exactly the reserved names and format the app checks", () => {
+  const { reserved, pattern } = appUsernameRules();
+  assert.deepEqual(rulesCodes("reservedUsernames"), reserved);
+  const rules = readFileSync(path.join(__dirname, "firestore.rules"), "utf8");
+  assert.ok(rules.includes(`name.matches('${pattern}')`), "the rules' username pattern differs");
+});
+
+/**
+ * Seeds the student [uid] holding [name]: both profiles naming it and usernames/[name], with the
+ * rules off.
+ */
+async function seedUsername(uid, name) {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, `users/${uid}`), privateProfile(uid, { username: name }));
+    await setDoc(doc(db, `publicProfiles/${uid}`), publicProfile({ username: name }));
+    await setDoc(doc(db, `usernames/${name}`), { uid });
+  });
+}
+
+/**
+ * [uid] takes [name] as the app does, in one batch: both profiles name it, usernames/[name] is
+ * created and, when [previous] is set, usernames/[previous] is deleted. [skip] leaves out the
+ * write it names ("users", "public", "create" or "delete"), and [data] replaces the new document.
+ */
+function claim(db, uid, name, { previous, skip, data = { uid } } = {}) {
+  const batch = writeBatch(db);
+  if (skip !== "users") batch.update(doc(db, `users/${uid}`), { username: name });
+  if (skip !== "public") batch.update(doc(db, `publicProfiles/${uid}`), { username: name });
+  if (skip !== "create") batch.set(doc(db, `usernames/${name}`), data);
+  if (previous && skip !== "delete") batch.delete(doc(db, `usernames/${previous}`));
+  return batch.commit();
+}
+
+async function usernameHolder(name) {
+  let holder;
+  await env.withSecurityRulesDisabled(async (context) => {
+    const snapshot = await getDoc(doc(context.firestore(), `usernames/${name}`));
+    holder = snapshot.exists() ? snapshot.data().uid : null;
+  });
+  return holder;
+}
+
+// -- get, never list --
+
+test("a student can get a username another student holds, and one nobody holds", async () => {
+  await seedUsername("u2", "lea");
+  const snapshot = await assertSucceeds(getDoc(doc(studentDb("u1"), "usernames/lea")));
+  assert.deepEqual(snapshot.data(), { uid: "u2" });
+  await assertSucceeds(getDoc(doc(studentDb("u1"), "usernames/nobody")));
+});
+
+for (const [name, listing] of [
+  ["the whole collection", (names) => names],
+  ["a page of it", (names) => query(names, limit(1))],
+  ["the names one student holds", (names) => query(names, where("uid", "==", "u2"))],
+]) {
+  test(`a student can't list usernames: ${name}`, async () => {
+    await seedUsername("u2", "lea");
+    await assertFails(getDocs(listing(collection(studentDb("u1"), "usernames"))));
+  });
+}
+
+for (const [name, db] of [
+  ["a pending association", () => associationDb("club")],
+  ["a verified association", () => associationDb("verifiedClub")],
+  ["an @epfl.ch association", () => epflAssociationDb("verifiedClub")],
+  ["an unverified student", () => firestoreAs("student@epfl.ch", false, "u1")],
+  ["a signed-out user", () => env.unauthenticatedContext().firestore()],
+]) {
+  test(`${name} can't get a username`, async () => {
+    await seedUsername("u2", "lea");
+    await assertFails(getDoc(doc(db(), "usernames/lea")));
+  });
+}
+
+test("a deleted account can't get a username", async () => {
+  await seedUsername("u2", "lea");
+  await seedDeletedAccount("u1");
+  await assertFails(getDoc(doc(studentDb("u1"), "usernames/lea")));
+});
+
+// -- claim --
+
+test("a student claims a free name with both profiles in one batch", async () => {
+  await seedStudentWithPublicProfile("u1");
+  await assertSucceeds(claim(studentDb("u1"), "u1", "franek"));
+  assert.equal(await usernameHolder("franek"), "u1");
+});
+
+test("a student claims a free name in a transaction", async () => {
+  await seedStudentWithPublicProfile("u1");
+  const db = studentDb("u1");
+  await assertSucceeds(
+    runTransaction(db, async (transaction) => {
+      const name = doc(db, "usernames/franek");
+      if ((await transaction.get(name)).exists()) throw new Error("Expected a free name");
+      transaction.update(doc(db, "users/u1"), { username: "franek" });
+      transaction.update(doc(db, "publicProfiles/u1"), { username: "franek" });
+      transaction.set(name, { uid: "u1" });
+    }),
+  );
+});
+
+test("a student without a public profile (saved before #229) claims a name too", async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "users/u1"), privateProfile("u1"));
+  });
+  await assertSucceeds(claim(studentDb("u1"), "u1", "franek", { skip: "public" }));
+});
+
+for (const skip of ["users", "create", "public"]) {
+  test(`a claim without its ${skip} write is denied`, async () => {
+    await seedStudentWithPublicProfile("u1");
+    await assertFails(claim(studentDb("u1"), "u1", "franek", { skip }));
+  });
+}
+
+test("a public profile naming another username than the private one is denied", async () => {
+  await seedUsername("u1", "franek");
+  await assertFails(updateDoc(doc(studentDb("u1"), "publicProfiles/u1"), { username: "other" }));
+});
+
+for (const [name, data] of [
+  ["for another student", { uid: "u2" }],
+  ["with another field", { uid: "u1", createdAt: serverTimestamp() }],
+  ["without its uid", {}],
+]) {
+  test(`a claim ${name} is denied`, async () => {
+    await seedStudentWithPublicProfile("u1");
+    await assertFails(claim(studentDb("u1"), "u1", "franek", { data }));
+  });
+}
+
+for (const name of ["Franek", "9lives", "_franek", "ab", "a".repeat(21), "fra-nek", "fra nek"]) {
+  test(`a name the format refuses (${name}) can't be claimed`, async () => {
+    await seedStudentWithPublicProfile("u1");
+    await assertFails(claim(studentDb("u1"), "u1", name));
+  });
+}
+
+test("names at the format's limits can be claimed", async () => {
+  await seedStudentWithPublicProfile("u1");
+  await seedStudentWithPublicProfile("u2");
+  await assertSucceeds(claim(studentDb("u1"), "u1", "a.1"));
+  await assertSucceeds(claim(studentDb("u2"), "u2", `a${"_".repeat(19)}`));
+});
+
+for (const name of appUsernameRules().reserved) {
+  test(`the reserved name ${name} can't be claimed`, async () => {
+    await seedStudentWithPublicProfile("u1");
+    await assertFails(claim(studentDb("u1"), "u1", name));
+  });
+}
+
+test("a name another student holds can't be taken", async () => {
+  await seedUsername("u2", "lea");
+  await seedStudentWithPublicProfile("u1");
+  await assertFails(claim(studentDb("u1"), "u1", "lea"));
+  await assertFails(claim(studentDb("u1"), "u1", "lea", { skip: "create" }));
+  assert.equal(await usernameHolder("lea"), "u2");
+});
+
+// u9 has no seeded users/{uid}, so these writes are creates.
+test("a profile can't be created with a username, even holding it", async () => {
+  const db = studentDb("u9");
+  const withName = writeBatch(db);
+  withName.set(doc(db, "users/u9"), privateProfile("u9", { username: "franek" }));
+  withName.set(doc(db, "publicProfiles/u9"), publicProfile({ username: "franek" }));
+  withName.set(doc(db, "usernames/franek"), { uid: "u9" });
+  await assertFails(withName.commit());
+
+  const withoutName = writeBatch(db);
+  withoutName.set(doc(db, "users/u9"), privateProfile("u9"));
+  withoutName.set(doc(db, "publicProfiles/u9"), publicProfile());
+  await assertSucceeds(withoutName.commit());
+});
+
+test("a profile naming a name nobody holds can only claim it as its own", async () => {
+  // Not a state the app writes; an admin's edit could leave one.
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "users/u1"), privateProfile("u1", { username: "ghost" }));
+  });
+  await assertFails(setDoc(doc(studentDb("u1"), "usernames/ghost"), { uid: "u2" }));
+  await assertSucceeds(setDoc(doc(studentDb("u1"), "usernames/ghost"), { uid: "u1" }));
+});
+
+for (const [name, uid] of [
+  ["a pending association", "club"],
+  ["a verified association", "verifiedClub"],
+]) {
+  test(`${name} can't claim a username`, async () => {
+    const db = associationDb(uid);
+    const batch = writeBatch(db);
+    batch.update(doc(db, `users/${uid}`), { username: "club" });
+    batch.set(doc(db, "usernames/club"), { uid });
+    await assertFails(batch.commit());
+  });
+}
+
+test("a deleted account can't claim a username, even with a profile left", async () => {
+  await seedStudentWithPublicProfile("u1");
+  await seedDeletedAccount("u1");
+  await assertFails(claim(studentDb("u1"), "u1", "franek"));
+});
+
+// -- rename and removal --
+
+test("a student renames, freeing the previous name in the same write", async () => {
+  await seedUsername("u1", "franek");
+  await assertSucceeds(claim(studentDb("u1"), "u1", "franek2", { previous: "franek" }));
+  assert.equal(await usernameHolder("franek"), null);
+  assert.equal(await usernameHolder("franek2"), "u1");
+});
+
+test("claiming @franek2 while keeping @franek is denied", async () => {
+  await seedUsername("u1", "franek");
+  await assertFails(claim(studentDb("u1"), "u1", "franek2", { previous: "franek", skip: "delete" }));
+  assert.equal(await usernameHolder("franek2"), null);
+});
+
+test("a second name can't be claimed while the profile keeps the first", async () => {
+  await seedUsername("u1", "franek");
+  const db = studentDb("u1");
+  await assertFails(setDoc(doc(db, "usernames/franek2"), { uid: "u1" }));
+});
+
+test("a student removes their username, freeing it in the same write", async () => {
+  await seedUsername("u1", "franek");
+  const db = studentDb("u1");
+  const batch = writeBatch(db);
+  batch.update(doc(db, "users/u1"), { username: deleteField() });
+  batch.update(doc(db, "publicProfiles/u1"), { username: deleteField() });
+  batch.delete(doc(db, "usernames/franek"));
+  await assertSucceeds(batch.commit());
+  assert.equal(await usernameHolder("franek"), null);
+});
+
+test("removing the username from the profile while keeping the name is denied", async () => {
+  await seedUsername("u1", "franek");
+  const db = studentDb("u1");
+  const batch = writeBatch(db);
+  batch.update(doc(db, "users/u1"), { username: deleteField() });
+  batch.update(doc(db, "publicProfiles/u1"), { username: deleteField() });
+  await assertFails(batch.commit());
+});
+
+test("freeing the name the profile still names is denied", async () => {
+  await seedUsername("u1", "franek");
+  await assertFails(deleteDoc(doc(studentDb("u1"), "usernames/franek")));
+});
+
+test("another student can't free or overwrite someone's name", async () => {
+  await seedUsername("u2", "lea");
+  await seedStudentWithPublicProfile("u1");
+  await assertFails(deleteDoc(doc(studentDb("u1"), "usernames/lea")));
+  await assertFails(setDoc(doc(studentDb("u1"), "usernames/lea"), { uid: "u1" }));
+});
+
+test("nobody updates a username document, not even its holder", async () => {
+  await seedUsername("u1", "franek");
+  await assertFails(setDoc(doc(studentDb("u1"), "usernames/franek"), { uid: "u1" }));
+});
+
+test("an edit that keeps the username needs the public copy to keep it too", async () => {
+  await seedUsername("u1", "franek");
+  const db = studentDb("u1");
+  const keeps = writeBatch(db);
+  keeps.update(doc(db, "users/u1"), { displayName: "New Name" });
+  keeps.set(doc(db, "publicProfiles/u1"), publicProfile({ displayName: "New Name", username: "franek" }));
+  await assertSucceeds(keeps.commit());
+
+  const drops = writeBatch(db);
+  drops.update(doc(db, "users/u1"), { displayName: "Newer Name" });
+  drops.set(doc(db, "publicProfiles/u1"), publicProfile({ displayName: "Newer Name" }));
+  await assertFails(drops.commit());
+});
+
+// -- the profile deleted --
+
+test("a student deleting their profile frees their name in the same write", async () => {
+  await seedUsername("u1", "franek");
+  const db = studentDb("u1");
+  const batch = writeBatch(db);
+  batch.delete(doc(db, "users/u1"));
+  batch.delete(doc(db, "usernames/franek"));
+  await assertSucceeds(batch.commit());
+});
+
+test("deleting the profile while keeping the name is denied", async () => {
+  await seedUsername("u1", "franek");
+  await assertFails(deleteDoc(doc(studentDb("u1"), "users/u1")));
+  assert.equal(await usernameHolder("franek"), "u1");
+});
+
+test("a profile without a username is still deleted on its own", async () => {
+  await seedStudentWithPublicProfile("u1");
+  await assertSucceeds(deleteDoc(doc(studentDb("u1"), "users/u1")));
 });
 
 // ---- events/{eventId}/groups/{groupId} and groupMembers/{uid} (#232) ----
