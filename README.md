@@ -25,6 +25,7 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the notice's deletion section that states the period, after review, #226). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (one-to-one chats and delete-for-me markers in deleteAccount, and their deploy order, #429). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the check-in rules, TTL policy and index deploy, #467). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (the entrance code's deploy, #468). -->
 
 # PolySocial
 
@@ -213,7 +214,7 @@ For friendships (#357), deploy **`deleteAccount` first, then the rules**. Once t
 
 For one-to-one chats (#429), deploy **`deleteAccount` first, then #428's rules** (and #437's and #441's marker rules). Once they are live, students can create chats and delete-for-me markers, and an account deleted while the previous `deleteAccount` still runs would stay in its chats' `uids` and keep its markers. The new step finds nothing until then, so it is safe to deploy before the rules.
 
-For check-ins (#467), deploy **the rules right after the merge**, before anyone runs or distributes an app built from `main`: cancelling a registration now also deletes the student's check-in in the same write, and with the old rules (no `checkIns` rule) that delete is refused, so every cancellation fails. Deploy the indexes too: they add the TTL policy on `checkIns.expiresAt`, which deletes each check-in 30 days after its event (usually within a day of `expiresAt`; the console shows it under Firestore → Time-to-live once active), and the `checkIns.uid` collection-group index that #472's `deleteAccount` step needs. The local emulator ignores TTL policies, so nothing tests the deletion itself.
+For check-ins (#467), deploy **the rules right after the merge**, before anyone runs or distributes an app built from `main`: cancelling a registration now also deletes the student's check-in in the same write, and with the old rules (no `checkIns` rule) that delete is refused, so every cancellation fails. Deploy the indexes too: they add the TTL policy on `checkIns.expiresAt`, which deletes each check-in 30 days after its event (usually within a day of `expiresAt`; the console shows it under Firestore → Time-to-live once active), and the `checkIns.uid` collection-group index that #472's `deleteAccount` step needs. The local emulator ignores TTL policies, so nothing tests the deletion itself. For the entrance code (#468), deploy **the rules right after the merge** as well (they add `checkInCode` and the QR branch of the check-in rule), then the indexes, which add the same TTL policy on `checkInCode.expiresAt`.
 
 `<project-id>` is the `project_id` in your `app/google-services.json`. Functions deploy as described in [Cloud Functions](#cloud-functions). A new index takes a few minutes to build (Firebase console → Firestore → Indexes); until it's ready, the query that needs it fails. The local emulator doesn't need indexes.
 
