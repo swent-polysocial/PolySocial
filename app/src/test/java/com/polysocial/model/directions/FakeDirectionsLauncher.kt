@@ -7,7 +7,7 @@ import com.polysocial.model.event.Coordinates
 class FakeDirectionsLauncher(var canOpen: Boolean = true) : DirectionsLauncher {
   val opened = mutableListOf<Coordinates>()
 
-  override fun openDirections(destination: Coordinates): Boolean {
+  override fun openTransitDirections(destination: Coordinates): Boolean {
     opened += destination
     return canOpen
   }

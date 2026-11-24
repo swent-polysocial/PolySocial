@@ -31,14 +31,14 @@ class AndroidDirectionsLauncherTest {
   private val place = Coordinates(46.5191, 6.5668)
 
   @Test
-  fun opensTheLinkAsAViewIntent() {
+  fun opensTheTransitLinkAsAViewIntent() {
     val context = MapsContext()
 
-    assertTrue(AndroidDirectionsLauncher(context).openDirections(place))
+    assertTrue(AndroidDirectionsLauncher(context).openTransitDirections(place))
 
     val intent = requireNotNull(context.openedIntent)
     assertEquals(Intent.ACTION_VIEW, intent.action)
-    assertEquals(directionsLink(place), intent.data?.toString())
+    assertEquals(transitDirectionsLink(place), intent.data?.toString())
     assertTrue(intent.flags and Intent.FLAG_ACTIVITY_NEW_TASK != 0)
   }
 
@@ -46,7 +46,7 @@ class AndroidDirectionsLauncherTest {
   fun noAppToOpenItDoesNotCrash() {
     val context = MapsContext(ActivityNotFoundException())
 
-    assertFalse(AndroidDirectionsLauncher(context).openDirections(place))
+    assertFalse(AndroidDirectionsLauncher(context).openTransitDirections(place))
     assertNull(context.openedIntent)
   }
 
@@ -54,7 +54,7 @@ class AndroidDirectionsLauncherTest {
   fun aBlockedAppDoesNotCrash() {
     val context = MapsContext(SecurityException())
 
-    assertFalse(AndroidDirectionsLauncher(context).openDirections(place))
+    assertFalse(AndroidDirectionsLauncher(context).openTransitDirections(place))
     assertNull(context.openedIntent)
   }
 
@@ -62,7 +62,9 @@ class AndroidDirectionsLauncherTest {
   fun aPlaceWithNoLinkOpensNothing() {
     val context = MapsContext()
 
-    assertFalse(AndroidDirectionsLauncher(context).openDirections(Coordinates(Double.NaN, 0.0)))
+    assertFalse(
+        AndroidDirectionsLauncher(context).openTransitDirections(Coordinates(Double.NaN, 0.0))
+    )
     assertNull(context.openedIntent)
   }
 }
