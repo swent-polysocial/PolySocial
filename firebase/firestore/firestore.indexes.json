@@ -28,6 +28,12 @@
   ],
   "fieldOverrides": [
     {
+      "collectionGroup": "checkInCode",
+      "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
       "collectionGroup": "checkIns",
       "fieldPath": "expiresAt",
       "ttl": true,
