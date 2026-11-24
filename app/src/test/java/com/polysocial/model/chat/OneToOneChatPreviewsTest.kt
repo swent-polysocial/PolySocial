@@ -1,9 +1,12 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #432).
+// Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #432; a latest message that fails,
+// from #521's review).
 package com.polysocial.model.chat
 
 import com.polysocial.model.friend.friendshipId
 import java.time.Instant
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -75,6 +78,43 @@ class OneToOneChatPreviewsTest {
 
     assertEquals(OneToOneChatPreviewsResult.Failed, firstAnswer())
   }
+
+  @Test
+  fun aLatestMessageThatCantReachTheServer_failsTheList() = runTest {
+    seedTwoChats()
+    val failing = withLatest(LEA, LatestMessageResult.NetworkError)
+
+    assertEquals(
+        OneToOneChatPreviewsResult.Failed,
+        failing.observeChatPreviews().first { it != OneToOneChatPreviewsResult.Loading },
+    )
+  }
+
+  @Test
+  fun aLatestMessageThatIsDenied_isLeftOut_andTheOthersListed() = runTest {
+    seedTwoChats()
+    val denied = withLatest(LEA, LatestMessageResult.UnexpectedError)
+
+    val result =
+        denied.observeChatPreviews().first { it != OneToOneChatPreviewsResult.Loading }
+            as OneToOneChatPreviewsResult.Success
+
+    assertEquals(listOf(TOM), result.previews.map { it.chat.id })
+  }
+
+  private fun seedTwoChats() {
+    chats.seedChat(LEA)
+    chats.seedMessage(LEA, "m1", "lea", "Hi", NOON)
+    chats.seedChat(TOM)
+    chats.seedMessage(TOM, "t1", "tom", "Thanks!", NOON)
+  }
+
+  /** [chats], except that the latest message of [failing] answers [latest]. */
+  private fun withLatest(failing: String, latest: LatestMessageResult) =
+      object : OneToOneChatRepository by chats {
+        override fun observeLatestMessage(pairId: String): Flow<LatestMessageResult> =
+            if (pairId == failing) flowOf(latest) else chats.observeLatestMessage(pairId)
+      }
 
   @Test
   fun loading_untilTheChatsAnswer() = runTest {
