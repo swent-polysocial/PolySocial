@@ -22,7 +22,7 @@ rules_version = '2';
 // Contributors: Claude (Opus 5.5, Anthropic) (the message check shared by both chats, and
 // one-to-one chats, from #365's prototype by Claude (Fable 5.2 and Opus 5.5, Anthropic), #428).
 // Contributors: Claude (Opus 5.5, Anthropic) (usernames and their tie to the profiles, #448).
-// Contributors: Claude (Opus 5.5, Anthropic) (check-ins at the venue and the shared event() path, #467).
+// Contributors: Claude (Opus 5.5, Anthropic) (check-ins at the venue and the shared event() and canReadEvent(), #467).
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -358,6 +358,15 @@ service cloud.firestore {
         return /databases/$(database)/documents/events/$(eventId);
       }
 
+      // Whether the caller can read this event, as its read rule says for a student: it exists,
+      // and is public or lists them in allowedUids. For attendees and checkIns.
+      function canReadEvent() {
+        return exists(event())
+            && (get(event()).data.isPrivate == false
+                || (get(event()).data.isPrivate == true
+                    && get(event()).data.allowedUids.hasAny([request.auth.uid])));
+      }
+
       // Co-organizers (#370, decision 17): at most 5 organizers, each listed once, and every
       // one added must be registered for this event, so organizers only add students they can
       // already list (only students register). Rules can't loop, so each of the at most 4
@@ -472,13 +481,6 @@ service cloud.firestore {
           return isStudent() && request.auth.uid == uid;
         }
 
-        function canReadEvent() {
-          return exists(event())
-              && (get(event()).data.isPrivate == false
-                  || (get(event()).data.isPrivate == true
-                      && get(event()).data.allowedUids.hasAny([request.auth.uid])));
-        }
-
         // Like Event.isPast in the app: an event has ended once its endTime has passed, or
         // its startTime when it has no endTime. An event with neither as a timestamp counts as
         // ended, since nobody can tell.
@@ -555,8 +557,9 @@ service cloud.firestore {
       // computed here so the app can't keep a check-in longer: a TTL policy on expiresAt
       // deletes it. Never a location: the app compares the fix with the venue on the device, so
       // a modified app could fake one (accepted in #374: the stakes are the group's "arrived").
-      // Only a registered student checks in, as themselves, during the window, by location
-      // for now (the entrance QR method comes with #468). The student and the members of their
+      // Only a registered student who can still read the event (a student removed from a
+      // private event's allowedUids keeps their registration, #295, but not check-in) checks
+      // in, as themselves, during the window, by location for now (the entrance QR method comes with #468). The student and the members of their
       // group for this event read it, by ID only; the event's organizers don't (no screen needs
       // it). Nobody lists or updates one. The student deletes their own, as cancelling their
       // registration does in the same write. A deleted account can't check in or read.
@@ -581,6 +584,7 @@ service cloud.firestore {
         allow create: if isSelf()
             && !isDeletedAccount(uid)
             && isRegistered(uid)
+            && canReadEvent()
             && inCheckInWindow()
             && request.resource.data.keys().hasOnly(['uid', 'checkedInAt', 'method', 'expiresAt'])
             && request.resource.data.uid == uid
