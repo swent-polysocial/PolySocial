@@ -166,12 +166,15 @@ service cloud.firestore {
 
       allow read: if isOwner();
       // A profile that names a username frees it in the same write (#448), so a deleted profile
-      // can't leave a name reserved.
+      // can't leave a name reserved. While its public copy exists, which no client deletes and
+      // which holds the same username, it can't be deleted at all: the freed name could otherwise
+      // be claimed by someone else and show on two public profiles (#517 review).
       allow delete: if isOwner()
           && (resource == null || resource.data.get('accountType', 'student') != 'association')
           && (resource == null
               || resource.data.get('username', null) == null
-              || !existsAfter(usernameDocument(resource.data.username)));
+              || (!existsAfter(usernameDocument(resource.data.username))
+                  && !existsAfter(/databases/$(database)/documents/publicProfiles/$(uid))));
       allow create: if isOwner()
           && !isDeletedAccount(uid)
           && request.resource.data.uid == uid
@@ -272,7 +275,7 @@ service cloud.firestore {
           && request.resource.data.uid == request.auth.uid
           && existsAfter(ownProfile())
           && getAfter(ownProfile()).data.get('username', null) == name;
-      allow delete: if hasVerifiedEmail()
+      allow delete: if isStudent()
           && resource.data.uid == request.auth.uid
           && (!existsAfter(ownProfile())
               || getAfter(ownProfile()).data.get('username', null) != name);
