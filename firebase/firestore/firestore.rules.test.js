@@ -6,6 +6,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (username tests, #448, and more from #517's review).
 // Contributors: Claude (Opus 5.5, Anthropic) (attendeeCount rows and the counted registration writes, #373, from #372's prototype by Claude (Fable 5.2 and Opus 5.5, Anthropic)).
 // Contributors: Claude (Opus 5.5, Anthropic) (check-in tests, written test-first, #467).
+// Contributors: Claude (Opus 5.5, Anthropic) (entrance code and QR check-in tests, written test-first, #468).
 // Contributors: Claude (Opus 5.5, Anthropic) (one-to-one chat tests and the message helpers both chats share, #428, from #365's prototype tests by Claude (Fable 5.2 and Opus 5.5, Anthropic); the refused messages both chats share, and cases a mutation check found missing, from a test review, #428).
 const { after, before, beforeEach, test } = require("node:test");
 // Contributors: OpenAI Codex (deleted-token membership creation/join regression, #241).
@@ -6078,7 +6079,7 @@ test("the expiry keeps the end time's sub-millisecond part", async () => {
 });
 
 for (const [name, overrides] of [
-  ["a QR method, for now", { method: "qr", token: "AAAAAAAAAAAAAAAAAAAAAA" }],
+  ["a QR method without an entrance code", { method: "qr", token: "AAAAAAAAAAAAAAAAAAAAAA" }],
   ["a QR method without a token", { method: "qr" }],
   ["another method", { method: "gps" }],
   ["a token with the location method", { token: "AAAAAAAAAAAAAAAAAAAAAA" }],
@@ -6244,4 +6245,272 @@ test("the fallback cancel deletes the check-in too, once the event is gone", asy
     transaction.delete(doc(db, checkInPath("live")));
   }));
   assert.equal(await checkInStored("live"), false);
+});
+
+// ---- events/{eventId}/checkInCode/current and QR check-ins (#468, designed in #374) ----
+// The entrance code an organizer shows: token (22 base64url characters), previousToken,
+// rotatedAt (the server's time) and expiresAt (the window's end + 30 days). Only the event's
+// organizers read and write it, during the window; a rotation keeps the stored token as
+// previousToken and comes at least 50 s after the last one. A QR check-in carries the current or
+// previous token of a code rotated less than 2 minutes ago.
+
+const TOKEN_A = "a".repeat(11) + "-_".repeat(5) + "A";
+const TOKEN_B = "B".repeat(21) + "9";
+const TOKEN_C = "c".repeat(22);
+
+function codePath(eventId) {
+  return `events/${eventId}/checkInCode/current`;
+}
+
+/** A first code for an event [times], as FirestoreCheckInRepository writes it. */
+function newCode(times, overrides = {}) {
+  return {
+    token: TOKEN_A,
+    rotatedAt: serverTimestamp(),
+    expiresAt: expiresAtFor(times),
+    ...overrides,
+  };
+}
+
+/** Stores the code of [eventId], rotated [secondsAgo] seconds ago, rules off. */
+async function seedCode(eventId, times, { token = TOKEN_A, previousToken, secondsAgo = 10 } = {}) {
+  const code = {
+    token,
+    rotatedAt: Timestamp.fromMillis(Date.now() - secondsAgo * 1000),
+    expiresAt: expiresAtFor(times),
+  };
+  if (previousToken !== undefined) code.previousToken = previousToken;
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), codePath(eventId)), code);
+  });
+}
+
+/** The rotation the app writes over a stored [previous] token. */
+function rotation(times, previous, overrides = {}) {
+  return newCode(times, { token: TOKEN_B, previousToken: previous, ...overrides });
+}
+
+/** The stored code of [eventId], read with the rules off, or null. */
+async function storedCode(eventId) {
+  let code = null;
+  await env.withSecurityRulesDisabled(async (context) => {
+    const snapshot = await getDoc(doc(context.firestore(), codePath(eventId)));
+    code = snapshot.exists() ? snapshot.data() : null;
+  });
+  return code;
+}
+
+/** u2's live event "live", u5 co-organizing it, u1 and u3 registered. */
+async function seedOrganizedEvent(times) {
+  await seedCheckInEvent("live", times, ["u1", "u3"], {
+    organizerIds: ["u2", "u5"],
+    allowedUids: ["u2", "u5"],
+  });
+}
+
+// -- the entrance code --
+
+test("an organizer creates the entrance code during the window, as the app does", async () => {
+  const times = live();
+  await seedOrganizedEvent(times);
+  const db = studentDb("u2");
+  await assertSucceeds(runTransaction(db, async (transaction) => {
+    await transaction.get(doc(db, "events/live"));
+    await transaction.get(doc(db, codePath("live")));
+    transaction.set(doc(db, codePath("live")), newCode(times));
+  }));
+  assert.equal((await storedCode("live")).token, TOKEN_A);
+});
+
+test("a co-organizer reads and rotates the code another organizer created", async () => {
+  const times = live();
+  await seedOrganizedEvent(times);
+  await seedCode("live", times, { secondsAgo: 61 });
+  await assertSucceeds(getDoc(doc(studentDb("u5"), codePath("live"))));
+  await assertSucceeds(setDoc(doc(studentDb("u5"), codePath("live")), rotation(times, TOKEN_A)));
+  const code = await storedCode("live");
+  assert.equal(code.token, TOKEN_B);
+  assert.equal(code.previousToken, TOKEN_A);
+});
+
+test("a verified association organizer shows its event's code", async () => {
+  const times = live();
+  await seedEvent("club", eventBy("verifiedClub", {
+    ...times, isAssociationEvent: true, organizerIds: ["verifiedClub"],
+  }));
+  const db = associationDb("verifiedClub");
+  await assertSucceeds(setDoc(doc(db, codePath("club")), newCode(times)));
+  await assertSucceeds(getDoc(doc(db, codePath("club"))));
+});
+
+test("nobody but an organizer reads or writes the code, not even a student going", async () => {
+  const times = live();
+  await seedOrganizedEvent(times);
+  for (const db of [studentDb("u1"), studentDb("u4"), associationDb("verifiedClub")]) {
+    await assertFails(setDoc(doc(db, codePath("live")), newCode(times)));
+  }
+  await seedCode("live", times, { secondsAgo: 61 });
+  for (const db of [studentDb("u1"), studentDb("u4"), associationDb("verifiedClub")]) {
+    await assertFails(getDoc(doc(db, codePath("live"))));
+    await assertFails(setDoc(doc(db, codePath("live")), rotation(times, TOKEN_A)));
+  }
+  assert.equal((await storedCode("live")).token, TOKEN_A);
+});
+
+test("an organizer under a deletion marker or with an unverified email gets nothing", async () => {
+  const times = live();
+  await seedOrganizedEvent(times);
+  await assertFails(setDoc(doc(firestoreAs("student@epfl.ch", false, "u2"), codePath("live")),
+    newCode(times)));
+  await seedDeletedAccount("u2");
+  await assertFails(setDoc(doc(studentDb("u2"), codePath("live")), newCode(times)));
+});
+
+for (const [name, timesNow] of [
+  ["31 minutes before the start", () => ({
+    startTime: minutesFromNow(31), endTime: minutesFromNow(120),
+  })],
+  ["once the event has ended", () => ({
+    startTime: minutesFromNow(-120), endTime: minutesFromNow(-1),
+  })],
+]) {
+  test(`an organizer can't create or read the code ${name}`, async () => {
+    const times = timesNow();
+    await seedOrganizedEvent(times);
+    await assertFails(setDoc(doc(studentDb("u2"), codePath("live")), newCode(times)));
+    await seedCode("live", times);
+    await assertFails(getDoc(doc(studentDb("u2"), codePath("live"))));
+  });
+}
+
+test("an organizer creates the code 29 minutes before the start", async () => {
+  const times = { startTime: minutesFromNow(29), endTime: minutesFromNow(120) };
+  await seedOrganizedEvent(times);
+  await assertSucceeds(setDoc(doc(studentDb("u2"), codePath("live")), newCode(times)));
+});
+
+for (const [name, overrides] of [
+  ["a 21-character token", { token: "a".repeat(21) }],
+  ["a 23-character token", { token: "a".repeat(23) }],
+  ["a token with a dot", { token: "a".repeat(21) + "." }],
+  ["a token that isn't text", { token: 42 }],
+  ["no token", { token: undefined }],
+  ["the client's time", { rotatedAt: Timestamp.fromMillis(Date.now() - 60_000) }],
+  ["an expiry a millisecond late", { expiresAt: undefined, lateExpiry: true }],
+  ["no expiry", { expiresAt: undefined }],
+  ["a previous token on creation", { previousToken: TOKEN_C }],
+  ["another field", { eventTitle: "Concert" }],
+]) {
+  test(`the code can't be created with ${name}`, async () => {
+    const times = live();
+    await seedOrganizedEvent(times);
+    const { lateExpiry, ...fields } = overrides;
+    const code = newCode(times, fields);
+    if (lateExpiry) code.expiresAt = plusMillis(expiresAtFor(times), 1);
+    for (const key of Object.keys(code)) if (code[key] === undefined) delete code[key];
+    await assertFails(setDoc(doc(studentDb("u2"), codePath("live")), code));
+  });
+}
+
+test("the code has one ID: current", async () => {
+  const times = live();
+  await seedOrganizedEvent(times);
+  await assertFails(setDoc(doc(studentDb("u2"), "events/live/checkInCode/other"), newCode(times)));
+});
+
+test("a rotation 50 s after the last is accepted, 30 s after is refused", async () => {
+  const times = live();
+  await seedOrganizedEvent(times);
+  await seedCode("live", times, { secondsAgo: 30 });
+  await assertFails(setDoc(doc(studentDb("u2"), codePath("live")), rotation(times, TOKEN_A)));
+  await seedCode("live", times, { secondsAgo: 51 });
+  await assertSucceeds(setDoc(doc(studentDb("u2"), codePath("live")), rotation(times, TOKEN_A)));
+});
+
+for (const [name, write] of [
+  ["a previous token that isn't the stored one", (times) => rotation(times, TOKEN_C)],
+  ["no previous token", (times) => newCode(times, { token: TOKEN_B })],
+  ["the same token again", (times) => rotation(times, TOKEN_A, { token: TOKEN_A })],
+  ["the client's time", (times) => rotation(times, TOKEN_A, {
+    rotatedAt: Timestamp.fromMillis(Date.now() - 1000),
+  })],
+  ["another field", (times) => rotation(times, TOKEN_A, { note: "x" })],
+]) {
+  test(`a rotation can't have ${name}`, async () => {
+    const times = live();
+    await seedOrganizedEvent(times);
+    await seedCode("live", times, { secondsAgo: 61 });
+    await assertFails(setDoc(doc(studentDb("u2"), codePath("live")), write(times)));
+    assert.equal((await storedCode("live")).token, TOKEN_A);
+  });
+}
+
+test("nobody lists or deletes the code, not even an organizer", async () => {
+  const times = live();
+  await seedOrganizedEvent(times);
+  await seedCode("live", times);
+  await assertFails(getDocs(collection(studentDb("u2"), "events/live/checkInCode")));
+  await assertFails(deleteDoc(doc(studentDb("u2"), codePath("live"))));
+});
+
+// -- QR check-ins --
+
+/** u1's QR check-in with [token]. */
+function qrCheckIn(times, token) {
+  return locationCheckIn("u1", times, { method: "qr", token });
+}
+
+test("a student going checks in with the current or the previous token", async () => {
+  const times = live();
+  await seedOrganizedEvent(times);
+  await seedCode("live", times, { token: TOKEN_B, previousToken: TOKEN_A, secondsAgo: 20 });
+  await assertSucceeds(checkInAs(studentDb("u1"), "live", "u1", qrCheckIn(times, TOKEN_B)));
+  await assertSucceeds(checkInAs(studentDb("u3"), "live", "u3",
+    locationCheckIn("u3", times, { method: "qr", token: TOKEN_A })));
+});
+
+test("a QR check-in with a token that isn't the code's is refused", async () => {
+  const times = live();
+  await seedOrganizedEvent(times);
+  await seedCode("live", times, { token: TOKEN_B, previousToken: TOKEN_A });
+  await assertFails(checkInAs(studentDb("u1"), "live", "u1", qrCheckIn(times, TOKEN_C)));
+  assert.equal(await checkInStored("live"), false);
+});
+
+test("a QR check-in is refused once the code is 2 minutes old", async () => {
+  const times = live();
+  await seedOrganizedEvent(times);
+  await seedCode("live", times, { token: TOKEN_A, secondsAgo: 125 });
+  await assertFails(checkInAs(studentDb("u1"), "live", "u1", qrCheckIn(times, TOKEN_A)));
+  await seedCode("live", times, { token: TOKEN_A, secondsAgo: 100 });
+  await assertSucceeds(checkInAs(studentDb("u1"), "live", "u1", qrCheckIn(times, TOKEN_A)));
+});
+
+test("a QR check-in without an entrance code, or without its token, is refused", async () => {
+  const times = live();
+  await seedOrganizedEvent(times);
+  await assertFails(checkInAs(studentDb("u1"), "live", "u1", qrCheckIn(times, TOKEN_A)));
+  await seedCode("live", times);
+  await assertFails(checkInAs(studentDb("u1"), "live", "u1",
+    locationCheckIn("u1", times, { method: "qr" })));
+});
+
+test("a QR check-in still needs the student to be registered, in the window", async () => {
+  const times = live();
+  await seedOrganizedEvent(times);
+  await seedCode("live", times);
+  await assertFails(checkInAs(studentDb("u4"), "live", "u4",
+    locationCheckIn("u4", times, { method: "qr", token: TOKEN_A })));
+  const ended = { startTime: minutesFromNow(-120), endTime: minutesFromNow(-1) };
+  await seedCheckInEvent("ended", ended, ["u1"]);
+  await seedCode("ended", ended);
+  await assertFails(checkInAs(studentDb("u1"), "ended", "u1", qrCheckIn(ended, TOKEN_A)));
+});
+
+test("a QR check-in can't carry coordinates or anything else", async () => {
+  const times = live();
+  await seedOrganizedEvent(times);
+  await seedCode("live", times);
+  await assertFails(checkInAs(studentDb("u1"), "live", "u1",
+    locationCheckIn("u1", times, { method: "qr", token: TOKEN_A, latitude: 46.5 })));
 });
