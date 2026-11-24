@@ -49,7 +49,7 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the one-to-one chat repository contract and its Firestore repository marked as built, #428). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the one-to-one chat's privacy notice marked as written, #433). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the username rules and deleteAccount's step marked as built, #448; the profile rows' username, after #517's review). -->
-<!-- Contributors: Claude (Opus 5.5, Anthropic) (the username repository marked as built, #448). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (the username repository marked as built, and its 5.2 row, #448). -->
 
 How PolySocial is built, as we currently envision it. The page follows the [Android App Architecture guide](https://developer.android.com/topic/architecture/intro): a **UI layer** (Compose screens and ViewModels), a **domain layer** of pure Kotlin logic, and a **data layer** of repositories in front of Firebase, the map and geocoding services, and the device sensors.
 
@@ -1061,7 +1061,7 @@ flowchart LR
 | `events/{eventId}/groups/{groupId}/locations/{uid}` | position, `updatedAt`. Only during the event, deleted after | 🟦 #20 |
 | `friendships/{pairId}` | `pairId` = `{lowerUid}~{higherUid}`; `uids` (the two UIDs, sorted), `requestedBy` (the sender), `status` (`pending` or `accepted`), server-set `createdAt`, server-set `acceptedAt` once accepted. Deleted on decline, cancel or removal, and with either account | 🟦 PB, decided in #338 |
 | `publicProfiles/{uid}/friends/{friendUid}` | the friend's UID as document ID; `acceptedAt`. Written and deleted only by the `syncFriendLists` trigger, from `friendships` ([3.9](#39-profile-visibility-and-usernames-product-backlog-decided-in-366)) | 🟦 decided in #366 |
-| `usernames/{name}` | the username as document ID (lowercase, a letter then `[a-z0-9_.]`, 3–20); `uid`. Claimed, renamed and released with `users/{uid}.username` ([3.9](#39-profile-visibility-and-usernames-product-backlog-decided-in-366)) | 🟦 decided in #366 |
+| `usernames/{name}` | the username as document ID (lowercase, a letter then `[a-z0-9_.]`, 3–20); `uid`. Claimed, renamed and released with `users/{uid}.username` ([3.9](#39-profile-visibility-and-usernames-product-backlog-decided-in-366)) | 🟦 decided in #366; 🟩 built (#448) |
 | Storage `profilePhotos/{uid}.jpg` | one JPEG per student, at most 512 × 512 px and 500 KB; `photoUpdatedAt` in the profile says when it changed ([3.9](#39-profile-visibility-and-usernames-product-backlog-decided-in-366)) | 🟦 decided in #366 |
 | `chats/{pairId}` | `pairId` = the pair's friendship ID (`{lowerUid}~{higherUid}`, #338); exactly `uids` (the two UIDs, in the ID's order). Created with the first message; no client updates or deletes it. `deleteAccount` takes a deleted account's UID out of `uids` while the other student still has an account; once nobody else is left, it leaves `uids` unchanged and deletes the messages, then the chat | 🟦 decided in #365; rules 🟩 S7 #428 |
 | `chats/{pairId}/messages/{id}` | group chat's fields (#237): `senderId` (empty after account deletion, displayed as Deleted account), `text` (1–1000; empty once its sender unsends it, displayed as "This message was deleted"), server-set `createdAt` | 🟦 decided in #365; rules 🟩 S7 #428 (unsend 🟦, #435) |
