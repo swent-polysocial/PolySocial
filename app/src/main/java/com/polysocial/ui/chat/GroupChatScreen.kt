@@ -38,14 +38,10 @@ import com.polysocial.ui.theme.Ink2
 import com.polysocial.ui.theme.Surface
 import java.time.format.DateTimeFormatter
 
-internal object ChatTags {
+/** The group chat screen's own tags; its timeline and composer use the shared [ChatTags]. */
+internal object GroupChatTags {
   const val SCREEN = "group_chat_screen"
   const val BACK = "group_chat_back"
-  const val INPUT = "group_chat_input"
-  const val SEND = "group_chat_send"
-  const val RETRY_SEND = "group_chat_retry_send"
-  const val OFFLINE = "group_chat_offline"
-  const val TIMELINE = "group_chat_timeline"
 }
 
 @Composable
@@ -53,7 +49,7 @@ internal fun GroupChatRoute(onBack: () -> Unit, viewModel: GroupChatViewModel = 
   val state by viewModel.state.collectAsStateWithLifecycle()
   val today by viewModel.today.collectAsStateWithLifecycle()
   val ready = state.history as? ChatHistory.Ready
-  Column(Modifier.fillMaxSize().background(Surface).imePadding().testTag(ChatTags.SCREEN)) {
+  Column(Modifier.fillMaxSize().background(Surface).imePadding().testTag(GroupChatTags.SCREEN)) {
     ChatHeader(state, onBack)
     Box(Modifier.weight(1f).fillMaxWidth()) {
       when (val history = state.history) {
@@ -85,7 +81,7 @@ internal fun GroupChatRoute(onBack: () -> Unit, viewModel: GroupChatViewModel = 
 @Composable
 private fun ChatHeader(state: ChatState, onBack: () -> Unit) {
   Column(Modifier.background(Bg)) {
-    GroupHeader(ChatTags.BACK, onBack) {
+    GroupHeader(GroupChatTags.BACK, onBack) {
       val details = state.event
       Row(
           horizontalArrangement = Arrangement.spacedBy(8.dp),
