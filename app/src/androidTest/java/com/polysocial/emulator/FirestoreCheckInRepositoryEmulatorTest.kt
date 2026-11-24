@@ -17,6 +17,7 @@ import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.After
@@ -192,6 +193,27 @@ class FirestoreCheckInRepositoryEmulatorTest {
 
     assertEquals(CheckInResult.NetworkError, result)
     assertFalse(isCheckedIn("live", uid))
+  }
+
+  @Test
+  fun observe_offline_showsTheCheckInFromTheCache() = runBlocking {
+    val uid = signInStudent()
+    seedEvent("live")
+    seedRegistration("live", uid)
+    assertEquals(CheckInResult.CheckedIn, repository().checkIn("live"))
+    // As in the app: the event's screen stays open, so the in-memory cache keeps the check-in.
+    val open = launch { repository().observeCheckIn("live", uid).collect {} }
+    val cached =
+        try {
+          repository().checkedInStatus("live", uid)
+          whileOffline(emulator.firestore.collection(EVENTS_COLLECTION).document("live")) {
+            withTimeout(OFFLINE_TIMEOUT_MS) { repository().observeCheckIn("live", uid).first() }
+          }
+        } finally {
+          open.cancel()
+        }
+
+    assertTrue("Expected the cached check-in, got $cached", cached is CheckInStatus.CheckedIn)
   }
 
   @Test
