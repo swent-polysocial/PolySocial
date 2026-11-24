@@ -1,5 +1,6 @@
 // Contributors: Claude Opus 5.5 (wrote these tests, #337); Konstantinos Perdikeas (directed,
 // reviewed and owns them).
+// Contributors: Claude (Opus 5.5, Anthropic) (the entrance code payload tests, #468).
 package com.polysocial.model.qr
 
 import org.junit.Assert.assertEquals
@@ -260,6 +261,28 @@ class QrPayloadTest {
       // In the middle of a code, where the trim of surrounding whitespace does not reach.
       assertInvalid("polysocial://checkin/$uid/token")
       assertNull("\"$uid\" must not be built", friendQrPayload(uid))
+    }
+  }
+
+  @Test
+  fun checkInPayload_isTheEntranceCode_andReadsBack() {
+    val payload = checkInQrPayload("event-1", "abcdefghijklmnopqrstu_")
+
+    assertEquals("polysocial://checkin/event-1/abcdefghijklmnopqrstu_", payload)
+    assertEquals(QrPayload.CheckIn("event-1", "abcdefghijklmnopqrstu_"), parseQrPayload(payload!!))
+  }
+
+  @Test
+  fun checkInPayload_isNull_forAnIdOrTokenTheParserWouldRefuse() {
+    for ((eventId, token) in
+        listOf(
+            "" to "token",
+            "event" to "",
+            "a/b" to "token",
+            "event" to "to/ken",
+            "__x__" to "t",
+        )) {
+      assertNull("$eventId / $token", checkInQrPayload(eventId, token))
     }
   }
 }
