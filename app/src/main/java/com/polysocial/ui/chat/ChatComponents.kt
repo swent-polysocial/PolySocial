@@ -1,6 +1,6 @@
 // Contributors: OpenAI Codex (group chat UI and Figma avatar colors, #236 and #238; neutral
 // deleted author label, #241); Claude (Opus 5.5, Anthropic) (moved here from GroupChatScreen.kt to
-// share them with the one-to-one chat, #431).
+// share them with the one-to-one chat, #431; their tags moved here, from the #519 review).
 package com.polysocial.ui.chat
 
 import androidx.compose.foundation.background
@@ -62,6 +62,18 @@ import com.polysocial.ui.theme.Surface
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+
+/**
+ * Tags of the parts every chat shares (#519 review): its timeline, offline banner and composer, in
+ * a group chat (#238) as in a one-to-one chat (#431).
+ */
+internal object ChatTags {
+  const val INPUT = "chat_input"
+  const val SEND = "chat_send"
+  const val RETRY_SEND = "chat_retry_send"
+  const val OFFLINE = "chat_offline"
+  const val TIMELINE = "chat_timeline"
+}
 
 /**
  * A chat's messages in the server's order, with a day label where the day changes, and the draft
