@@ -23,6 +23,7 @@ rules_version = '2';
 // one-to-one chats, from #365's prototype by Claude (Fable 5.2 and Opus 5.5, Anthropic), #428).
 // Contributors: Claude (Opus 5.5, Anthropic) (usernames and their tie to the profiles, #448).
 // Contributors: Claude (Opus 5.5, Anthropic) (check-ins at the venue and the shared event() and canReadEvent(), #467).
+// Contributors: Claude (Opus 5.5, Anthropic) (the entrance code and QR check-ins, #468).
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -358,6 +359,15 @@ service cloud.firestore {
         return /databases/$(database)/documents/events/$(eventId);
       }
 
+      // Whether the caller organizes this event, a student or a verified association
+      // (canWriteEvents). A missing organizerIds (events written before #47) gives no organizer.
+      // For attendees and the entrance code.
+      function isEventOrganizer() {
+        return canWriteEvents()
+            && exists(event())
+            && get(event()).data.get('organizerIds', []).hasAny([request.auth.uid]);
+      }
+
       // Whether the caller can read this event, as its read rule says for a student: it exists,
       // and is public or lists them in allowedUids. For attendees and checkIns.
       function canReadEvent() {
@@ -492,13 +502,6 @@ service cloud.firestore {
           return end is timestamp && request.time < end;
         }
 
-        // A missing organizerIds (events written before #47) gives no organizer.
-        function isEventOrganizer() {
-          return canWriteEvents()
-              && exists(event())
-              && get(event()).data.get('organizerIds', []).hasAny([request.auth.uid]);
-        }
-
         // The event's attendeeCount before this write, and once the whole write (batch or
         // transaction) is applied. Missing counts as 0.
         function countBefore() {
@@ -581,18 +584,74 @@ service cloud.firestore {
             && !isDeletedAccount(request.auth.uid)
             && (request.auth.uid == uid || sameGroup());
 
+        // The event's entrance code (#468), read only for a QR check-in, so a location check-in
+        // never needs one.
+        function code() {
+          return get(/databases/$(database)/documents/events/$(eventId)/checkInCode/current).data;
+        }
+
+        // A location check-in carries no token. A QR check-in carries the entrance code's
+        // current or previous token, of a code rotated less than 2 minutes ago, so a forwarded
+        // screenshot stops working (#374).
+        function validMethod(data) {
+          return (data.method == 'location'
+                  && data.keys().hasOnly(['uid', 'checkedInAt', 'method', 'expiresAt']))
+              || (data.method == 'qr'
+                  && data.keys().hasOnly(['uid', 'checkedInAt', 'method', 'expiresAt', 'token'])
+                  && data.token is string
+                  && data.token in [code().token, code().get('previousToken', null)]
+                  && request.time < code().rotatedAt + duration.value(2, 'm'));
+        }
+
         allow create: if isSelf()
             && !isDeletedAccount(uid)
             && isRegistered(uid)
             && canReadEvent()
             && inCheckInWindow()
-            && request.resource.data.keys().hasOnly(['uid', 'checkedInAt', 'method', 'expiresAt'])
             && request.resource.data.uid == uid
             && request.resource.data.checkedInAt == request.time
-            && request.resource.data.method == 'location'
-            && request.resource.data.expiresAt == checkInWindowEnd() + duration.value(30, 'd');
+            && request.resource.data.expiresAt == checkInWindowEnd() + duration.value(30, 'd')
+            && validMethod(request.resource.data);
 
         allow delete: if isSelf();
+      }
+
+      // The entrance code an organizer shows (#468, designed in #374, Architecture Diagram
+      // 3.10): one document, `current`, with a random 22-character base64url `token` (it passes
+      // #337's QR ID check), the `previousToken`, the server's `rotatedAt` and `expiresAt`, the
+      // window's end + 30 days, so the TTL policy deletes it with the check-ins. Only the event's
+      // organizers (a student or a verified association) read and write it, during the window,
+      // by ID. A rotation keeps the stored token as previousToken, so a student scanning as it
+      // changes still checks in, and comes at least 50 s after the last one, so a phone with a
+      // wrong clock or a modified app can't rotate it every second (the app rotates every
+      // 60 s). Nobody lists or deletes it: deleteEventRegistrations does with the event (#472).
+      match /checkInCode/{codeId} {
+        function validCode(data) {
+          return data.keys().hasOnly(['token', 'previousToken', 'rotatedAt', 'expiresAt'])
+              && data.token is string
+              && data.token.matches('[A-Za-z0-9_-]{22}')
+              && data.rotatedAt == request.time
+              && data.expiresAt == checkInWindowEnd() + duration.value(30, 'd');
+        }
+
+        function canUseCode() {
+          return codeId == 'current'
+              && isEventOrganizer()
+              && !isDeletedAccount(request.auth.uid)
+              && inCheckInWindow();
+        }
+
+        allow get: if canUseCode();
+
+        allow create: if canUseCode()
+            && validCode(request.resource.data)
+            && !('previousToken' in request.resource.data);
+
+        allow update: if canUseCode()
+            && validCode(request.resource.data)
+            && request.resource.data.get('previousToken', null) == resource.data.token
+            && request.resource.data.token != resource.data.token
+            && request.time >= resource.data.rotatedAt + duration.value(50, 's');
       }
     }
 
