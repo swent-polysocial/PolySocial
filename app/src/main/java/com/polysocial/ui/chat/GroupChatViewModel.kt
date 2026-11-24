@@ -1,16 +1,15 @@
 // Contributors: OpenAI Codex (live chat, membership gating, stable sender names, connectivity
 // and retry state, #238).
 // Contributors: Claude (Opus 5.5, Anthropic) (the draft and today's date moved to ChatDraft.kt, to
-// share them with the one-to-one chat, #431).
+// share them with the one-to-one chat, #431; the history and its first read's timeout moved to
+// ChatHistory.kt, from #520's review).
 package com.polysocial.ui.chat
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.polysocial.model.auth.AuthRepository
-import com.polysocial.model.chat.Message
 import com.polysocial.model.chat.MessageRepository
-import com.polysocial.model.chat.MessagesResult
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.group.GroupRepository
 import com.polysocial.model.group.MyGroupResult
@@ -26,7 +25,6 @@ import java.time.Clock
 import java.time.LocalDate
 import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.channelFlow
@@ -39,7 +37,6 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.shareIn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
-import kotlinx.coroutines.launch
 
 internal data class ChatState(
     val event: EventDetails? = null,
@@ -47,19 +44,6 @@ internal data class ChatState(
     val draft: ChatDraft = ChatDraft(),
     val offline: Boolean = false,
 )
-
-internal sealed interface ChatHistory {
-  data object Loading : ChatHistory
-
-  data object Failed : ChatHistory
-
-  data object Left : ChatHistory
-
-  data class Ready(
-      val messages: List<Message>,
-      val members: List<GroupMember>,
-  ) : ChatHistory
-}
 
 /**
  * Holds the route's draft and observes messages while the student belongs to the selected group. An
@@ -120,60 +104,48 @@ constructor(
   /** Share one membership listener, but only restart messages when access itself changes. */
   private fun observeHistory(groups: GroupRepository) =
       channelFlow<ChatHistory> {
-        send(ChatHistory.Loading)
-        val timeout = launch {
-          delay(READ_TIMEOUT_MILLIS)
-          send(ChatHistory.Failed)
-        }
-        val membership =
-            groups
-                .observeMyGroup(eventId)
-                .map(::membershipFor)
-                .distinctUntilChanged()
-                .shareIn(this, SharingStarted.Lazily, replay = 1)
-        val messagesByAccess =
-            membership
-                .map { it.access }
-                .distinctUntilChanged()
-                .transformLatest<Access, ChatHistory> { access ->
-                  when (access) {
-                    Access.WAITING -> emit(ChatHistory.Loading)
-                    Access.FAILED -> emit(ChatHistory.Failed)
-                    Access.LEFT -> {
-                      drafts.clear()
-                      emit(ChatHistory.Left)
+            val membership =
+                groups
+                    .observeMyGroup(eventId)
+                    .map(::membershipFor)
+                    .distinctUntilChanged()
+                    .shareIn(this, SharingStarted.Lazily, replay = 1)
+            val messagesByAccess =
+                membership
+                    .map { it.access }
+                    .distinctUntilChanged()
+                    .transformLatest<Access, ChatHistory> { access ->
+                      when (access) {
+                        Access.WAITING -> emit(ChatHistory.Loading)
+                        Access.FAILED -> emit(ChatHistory.Failed)
+                        Access.LEFT -> {
+                          drafts.clear()
+                          emit(ChatHistory.Left)
+                        }
+                        Access.MEMBER -> emitAll(observeMessages())
+                      }
                     }
-                    Access.MEMBER -> emitAll(observeMessages())
-                  }
+            var loadedMembers = emptyMap<String, GroupMember>()
+            val memberProfiles =
+                membership
+                    .map { it.memberUids }
+                    .distinctUntilChanged()
+                    .transformLatest<List<String>, List<GroupMember>> { uids ->
+                      loadedMembers = loadedMembers.filterKeys { it in uids }
+                      emit(uids.map { loadedMembers[it] ?: GroupMember(it, null) })
+                      if (uids.isNotEmpty()) {
+                        val refreshedMembers = profiles.readGroupMembers(uids)
+                        loadedMembers = refreshedMembers.associateBy { it.uid }
+                        emit(refreshedMembers)
+                      }
+                    }
+                    .onStart { emit(emptyList()) }
+            combine(messagesByAccess, memberProfiles) { history, members ->
+                  if (history is ChatHistory.Ready) history.copy(members = members) else history
                 }
-        var loadedMembers = emptyMap<String, GroupMember>()
-        val memberProfiles =
-            membership
-                .map { it.memberUids }
-                .distinctUntilChanged()
-                .transformLatest<List<String>, List<GroupMember>> { uids ->
-                  loadedMembers = loadedMembers.filterKeys { it in uids }
-                  emit(uids.map { loadedMembers[it] ?: GroupMember(it, null) })
-                  if (uids.isNotEmpty()) {
-                    val refreshedMembers = profiles.readGroupMembers(uids)
-                    loadedMembers = refreshedMembers.associateBy { it.uid }
-                    emit(refreshedMembers)
-                  }
-                }
-                .onStart { emit(emptyList()) }
-        var initialLoad = true
-        combine(messagesByAccess, memberProfiles) { history, members ->
-              if (history is ChatHistory.Ready) history.copy(members = members) else history
-            }
-            .collect { history ->
-              if (history != ChatHistory.Loading) {
-                initialLoad = false
-                timeout.cancel()
-              }
-              // While the first read is pending, keep the initial Loading or timeout error visible.
-              if (!initialLoad) send(history)
-            }
-      }
+                .collect { send(it) }
+          }
+          .failingIfSilent()
 
   private fun membershipFor(result: MyGroupResult): Membership =
       when (result) {
@@ -192,14 +164,7 @@ constructor(
       }
 
   private fun observeMessages() =
-      messages.observeMessages(eventId, groupId).map { result ->
-        when (result) {
-          MessagesResult.Loading -> ChatHistory.Loading
-          MessagesResult.UnexpectedError,
-          MessagesResult.NetworkError -> ChatHistory.Failed
-          is MessagesResult.Success -> ChatHistory.Ready(result.messages, emptyList())
-        }
-      }
+      messages.observeMessages(eventId, groupId).map { it.toChatHistory() }
 
   private data class Membership(val access: Access, val memberUids: List<String> = emptyList())
 
@@ -212,6 +177,5 @@ constructor(
 
   internal companion object {
     const val GROUP_ID_ARG = "groupId"
-    private const val READ_TIMEOUT_MILLIS = 10_000L
   }
 }

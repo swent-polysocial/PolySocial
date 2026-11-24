@@ -1,12 +1,11 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (the one-to-one chat's state, from #430's frames,
-// #431).
+// #431; the shared history read, from #520's review).
 package com.polysocial.ui.chat
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.polysocial.model.auth.AuthRepository
-import com.polysocial.model.chat.MessagesResult
 import com.polysocial.model.chat.MyOneToOneChatsResult
 import com.polysocial.model.chat.OneToOneChatRepository
 import com.polysocial.model.friend.FriendRepository
@@ -22,11 +21,9 @@ import java.time.Clock
 import java.time.LocalDate
 import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.channelFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
@@ -34,7 +31,6 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 
 /** Who the student chats with, as the header shows them. */
 internal sealed interface ChatFriend {
@@ -191,32 +187,12 @@ constructor(
     drafts.send { text, id -> chats.sendMessage(pairId, text, id) }
   }
 
-  /** The messages, Loading until the first answer, which fails after [READ_TIMEOUT_MILLIS]. */
+  /** The messages, Loading until the first answer, as the group chat's ([failingIfSilent]). */
   private fun observeHistory() =
-      channelFlow<ChatHistory> {
-        send(ChatHistory.Loading)
-        val timeout = launch {
-          delay(READ_TIMEOUT_MILLIS)
-          send(ChatHistory.Failed)
-        }
-        chats.observeMessages(pairId).collect { result ->
-          val history =
-              when (result) {
-                MessagesResult.Loading -> null
-                MessagesResult.NetworkError,
-                MessagesResult.UnexpectedError -> ChatHistory.Failed
-                is MessagesResult.Success -> ChatHistory.Ready(result.messages, emptyList())
-              }
-          if (history != null) {
-            timeout.cancel()
-            send(history)
-          }
-        }
-      }
+      chats.observeMessages(pairId).map { it.toChatHistory() }.failingIfSilent()
 
   internal companion object {
     const val PAIR_ID_ARG = "pairId"
-    private const val READ_TIMEOUT_MILLIS = 10_000L
     private const val PROFILE_TIMEOUT_MILLIS = 10_000L
   }
 }
