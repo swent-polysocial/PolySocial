@@ -2,6 +2,7 @@
 package com.polysocial.model.checkin
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.google.android.gms.tasks.TaskCompletionSource
 import com.google.android.gms.tasks.Tasks
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.CollectionReference
@@ -34,6 +35,7 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -240,6 +242,15 @@ class FirestoreCheckInRepositoryTest {
   }
 
   @Test
+  fun checkIn_readsTheRegistrationBeforeTheWindow() = runTest {
+    stubStored(storedEvent, checkedIn = false, registered = false)
+    now = end + Duration.ofHours(1)
+
+    assertEquals(CheckInResult.NotRegistered, repository.checkIn("event-1"))
+    noWrite()
+  }
+
+  @Test
   fun checkIn_aCommitTheRulesRefuse_isUnexpected() = runTest {
     commits += failed(PERMISSION_DENIED)
 
@@ -272,6 +283,29 @@ class FirestoreCheckInRepositoryTest {
 
     every { transaction.get(event) } throws IllegalStateException("broken")
     assertEquals(CheckInResult.UnexpectedError, repository.checkIn("event-1"))
+  }
+
+  @Test
+  fun checkIn_aTaskCancelledWhileTheCallerRuns_isUnexpected() = runTest {
+    every { db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Any>>()) } returns
+        Tasks.forCanceled()
+
+    assertEquals(CheckInResult.UnexpectedError, repository.checkIn("event-1"))
+  }
+
+  @Test
+  fun checkIn_cancellingTheCaller_stillCancelsIt() = runTest {
+    every { db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Any>>()) } returns
+        TaskCompletionSource<Any>().task
+    var result: CheckInResult? = null
+    val call =
+        launch(start = CoroutineStart.UNDISPATCHED) { result = repository.checkIn("event-1") }
+
+    call.cancel()
+    call.join()
+
+    assertTrue(call.isCancelled)
+    assertEquals(null, result)
   }
 
   @Test
