@@ -18,6 +18,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) closed the keyboard before signing up, #314.
 // Contributors: Claude Opus 5.5 (the My friend code step, #339); Konstantinos Perdikeas (directed,
 // reviewed and owns it).
+// Contributors: Claude (Opus 5.5, Anthropic) (the username fake, for Add by username, #452).
 // Contributors: OpenAI Codex (scoped the chat fake to this Hilt test, #238).
 // Contributors: Claude Fable 5.2 (the organizer's name on an event the student is going to, #281).
 // Contributors: Claude (Opus 5.5, Anthropic) typed through typeText, which closes the keyboard
@@ -115,11 +116,14 @@ import com.polysocial.model.registration.RegistrationRepository
 import com.polysocial.model.time.ClockModule
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
+import com.polysocial.model.user.FakeUsernameRepository
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileModule
 import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.UserProfileModule
 import com.polysocial.model.user.UserProfileRepository
+import com.polysocial.model.user.UsernameModule
+import com.polysocial.model.user.UsernameRepository
 import com.polysocial.resources.C
 import com.polysocial.typeText
 import com.polysocial.ui.auth.AuthFlow
@@ -200,6 +204,7 @@ import org.junit.runner.RunWith
     FriendModule::class,
     GroupModule::class,
     PublicProfileModule::class,
+    UsernameModule::class,
 )
 @RunWith(AndroidJUnit4::class)
 class M1EndToEndTest {
@@ -226,6 +231,7 @@ class M1EndToEndTest {
   @JvmField
   val registrations: RegistrationRepository =
       FakeRegistrationRepository(currentUid = UID).apply { seedRegistration(PARTY.id, UID) }
+  @BindValue @JvmField val usernames: UsernameRepository = FakeUsernameRepository()
   @BindValue @JvmField val groups: GroupRepository = FakeGroupRepository()
   @BindValue
   @JvmField

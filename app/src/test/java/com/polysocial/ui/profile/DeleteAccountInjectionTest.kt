@@ -10,6 +10,7 @@
 // Contributors: OpenAI Codex (scoped the chat fake to this Hilt test, #238).
 // Contributors: Claude Opus 5.5 (test WorkManager initialization, needed once
 // DeleteAccountViewModel depends on ReminderScheduler for real DI, #123's second PR review).
+// Contributors: Claude (Opus 5.5, Anthropic) (the username fake, for Add by username, #452).
 package com.polysocial.ui.profile
 
 import androidx.compose.ui.test.assertIsDisplayed
@@ -74,12 +75,15 @@ import com.polysocial.model.registration.RegistrationModule
 import com.polysocial.model.registration.RegistrationRepository
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
+import com.polysocial.model.user.FakeUsernameRepository
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.PublicProfileModule
 import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.UserProfile
 import com.polysocial.model.user.UserProfileModule
 import com.polysocial.model.user.UserProfileRepository
+import com.polysocial.model.user.UsernameModule
+import com.polysocial.model.user.UsernameRepository
 import com.polysocial.resources.C
 import com.polysocial.ui.auth.WelcomeTags
 import dagger.hilt.android.testing.BindValue
@@ -115,6 +119,7 @@ import org.robolectric.annotation.Config
     FriendModule::class,
     GroupModule::class,
     PublicProfileModule::class,
+    UsernameModule::class,
     UserProfileModule::class,
 )
 @Config(application = HiltTestApplication::class)
@@ -143,6 +148,7 @@ class DeleteAccountInjectionTest {
   @BindValue @JvmField val registrations: RegistrationRepository = FakeRegistrationRepository()
   @BindValue @JvmField val groups: GroupRepository = FakeGroupRepository()
   @BindValue @JvmField val publicProfiles: PublicProfileRepository = FakePublicProfileRepository()
+  @BindValue @JvmField val usernames: UsernameRepository = FakeUsernameRepository()
   @BindValue @JvmField val associations: AssociationRepository = FakeAssociationRepository()
   @BindValue
   @JvmField

@@ -1,5 +1,6 @@
 // Contributors: Claude (shared-fake Hilt setup reused from #380);
 // OpenAI Codex (offline journey, cache transition and unmerged semantics lookups, #379).
+// Contributors: Claude (Opus 5.5, Anthropic) (the username fake, for Add by username, #452).
 package com.polysocial.endtoend
 
 import androidx.compose.ui.test.assertIsDisplayed
@@ -78,6 +79,7 @@ import com.polysocial.model.reminder.ReminderScheduler
 import com.polysocial.model.time.ClockModule
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
+import com.polysocial.model.user.FakeUsernameRepository
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileModule
@@ -85,6 +87,8 @@ import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.UserProfile
 import com.polysocial.model.user.UserProfileModule
 import com.polysocial.model.user.UserProfileRepository
+import com.polysocial.model.user.UsernameModule
+import com.polysocial.model.user.UsernameRepository
 import com.polysocial.ui.event.detail.EventDetailTags
 import com.polysocial.ui.event.list.EventsTags
 import com.polysocial.ui.event.list.MyEventsTags
@@ -126,6 +130,7 @@ import org.junit.runner.RunWith
     NetworkModule::class,
     UserProfileModule::class,
     PublicProfileModule::class,
+    UsernameModule::class,
     RegistrationModule::class,
     FriendModule::class,
     ReminderModule::class,
@@ -166,6 +171,7 @@ class OfflineRegisteredEventsEndToEndTest {
       FakeUserProfileRepository(
           getProfileResult = ProfileResult.Found(UserProfile(UID, EMAIL, NAME, "IN", "BA3"))
       )
+  @BindValue @JvmField val usernames: UsernameRepository = FakeUsernameRepository()
   @BindValue
   @JvmField
   val publicProfiles: PublicProfileRepository =
