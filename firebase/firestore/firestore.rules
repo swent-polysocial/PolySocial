@@ -22,6 +22,7 @@ rules_version = '2';
 // Contributors: Claude (Opus 5.5, Anthropic) (the message check shared by both chats, and
 // one-to-one chats, from #365's prototype by Claude (Fable 5.2 and Opus 5.5, Anthropic), #428).
 // Contributors: Claude (Opus 5.5, Anthropic) (usernames and their tie to the profiles, #448).
+// Contributors: Claude (Opus 5.5, Anthropic) (check-ins at the venue and the shared event() path, #467).
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -352,6 +353,11 @@ service cloud.firestore {
         return exists(/databases/$(database)/documents/events/$(eventId)/attendees/$(uid));
       }
 
+      // This event's path, for the rules of its subcollections (attendees, checkIns).
+      function event() {
+        return /databases/$(database)/documents/events/$(eventId);
+      }
+
       // Co-organizers (#370, decision 17): at most 5 organizers, each listed once, and every
       // one added must be registered for this event, so organizers only add students they can
       // already list (only students register). Rules can't loop, so each of the at most 4
@@ -462,10 +468,6 @@ service cloud.firestore {
       // one. Each registration is counted in the event's attendeeCount, in the same write, and
       // the event's update rule checks the capacity (#372).
       match /attendees/{uid} {
-        function event() {
-          return /databases/$(database)/documents/events/$(eventId);
-        }
-
         function isSelf() {
           return isStudent() && request.auth.uid == uid;
         }
@@ -528,6 +530,65 @@ service cloud.firestore {
                 || !canReadEvent()
                 || countBefore() == 0
                 || countAfter() == countBefore() - 1);
+      }
+
+      // The end of the check-in window (#374), as checkInWindow(event) in the app: the event's
+      // endTime, or 3 hours after its startTime without one. A startTime that isn't a timestamp
+      // fails the rule, so no check-in is allowed.
+      function checkInWindowEnd() {
+        let data = get(event()).data;
+        return data.get('endTime', null) is timestamp
+            ? data.endTime
+            : data.startTime + duration.value(3, 'h');
+      }
+
+      // Whether now is in the check-in window: from 30 minutes before the start (included) to
+      // its end (excluded).
+      function inCheckInWindow() {
+        return request.time >= get(event()).data.startTime - duration.value(30, 'm')
+            && request.time < checkInWindowEnd();
+      }
+
+      // A student's check-in at the venue (#467, designed in #374, Architecture Diagram 3.10),
+      // keyed by their UID, with that UID again in `uid` (for #472's collection-group cleanup),
+      // the server time in `checkedInAt`, `method` and `expiresAt`, the window's end + 30 days,
+      // computed here so the app can't keep a check-in longer: a TTL policy on expiresAt
+      // deletes it. Never a location: the app compares the fix with the venue on the device, so
+      // a modified app could fake one (accepted in #374: the stakes are the group's "arrived").
+      // Only a registered student checks in, as themselves, during the window, by location
+      // for now (the entrance QR method comes with #468). The student and the members of their
+      // group for this event read it, by ID only; the event's organizers don't (no screen needs
+      // it). Nobody lists or updates one. The student deletes their own, as cancelling their
+      // registration does in the same write. A deleted account can't check in or read.
+      match /checkIns/{uid} {
+        function isSelf() {
+          return isStudent() && request.auth.uid == uid;
+        }
+
+        // Whether the caller and the check-in's student are in the same group of this event,
+        // by their groupMembers markers (#232), which always name the group they're in.
+        function sameGroup() {
+          let mine = /databases/$(database)/documents/events/$(eventId)/groupMembers/$(request.auth.uid);
+          let theirs = /databases/$(database)/documents/events/$(eventId)/groupMembers/$(uid);
+          return exists(mine) && exists(theirs)
+              && get(mine).data.groupId == get(theirs).data.groupId;
+        }
+
+        allow get: if isStudent()
+            && !isDeletedAccount(request.auth.uid)
+            && (request.auth.uid == uid || sameGroup());
+
+        allow create: if isSelf()
+            && !isDeletedAccount(uid)
+            && isRegistered(uid)
+            && inCheckInWindow()
+            && request.resource.data.keys().hasOnly(['uid', 'checkedInAt', 'method', 'expiresAt'])
+            && request.resource.data.uid == uid
+            && request.resource.data.checkedInAt == request.time
+            && request.resource.data.method == 'location'
+            && request.resource.data.expiresAt == checkInWindowEnd() + duration.value(30, 'd');
+
+        allow delete: if isSelf();
       }
     }
 

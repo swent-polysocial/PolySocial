@@ -5,6 +5,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (co-organizer tests, written test-first, #370).
 // Contributors: Claude (Opus 5.5, Anthropic) (username tests, #448, and more from #517's review).
 // Contributors: Claude (Opus 5.5, Anthropic) (attendeeCount rows and the counted registration writes, #373, from #372's prototype by Claude (Fable 5.2 and Opus 5.5, Anthropic)).
+// Contributors: Claude (Opus 5.5, Anthropic) (check-in tests, written test-first, #467).
 // Contributors: Claude (Opus 5.5, Anthropic) (one-to-one chat tests and the message helpers both chats share, #428, from #365's prototype tests by Claude (Fable 5.2 and Opus 5.5, Anthropic); the refused messages both chats share, and cases a mutation check found missing, from a test review, #428).
 const { after, before, beforeEach, test } = require("node:test");
 // Contributors: OpenAI Codex (deleted-token membership creation/join regression, #241).
@@ -5804,3 +5805,411 @@ for (const [name, db] of [
     await expectMissing(chatMessagePath("u1~u2", "new"));
   });
 }
+
+// ---- events/{eventId}/checkIns/{uid} (#467, designed in #374) ----
+// A check-in at the venue, by location for now (the QR method comes with #468): a registered
+// student, during the window (30 min before the start to the end, or start + 3 h without one),
+// as themselves, with exactly uid, the server's checkedInAt, method "location" and the expiresAt
+// the rules compute (the window's end + 30 days). Read by the student and their group for that
+// event; no list, no update; the student deletes their own. Times are relative to now, since the
+// emulator compares them with the real request.time: each test computes its own when it runs, with
+// margins of a minute or more, since the whole file takes minutes.
+
+/** u1's check-in path at [eventId]. */
+function checkInPath(eventId, uid = "u1") {
+  return `events/${eventId}/checkIns/${uid}`;
+}
+
+/** [time] + [ms] milliseconds, keeping [time]'s sub-millisecond part. */
+function plusMillis(time, ms) {
+  const total = time.nanoseconds + (ms % 1000) * 1_000_000;
+  return new Timestamp(
+    time.seconds + Math.floor(ms / 1000) + Math.floor(total / 1_000_000_000),
+    total % 1_000_000_000,
+  );
+}
+
+const HOURS_3 = 3 * 3_600_000;
+const DAYS_30 = 30 * 86_400_000;
+
+/** The expiresAt the rules require for an event [times]: the window's end + 30 days. */
+function expiresAtFor({ startTime, endTime }) {
+  return plusMillis(endTime ?? plusMillis(startTime, HOURS_3), DAYS_30);
+}
+
+/** A location check-in as FirestoreCheckInRepository writes it for an event [times]. */
+function locationCheckIn(uid, times, overrides = {}) {
+  return {
+    uid,
+    checkedInAt: serverTimestamp(),
+    method: "location",
+    expiresAt: expiresAtFor(times),
+    ...overrides,
+  };
+}
+
+/** An event that started 10 minutes ago and ends in an hour: inside the window now. */
+function live() {
+  return { startTime: minutesFromNow(-10), endTime: minutesFromNow(60) };
+}
+
+/** Seeds u2's event [id] with [times] and [registered] students (rules off). */
+async function seedCheckInEvent(id, times = live(), registered = ["u1"], overrides = {}) {
+  await seedEvent(id, eventBy("u2", { ...times, ...overrides }));
+  for (const uid of registered) await seedAttendee(id, uid);
+}
+
+/** Stores [uid]'s location check-in at [eventId], rules off. */
+async function seedCheckIn(eventId, uid, times = live()) {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), checkInPath(eventId, uid)), {
+      uid,
+      checkedInAt: Timestamp.fromMillis(1_790_000_000_000),
+      method: "location",
+      expiresAt: expiresAtFor(times),
+    });
+  });
+}
+
+/** [uid] checks in at [eventId] with [data] (a plain set, as the rules see the app's write). */
+function checkInAs(db, eventId, uid, data) {
+  return setDoc(doc(db, checkInPath(eventId, uid)), data);
+}
+
+/**
+ * [uid] checks in as FirestoreCheckInRepository.checkIn does: one transaction that reads the event,
+ * the check-in and the registration, then writes the check-in.
+ */
+function checksInAsApp(uid, eventId, times) {
+  const db = studentDb(uid);
+  return runTransaction(db, async (transaction) => {
+    await transaction.get(doc(db, `events/${eventId}`));
+    await transaction.get(doc(db, checkInPath(eventId, uid)));
+    await transaction.get(doc(db, `events/${eventId}/attendees/${uid}`));
+    transaction.set(doc(db, checkInPath(eventId, uid)), locationCheckIn(uid, times));
+  });
+}
+
+/** Whether [uid]'s check-in at [eventId] is stored, read with the rules off. */
+async function checkInStored(eventId, uid = "u1") {
+  let exists;
+  await env.withSecurityRulesDisabled(async (context) => {
+    exists = (await getDoc(doc(context.firestore(), checkInPath(eventId, uid)))).exists();
+  });
+  return exists;
+}
+
+// -- creating a check-in --
+
+test("a registered student checks in during the window, as the app does", async () => {
+  const times = live();
+  await seedCheckInEvent("live", times);
+  await assertSucceeds(checksInAsApp("u1", "live", times));
+  assert.equal(await checkInStored("live"), true);
+});
+
+test("the stored check-in has the server's time", async () => {
+  const times = live();
+  await seedCheckInEvent("live", times);
+  await checkInAs(studentDb("u1"), "live", "u1", locationCheckIn("u1", times));
+  await env.withSecurityRulesDisabled(async (context) => {
+    const stored = (await getDoc(doc(context.firestore(), checkInPath("live")))).data();
+    assert.ok(Math.abs(stored.checkedInAt.toMillis() - Date.now()) < 60_000);
+  });
+});
+
+test("a student who isn't registered can't check in", async () => {
+  const times = live();
+  await seedCheckInEvent("live", times, ["u3"]);
+  await assertFails(checkInAs(studentDb("u1"), "live", "u1", locationCheckIn("u1", times)));
+  assert.equal(await checkInStored("live"), false);
+});
+
+test("a student can't check in at an event that doesn't exist, even registered", async () => {
+  const times = live();
+  await seedAttendee("gone", "u1");
+  await assertFails(checkInAs(studentDb("u1"), "gone", "u1", locationCheckIn("u1", times)));
+});
+
+test("a student can't check another registered student in", async () => {
+  const times = live();
+  await seedCheckInEvent("live", times, ["u1", "u3"]);
+  await assertFails(checkInAs(studentDb("u1"), "live", "u3", locationCheckIn("u3", times)));
+  await assertFails(checkInAs(studentDb("u1"), "live", "u1", locationCheckIn("u3", times)));
+  assert.equal(await checkInStored("live", "u3"), false);
+});
+
+test("a deleted account can't check in", async () => {
+  const times = live();
+  await seedCheckInEvent("live", times);
+  await seedDeletedAccount("u1");
+  await assertFails(checkInAs(studentDb("u1"), "live", "u1", locationCheckIn("u1", times)));
+});
+
+for (const [name, db] of [
+  ["an unverified @epfl.ch account", () => firestoreAs("student@epfl.ch", false, "u1")],
+  ["a non-EPFL account", () => associationDb("u1")],
+]) {
+  test(`${name} can't check in, even with a registration`, async () => {
+    const times = live();
+    await seedCheckInEvent("live", times);
+    await assertFails(checkInAs(db(), "live", "u1", locationCheckIn("u1", times)));
+  });
+}
+
+test("an @epfl.ch association can't check in, even with a registration", async () => {
+  const times = live();
+  await seedCheckInEvent("live", times);
+  await seedEpflAssociation("u1", true);
+  await assertFails(checkInAs(epflAssociationDb("u1"), "live", "u1", locationCheckIn("u1", times)));
+});
+
+for (const [name, timesNow] of [
+  [
+    "29 minutes before the start",
+    () => ({ startTime: minutesFromNow(29), endTime: minutesFromNow(120) }),
+  ],
+  [
+    "just before the end",
+    () => ({ startTime: minutesFromNow(-120), endTime: minutesFromNow(1) }),
+  ],
+  [
+    "without an end time, 2 h 50 after the start",
+    () => ({ startTime: minutesFromNow(-170), endTime: null }),
+  ],
+  ["with an end time more than 3 h after the start", () => ({
+    startTime: minutesFromNow(-200), endTime: minutesFromNow(10),
+  })],
+]) {
+  test(`a registered student can check in ${name}`, async () => {
+    const times = timesNow();
+    await seedCheckInEvent("e", times);
+    await assertSucceeds(checkInAs(studentDb("u1"), "e", "u1", locationCheckIn("u1", times)));
+  });
+}
+
+for (const [name, timesNow] of [
+  [
+    "31 minutes before the start",
+    () => ({ startTime: minutesFromNow(31), endTime: minutesFromNow(120) }),
+  ],
+  [
+    "once the end has passed",
+    () => ({ startTime: minutesFromNow(-120), endTime: minutesFromNow(-1) }),
+  ],
+  [
+    "without an end time, 3 h 01 after the start",
+    () => ({ startTime: minutesFromNow(-181), endTime: null }),
+  ],
+  ["with an end time, before the start's 3 h have passed", () => ({
+    startTime: minutesFromNow(-60), endTime: minutesFromNow(-1),
+  })],
+]) {
+  test(`a registered student can't check in ${name}`, async () => {
+    const times = timesNow();
+    await seedCheckInEvent("e", times);
+    await assertFails(checkInAs(studentDb("u1"), "e", "u1", locationCheckIn("u1", times)));
+  });
+}
+
+for (const [name, startTime] of [["without a start time", null], ["with a text start", "now"]]) {
+  test(`a student can't check in at an event ${name}`, async () => {
+    await seedCheckInEvent("e", { startTime, endTime: minutesFromNow(60) });
+    await assertFails(checkInAs(studentDb("u1"), "e", "u1", locationCheckIn("u1", live())));
+  });
+}
+
+test("the check-in's time must be the server's", async () => {
+  const times = live();
+  await seedCheckInEvent("live", times);
+  // A fixed past time, so it can never equal request.time (#522).
+  const clientTime = Timestamp.fromMillis(Date.now() - 60_000);
+  await assertFails(checkInAs(studentDb("u1"), "live", "u1",
+    locationCheckIn("u1", times, { checkedInAt: clientTime })));
+});
+
+for (const [name, expiryFor] of [
+  ["a millisecond later", (times) => plusMillis(expiresAtFor(times), 1)],
+  ["a day earlier", (times) => plusMillis(expiresAtFor(times), -86_400_000)],
+  ["a year later", (times) => plusMillis(expiresAtFor(times), 365 * 86_400_000)],
+  ["missing", () => undefined],
+  ["as text", () => "2099-01-01"],
+]) {
+  test(`a check-in can't expire ${name}`, async () => {
+    const times = live();
+    await seedCheckInEvent("live", times);
+    const expiresAt = expiryFor(times);
+    const data = locationCheckIn("u1", times, { expiresAt });
+    if (expiresAt === undefined) delete data.expiresAt;
+    await assertFails(checkInAs(studentDb("u1"), "live", "u1", data));
+  });
+}
+
+test("the expiry keeps the end time's sub-millisecond part", async () => {
+  const end = minutesFromNow(60);
+  const times = { startTime: minutesFromNow(-10), endTime: new Timestamp(end.seconds, 123_456_000) };
+  await seedCheckInEvent("precise", times);
+  const truncated = plusMillis(new Timestamp(end.seconds, 123_000_000), DAYS_30);
+  await assertFails(checkInAs(studentDb("u1"), "precise", "u1",
+    locationCheckIn("u1", times, { expiresAt: truncated })));
+  await assertSucceeds(checkInAs(studentDb("u1"), "precise", "u1", locationCheckIn("u1", times)));
+});
+
+for (const [name, overrides] of [
+  ["a QR method, for now", { method: "qr", token: "AAAAAAAAAAAAAAAAAAAAAA" }],
+  ["a QR method without a token", { method: "qr" }],
+  ["another method", { method: "gps" }],
+  ["a token with the location method", { token: "AAAAAAAAAAAAAAAAAAAAAA" }],
+  ["coordinates", { latitude: 46.5184, longitude: 6.568 }],
+  ["an accuracy", { accuracy: 12 }],
+]) {
+  test(`a check-in can't have ${name}`, async () => {
+    const times = live();
+    await seedCheckInEvent("live", times);
+    await assertFails(checkInAs(studentDb("u1"), "live", "u1",
+      locationCheckIn("u1", times, overrides)));
+  });
+}
+
+for (const field of ["uid", "checkedInAt", "method"]) {
+  test(`a check-in needs its ${field}`, async () => {
+    const times = live();
+    await seedCheckInEvent("live", times);
+    const data = locationCheckIn("u1", times);
+    delete data[field];
+    await assertFails(checkInAs(studentDb("u1"), "live", "u1", data));
+  });
+}
+
+test("nobody updates a check-in, not even its student", async () => {
+  const times = live();
+  await seedCheckInEvent("live", times);
+  await seedCheckIn("live", "u1", times);
+  await assertFails(checkInAs(studentDb("u1"), "live", "u1", locationCheckIn("u1", times)));
+  await assertFails(updateDoc(doc(studentDb("u1"), checkInPath("live")), { method: "location" }));
+});
+
+// -- reading a check-in --
+
+test("a student reads their own check-in, and their own missing one", async () => {
+  await seedCheckInEvent("live");
+  await assertSucceeds(getDoc(doc(studentDb("u1"), checkInPath("live"))));
+  await seedCheckIn("live", "u1");
+  await assertSucceeds(getDoc(doc(studentDb("u1"), checkInPath("live"))));
+});
+
+test("a member of the student's group reads their check-in, even a missing one", async () => {
+  const times = live();
+  await seedCheckInEvent("live", times, ["u1", "u3"]);
+  await seedGroup("live", "g", ["u1", "u3"]);
+  await assertSucceeds(getDoc(doc(studentDb("u3"), checkInPath("live"))));
+  await seedCheckIn("live", "u1", times);
+  await assertSucceeds(getDoc(doc(studentDb("u3"), checkInPath("live"))));
+});
+
+test("a student in another group of the event can't read the check-in", async () => {
+  const times = live();
+  await seedCheckInEvent("live", times, ["u1", "u3"]);
+  await seedGroup("live", "g1", ["u1"]);
+  await seedGroup("live", "g2", ["u3"]);
+  await seedCheckIn("live", "u1", times);
+  await assertFails(getDoc(doc(studentDb("u3"), checkInPath("live"))));
+});
+
+test("the same group ID at another event doesn't give access", async () => {
+  const times = live();
+  await seedCheckInEvent("live", times, ["u1"]);
+  await seedCheckInEvent("other", times, ["u3"]);
+  await seedGroup("live", "g", ["u1"]);
+  await seedGroup("other", "g", ["u3"]);
+  await seedCheckIn("live", "u1", times);
+  await assertFails(getDoc(doc(studentDb("u3"), checkInPath("live"))));
+});
+
+test("a student in no group, or reading someone in none, can't read a check-in", async () => {
+  const times = live();
+  await seedCheckInEvent("live", times, ["u1", "u3"]);
+  await seedCheckIn("live", "u1", times);
+  await assertFails(getDoc(doc(studentDb("u3"), checkInPath("live"))));
+  await seedGroup("live", "g", ["u3"]);
+  await assertFails(getDoc(doc(studentDb("u3"), checkInPath("live"))));
+});
+
+test("the event's organizer can't read its check-ins", async () => {
+  await seedCheckInEvent("live");
+  await seedCheckIn("live", "u1");
+  await assertFails(getDoc(doc(studentDb("u2"), checkInPath("live"))));
+});
+
+test("a deleted account can't read check-ins, not even its own", async () => {
+  const times = live();
+  await seedCheckInEvent("live", times, ["u1", "u3"]);
+  await seedGroup("live", "g", ["u1", "u3"]);
+  await seedCheckIn("live", "u1", times);
+  await seedDeletedAccount("u1");
+  await assertFails(getDoc(doc(studentDb("u1"), checkInPath("live"))));
+  await seedDeletedAccount("u3");
+  await assertFails(getDoc(doc(studentDb("u3"), checkInPath("live"))));
+});
+
+test("an association can't read a check-in, even its own UID's", async () => {
+  await seedCheckInEvent("live");
+  await seedCheckIn("live", "u1");
+  await assertFails(getDoc(doc(associationDb("u1"), checkInPath("live"))));
+});
+
+test("nobody lists check-ins, not even their own", async () => {
+  await seedCheckInEvent("live");
+  await seedCheckIn("live", "u1");
+  const db = studentDb("u1");
+  await assertFails(getDocs(collection(db, "events/live/checkIns")));
+  await assertFails(getDocs(query(collection(db, "events/live/checkIns"), where("uid", "==", "u1"))));
+  await assertFails(getDocs(query(collectionGroup(db, "checkIns"), where("uid", "==", "u1"))));
+});
+
+// -- deleting a check-in --
+
+test("a student deletes their own check-in, and their own missing one", async () => {
+  await seedCheckInEvent("live");
+  await seedCheckIn("live", "u1");
+  await assertSucceeds(deleteDoc(doc(studentDb("u1"), checkInPath("live"))));
+  assert.equal(await checkInStored("live"), false);
+  await assertSucceeds(deleteDoc(doc(studentDb("u1"), checkInPath("live"))));
+});
+
+test("nobody deletes another student's check-in, not even their group or the organizer", async () => {
+  const times = live();
+  await seedCheckInEvent("live", times, ["u1", "u3"]);
+  await seedGroup("live", "g", ["u1", "u3"]);
+  await seedCheckIn("live", "u1", times);
+  await assertFails(deleteDoc(doc(studentDb("u3"), checkInPath("live"))));
+  await assertFails(deleteDoc(doc(studentDb("u2"), checkInPath("live"))));
+  await assertFails(deleteDoc(doc(associationDb("u1"), checkInPath("live"))));
+  assert.equal(await checkInStored("live"), true);
+});
+
+test("cancelling deletes the registration and the check-in in one write, as the app does", async () => {
+  await seedCheckInEvent("live");
+  await seedCheckIn("live", "u1");
+  const db = studentDb("u1");
+  await assertSucceeds(runTransaction(db, async (transaction) => {
+    transaction.delete(doc(db, "events/live/attendees/u1"));
+    transaction.delete(doc(db, checkInPath("live")));
+    transaction.update(doc(db, "events/live"), { attendeeCount: increment(-1) });
+  }));
+  assert.equal(await checkInStored("live"), false);
+});
+
+test("the fallback cancel deletes the check-in too, once the event is gone", async () => {
+  await seedCheckInEvent("live");
+  await seedCheckIn("live", "u1");
+  await env.withSecurityRulesDisabled(async (context) => {
+    await deleteDoc(doc(context.firestore(), "events/live"));
+  });
+  const db = studentDb("u1");
+  await assertSucceeds(runTransaction(db, async (transaction) => {
+    transaction.delete(doc(db, "events/live/attendees/u1"));
+    transaction.delete(doc(db, checkInPath("live")));
+  }));
+  assert.equal(await checkInStored("live"), false);
+});
