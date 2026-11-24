@@ -9,6 +9,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.TransactionOptions
 import com.polysocial.model.auth.AuthRepository
+import com.polysocial.model.chat.isOffline
 import com.polysocial.model.event.EVENTS_COLLECTION
 import com.polysocial.model.event.eventFromFirestore
 import com.polysocial.model.event.isReadableEventId
@@ -39,8 +40,8 @@ private const val CHECKED_IN_AT_FIELD = "checkedInAt"
  * [CheckInRepository] backed by Firestore. A check-in is the document
  * `events/{eventId}/checkIns/{uid}` with exactly `uid` (the document ID again, for #472's
  * collection-group cleanup), `checkedInAt` (set by the server), `method` and `expiresAt`, the
- * window's end + 30 days, which the Security Rules require to the nanosecond and a TTL policy
- * deletes the check-in at. No location is ever stored.
+ * window's end + 30 days, which the Security Rules require exactly and a TTL policy deletes the
+ * check-in at. No location is ever stored.
  *
  * Like `FirestoreRegistrationRepository`, [checkIn] checks [NetworkMonitor] first and runs in a
  * transaction: Firestore only runs transactions against the server, so a check-in fails offline
@@ -114,7 +115,9 @@ class FirestoreCheckInRepository(
           }
           .await()
     } catch (e: FirebaseException) {
-      if (e.isOffline()) CheckInResult.NetworkError else CheckInResult.UnexpectedError
+      // The chats' helper: the server unreachable or too slow (UNAVAILABLE, DEADLINE_EXCEEDED).
+      if ((e as? FirebaseFirestoreException)?.isOffline() == true) CheckInResult.NetworkError
+      else CheckInResult.UnexpectedError
     } catch (e: CancellationException) {
       // A task cancelled while the caller still runs is a failure; a cancelled caller rethrows.
       currentCoroutineContext().ensureActive()
@@ -183,12 +186,6 @@ class FirestoreCheckInRepository(
           snapshot.getTimestamp(CHECKED_IN_AT_FIELD, ServerTimestampBehavior.ESTIMATE)?.let {
             CheckInStatus.CheckedIn(it.toInstant())
           }
-
-  /** The server couldn't be reached, or didn't answer in time. */
-  private fun FirebaseException.isOffline() =
-      this is FirebaseFirestoreException &&
-          (code == FirebaseFirestoreException.Code.UNAVAILABLE ||
-              code == FirebaseFirestoreException.Code.DEADLINE_EXCEEDED)
 
   private companion object {
     /** The SDK's own number of attempts, which retries a commit another write overtook. */
