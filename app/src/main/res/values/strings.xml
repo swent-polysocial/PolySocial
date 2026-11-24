@@ -286,6 +286,20 @@
     <string name="scan_friend_friends_note">You and %1$s are friends.</string>
     <string name="scan_friend_offline">You’re offline. Connect, then try again.</string>
     <string name="scan_friend_failed">Something went wrong. Try again.</string>
+    <!-- Add by @username on Friends (#452, Figma section 18, #480's frames) -->
+    <string name="add_by_username_label">Add by @username</string>
+    <string name="add_by_username_field">Username</string>
+    <string name="add_by_username_prefix">@</string>
+    <string name="add_by_username_hint">Start with a letter. Use 3–20 lowercase letters, numbers, dots or underscores.</string>
+    <string name="add_by_username_look_up">Look up</string>
+    <string name="add_by_username_try_again">Try again</string>
+    <string name="add_by_username_not_found_title">No student found</string>
+    <string name="add_by_username_not_found_body">Check the username or ask your friend to share it.</string>
+    <string name="add_by_username_own_title">That’s your own username</string>
+    <string name="add_by_username_own_body">Enter a friend’s username to send them a request.</string>
+    <string name="add_by_username_failed_title">Couldn’t look up this username</string>
+    <string name="add_by_username_failed_body">Check your connection, then try again.</string>
+    <string name="add_by_username_card_note">Check that this is the friend you meant to find.</string>
     <string name="privacy_profile_title">Name, section, year and interests</string>
     <string name="privacy_profile_body">Other students see your name, section, year and the interests you choose. Your email stays private. Your friend code holds only your account identifier. Scanning a friend’s code uses your camera only while the scanner is open; the picture is read on your phone and never kept.</string>
     <string name="privacy_location_title">Location</string>

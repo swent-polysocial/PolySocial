@@ -1,6 +1,6 @@
 // Contributors: Claude Opus 5.5 (drafted the scanned student's card from Figma section 15 and its
 // #359 states, in ScanFriendScreen.kt); Claude (Opus 5.5, Anthropic) (moved it here to share it,
-// #452); Konstantinos Perdikeas (directed, reviewed and owns it).
+// #452; the lookup's note, #452); Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.friend
 
 import androidx.compose.foundation.background
@@ -32,9 +32,16 @@ import com.polysocial.ui.theme.Ink2
  * A student's card (Figma "Scanned student · Public profile" and its #359 button states), shared by
  * Scan a friend's code and Add by username (#452): their public profile, then the note and the
  * friend button of [FriendCardController]. Close and the button call [onClose] and [onButton].
+ * [addNote] is the note above Add friend, which only Add by username has (#480): a name can change
+ * hands, so the student checks who it is.
  */
 @Composable
-internal fun FriendCardScreen(card: FriendCard, onClose: () -> Unit, onButton: () -> Unit) {
+internal fun FriendCardScreen(
+    card: FriendCard,
+    onClose: () -> Unit,
+    onButton: () -> Unit,
+    addNote: String? = null,
+) {
   Column(Modifier.fillMaxSize().background(Bg).testTag(C.Tag.scan_friend_card)) {
     ScanHeader(R.string.scan_friend_profile_title, onClose, dark = false)
     Column(
@@ -46,13 +53,13 @@ internal fun FriendCardScreen(card: FriendCard, onClose: () -> Unit, onButton: (
       Spacer(Modifier.height(16.dp))
       StudentProfileCard(card.profile)
     }
-    CardAction(card, onButton)
+    CardAction(card, addNote, onButton)
   }
 }
 
 /** The note above the button (the friendship, or why the last tap failed) and the button. */
 @Composable
-private fun CardAction(card: FriendCard, onButton: () -> Unit) {
+private fun CardAction(card: FriendCard, addNote: String?, onButton: () -> Unit) {
   val firstName = card.profile.displayName.trim().substringBefore(' ')
   val note =
       when {
@@ -64,7 +71,7 @@ private fun CardAction(card: FriendCard, onButton: () -> Unit) {
             stringResource(R.string.scan_friend_accept_note, firstName)
         card.button == FriendButton.FRIENDS ->
             stringResource(R.string.scan_friend_friends_note, firstName)
-        else -> null
+        else -> addNote
       }
   Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 28.dp)) {
     if (note != null) {
