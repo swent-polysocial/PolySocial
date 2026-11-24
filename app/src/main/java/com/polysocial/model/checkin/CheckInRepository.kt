@@ -1,4 +1,5 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (the check-in repository contract, #467).
+// Contributors: Claude (Opus 5.5, Anthropic) (the check-in repository contract, #467; the entrance
+// code, #468).
 package com.polysocial.model.checkin
 
 import java.time.Instant
@@ -60,6 +61,43 @@ sealed interface CheckInStatus {
   data object Error : CheckInStatus
 }
 
+/** What [CheckInRepository.observeEntranceCode] emits. */
+sealed interface EntranceCodeStatus {
+  /**
+   * The event's current [code]. [fromCache] when it comes from the offline cache: it may then be
+   * out of date, so the organizer's screen doesn't show it.
+   */
+  data class Code(val code: EntranceCode, val fromCache: Boolean) : EntranceCodeStatus
+
+  /** The event has no entrance code yet: the first organizer to open the screen creates it. */
+  data object Missing : EntranceCodeStatus
+
+  /**
+   * The code can't be read: nobody is signed in, an invalid ID, the Security Rules refuse it (not
+   * an organizer, or outside the window) or the read failed.
+   */
+  data object Error : EntranceCodeStatus
+}
+
+/** Outcome of [CheckInRepository.rotateEntranceCode]. */
+sealed interface RotateCodeResult {
+  /**
+   * The event has a code newer than the one replaced: this call wrote it, or another organizer's
+   * phone did first, in which case nothing was written. [CheckInRepository.observeEntranceCode]
+   * shows it.
+   */
+  data object Done : RotateCodeResult
+
+  /** The device is offline. Nothing was written or queued. */
+  data object NetworkError : RotateCodeResult
+
+  /**
+   * Any other failure. Nothing was written. It includes a rotation the Security Rules refuse: not
+   * an organizer, outside the window, or less than 50 s after the last one.
+   */
+  data object UnexpectedError : RotateCodeResult
+}
+
 /**
  * Stores check-ins at an event's venue in `events/{eventId}/checkIns/{uid}` (#374, Architecture
  * Diagram 3.10): one per registered student, with the server's time and how they checked in, and
@@ -91,4 +129,27 @@ interface CheckInRepository {
    * always delivered first. Cancelling the collection stops listening.
    */
   fun observeCheckIn(eventId: String, uid: String): Flow<CheckInStatus>
+
+  /**
+   * Observes the entrance code of the event [eventId] (#468), which only its organizers may read,
+   * during the check-in window. Every organizer's phone shows this stored code, so they all show
+   * the same one.
+   *
+   * The flow emits on every change, including from the offline cache. A slow collector gets only
+   * the latest status. It ends after an [EntranceCodeStatus.Error], which is always delivered
+   * first. Cancelling the collection stops listening.
+   */
+  fun observeEntranceCode(eventId: String): Flow<EntranceCodeStatus>
+
+  /**
+   * Replaces the entrance code of the event [eventId] whose token is [replacing], or creates the
+   * first one when [replacing] is null, with a new random token ([newEntranceToken]); the replaced
+   * token stays accepted as the previous one.
+   *
+   * It runs in one transaction that reads the code again and writes only if its token is still
+   * [replacing] (or, for null, if there is none yet), so when two organizers' phones try at once,
+   * only one writes and the other returns [RotateCodeResult.Done] too. An offline device returns
+   * [RotateCodeResult.NetworkError] before anything is read or written.
+   */
+  suspend fun rotateEntranceCode(eventId: String, replacing: String?): RotateCodeResult
 }

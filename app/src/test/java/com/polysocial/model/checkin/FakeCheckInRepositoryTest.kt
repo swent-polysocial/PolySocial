@@ -1,4 +1,5 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (the fake check-in repository's tests, #467).
+// Contributors: Claude (Opus 5.5, Anthropic) (the fake check-in repository's tests, #467; the
+// entrance code, #468).
 package com.polysocial.model.checkin
 
 import com.polysocial.model.event.Coordinates
@@ -141,5 +142,48 @@ class FakeCheckInRepositoryTest {
   fun anInvalidId_cannotBeObserved() = runTest {
     assertEquals(CheckInStatus.Error, repository.observeCheckIn("a/b", "student").first())
     assertEquals(CheckInStatus.Error, repository.observeCheckIn("event-1", "").first())
+  }
+
+  // The entrance code (#468)
+
+  @Test
+  fun theFirstRotation_createsACode_andTheNextReplacesItKeepingThePreviousToken() = runTest {
+    assertEquals(EntranceCodeStatus.Missing, repository.observeEntranceCode("event-1").first())
+
+    assertEquals(RotateCodeResult.Done, repository.rotateEntranceCode("event-1", null))
+    val first = repository.codeOf("event-1")!!
+    assertEquals(null, first.previousToken)
+    assertEquals(start, first.rotatedAt)
+
+    repository.now = start + Duration.ofMinutes(1)
+    repository.rotateEntranceCode("event-1", first.token)
+    val second = repository.codeOf("event-1")!!
+    assertEquals(first.token, second.previousToken)
+    assertEquals(
+        EntranceCodeStatus.Code(second, fromCache = false),
+        repository.observeEntranceCode("event-1").first(),
+    )
+  }
+
+  @Test
+  fun aRotationOverAnOutdatedToken_writesNothing_likeASecondPhone() = runTest {
+    repository.rotateEntranceCode("event-1", null)
+    val current = repository.codeOf("event-1")
+
+    repository.rotateEntranceCode("event-1", "not-the-current-token")
+    repository.rotateEntranceCode("event-1", null)
+
+    assertEquals(current, repository.codeOf("event-1"))
+    assertEquals(listOf(null, "not-the-current-token", null), repository.rotations)
+  }
+
+  @Test
+  fun aRotationFailure_orAReadFailure_isReported() = runTest {
+    repository.rotateFailure = RotateCodeResult.NetworkError
+    assertEquals(RotateCodeResult.NetworkError, repository.rotateEntranceCode("event-1", null))
+    assertEquals(null, repository.codeOf("event-1"))
+
+    repository.codeReadFailure = true
+    assertEquals(EntranceCodeStatus.Error, repository.observeEntranceCode("event-1").first())
   }
 }

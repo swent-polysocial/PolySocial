@@ -1,4 +1,5 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (drafted the Firestore check-in repository, #467).
+// Contributors: Claude (Opus 5.5, Anthropic) (drafted the Firestore check-in repository, #467; the
+// entrance code, #468).
 package com.polysocial.model.checkin
 
 import com.google.firebase.FirebaseException
@@ -7,6 +8,7 @@ import com.google.firebase.firestore.DocumentSnapshot.ServerTimestampBehavior
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
+import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.TransactionOptions
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.chat.isOffline
@@ -35,6 +37,12 @@ const val CHECK_INS_COLLECTION = "checkIns"
 private const val LOCATION_METHOD = "location"
 
 private const val CHECKED_IN_AT_FIELD = "checkedInAt"
+
+/** Subcollection of `events/{eventId}` holding its entrance code (#468). */
+const val CHECK_IN_CODE_COLLECTION = "checkInCode"
+
+/** The one document of [CHECK_IN_CODE_COLLECTION]: the event's current entrance code. */
+const val ENTRANCE_CODE_DOCUMENT = "current"
 
 /**
  * [CheckInRepository] backed by Firestore. A check-in is the document
@@ -179,6 +187,162 @@ class FirestoreCheckInRepository(
         emit(CheckInStatus.Error)
       }
 
+  /**
+   * Listens to `events/{eventId}/checkInCode/current`, by ID as the rules require, including
+   * metadata changes, so the screen learns at once when the code it shows comes only from the
+   * cache. Like [observeCheckIn], any failure ends the flow with [EntranceCodeStatus.Error]: nobody
+   * signed in, an invalid ID, a refused read (not an organizer, or outside the window), or a
+   * missing or wrong-typed `token` or `rotatedAt`.
+   */
+  override fun observeEntranceCode(eventId: String): Flow<EntranceCodeStatus> = callbackFlow {
+    fun fail() {
+      trySend(EntranceCodeStatus.Error)
+      close()
+    }
+    // Nothing in this try suspends, so it can't catch the collector's cancellation.
+    val registration =
+        try {
+          if (!isReadableEventId(eventId) || auth.currentUser() == null) {
+            fail()
+            null
+          } else {
+            codeDocument(eventId).addSnapshotListener(MetadataChanges.INCLUDE) { snapshot, failure
+              ->
+              if (failure != null || snapshot == null) fail()
+              else
+                  try {
+                    codeStatusOf(snapshot)?.let { trySend(it) } ?: fail()
+                  } catch (e: Exception) {
+                    // Thrown here, it would crash the app on Firestore's callback thread.
+                    fail()
+                  }
+            }
+          }
+        } catch (e: Exception) {
+          fail()
+          null
+        }
+    awaitClose { registration?.remove() }
+  }
+      .buffer(Channel.CONFLATED)
+      .catch { failure ->
+        if (failure is CancellationException) throw failure
+        emit(EntranceCodeStatus.Error)
+      }
+
+  /**
+   * One transaction reads the event (for `expiresAt`, the window's end + 30 days, which the rules
+   * require exactly) and the code, and writes a new token only if the stored one is still
+   * [replacing]: a phone that comes second finds the other's token and writes nothing. The new code
+   * keeps [replacing] as `previousToken` and gets the server's `rotatedAt`. A missing or unreadable
+   * event, and any refusal by the rules (not an organizer, outside the window, under 50 s since the
+   * last rotation), are [RotateCodeResult.UnexpectedError].
+   *
+   * When two phones race, the loser's write reaches the server after the winner's and the rules
+   * refuse it (its `previousToken` no longer matches), rather than Firestore retrying it (see
+   * CONTEXT.md, Traps). So a refusal reads the code again: if it no longer holds [replacing],
+   * another organizer rotated it first, which is [RotateCodeResult.Done].
+   */
+  override suspend fun rotateEntranceCode(eventId: String, replacing: String?): RotateCodeResult {
+    if (!isReadableEventId(eventId) || auth.currentUser() == null) {
+      return RotateCodeResult.UnexpectedError
+    }
+    if (!network.isOnline()) return RotateCodeResult.NetworkError
+    return try {
+      val event = db.collection(EVENTS_COLLECTION).document(eventId)
+      val code = codeDocument(eventId)
+      db.runTransaction(DEFAULT_ATTEMPTS) { transaction ->
+            val snapshot = transaction.get(event)
+            val stored =
+                if (snapshot.exists()) eventFromFirestore(eventId, snapshot.data.orEmpty())
+                else null
+            val current = transaction.get(code)
+            val storedToken = if (current.exists()) current.getString(TOKEN_FIELD) else null
+            when {
+              stored == null -> RotateCodeResult.UnexpectedError
+              storedToken != replacing -> RotateCodeResult.Done
+              else -> {
+                val data =
+                    mutableMapOf<String, Any>(
+                        TOKEN_FIELD to newEntranceToken(),
+                        ROTATED_AT_FIELD to FieldValue.serverTimestamp(),
+                        "expiresAt" to checkInWindow(stored).expiresAt.toTimestamp(),
+                    )
+                replacing?.let { data[PREVIOUS_TOKEN_FIELD] = it }
+                transaction.set(code, data)
+                RotateCodeResult.Done
+              }
+            }
+          }
+          .await()
+    } catch (e: FirebaseException) {
+      when {
+        e.isOfflineFailure() -> RotateCodeResult.NetworkError
+        e.isDenied() -> whyRotationRefused(eventId, replacing)
+        else -> RotateCodeResult.UnexpectedError
+      }
+    } catch (e: CancellationException) {
+      // A task cancelled while the caller still runs is a failure; a cancelled caller rethrows.
+      currentCoroutineContext().ensureActive()
+      RotateCodeResult.UnexpectedError
+    } catch (e: Exception) {
+      RotateCodeResult.UnexpectedError
+    }
+  }
+
+  /**
+   * After a refused rotation, reads the code again in one transaction that only reads, tried once:
+   * a code that no longer holds [replacing] was rotated by another organizer first
+   * ([RotateCodeResult.Done]); otherwise the refusal stands.
+   */
+  private suspend fun whyRotationRefused(eventId: String, replacing: String?): RotateCodeResult =
+      try {
+        val code = codeDocument(eventId)
+        db.runTransaction(SINGLE_ATTEMPT) { transaction ->
+              val current = transaction.get(code)
+              val storedToken = if (current.exists()) current.getString(TOKEN_FIELD) else null
+              if (storedToken != replacing) RotateCodeResult.Done
+              else RotateCodeResult.UnexpectedError
+            }
+            .await()
+      } catch (e: FirebaseException) {
+        if (e.isOfflineFailure()) RotateCodeResult.NetworkError
+        else RotateCodeResult.UnexpectedError
+      } catch (e: CancellationException) {
+        currentCoroutineContext().ensureActive()
+        RotateCodeResult.UnexpectedError
+      } catch (e: Exception) {
+        RotateCodeResult.UnexpectedError
+      }
+
+  /** The chats' offline check (`UNAVAILABLE`, `DEADLINE_EXCEEDED`) for any Firebase failure. */
+  private fun FirebaseException.isOfflineFailure() =
+      (this as? FirebaseFirestoreException)?.isOffline() == true
+
+  private fun FirebaseException.isDenied() =
+      this is FirebaseFirestoreException &&
+          code == FirebaseFirestoreException.Code.PERMISSION_DENIED
+
+  private fun codeDocument(eventId: String) =
+      db.collection(EVENTS_COLLECTION)
+          .document(eventId)
+          .collection(CHECK_IN_CODE_COLLECTION)
+          .document(ENTRANCE_CODE_DOCUMENT)
+
+  /** The status a stored code [snapshot] shows, or null when its fields can't be read. */
+  private fun codeStatusOf(snapshot: DocumentSnapshot): EntranceCodeStatus? {
+    if (!snapshot.exists()) return EntranceCodeStatus.Missing
+    val token = snapshot.get(TOKEN_FIELD) as? String ?: return null
+    val previous = snapshot.get(PREVIOUS_TOKEN_FIELD)
+    if (previous != null && previous !is String) return null
+    val rotatedAt =
+        snapshot.getTimestamp(ROTATED_AT_FIELD, ServerTimestampBehavior.ESTIMATE) ?: return null
+    return EntranceCodeStatus.Code(
+        EntranceCode(token, previous as String?, rotatedAt.toInstant()),
+        snapshot.metadata.isFromCache,
+    )
+  }
+
   /** The status a stored check-in [snapshot] shows, or null when its time can't be read. */
   private fun statusOf(snapshot: DocumentSnapshot): CheckInStatus? =
       if (!snapshot.exists()) CheckInStatus.NotCheckedIn
@@ -188,6 +352,13 @@ class FirestoreCheckInRepository(
           }
 
   private companion object {
+    const val TOKEN_FIELD = "token"
+    const val PREVIOUS_TOKEN_FIELD = "previousToken"
+    const val ROTATED_AT_FIELD = "rotatedAt"
+
+    /** For the read after a refused rotation, so a network failure answers at once. */
+    val SINGLE_ATTEMPT: TransactionOptions = TransactionOptions.Builder().setMaxAttempts(1).build()
+
     /** The SDK's own number of attempts, which retries a commit another write overtook. */
     val DEFAULT_ATTEMPTS: TransactionOptions = TransactionOptions.Builder().build()
   }
