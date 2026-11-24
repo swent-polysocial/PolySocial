@@ -1,3 +1,4 @@
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (the check-in window, venue check and repository contract built, #467). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (deleteAccount's one-to-one chats and delete-for-me markers step built, its steps listed in the code's order, and the messages step querying again for a message deleted meanwhile, #429). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the one-to-one chat's Security Rules built, #428). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (Log in's helper line dropped, #492). -->
@@ -715,10 +716,10 @@ flowchart TB
   checkUi["Check in<br/>Check my location · Scan entrance QR<br/>Figma section 20, #375"]:::pb --> checkVM["<b>Check-in ViewModel</b><br/>window · one-off fix · result"]:::pb
   codeUi["Entrance QR<br/>organizers only"]:::pb --> codeVM["<b>Entrance code ViewModel</b><br/>shows the current token, refreshes it"]:::pb
   groupUi["Your group<br/>3 of 4 checked in"]:::pb --> groupVM["<b>Your group ViewModel</b><br/>built, #234"]:::s1
-  checkVM --> window["<b>checkInWindow · isAtVenue</b><br/><i>domain</i>, pure Kotlin, haversine"]:::pb
+  checkVM --> window["<b>checkInWindow · isAtVenue</b><br/><i>domain</i>, pure Kotlin, haversine<br/>built, #467"]:::s1
   checkVM --> loc["<b>LocationService</b><br/>one-off precise fix<br/>built (coarse), #51"]:::s1
   checkVM --> scan["<b>QrScanner · parseQrPayload</b><br/>built, #359, #337"]:::s1
-  checkVM --> repo["<b>CheckInRepository</b><br/>checkIn · observeCheckIn · entrance code"]:::pb
+  checkVM --> repo["<b>CheckInRepository</b><br/>checkIn · observeCheckIn · entrance code<br/>contract built, #467"]:::pb
   codeVM --> repo
   groupVM --> repo
   repo --> fs[("Firestore<br/>events/{eventId}/checkIns/{uid}<br/>events/{eventId}/checkInCode/current")]:::ext
@@ -739,6 +740,7 @@ flowchart TB
   - **Checked by the rules,** not the app: a QR check-in is accepted only if its token equals `token` or `previousToken` **and** `rotatedAt` is less than 2 minutes old. A forwarded screenshot or photo is refused within 2 minutes, and the student sees #375's "expired code" frame.
   - **Cost, accepted:** the organizer's phone must stay online with the screen open. Offline, it can't refresh, the code expires, and the screen says to reconnect. It writes once a minute, about 300 writes for a 5-hour event, well within the free quota.
   - A code of **another event** is "wrong event" (#375's frame 09), checked in the app before any write, and the rules refuse it anyway (the token is per event).
+- **The repository contract (built, #467).** `model/checkin`: `checkInWindow` and `isAtVenue` (`CheckIn.kt`; invalid coordinates or an accuracy that isn't a measurement are not at the venue, never a crash) and `CheckInRepository` (`FakeCheckInRepository` in `app/src/sharedTest`). `checkIn(eventId)` returns `CheckedIn` (now or already before: the first check-in is kept), `NotSignedIn`, `NotFound` (missing, deleted, unreadable or an invalid ID), `NotRegistered`, `OutsideWindow`, `NetworkError` or `UnexpectedError` (including a refusal by the rules when the app's checks passed, such as a wrong device clock); only `CheckedIn` stores anything. `observeCheckIn(eventId, uid)` gives only the server time of the check-in, never the method or a location. The Firestore implementation and the rules come next in #467.
 - **The stored check-in.** `events/{eventId}/checkIns/{uid}`, under the event like the registrations: `uid`, `checkedInAt` (server time), `method` (`location` or `qr`), `expiresAt`, and, for `qr` only, the `token` used, which the rule needs to compare and which is useless once expired. **No coordinates, distance or accuracy are stored or sent anywhere**: the comparison happens on the device. A student checks in once per event (the UID is the document ID); nobody updates a check-in; the student may delete their own.
 - **Who sees it.** The student, and the members of **their group for that event**: the rule compares the two students' `groupMembers` markers (#232). The Your group screen gets each member's check-in by ID (at most 4 reads, live), which shows "3 of 4 checked in" and each time (#375's frame 03). Organizers don't see check-ins: no screen needs them (data minimisation), and they already see who registered. Nobody lists check-ins.
 - **Kept 30 days after the event, then deleted by Firestore.** `expiresAt` is the window's end plus 30 days; the create rule computes it from the event, so the client can't choose it. A **Firestore TTL policy** on `expiresAt` (a `fieldOverrides` entry with `"ttl": true` in `firestore.indexes.json`, deployed with the indexes; no Cloud Function) deletes expired check-ins and entrance codes, usually within a day of `expiresAt`. #421 (the album) may close uploads earlier, never later. If an organizer moves the end time after students checked in, their `expiresAt` stays as written: accepted, a few days' difference at most.
