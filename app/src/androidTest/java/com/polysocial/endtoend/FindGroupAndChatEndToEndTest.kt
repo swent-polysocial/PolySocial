@@ -5,6 +5,7 @@
 // group fixtures.
 // Contributors: Claude (Opus 5.5, Anthropic) typed the message through typeText, #427.
 // Contributors: Claude (Opus 5.5, Anthropic) (a friend's group says so, #497).
+// Contributors: Claude (Opus 5.5, Anthropic) (the username fake, for Add by username, #452).
 package com.polysocial.endtoend
 
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -87,6 +88,7 @@ import com.polysocial.model.reminder.ReminderScheduler
 import com.polysocial.model.time.ClockModule
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
+import com.polysocial.model.user.FakeUsernameRepository
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileModule
@@ -94,6 +96,8 @@ import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.UserProfile
 import com.polysocial.model.user.UserProfileModule
 import com.polysocial.model.user.UserProfileRepository
+import com.polysocial.model.user.UsernameModule
+import com.polysocial.model.user.UsernameRepository
 import com.polysocial.typeText
 import com.polysocial.ui.chat.ChatTags
 import com.polysocial.ui.event.detail.EventDetailTags
@@ -150,6 +154,7 @@ import org.junit.runner.RunWith
     NetworkModule::class,
     UserProfileModule::class,
     PublicProfileModule::class,
+    UsernameModule::class,
     RegistrationModule::class,
     FriendModule::class,
     ReminderModule::class,
@@ -230,6 +235,7 @@ class FindGroupAndChatEndToEndTest {
         )
       }
 
+  @BindValue @JvmField val usernames: UsernameRepository = FakeUsernameRepository()
   @BindValue @JvmField val registrations: RegistrationRepository = fakeRegistrations
   @BindValue @JvmField val groups: GroupRepository = fakeGroups
   @BindValue

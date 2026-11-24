@@ -10,6 +10,7 @@
 // Contributors: Claude Fable 5.2 (the organizer's own name on the detail, #281).
 // Contributors: Claude (Opus 5.5, Anthropic) typed through typeText, which closes the keyboard
 // before the next tap, the date picker's included, #427.
+// Contributors: Claude (Opus 5.5, Anthropic) (the username fake, for Add by username, #452).
 package com.polysocial.endtoend
 
 import androidx.compose.ui.test.SemanticsMatcher
@@ -87,6 +88,7 @@ import com.polysocial.model.registration.RegistrationRepository
 import com.polysocial.model.time.ClockModule
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
+import com.polysocial.model.user.FakeUsernameRepository
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileModule
@@ -94,6 +96,8 @@ import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.UserProfile
 import com.polysocial.model.user.UserProfileModule
 import com.polysocial.model.user.UserProfileRepository
+import com.polysocial.model.user.UsernameModule
+import com.polysocial.model.user.UsernameRepository
 import com.polysocial.resources.C
 import com.polysocial.typeText
 import com.polysocial.ui.event.create.LocationPickerTags
@@ -148,6 +152,7 @@ import org.junit.runner.RunWith
     NetworkModule::class,
     UserProfileModule::class,
     PublicProfileModule::class,
+    UsernameModule::class,
     RegistrationModule::class,
     FriendModule::class,
 )
@@ -184,6 +189,7 @@ class ManageEventEndToEndTest {
   @BindValue @JvmField val network: NetworkMonitor = FakeNetworkMonitor()
   @BindValue @JvmField val friends: FriendRepository = FakeFriendRepository()
 
+  @BindValue @JvmField val usernames: UsernameRepository = FakeUsernameRepository()
   @BindValue @JvmField val registrations: RegistrationRepository = FakeRegistrationRepository()
   @BindValue @JvmField val groups: GroupRepository = FakeGroupRepository()
   @BindValue
