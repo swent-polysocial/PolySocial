@@ -6019,6 +6019,13 @@ for (const [name, startTime] of [["without a start time", null], ["with a text s
   });
 }
 
+test("without a timestamp end time, the check-in window closes 3 h after the start, as in the app", async () => {
+  const startTime = minutesFromNow(-10);
+  await seedCheckInEvent("e", { startTime, endTime: "tonight" });
+  await assertSucceeds(checkInAs(studentDb("u1"), "e", "u1",
+    locationCheckIn("u1", { startTime, endTime: null })));
+});
+
 test("the check-in's time must be the server's", async () => {
   const times = live();
   await seedCheckInEvent("live", times);
@@ -6148,6 +6155,16 @@ test("a deleted account can't read check-ins, not even its own", async () => {
   await seedCheckIn("live", "u1", times);
   await seedDeletedAccount("u1");
   await assertFails(getDoc(doc(studentDb("u1"), checkInPath("live"))));
+  await seedDeletedAccount("u3");
+  await assertFails(getDoc(doc(studentDb("u3"), checkInPath("live"))));
+});
+
+test("a deleted account can't read a live group member's check-in", async () => {
+  const times = live();
+  await seedCheckInEvent("live", times, ["u1", "u3"]);
+  await seedGroup("live", "g", ["u1", "u3"]);
+  await seedCheckIn("live", "u1", times);
+  await assertSucceeds(getDoc(doc(studentDb("u3"), checkInPath("live"))));
   await seedDeletedAccount("u3");
   await assertFails(getDoc(doc(studentDb("u3"), checkInPath("live"))));
 });
