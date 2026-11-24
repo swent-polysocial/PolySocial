@@ -5931,6 +5931,21 @@ test("a student can't check in at an event that doesn't exist, even registered",
   await assertFails(checkInAs(studentDb("u1"), "gone", "u1", locationCheckIn("u1", times)));
 });
 
+test("a student in a private event's readers checks in", async () => {
+  const times = live();
+  await seedCheckInEvent("p", times, ["u1"], { isPrivate: true, allowedUids: ["u2", "u1"] });
+  await assertSucceeds(checkInAs(studentDb("u1"), "p", "u1", locationCheckIn("u1", times)));
+});
+
+test("a student removed from a private event's readers can't check in, though registered", async () => {
+  // Their registration stays, so they can always cancel (#295), but the app can't read the event
+  // and says NotFound; the rules agree (#467 review).
+  const times = live();
+  await seedCheckInEvent("p", times, ["u1"], { isPrivate: true, allowedUids: ["u2"] });
+  await assertFails(checkInAs(studentDb("u1"), "p", "u1", locationCheckIn("u1", times)));
+  assert.equal(await checkInStored("p"), false);
+});
+
 test("a student can't check another registered student in", async () => {
   const times = live();
   await seedCheckInEvent("live", times, ["u1", "u3"]);
