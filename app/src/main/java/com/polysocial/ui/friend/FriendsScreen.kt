@@ -1,8 +1,11 @@
 // Contributors: OpenAI Codex (6.2 Sol, high; request controls, feedback and accessibility, #361).
 // Contributors: OpenAI Codex (6.2 Sol, high; Compose Friends screen from Figma #358, #360,
 // profile-link modifier, and review fixes for fallback copy and confirmation).
+// Contributors: Claude (Opus 5.5, Anthropic) (Add by @username above the list, and its card, #452);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.friend
 
+import androidx.activity.compose.BackHandler
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
@@ -112,8 +115,25 @@ fun FriendsRoute(
     onOpenProfile: (String) -> Unit,
     onScan: () -> Unit,
     viewModel: FriendsViewModel = hiltViewModel(),
+    addByUsername: AddByUsernameViewModel = hiltViewModel(),
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
+  val lookup by addByUsername.uiState.collectAsStateWithLifecycle()
+  // A found student's card covers Friends until it is closed (#452).
+  lookup.card?.let { card ->
+    BackHandler(onBack = addByUsername::onCloseCard)
+    FriendCardScreen(
+        card,
+        onClose = addByUsername::onCloseCard,
+        onButton = addByUsername::onCardButton,
+        addNote = stringResource(R.string.add_by_username_card_note),
+    )
+    return
+  }
+  val lookupActions =
+      remember(addByUsername) {
+        AddByUsernameActions(addByUsername::onInput, addByUsername::onLookUp)
+      }
   val actions =
       remember(viewModel, onBack, onOpenProfile, onScan) {
         FriendsActions(
@@ -129,7 +149,7 @@ fun FriendsRoute(
             viewModel::answerRequest,
         )
       }
-  FriendsScreen(state, actions)
+  FriendsScreen(state, actions) { offline -> AddByUsername(lookup, offline, lookupActions) }
 }
 
 internal data class FriendsActions(
@@ -145,8 +165,16 @@ internal data class FriendsActions(
     val onAnswer: (FriendRow, FriendListAction) -> Unit,
 )
 
+/**
+ * Friends (#360). [top] is drawn above the list in every state, told whether Friends is offline:
+ * the app gives it Add by @username (#452).
+ */
 @Composable
-internal fun FriendsScreen(state: FriendsUiState, actions: FriendsActions) {
+internal fun FriendsScreen(
+    state: FriendsUiState,
+    actions: FriendsActions,
+    top: @Composable (offline: Boolean) -> Unit = {},
+) {
   Column(Modifier.fillMaxSize().background(Bg).testTag(FriendsTags.SCREEN)) {
     GroupHeader(FriendsTags.BACK, actions.onBack) {
       Text(
@@ -154,6 +182,15 @@ internal fun FriendsScreen(state: FriendsUiState, actions: FriendsActions) {
           style = privacyTextStyle(17, 21.4f, FontWeight.Bold),
           modifier = Modifier.padding(start = 2.dp).semantics { heading() },
           color = Ink,
+      )
+    }
+    Box(Modifier.padding(start = 20.dp, end = 20.dp, top = 20.dp)) {
+      top(
+          when (val content = state.content) {
+            FriendsContent.OfflineWithoutSavedData -> true
+            is FriendsContent.ListContent -> content.offline
+            else -> false
+          }
       )
     }
     Box(Modifier.weight(1f).fillMaxWidth()) {
