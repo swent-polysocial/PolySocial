@@ -13,7 +13,8 @@
 // failure at every call followed by a retry, #429).
 // Contributors: Claude (Opus 5.5, Anthropic) (a message deleted while the messages step runs, and
 // malformed uids, after review, #429).
-// Contributors: Claude (Opus 5.5, Anthropic) (the username freed with the profile, #448).
+// Contributors: Claude (Opus 5.5, Anthropic) (the username freed with the profile, #448; its
+// format checked against the app's, #517 review).
 
 // Unit tests with fakes, no emulator: node firebase/functions/deleteAccountHandler.test.js
 const { test } = require("node:test");
@@ -23,8 +24,10 @@ const {
   DETAILS,
   MAX_AUTH_AGE_MS,
   REGION,
+  USERNAME_PATTERN,
   deleteAccountHandler,
 } = require("./deleteAccountHandler");
+const { appUsernameRules } = require("../appProfileOptions");
 
 const UID = "student-uid-1";
 const NOW = Date.UTC(2026, 9, 28, 12, 0, 0);
@@ -478,6 +481,11 @@ test("profiles deleted and marked deleted, then registrations, friendships and c
 });
 
 // ---- The username (#448) ----
+
+// A name the app allows but this pattern refused would stay held after deletion (#517 review).
+test("the username format is the app's", () => {
+  assert.equal(USERNAME_PATTERN.source, `^${appUsernameRules().pattern}$`);
+});
 
 test("the student's username is freed in the profile's transaction, before the other steps", async () => {
   const backend = fakeBackend({

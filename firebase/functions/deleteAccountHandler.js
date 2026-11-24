@@ -9,7 +9,8 @@
 // Contributors: Claude Opus 5.5 (the user's friendships, #357); Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: Claude (Opus 5.5, Anthropic) (the user's one-to-one chats and delete-for-me markers,
 // and the messages step querying again for a message deleted meanwhile, #429).
-// Contributors: Claude (Opus 5.5, Anthropic) (the username freed with the profile, #448).
+// Contributors: Claude (Opus 5.5, Anthropic) (the username freed with the profile, #448; its
+// format shared with the tests, #517 review).
 
 const { HttpsError } = require("firebase-functions/v2/https");
 const { leaveUserChats } = require("./chats");
@@ -235,12 +236,19 @@ async function deleteStudentProfile(db, uid) {
 }
 
 /**
- * Whether `name` can be a username document's ID: the format the Security Rules require (#448). A
- * profile the rules let the student write never holds another value; this also keeps a malformed one
- * from failing the deletion.
+ * A username's format (#448), the same as the app's `USERNAME_PATTERN` in Username.kt and the
+ * Security Rules': deleteAccountHandler.test.js fails if they differ, since a name this one refused
+ * would stay held after the account is deleted.
+ */
+const USERNAME_PATTERN = /^[a-z][a-z0-9_.]{2,19}$/;
+
+/**
+ * Whether `name` can be a username document's ID ([USERNAME_PATTERN]). A profile the rules let the
+ * student write never holds another value; this also keeps a malformed one from failing the
+ * deletion.
  */
 function isUsername(name) {
-  return typeof name === "string" && /^[a-z][a-z0-9_.]{2,19}$/.test(name);
+  return typeof name === "string" && USERNAME_PATTERN.test(name);
 }
 
 /** Deletes the Auth user; one that no longer exists counts as deleted. */
@@ -286,6 +294,7 @@ module.exports = {
   DETAILS,
   MAX_AUTH_AGE_MS,
   REGION,
+  USERNAME_PATTERN,
   deleteAccountHandler,
   errorCode,
 };
