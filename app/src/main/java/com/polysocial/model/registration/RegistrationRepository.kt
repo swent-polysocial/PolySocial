@@ -1,6 +1,7 @@
 // Contributors: Claude Opus 5.5 (drafted the registration interface, #121; the ended-event note
 // after review; the attendee count, #131).
 // Contributors: Claude (Opus 5.5, Anthropic) (a full event and the counted registration, #373).
+// Contributors: Claude (Opus 5.5, Anthropic) (cancelling deletes the check-in, #467).
 package com.polysocial.model.registration
 
 import kotlinx.coroutines.flow.Flow
@@ -123,8 +124,9 @@ interface RegistrationRepository {
 
   /**
    * Removes the signed-in student's registration for the event [eventId], if there is one, and
-   * gives its place back. It works even once the event is deleted or no longer readable, so a
-   * student can always remove their own registration.
+   * gives its place back. Their check-in at the event (#467) is deleted with it. It works even once
+   * the event is deleted or no longer readable, so a student can always remove their own
+   * registration.
    *
    * Like [register], a missing user returns [CancelRegistrationResult.NotSignedIn] and an offline
    * device [CancelRegistrationResult.NetworkError], before anything is deleted. An ID that can't be

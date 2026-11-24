@@ -3,6 +3,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (listing the attendees for co-organizers, #370).
 // Contributors: Claude (Opus 5.5, Anthropic) (counted registrations and the classification of a
 // refused one, #373, from #372's JS SDK model by Claude (Fable 5.2 and Opus 5.5, Anthropic)).
+// Contributors: Claude (Opus 5.5, Anthropic) (cancelling deletes the check-in, #467).
 package com.polysocial.model.registration
 
 import androidx.annotation.VisibleForTesting
@@ -16,6 +17,7 @@ import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.Source
 import com.google.firebase.firestore.TransactionOptions
 import com.polysocial.model.auth.AuthRepository
+import com.polysocial.model.checkin.CHECK_INS_COLLECTION
 import com.polysocial.model.event.ATTENDEE_COUNT_FIELD
 import com.polysocial.model.event.EVENTS_COLLECTION
 import com.polysocial.model.event.eventFromFirestore
@@ -159,6 +161,9 @@ class FirestoreRegistrationRepository(
    * registration, an event that is gone or no longer readable, or a count at 0 or absent, from
    * before the count), so no read is needed to choose, and a counted registration is never deleted
    * without its place.
+   *
+   * Both transactions also delete the student's check-in (#467), which needs a registration, so a
+   * student who isn't going never shows as arrived. Deleting a missing one changes nothing.
    */
   override suspend fun cancel(eventId: String): CancelRegistrationResult {
     if (!isReadableEventId(eventId)) return CancelRegistrationResult.Cancelled
@@ -167,15 +172,21 @@ class FirestoreRegistrationRepository(
     return try {
       val event = db.collection(EVENTS_COLLECTION).document(eventId)
       val attendee = event.collection(ATTENDEES_COLLECTION).document(user.uid)
+      val checkIn = event.collection(CHECK_INS_COLLECTION).document(user.uid)
       try {
         db.runTransaction(DEFAULT_ATTEMPTS) { transaction ->
               transaction.delete(attendee)
+              transaction.delete(checkIn)
               transaction.update(event, ATTENDEE_COUNT_FIELD, FieldValue.increment(-1))
             }
             .await()
       } catch (e: FirebaseException) {
         if (e.isOffline()) return CancelRegistrationResult.NetworkError
-        db.runTransaction(DEFAULT_ATTEMPTS) { transaction -> transaction.delete(attendee) }.await()
+        db.runTransaction(DEFAULT_ATTEMPTS) { transaction ->
+              transaction.delete(attendee)
+              transaction.delete(checkIn)
+            }
+            .await()
       }
       CancelRegistrationResult.Cancelled
     } catch (e: FirebaseException) {
