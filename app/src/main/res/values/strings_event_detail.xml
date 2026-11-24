@@ -11,6 +11,8 @@
      Figma "Organizers on the detail" frames, #371). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) ("Event full" and its note, from the Figma "Event
      detail · full" frame, #407). -->
+<!-- Contributors: Claude (Sonnet 5.5, Anthropic) (Directions strings, #391). -->
+<!-- Contributors: OpenAI Codex (updated the Figma reference after review, #391). -->
 <resources>
     <string name="event_detail_navigate_back">Back</string>
     <string name="event_detail_loading">Loading event…</string>
@@ -33,7 +35,7 @@
         <item quantity="one">Up to %1$d person</item>
         <item quantity="other">Up to %1$d people</item>
     </plurals>
-    <!-- The Directions button under the place (#391). The Snackbar's text is a proposal: Figma has no frame yet (#481). -->
+    <!-- Figma section 03: "Event detail · Directions" and "Event detail · Directions unavailable" (#481). -->
     <string name="event_detail_directions">Directions</string>
     <string name="event_detail_directions_unavailable">No app on this phone can open directions.</string>
     <string name="event_detail_find_group">Find a group</string>

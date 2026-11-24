@@ -1,5 +1,6 @@
 // Contributors: Claude (Sonnet 5.5, Anthropic) (the Directions button and its Snackbar on the event
 // detail, #391).
+// Contributors: OpenAI Codex (corrected the icon description after review, #391).
 package com.polysocial.ui.event.detail
 
 import androidx.compose.foundation.border
@@ -78,7 +79,7 @@ internal fun DirectionsSnackbar(directions: EventDirections, snackbarHostState: 
   }
 }
 
-/** "Directions", under the event's place: an outlined pill with the public-transport icon. */
+/** "Directions", under the event's place: an outlined pill with the navigation arrow. */
 @Composable
 internal fun DirectionsButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
   val shape = RoundedCornerShape(26.dp)
