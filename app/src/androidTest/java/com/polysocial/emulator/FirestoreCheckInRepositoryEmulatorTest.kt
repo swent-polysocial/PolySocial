@@ -10,6 +10,8 @@ import com.polysocial.model.event.EVENTS_COLLECTION
 import com.polysocial.model.event.toFirestoreMap
 import com.polysocial.model.event.validEvent
 import com.polysocial.model.registration.ATTENDEES_COLLECTION
+import com.polysocial.model.registration.CancelRegistrationResult
+import com.polysocial.model.registration.FirestoreRegistrationRepository
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -218,6 +220,25 @@ class FirestoreCheckInRepositoryEmulatorTest {
     emulator.deleteAsAdmin("$EVENTS_COLLECTION/live/groupMembers", memberUid)
     seedGroupMember("live", memberUid, "g1")
     assertTrue(memberRepository.checkedInStatus("live", uid) is CheckInStatus.CheckedIn)
+  }
+
+  @Test
+  fun cancellingTheRegistration_deletesTheCheckIn() = runBlocking {
+    val uid = signInStudent()
+    seedEvent("live")
+    seedRegistration("live", uid)
+    repository().checkIn("live")
+    assertTrue(isCheckedIn("live", uid))
+    val registrations =
+        FirestoreRegistrationRepository(
+            emulator.firestore,
+            EmulatorSignedInUser(emulator),
+            AlwaysOnline,
+        )
+
+    assertEquals(CancelRegistrationResult.Cancelled, registrations.cancel("live"))
+
+    assertFalse(isCheckedIn("live", uid))
   }
 
   private companion object {

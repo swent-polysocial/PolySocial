@@ -1,6 +1,7 @@
 // Contributors: Claude Opus 5.5 (wrote these tests, #121; the attendee count, #131).
 // Contributors: Claude (Opus 5.5, Anthropic) (listing the attendees, #370; counted registrations
 // and why one was refused, #373).
+// Contributors: Claude (Opus 5.5, Anthropic) (cancelling deletes the check-in, #467).
 package com.polysocial.model.registration
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -31,6 +32,7 @@ import com.google.firebase.firestore.Transaction
 import com.google.firebase.firestore.TransactionOptions
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
+import com.polysocial.model.checkin.CHECK_INS_COLLECTION
 import com.polysocial.model.event.ATTENDEE_COUNT_FIELD
 import com.polysocial.model.event.EVENTS_COLLECTION
 import com.polysocial.model.event.toFirestoreMap
@@ -62,6 +64,8 @@ class FirestoreRegistrationRepositoryTest {
   private val event = mockk<DocumentReference>()
   private val attendees = mockk<CollectionReference>()
   private val attendee = mockk<DocumentReference>()
+  private val checkIns = mockk<CollectionReference>()
+  private val checkIn = mockk<DocumentReference>()
   private val transaction = mockk<Transaction>()
   private val written = slot<Map<String, Any>>()
   private val countChange = slot<Any>()
@@ -100,6 +104,9 @@ class FirestoreRegistrationRepositoryTest {
     every { events.document("event-1") } returns event
     every { event.collection(ATTENDEES_COLLECTION) } returns attendees
     every { attendees.document("student") } returns attendee
+    every { event.collection(CHECK_INS_COLLECTION) } returns checkIns
+    every { checkIns.document("student") } returns checkIn
+    every { transaction.delete(checkIn) } returns transaction
     stubStored(registered = false, event = storedEvent(count = 3, capacity = 8))
     every { transaction.set(attendee, capture(written)) } returns transaction
     every { transaction.update(event, ATTENDEE_COUNT_FIELD, capture(countChange)) } returns
@@ -377,6 +384,26 @@ class FirestoreRegistrationRepositoryTest {
     verify(exactly = 1) { transaction.update(any(), any<String>(), any()) }
     verify(exactly = 0) { transaction.get(any()) }
     assertEquals(listOf(DEFAULT_MAX_ATTEMPTS, DEFAULT_MAX_ATTEMPTS), options.map { it.maxAttempts })
+  }
+
+  @Test
+  fun cancel_alsoDeletesTheStudentsCheckIn_inTheSameTransaction() = runTest {
+    assertEquals(CancelRegistrationResult.Cancelled, repository.cancel("event-1"))
+
+    verify(exactly = 1) { transaction.delete(checkIn) }
+    verify(exactly = 1) {
+      db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Any>>())
+    }
+  }
+
+  @Test
+  fun cancel_refused_theFallbackAlsoDeletesTheCheckIn() = runTest {
+    refuseTheWriteWith()
+
+    assertEquals(CancelRegistrationResult.Cancelled, repository.cancel("event-1"))
+
+    // Once in the refused transaction, once in the fallback that commits.
+    verify(exactly = 2) { transaction.delete(checkIn) }
   }
 
   @Test
