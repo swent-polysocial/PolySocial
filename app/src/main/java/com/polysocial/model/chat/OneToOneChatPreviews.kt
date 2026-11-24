@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (each one-to-one chat with its latest message, for the
-// Chats tab, #432).
+// Chats tab, #432; a latest message that can't reach the server fails the list, from #521's
+// review).
 package com.polysocial.model.chat
 
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -23,14 +24,18 @@ sealed interface OneToOneChatPreviewsResult {
 
   /**
    * The student's one-to-one chats that have a message, in no particular order. A chat whose latest
-   * message can't be read is left out.
+   * message is denied ([LatestMessageResult.UnexpectedError]) is left out; one the server can't
+   * reach fails the list instead ([Failed]), as [ChatsRepository] does for groups.
    *
    * @property fromCache true when the chats or any latest message come from the offline cache.
    */
   data class Success(val previews: List<OneToOneChatPreview>, val fromCache: Boolean) :
       OneToOneChatPreviewsResult
 
-  /** The chats couldn't be read ([MyOneToOneChatsResult]'s two failures). The flow then ends. */
+  /**
+   * The chats couldn't be read ([MyOneToOneChatsResult]'s two failures), or a latest message
+   * couldn't reach the server ([LatestMessageResult.NetworkError]).
+   */
   data object Failed : OneToOneChatPreviewsResult
 }
 
@@ -73,6 +78,8 @@ private fun previews(
         val answers = result.chats.map { it to latest[it.id] }
         if (answers.any { (_, answer) -> answer == null || answer == LatestMessageResult.Loading })
             OneToOneChatPreviewsResult.Loading
+        else if (answers.any { (_, answer) -> answer == LatestMessageResult.NetworkError })
+            OneToOneChatPreviewsResult.Failed
         else
             OneToOneChatPreviewsResult.Success(
                 previews =
