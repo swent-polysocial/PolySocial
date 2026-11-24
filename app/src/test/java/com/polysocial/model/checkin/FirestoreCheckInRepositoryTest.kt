@@ -1,4 +1,5 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, test-first, #467).
+// Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, test-first, #467; the entrance
+// code, #468).
 package com.polysocial.model.checkin
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -18,6 +19,8 @@ import com.google.firebase.firestore.FirebaseFirestoreException.Code.DEADLINE_EX
 import com.google.firebase.firestore.FirebaseFirestoreException.Code.PERMISSION_DENIED
 import com.google.firebase.firestore.FirebaseFirestoreException.Code.UNAVAILABLE
 import com.google.firebase.firestore.ListenerRegistration
+import com.google.firebase.firestore.MetadataChanges
+import com.google.firebase.firestore.SnapshotMetadata
 import com.google.firebase.firestore.Transaction
 import com.google.firebase.firestore.TransactionOptions
 import com.polysocial.model.auth.AuthUser
@@ -42,6 +45,7 @@ import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -433,5 +437,240 @@ class FirestoreCheckInRepositoryTest {
         repository.observeCheckIn("event-1", "member").toList(),
     )
     assertFalse(listener.isCaptured)
+  }
+
+  // The entrance code (#468)
+
+  private val codes = mockk<CollectionReference>()
+  private val code = mockk<DocumentReference>()
+  private val codeWritten = slot<Map<String, Any>>()
+
+  /** Stubs the code document, holding [token] (null: missing), and its write. */
+  private fun stubCode(token: String?) {
+    every { event.collection(CHECK_IN_CODE_COLLECTION) } returns codes
+    every { codes.document(ENTRANCE_CODE_DOCUMENT) } returns code
+    every { transaction.get(code) } returns
+        mockk<DocumentSnapshot>().also {
+          every { it.exists() } returns (token != null)
+          every { it.getString("token") } returns token
+        }
+    every { transaction.set(code, capture(codeWritten)) } returns transaction
+  }
+
+  @Test
+  fun rotate_writesANewTokenOverTheShownOne_keepingItAsThePreviousOne() = runTest {
+    stubCode("a".repeat(22))
+
+    assertEquals(RotateCodeResult.Done, repository.rotateEntranceCode("event-1", "a".repeat(22)))
+
+    val data = codeWritten.captured
+    assertEquals(setOf("token", "previousToken", "rotatedAt", "expiresAt"), data.keys)
+    assertTrue(Regex("[A-Za-z0-9_-]{22}").matches(data["token"] as String))
+    assertEquals("a".repeat(22), data["previousToken"])
+    assertSame(FieldValue.serverTimestamp(), data["rotatedAt"])
+    val expiry = end + Duration.ofDays(30)
+    assertEquals(Timestamp(expiry.epochSecond, expiry.nano), data["expiresAt"])
+  }
+
+  @Test
+  fun rotate_withoutACode_createsTheFirst_withoutAPreviousToken() = runTest {
+    stubCode(null)
+
+    assertEquals(RotateCodeResult.Done, repository.rotateEntranceCode("event-1", null))
+
+    assertEquals(setOf("token", "rotatedAt", "expiresAt"), codeWritten.captured.keys)
+  }
+
+  @Test
+  fun rotate_whenAnotherPhoneRotatedFirst_writesNothing() = runTest {
+    stubCode("b".repeat(22))
+    assertEquals(RotateCodeResult.Done, repository.rotateEntranceCode("event-1", "a".repeat(22)))
+
+    stubCode("b".repeat(22))
+    assertEquals(RotateCodeResult.Done, repository.rotateEntranceCode("event-1", null))
+
+    verify(exactly = 0) { transaction.set(code, any()) }
+  }
+
+  @Test
+  fun rotate_refusedBecauseAnotherPhoneRotatedFirst_isDone() = runTest {
+    // The loser of a race is refused by the rules, not retried (CONTEXT.md, Traps): its
+    // previousToken no longer matches. Read again, the code is no longer the one it replaced.
+    stubCode("a".repeat(22))
+    commits += failed(PERMISSION_DENIED)
+    every { transaction.get(code) } returnsMany
+        listOf(snapshotWithToken("a".repeat(22)), snapshotWithToken("b".repeat(22)))
+
+    assertEquals(RotateCodeResult.Done, repository.rotateEntranceCode("event-1", "a".repeat(22)))
+  }
+
+  @Test
+  fun rotate_refusedWhileTheCodeIsStillTheOneReplaced_isUnexpected() = runTest {
+    stubCode("a".repeat(22))
+    commits += failed(PERMISSION_DENIED)
+
+    assertEquals(
+        RotateCodeResult.UnexpectedError,
+        repository.rotateEntranceCode("event-1", "a".repeat(22)),
+    )
+  }
+
+  @Test
+  fun rotate_refused_thenTheReReadFails_isClassified() = runTest {
+    stubCode("a".repeat(22))
+    commits += failed(PERMISSION_DENIED)
+    commits += failed(UNAVAILABLE)
+    assertEquals(
+        RotateCodeResult.NetworkError,
+        repository.rotateEntranceCode("event-1", "a".repeat(22)),
+    )
+
+    commits += failed(PERMISSION_DENIED)
+    commits += failed(PERMISSION_DENIED)
+    assertEquals(
+        RotateCodeResult.UnexpectedError,
+        repository.rotateEntranceCode("event-1", "a".repeat(22)),
+    )
+  }
+
+  private fun snapshotWithToken(token: String?) =
+      mockk<DocumentSnapshot>().also {
+        every { it.exists() } returns (token != null)
+        every { it.getString("token") } returns token
+      }
+
+  @Test
+  fun rotate_aMissingEvent_isUnexpected_andWritesNothing() = runTest {
+    stubCode(null)
+    stubStored(event = null, checkedIn = false, registered = false)
+
+    assertEquals(RotateCodeResult.UnexpectedError, repository.rotateEntranceCode("event-1", null))
+    verify(exactly = 0) { transaction.set(code, any()) }
+  }
+
+  @Test
+  fun rotate_offline_isANetworkError_beforeAnyTransaction() = runTest {
+    online = false
+
+    assertEquals(RotateCodeResult.NetworkError, repository.rotateEntranceCode("event-1", null))
+    verify(exactly = 0) {
+      db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Any>>())
+    }
+  }
+
+  @Test
+  fun rotate_failures_areClassified() = runTest {
+    stubCode(null)
+    commits += failed(UNAVAILABLE)
+    assertEquals(RotateCodeResult.NetworkError, repository.rotateEntranceCode("event-1", null))
+    every { transaction.get(code) } throws IllegalStateException("broken")
+    assertEquals(RotateCodeResult.UnexpectedError, repository.rotateEntranceCode("event-1", null))
+  }
+
+  @Test
+  fun rotate_nobodySignedIn_orAnInvalidId_isUnexpected_withoutFirestore() = runTest {
+    assertEquals(RotateCodeResult.UnexpectedError, repository.rotateEntranceCode("a/b", null))
+    auth.user = null
+    assertEquals(RotateCodeResult.UnexpectedError, repository.rotateEntranceCode("event-1", null))
+    verify(exactly = 0) { db.collection(any()) }
+  }
+
+  @Test
+  fun rotate_cancellingTheCaller_stillCancelsIt() = runTest {
+    stubCode(null)
+    every { db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Any>>()) } returns
+        TaskCompletionSource<Any>().task
+    var result: RotateCodeResult? = null
+    val call =
+        launch(start = CoroutineStart.UNDISPATCHED) {
+          result = repository.rotateEntranceCode("event-1", null)
+        }
+
+    call.cancel()
+    call.join()
+
+    assertTrue(call.isCancelled)
+    assertNull(result)
+  }
+
+  private val codeRegistration = mockk<ListenerRegistration>(relaxed = true)
+  private val codeListener = slot<EventListener<DocumentSnapshot>>()
+
+  private fun stubCodeListener() {
+    every { event.collection(CHECK_IN_CODE_COLLECTION) } returns codes
+    every { codes.document(ENTRANCE_CODE_DOCUMENT) } returns code
+    every { code.addSnapshotListener(MetadataChanges.INCLUDE, capture(codeListener)) } returns
+        codeRegistration
+  }
+
+  private fun storedCode(token: Any?, previous: Any?, rotatedAt: Timestamp?, fromCache: Boolean) =
+      mockk<DocumentSnapshot>().also {
+        every { it.exists() } returns true
+        every { it.get("token") } returns token
+        every { it.get("previousToken") } returns previous
+        every { it.getTimestamp("rotatedAt", ServerTimestampBehavior.ESTIMATE) } returns rotatedAt
+        every { it.metadata } returns
+            mockk<SnapshotMetadata>().also { m -> every { m.isFromCache } returns fromCache }
+      }
+
+  @Test
+  fun observeCode_emitsEachCode_andWhetherItIsCached() = runTest {
+    stubCodeListener()
+    val statuses = mutableListOf<EntranceCodeStatus>()
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) {
+          repository.observeEntranceCode("event-1").collect { statuses += it }
+        }
+    val at = Timestamp(start.epochSecond, start.nano)
+
+    codeListener.captured.onEvent(missing(), null)
+    codeListener.captured.onEvent(storedCode("t1", null, at, fromCache = false), null)
+    codeListener.captured.onEvent(storedCode("t2", "t1", at, fromCache = true), null)
+    collecting.cancel()
+
+    assertEquals(
+        listOf(
+            EntranceCodeStatus.Missing,
+            EntranceCodeStatus.Code(EntranceCode("t1", null, start), fromCache = false),
+            EntranceCodeStatus.Code(EntranceCode("t2", "t1", start), fromCache = true),
+        ),
+        statuses,
+    )
+    verify { codeRegistration.remove() }
+  }
+
+  @Test
+  fun observeCode_aRefusedRead_orBadFields_isAnError_andEndsTheFlow() = runTest {
+    val at = Timestamp(start.epochSecond, start.nano)
+    for (send in
+        listOf<(EventListener<DocumentSnapshot>) -> Unit>(
+            { it.onEvent(null, failed(PERMISSION_DENIED)) },
+            { it.onEvent(storedCode(42, null, at, false), null) },
+            { it.onEvent(storedCode("t", 7, at, false), null) },
+            { it.onEvent(storedCode("t", null, null, false), null) },
+        )) {
+      stubCodeListener()
+      val statuses = mutableListOf<EntranceCodeStatus>()
+      val collecting =
+          launch(UnconfinedTestDispatcher(testScheduler)) {
+            repository.observeEntranceCode("event-1").toList(statuses)
+          }
+
+      send(codeListener.captured)
+
+      assertEquals(listOf(EntranceCodeStatus.Error), statuses)
+      assertTrue(collecting.isCompleted)
+    }
+  }
+
+  @Test
+  fun observeCode_nobodySignedIn_orAnInvalidId_isAnError_withoutAListener() = runTest {
+    assertEquals(listOf(EntranceCodeStatus.Error), repository.observeEntranceCode("a/b").toList())
+    auth.user = null
+    assertEquals(
+        listOf(EntranceCodeStatus.Error),
+        repository.observeEntranceCode("event-1").toList(),
+    )
+    verify(exactly = 0) { db.collection(any()) }
   }
 }

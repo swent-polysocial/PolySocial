@@ -1,11 +1,17 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (check-in repository tests against the rules, #467).
+// Contributors: Claude (Opus 5.5, Anthropic) (check-in repository tests against the rules, #467;
+// the entrance code, #468).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.checkin.CHECK_INS_COLLECTION
+import com.polysocial.model.checkin.CHECK_IN_CODE_COLLECTION
 import com.polysocial.model.checkin.CheckInResult
 import com.polysocial.model.checkin.CheckInStatus
+import com.polysocial.model.checkin.ENTRANCE_CODE_DOCUMENT
+import com.polysocial.model.checkin.EntranceCode
+import com.polysocial.model.checkin.EntranceCodeStatus
 import com.polysocial.model.checkin.FirestoreCheckInRepository
+import com.polysocial.model.checkin.RotateCodeResult
 import com.polysocial.model.event.EVENTS_COLLECTION
 import com.polysocial.model.event.toFirestoreMap
 import com.polysocial.model.event.validEvent
@@ -16,6 +22,9 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.ZoneOffset
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -56,6 +65,7 @@ class FirestoreCheckInRepositoryEmulatorTest {
       startsIn: Duration = Duration.ofMinutes(-10),
       lasts: Duration? = Duration.ofHours(1),
       isPrivate: Boolean = false,
+      organizers: List<String> = listOf(ORGANIZER_UID),
   ) {
     val start = Instant.now() + startsIn
     val event = validEvent(startTime = start, endTime = lasts?.let { start + it })
@@ -65,9 +75,9 @@ class FirestoreCheckInRepositoryEmulatorTest {
         event
             .copy(
                 isPrivate = isPrivate,
-                createdBy = ORGANIZER_UID,
-                organizerIds = listOf(ORGANIZER_UID),
-                allowedUids = listOf(ORGANIZER_UID),
+                createdBy = organizers.first(),
+                organizerIds = organizers,
+                allowedUids = organizers,
             )
             .toFirestoreMap(),
     )
@@ -263,7 +273,92 @@ class FirestoreCheckInRepositoryEmulatorTest {
     assertFalse(isCheckedIn("live", uid))
   }
 
+  // The entrance code (#468)
+
+  private suspend fun seedCode(eventId: String, token: String, rotatedAt: Instant) =
+      emulator.createAsAdmin(
+          "$EVENTS_COLLECTION/$eventId/$CHECK_IN_CODE_COLLECTION",
+          ENTRANCE_CODE_DOCUMENT,
+          mapOf(
+              "token" to token,
+              "rotatedAt" to rotatedAt,
+              "expiresAt" to Instant.parse("2099-01-01T00:00:00Z"),
+          ),
+      )
+
+  /** The first code [repository] reads from the server. */
+  private suspend fun FirestoreCheckInRepository.serverCode(eventId: String): EntranceCode =
+      withTimeout(TIMEOUT_MS) {
+        val status =
+            observeEntranceCode(eventId).first { it !is EntranceCodeStatus.Code || !it.fromCache }
+        assertTrue("Expected a code, got $status", status is EntranceCodeStatus.Code)
+        (status as EntranceCodeStatus.Code).code
+      }
+
+  @Test
+  fun code_anOrganizerCreatesIt_readsIt_andCantRotateItAgainWithin50Seconds() = runBlocking {
+    val uid = signInStudent()
+    seedEvent("live", organizers = listOf(uid))
+
+    assertEquals(RotateCodeResult.Done, repository().rotateEntranceCode("live", null))
+    val first = repository().serverCode("live")
+    assertEquals(null, first.previousToken)
+    assertTrue(Duration.between(first.rotatedAt, Instant.now()).abs() < Duration.ofMinutes(1))
+
+    assertEquals(
+        RotateCodeResult.UnexpectedError,
+        repository().rotateEntranceCode("live", first.token),
+    )
+    assertEquals(first, repository().serverCode("live"))
+  }
+
+  @Test
+  fun code_twoOrganizersPhonesRotatingAtOnce_writeOneNewCode() = runBlocking {
+    val uid = signInStudent()
+    val other = StudentApps.all[0]
+    val otherUid = emulator.signInVerifiedUser(MEMBER_EMAIL, auth = other.auth).uid
+    seedEvent("live", organizers = listOf(uid, otherUid))
+    seedCode("live", OLD_TOKEN, Instant.now() - Duration.ofSeconds(61))
+    val otherPhone =
+        FirestoreCheckInRepository(
+            other.firestore,
+            EmulatorSignedInUser(emulator, other.auth),
+            AlwaysOnline,
+            Clock.systemUTC(),
+        )
+
+    val results = coroutineScope {
+      listOf(
+              async { repository().rotateEntranceCode("live", OLD_TOKEN) },
+              async { otherPhone.rotateEntranceCode("live", OLD_TOKEN) },
+          )
+          .awaitAll()
+    }
+
+    assertEquals(listOf(RotateCodeResult.Done, RotateCodeResult.Done), results)
+    val code = repository().serverCode("live")
+    assertEquals(OLD_TOKEN, code.previousToken)
+    assertEquals(code, otherPhone.serverCode("live"))
+  }
+
+  @Test
+  fun code_aStudentWhoDoesntOrganize_cantReadOrRotateIt() = runBlocking {
+    signInStudent()
+    seedEvent("live")
+    seedCode("live", OLD_TOKEN, Instant.now() - Duration.ofSeconds(61))
+
+    assertEquals(
+        RotateCodeResult.UnexpectedError,
+        repository().rotateEntranceCode("live", OLD_TOKEN),
+    )
+    assertEquals(
+        EntranceCodeStatus.Error,
+        withTimeout(TIMEOUT_MS) { repository().observeEntranceCode("live").first() },
+    )
+  }
+
   private companion object {
+    const val OLD_TOKEN = "oldtoken_oldtoken_old1"
     /** Fictional accounts and events: no real user data in tests. */
     const val STUDENT_EMAIL = "test.student@epfl.ch"
     const val MEMBER_EMAIL = "test.member@epfl.ch"
