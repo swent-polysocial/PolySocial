@@ -1,4 +1,5 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #448).
+// Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #448; a missing uid apart from
+// a wrong-typed one, from Mohamed Khellaf's review).
 package com.polysocial.model.user
 
 import com.google.android.gms.tasks.Tasks
@@ -326,6 +327,14 @@ class FirestoreUsernameRepositoryTest {
 
   @Test
   fun lookUp_aDocumentWithoutAUid_isUnexpected() = runTest {
+    server("lea", emptyMap())
+
+    assertEquals(UsernameLookupResult.UnexpectedError, repository.lookUp("lea"))
+  }
+
+  @Test
+  fun lookUp_aUidThatIsntAString_isUnexpected() = runTest {
+    // Firestore's getString throws for another type, as the mock does.
     server("lea", mapOf("uid" to 42L))
 
     assertEquals(UsernameLookupResult.UnexpectedError, repository.lookUp("lea"))
