@@ -1,5 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #364; one-to-one chats in the
-// list, #432).
+// list, #432; one-to-one chats that don't answer in time, from #521's review).
 package com.polysocial.ui.chat
 
 import com.polysocial.model.auth.AuthUser
@@ -7,6 +7,8 @@ import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.chat.ChatsRepository
 import com.polysocial.model.chat.FakeMessageRepository
 import com.polysocial.model.chat.FakeOneToOneChatRepository
+import com.polysocial.model.chat.MyOneToOneChatsResult
+import com.polysocial.model.chat.OneToOneChatRepository
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.validEvent
@@ -65,10 +67,13 @@ class ChatsViewModelTest {
     )
   }
 
-  private fun viewModel(groupRepository: GroupRepository = groups) =
+  private fun viewModel(
+      groupRepository: GroupRepository = groups,
+      oneToOneRepository: OneToOneChatRepository = oneToOne,
+  ) =
       ChatsViewModel(
           ChatsRepository(groupRepository, messages),
-          oneToOne,
+          oneToOneRepository,
           events,
           profiles,
           FakeAuthRepository(AuthUser(ME, "me@epfl.ch", true)),
@@ -454,6 +459,42 @@ class ChatsViewModelTest {
 
     val partial = viewModel.state.value as ChatsUiState.Chats
     assertTrue(partial.partlyFailed)
+    assertEquals(listOf(leaChat), viewModel.oneToOneRows().map { it.pairId })
+  }
+
+  @Test
+  fun oneToOneChatsThatDontAnswerInTime_leaveTheGroupsListed_andRetryReadsThemAgain() {
+    var silent = true
+    val sometimesSilent =
+        object : OneToOneChatRepository by oneToOne {
+          override fun observeMyChats(): Flow<MyOneToOneChatsResult> =
+              if (silent)
+                  flow {
+                    emit(MyOneToOneChatsResult.Loading)
+                    awaitCancellation()
+                  }
+              else oneToOne.observeMyChats()
+        }
+    groups.seedGroup("party", listOf(ME))
+    oneToOne.seedChat(leaChat)
+    oneToOne.seedMessage(leaChat, "p1", "lea", "Hi", NOON)
+    val viewModel = viewModel(oneToOneRepository = sometimesSilent)
+    runPending()
+    assertEquals(ChatsUiState.Loading, viewModel.state.value)
+
+    mainDispatcherRule.dispatcher.scheduler.advanceTimeBy(
+        ChatsViewModel.LOAD_TIMEOUT.inWholeMilliseconds + 1
+    )
+    val partial = viewModel.state.value as ChatsUiState.Chats
+    assertTrue(partial.partlyFailed)
+    assertEquals(1, viewModel.rows().size)
+    assertEquals(emptyList<OneToOneChatRow>(), viewModel.oneToOneRows())
+
+    silent = false
+    viewModel.retry()
+    runPending()
+
+    assertFalse((viewModel.state.value as ChatsUiState.Chats).partlyFailed)
     assertEquals(listOf(leaChat), viewModel.oneToOneRows().map { it.pairId })
   }
 
