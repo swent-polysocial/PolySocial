@@ -66,3 +66,11 @@ fun parseQrPayload(raw: String): QrPayload {
  * the screen can show an error instead of a code nobody can scan.
  */
 fun friendQrPayload(uid: String): String? = if (isQrId(uid)) "$SCHEME$FRIEND/$uid" else null
+
+/**
+ * The entrance code an organizer shows for the event [eventId] (#468), with the stored [token], or
+ * `null` when either can't be a QR ID, so the screen shows its error instead of a code nobody can
+ * scan.
+ */
+fun checkInQrPayload(eventId: String, token: String): String? =
+    if (isQrId(eventId) && isQrId(token)) "$SCHEME$CHECKIN/$eventId/$token" else null
