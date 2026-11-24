@@ -1,4 +1,5 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #431).
+// Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #431; the missing fallback name,
+// from #520's review).
 package com.polysocial.ui.chat
 
 import android.content.Context
@@ -85,6 +86,7 @@ class OneToOneChatScreenTest {
     compose.onNodeWithText("Meet at the Satellite?").assertIsDisplayed()
     // The header names the friend; their bubble doesn't, unlike in a group chat.
     compose.onAllNodesWithText("Léa Martin").assertCountEquals(1)
+    compose.onNodeWithText(context.getString(R.string.group_unknown_member)).assertDoesNotExist()
     compose.onNodeWithTag(OneToOneChatTags.NAME).assertIsDisplayed()
   }
 
