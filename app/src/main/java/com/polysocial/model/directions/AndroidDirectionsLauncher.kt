@@ -8,10 +8,10 @@ import android.content.Intent
 import androidx.core.net.toUri
 import com.polysocial.model.event.Coordinates
 
-/** Opens [directionsLink] with the phone's own apps; no permission and no query needed. */
+/** Opens [transitDirectionsLink] with the phone's own apps; no permission and no query needed. */
 class AndroidDirectionsLauncher(private val context: Context) : DirectionsLauncher {
-  override fun openDirections(destination: Coordinates): Boolean {
-    val link = directionsLink(destination) ?: return false
+  override fun openTransitDirections(destination: Coordinates): Boolean {
+    val link = transitDirectionsLink(destination) ?: return false
     return try {
       context.startActivity(
           Intent(Intent.ACTION_VIEW, link.toUri()).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

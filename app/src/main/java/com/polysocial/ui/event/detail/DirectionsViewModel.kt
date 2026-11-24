@@ -15,11 +15,11 @@ import kotlinx.coroutines.flow.asStateFlow
 data class DirectionsUnavailable(val id: Long)
 
 /**
- * The Directions button (#391): opens a place in the maps app through [launcher], and reports
- * [unavailable] when nothing could open them. It is separate from the event detail's ViewModel
- * because it needs no event data of its own (the screen passes the place), so the full screen map
- * (#389) can use it as it is. It is not a Hilt ViewModel: [EventDetailRoute] creates it with the
- * Android launcher, so the existing Route tests, which have no Hilt, keep working.
+ * The Directions button (#391): opens public-transport directions to a place through [launcher],
+ * and reports [unavailable] when nothing could open them. It is separate from the event detail's
+ * ViewModel because it needs no event data of its own (the screen passes the place), so the full
+ * screen map (#389) can use it as it is. It is not a Hilt ViewModel: [EventDetailRoute] creates it
+ * with the Android launcher, so the existing Route tests, which have no Hilt, keep working.
  */
 class DirectionsViewModel(private val launcher: DirectionsLauncher) : ViewModel() {
 
@@ -31,7 +31,7 @@ class DirectionsViewModel(private val launcher: DirectionsLauncher) : ViewModel(
   /** Opens directions to [destination], or reports [unavailable] if nothing could open them. */
   fun onDirections(destination: Coordinates) {
     _unavailable.value =
-        if (launcher.openDirections(destination)) null else DirectionsUnavailable(nextId++)
+        if (launcher.openTransitDirections(destination)) null else DirectionsUnavailable(nextId++)
   }
 
   /** Marks [shown] as shown, unless a newer message has replaced it meanwhile. */
