@@ -1,5 +1,7 @@
 // Contributors: Claude (read the app's profile codes in the rules tests, #229, #230; moved here
 // to share them with the demo data tests, and explained the regexes after review, #243).
+// Contributors: Claude (Opus 5.5, Anthropic) (the username rules, shared by the rules and
+// deleteAccount's tests, #448).
 "use strict";
 
 // The app's fixed profile codes, read from ProfileOptions.kt, so tests in firebase/ fail when the
@@ -57,4 +59,24 @@ function appInterests() {
   return interests;
 }
 
-module.exports = { appInterests, appProfileOptions };
+/**
+ * The reserved usernames and the username pattern in Username.kt (#448), so the rules tests and
+ * deleteAccount's tests fail if the app's and theirs stop matching.
+ */
+function appUsernameRules() {
+  const source = readFileSync(
+    path.join(__dirname, "../app/src/main/java/com/polysocial/model/user/Username.kt"),
+    "utf8",
+  );
+  // `val RESERVED_USERNAMES: Set<String> = setOf("polysocial", ...)`, over several lines, as for
+  // SECTIONS; and `private val USERNAME_PATTERN = Regex("[a-z]...")`, the pattern between quotes.
+  const reserved = source.match(/val RESERVED_USERNAMES: Set<String> =\s*setOf\(([^)]*)\)/);
+  const pattern = source.match(/val USERNAME_PATTERN = Regex\("([^"]+)"\)/);
+  if (!reserved || !pattern) throw new Error("Username.kt changed shape: update this test");
+  return {
+    reserved: [...reserved[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]),
+    pattern: pattern[1],
+  };
+}
+
+module.exports = { appInterests, appProfileOptions, appUsernameRules };

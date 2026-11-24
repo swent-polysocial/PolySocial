@@ -3,7 +3,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (a non-EPFL association in allowedUids can't run My events' private query, #320).
 // Contributors: Claude (Fable 5.2, Anthropic) (other shapes and accounts denied the own-groups query, and the latest-message query of the chat list, #363; groups documents outside an event, and more accounts and membership changes on the latest-message query, from a test audit).
 // Contributors: Claude (Opus 5.5, Anthropic) (co-organizer tests, written test-first, #370).
-// Contributors: Claude (Opus 5.5, Anthropic) (username tests, #448).
+// Contributors: Claude (Opus 5.5, Anthropic) (username tests, #448, and more from #517's review).
 // Contributors: Claude (Opus 5.5, Anthropic) (attendeeCount rows and the counted registration writes, #373, from #372's prototype by Claude (Fable 5.2 and Opus 5.5, Anthropic)).
 // Contributors: Claude (Opus 5.5, Anthropic) (one-to-one chat tests and the message helpers both chats share, #428, from #365's prototype tests by Claude (Fable 5.2 and Opus 5.5, Anthropic); the refused messages both chats share, and cases a mutation check found missing, from a test review, #428).
 const { after, before, beforeEach, test } = require("node:test");
@@ -12,7 +12,7 @@ const { after, before, beforeEach, test } = require("node:test");
 const assert = require("node:assert/strict");
 const { readFileSync } = require("node:fs");
 const path = require("node:path");
-const { appInterests, appProfileOptions } = require("../appProfileOptions");
+const { appInterests, appProfileOptions, appUsernameRules } = require("../appProfileOptions");
 const {
   assertFails,
   assertSucceeds,
@@ -3409,21 +3409,6 @@ test("an unknown interest can't be made public, even copied from a private profi
 // their public profile. Students get one name, never list them; a name and its profile are tied
 // both ways, so no write keeps two names or a name the profile doesn't hold.
 
-/** The reserved names and the format in Username.kt, so these tests fail if the app's change. */
-function appUsernameRules() {
-  const source = readFileSync(
-    path.join(__dirname, "../../app/src/main/java/com/polysocial/model/user/Username.kt"),
-    "utf8",
-  );
-  const reserved = source.match(/val RESERVED_USERNAMES: Set<String> =\s*setOf\(([^)]*)\)/);
-  const pattern = source.match(/val USERNAME_PATTERN = Regex\("([^"]+)"\)/);
-  if (!reserved || !pattern) throw new Error("Username.kt changed shape: update this test");
-  return {
-    reserved: [...reserved[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]),
-    pattern: pattern[1],
-  };
-}
-
 test("the rules refuse exactly the reserved names and format the app checks", () => {
   const { reserved, pattern } = appUsernameRules();
   assert.deepEqual(rulesCodes("reservedUsernames"), reserved);
@@ -3625,9 +3610,10 @@ for (const [name, uid] of [
 }
 
 test("a deleted account can't claim a username, even with a profile left", async () => {
-  await seedStudentWithPublicProfile("u1");
+  // No public profile, so only the usernames/{name} rule can refuse the claim (#517 review).
+  await seedUser("u1", privateProfile("u1"));
   await seedDeletedAccount("u1");
-  await assertFails(claim(studentDb("u1"), "u1", "franek"));
+  await assertFails(claim(studentDb("u1"), "u1", "franek", { skip: "public" }));
 });
 
 // -- rename and removal --
@@ -3683,6 +3669,14 @@ test("another student can't free or overwrite someone's name", async () => {
   await assertFails(setDoc(doc(studentDb("u1"), "usernames/lea"), { uid: "u1" }));
 });
 
+test("an association can't free a name, even one held under its own uid", async () => {
+  // Not a state the app writes: only students hold names, so only a student frees one.
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), "usernames/club"), { uid: "club" });
+  });
+  await assertFails(deleteDoc(doc(associationDb("club"), "usernames/club")));
+});
+
 test("nobody updates a username document, not even its holder", async () => {
   await seedUsername("u1", "franek");
   await assertFails(setDoc(doc(studentDb("u1"), "usernames/franek"), { uid: "u1" }));
@@ -3704,18 +3698,42 @@ test("an edit that keeps the username needs the public copy to keep it too", asy
 
 // -- the profile deleted --
 
-test("a student deleting their profile frees their name in the same write", async () => {
-  await seedUsername("u1", "franek");
-  const db = studentDb("u1");
+/** Seeds [uid] holding [name] without a public profile, as a profile saved before #229. */
+async function seedUsernameWithoutPublicProfile(uid, name) {
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    await setDoc(doc(db, `users/${uid}`), privateProfile(uid, { username: name }));
+    await setDoc(doc(db, `usernames/${name}`), { uid });
+  });
+}
+
+/** Deletes users/[uid] and, unless [keepName], usernames/[name], in one batch as [uid]. */
+function deleteProfile(uid, name, { keepName = false } = {}) {
+  const db = studentDb(uid);
   const batch = writeBatch(db);
-  batch.delete(doc(db, "users/u1"));
-  batch.delete(doc(db, "usernames/franek"));
-  await assertSucceeds(batch.commit());
+  batch.delete(doc(db, `users/${uid}`));
+  if (!keepName) batch.delete(doc(db, `usernames/${name}`));
+  return batch.commit();
+}
+
+test("a profile without a public copy is deleted with its name in the same write", async () => {
+  await seedUsernameWithoutPublicProfile("u1", "franek");
+  await assertSucceeds(deleteProfile("u1", "franek"));
+  assert.equal(await usernameHolder("franek"), null);
 });
 
 test("deleting the profile while keeping the name is denied", async () => {
+  // No public copy, so only the name's tie can refuse it.
+  await seedUsernameWithoutPublicProfile("u1", "franek");
+  await assertFails(deleteProfile("u1", "franek", { keepName: true }));
+  assert.equal(await usernameHolder("franek"), "u1");
+});
+
+// Its public copy keeps the name, which no client can delete: freeing the name would let someone
+// else claim it and show it on a second public profile (#517 review).
+test("a profile with a username can't be deleted while its public copy exists", async () => {
   await seedUsername("u1", "franek");
-  await assertFails(deleteDoc(doc(studentDb("u1"), "users/u1")));
+  await assertFails(deleteProfile("u1", "franek"));
   assert.equal(await usernameHolder("franek"), "u1");
 });
 
