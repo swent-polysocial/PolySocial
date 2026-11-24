@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (the one-to-one chat's state, from #430's frames,
-// #431; the shared history read, from #520's review).
+// #431; the shared history read, the name read again on Retry and its first name, from #520's
+// review).
 package com.polysocial.ui.chat
 
 import androidx.lifecycle.SavedStateHandle
@@ -15,6 +16,7 @@ import com.polysocial.model.friend.uidsOfFriendshipId
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.PublicProfileResult
+import com.polysocial.model.user.firstName
 import com.polysocial.model.user.getPublicProfileWithCache
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
@@ -36,8 +38,11 @@ import kotlinx.coroutines.flow.stateIn
 internal sealed interface ChatFriend {
   data object Loading : ChatFriend
 
-  /** Their public-profile name. */
-  data class Named(val name: String) : ChatFriend
+  /**
+   * Their public-profile name, and its first word ([firstName], null for a blank name), which the
+   * empty chat and the read-only note use.
+   */
+  data class Named(val name: String, val firstName: String?) : ChatFriend
 
   /** Their public profile couldn't be read: the chat still opens (#431). */
   data object Unavailable : ChatFriend
@@ -142,14 +147,18 @@ constructor(
           .onStart { emit(ChatAccess.CHECKING) }
           .distinctUntilChanged()
 
-  private val name: Flow<ChatFriend> = flow {
+  /** The friend's name, read again on [retry], as the group chat reads its members again. */
+  private val name: Flow<ChatFriend> = reads.flatMapLatest { readName() }
+
+  private fun readName(): Flow<ChatFriend> = flow {
     emit(ChatFriend.Loading)
     val uid = friendUid
     val result =
         if (uid == null) null else profiles.getPublicProfileWithCache(uid, PROFILE_TIMEOUT_MILLIS)
     emit(
-        (result as? PublicProfileResult.Found)?.let { ChatFriend.Named(it.profile.displayName) }
-            ?: ChatFriend.Unavailable
+        (result as? PublicProfileResult.Found)?.let {
+          ChatFriend.Named(it.profile.displayName, it.profile.firstName())
+        } ?: ChatFriend.Unavailable
     )
   }
 

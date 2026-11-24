@@ -1,4 +1,5 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #431).
+// Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #431; the name read again on
+// Retry, from #520's review).
 package com.polysocial.ui.chat
 
 import androidx.lifecycle.SavedStateHandle
@@ -82,7 +83,7 @@ class OneToOneChatViewModelTest {
 
         val viewModel = started()
 
-        assertEquals(ChatFriend.Named("Léa Martin"), viewModel.state.value.friend)
+        assertEquals(ChatFriend.Named("Léa Martin", "Léa"), viewModel.state.value.friend)
         assertEquals(emptyList<Any>(), viewModel.history().messages)
         assertEquals(ChatAccess.OPEN, viewModel.state.value.access)
         assertTrue(viewModel.state.value.canWrite)
@@ -114,6 +115,21 @@ class OneToOneChatViewModelTest {
 
         assertEquals(ChatFriend.Unavailable, viewModel.state.value.friend)
         assertTrue(viewModel.state.value.canWrite)
+      }
+
+  @Test
+  fun aNameThatFailedToLoad_isReadAgainOnRetry() =
+      runTest(main.dispatcher) {
+        befriend()
+        profiles.failure = FakePublicProfileRepository.Failure.Unexpected
+        val viewModel = started()
+        assertEquals(ChatFriend.Unavailable, viewModel.state.value.friend)
+
+        profiles.failure = null
+        viewModel.retry()
+        runCurrent()
+
+        assertEquals(ChatFriend.Named("Léa Martin", "Léa"), viewModel.state.value.friend)
       }
 
   @Test

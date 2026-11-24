@@ -126,7 +126,7 @@ private fun OneToOneChatHeader(friend: ChatFriend, onBack: () -> Unit) {
 
 @Composable
 private fun EmptyChat(friend: ChatFriend) {
-  val firstName = (friend as? ChatFriend.Named)?.name?.trim()?.substringBefore(' ')
+  val firstName = (friend as? ChatFriend.Named)?.firstName
   Box(Modifier.fillMaxSize().padding(28.dp), contentAlignment = Alignment.Center) {
     Text(
         if (firstName.isNullOrEmpty()) stringResource(R.string.one_to_one_chat_empty)
@@ -141,7 +141,7 @@ private fun EmptyChat(friend: ChatFriend) {
 
 @Composable
 private fun ReadOnlyNote(state: OneToOneChatState) {
-  val firstName = (state.friend as? ChatFriend.Named)?.name?.trim()?.substringBefore(' ')
+  val firstName = (state.friend as? ChatFriend.Named)?.firstName
   val note =
       when {
         state.access == ChatAccess.ACCOUNT_DELETED ->
