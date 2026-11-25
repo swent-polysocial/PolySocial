@@ -1,13 +1,17 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #370, and the undo of a
 // self-removal, #418 review).
+// Contributors: Claude (Opus 5.5, Anthropic) (refused organizer changes, #443).
 package com.polysocial.ui.event.create
 
 import androidx.lifecycle.SavedStateHandle
 import com.polysocial.model.association.FakeAssociationRepository
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
+import com.polysocial.model.event.EventRepository
+import com.polysocial.model.event.EventResult
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.OrganizerChanges
+import com.polysocial.model.event.OrganizerError
 import com.polysocial.model.event.UpdateEventResult
 import com.polysocial.model.event.withCreator
 import com.polysocial.model.registration.AttendeesResult
@@ -18,6 +22,7 @@ import com.polysocial.model.user.PublicProfile
 import com.polysocial.ui.event.detail.EventDetailViewModel
 import com.polysocial.utils.MainDispatcherRule
 import java.time.Clock
+import kotlinx.coroutines.flow.flowOf
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -59,10 +64,14 @@ class EditEventCoOrganizersTest {
     for (uid in listOf("lea", "tom", "arnav")) registrations.seedRegistration("event-1", uid)
   }
 
-  private fun editing(me: String = "creator", id: String? = "event-1"): CreateEventViewModel {
+  private fun editing(
+      me: String = "creator",
+      id: String? = "event-1",
+      repository: EventRepository = events,
+  ): CreateEventViewModel {
     events.currentUid = me
     return CreateEventViewModel(
-        events,
+        repository,
         Clock.fixed(FORM_NOW, ZURICH),
         SavedStateHandle(id?.let { mapOf(EventDetailViewModel.EVENT_ID_ARG to it) }.orEmpty()),
         FakeAuthRepository(AuthUser(me, "$me@epfl.ch", true)),
@@ -320,29 +329,194 @@ class EditEventCoOrganizersTest {
     assertEquals("Exam review", events.events.single().title)
   }
 
-  @Test
-  fun aStudentWhoCancelledSinceBeingPicked_failsTheSave_untilRemoved() {
-    // The sheet lists Dan, whose registration is gone by the time the organizer saves.
+  /** Opens the sheet with only Dan going, who will have cancelled by the time of the save. */
+  private fun pickingDanWhoCancels(viewModel: CreateEventViewModel) {
     publicProfiles.profiles["dan"] = PublicProfile("dan", "Dan Weber", "ME", "BA1")
     registrations.attendeesFailure = AttendeesResult.Attendees(listOf("dan"))
-    val viewModel = opened()
     viewModel.onOpenAddCoOrganizer()
     runPending()
     viewModel.onAddCoOrganizer("dan")
+  }
+
+  /** Another organizer fills the event up to five organizers while the form is open. */
+  private fun anotherOrganizerFillsTheEvent() {
+    val full = listOf("creator", "lea", "tom", "sara", "noor")
+    events.events[0] = stored.copy(organizerIds = full, allowedUids = full)
+  }
+
+  @Test
+  fun aStudentWhoCancelledSinceBeingPicked_isExplained_andTheBlockIsBackToTheSavedOrganizers() {
+    val viewModel = opened()
+    viewModel.onTitleChange("Exam review")
+    pickingDanWhoCancels(viewModel)
 
     viewModel.onSubmit()
     runPending()
+
+    assertEquals(
+        CreateEventStatus.OrganizersRefused(CreateEventStatus.OrganizersRefused.Reason.NOT_GOING),
+        viewModel.uiState.value.status,
+    )
+    assertEquals(listOf("creator", "lea"), viewModel.organizerUids())
+    assertEquals("Exam review", viewModel.uiState.value.form.title)
+    assertTrue(viewModel.uiState.value.canSubmit)
+    assertEquals(stored.organizerIds, events.events.single().organizerIds)
+  }
+
+  @Test
+  fun afterARefusal_savingAgain_savesTheOtherEdits() {
+    val viewModel = opened()
+    viewModel.onTitleChange("Exam review")
+    pickingDanWhoCancels(viewModel)
+    viewModel.onSubmit()
+    runPending()
+
+    viewModel.onSubmit()
+    runPending()
+
+    assertEquals(OrganizerChanges.NONE, events.organizerRequests.last())
+    assertEquals("Exam review", events.events.single().title)
+    assertEquals(CreateEventStatus.Saved, viewModel.uiState.value.status)
+  }
+
+  @Test
+  fun organizersChangedMeanwhile_isExplained_andTheBlockShowsThemAsStoredNow() {
+    publicProfiles.profiles["sara"] = PublicProfile("sara", "Sara Bianchi", "MA", "BA5")
+    val viewModel = opened()
+    viewModel.onTitleChange("Exam review")
+    viewModel.onOpenAddCoOrganizer()
+    runPending()
+    viewModel.onAddCoOrganizer("arnav")
+    anotherOrganizerFillsTheEvent()
+
+    viewModel.onSubmit()
+    runPending()
+
+    assertEquals(
+        CreateEventStatus.OrganizersRefused(CreateEventStatus.OrganizersRefused.Reason.CHANGED),
+        viewModel.uiState.value.status,
+    )
+    assertEquals(listOf("creator", "lea", "tom", "sara", "noor"), viewModel.organizerUids())
+    assertFalse(viewModel.block().canAdd)
+    // Only the profiles not read yet are read again (Tom's came with the sheet); Noor has none.
+    assertEquals(listOf("creator", "sara", "noor"), publicProfiles.requestedUids.last())
+    assertEquals(
+        listOf(tom, PublicProfile("sara", "Sara Bianchi", "MA", "BA5"), null),
+        viewModel.block().organizers.drop(2).map { it.profile },
+    )
+    assertFalse(viewModel.block().profilesLoading)
+    assertEquals("Exam review", viewModel.uiState.value.form.title)
+
+    viewModel.onSubmit()
+    runPending()
+    assertEquals(CreateEventStatus.Saved, viewModel.uiState.value.status)
+    assertEquals("Exam review", events.events.single().title)
+    assertEquals(5, events.events.single().organizerIds.size)
+  }
+
+  @Test
+  fun aRefusalReReadOnlyFromTheCache_stillEnds_withTheCachedOrganizers() {
+    val viewModel = opened()
+    viewModel.onOpenAddCoOrganizer()
+    runPending()
+    viewModel.onAddCoOrganizer("arnav")
+    anotherOrganizerFillsTheEvent()
+    // The server never answers the re-read, only the cache does.
+    events.readFromCache = true
+
+    viewModel.onSubmit()
+    runPending()
+
+    assertEquals(
+        CreateEventStatus.OrganizersRefused(CreateEventStatus.OrganizersRefused.Reason.CHANGED),
+        viewModel.uiState.value.status,
+    )
+    assertEquals(listOf("creator", "lea", "tom", "sara", "noor"), viewModel.organizerUids())
+  }
+
+  @Test
+  fun aRefusal_waitsForTheServer_overAStaleCache() {
+    var reads = 0
+    val staleCacheFirst =
+        object : EventRepository by events {
+          // The form's own read, then the re-read: the cache still has the organizers as opened.
+          override fun getEvent(id: String) =
+              if (reads++ == 0) events.getEvent(id)
+              else
+                  flowOf(
+                      EventResult.Found(stored, fromCache = true),
+                      EventResult.Found(events.events.single(), fromCache = false),
+                  )
+        }
+    events.seed(stored)
+    val viewModel = editing(repository = staleCacheFirst).also { runPending() }
+    viewModel.onOpenAddCoOrganizer()
+    runPending()
+    viewModel.onAddCoOrganizer("arnav")
+    anotherOrganizerFillsTheEvent()
+
+    viewModel.onSubmit()
+    runPending()
+
+    assertEquals(listOf("creator", "lea", "tom", "sara", "noor"), viewModel.organizerUids())
+  }
+
+  @Test
+  fun aRefusalWhoseReReadFindsNoEvent_dropsTheChanges_onTheOrganizersReadAtFirst() {
+    val viewModel = opened()
+    pickingDanWhoCancels(viewModel)
+    events.updateFailure = UpdateEventResult.InvalidOrganizers(OrganizerError.NOT_REGISTERED)
+    events.remove("event-1")
+
+    viewModel.onSubmit()
+    runPending()
+
+    assertEquals(
+        CreateEventStatus.OrganizersRefused(CreateEventStatus.OrganizersRefused.Reason.NOT_GOING),
+        viewModel.uiState.value.status,
+    )
+    assertEquals(listOf("creator", "lea"), viewModel.organizerUids())
+  }
+
+  @Test
+  fun aRefusalTheBlockCantCause_keepsTheChangesWithTryAgain() {
+    val viewModel = opened()
+    viewModel.onRemoveOrganizer("lea")
+    events.updateFailure = UpdateEventResult.InvalidOrganizers(OrganizerError.CREATOR_REMOVED)
+
+    viewModel.onSubmit()
+    runPending()
+
     assertEquals(
         CreateEventStatus.Failed(CreateEventStatus.Failed.Reason.UNEXPECTED),
         viewModel.uiState.value.status,
     )
-    assertEquals(stored.organizerIds, events.events.single().organizerIds)
+    assertEquals(listOf("creator"), viewModel.organizerUids())
+  }
 
-    viewModel.onRemoveOrganizer("dan")
-    assertEquals(CreateEventStatus.Editing, viewModel.uiState.value.status)
+  @Test
+  fun changingAFieldAfterARefusal_hidesTheExplanation() {
+    val viewModel = opened()
+    pickingDanWhoCancels(viewModel)
     viewModel.onSubmit()
     runPending()
-    assertEquals(CreateEventStatus.Saved, viewModel.uiState.value.status)
+
+    viewModel.onTitleChange("Exam review")
+
+    assertEquals(CreateEventStatus.Editing, viewModel.uiState.value.status)
+  }
+
+  @Test
+  fun changingTheOrganizersAfterARefusal_hidesTheExplanation() {
+    val viewModel = opened()
+    pickingDanWhoCancels(viewModel)
+    viewModel.onSubmit()
+    runPending()
+
+    viewModel.onRemoveOrganizer("lea")
+
+    assertEquals(CreateEventStatus.Editing, viewModel.uiState.value.status)
+    assertEquals(listOf("creator"), viewModel.organizerUids())
   }
 
   @Test

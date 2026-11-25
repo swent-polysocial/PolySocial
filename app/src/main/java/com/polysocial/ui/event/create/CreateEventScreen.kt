@@ -5,6 +5,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (Edit event's organizers block, #370).
 // Contributors: Claude (Opus 5.5, Anthropic) (Edit event's capacity warning, from Figma's #406
 // frame, #407).
+// Contributors: Claude (Opus 5.5, Anthropic) (the banner for refused organizer changes, from
+// #483's frames, #443).
 package com.polysocial.ui.event.create
 
 import androidx.activity.compose.BackHandler
@@ -274,7 +276,9 @@ fun CreateEventFormContent(
   // Saveable, so an open picker stays open when the screen rotates.
   var dialog by rememberSaveable { mutableStateOf<PickerDialog?>(null) }
   val scroll = rememberScrollState()
-  val failed = state.status is CreateEventStatus.Failed
+  val failed =
+      state.status is CreateEventStatus.Failed ||
+          state.status is CreateEventStatus.OrganizersRefused
 
   // Figma puts the failure banner at the end of the form, which is off screen after tapping
   // Create: scroll down so the organizer sees why nothing happened.
@@ -464,6 +468,10 @@ fun CreateEventFormContent(
           (state.status as? CreateEventStatus.Failed)?.let {
             Spacer(Modifier.height(12.dp))
             FailureBanner(it.reason, state.isEditing)
+          }
+          (state.status as? CreateEventStatus.OrganizersRefused)?.let {
+            Spacer(Modifier.height(12.dp))
+            OrganizersRefusedBanner(it.reason)
           }
           Spacer(Modifier.height(24.dp))
         }
@@ -805,6 +813,29 @@ private fun FailureBanner(reason: CreateEventStatus.Failed.Reason, isEditing: Bo
               }
           ),
       offline = reason == CreateEventStatus.Failed.Reason.OFFLINE,
+      tag = C.Tag.create_event_failure,
+  )
+}
+
+/**
+ * Edit event's banner when the organizer changes were refused (#443, Figma "Edit event · added
+ * student not going" and "· organizers changed meanwhile", #483): where section 10's couldn't-save
+ * banner goes, saying why and that the block now shows the stored organizers.
+ */
+@Composable
+private fun OrganizersRefusedBanner(reason: CreateEventStatus.OrganizersRefused.Reason) {
+  ErrorBanner(
+      title = stringResource(R.string.edit_event_organizers_refused_title),
+      message =
+          stringResource(
+              when (reason) {
+                CreateEventStatus.OrganizersRefused.Reason.NOT_GOING ->
+                    R.string.edit_event_organizers_not_going_body
+                CreateEventStatus.OrganizersRefused.Reason.CHANGED ->
+                    R.string.edit_event_organizers_changed_body
+              }
+          ),
+      offline = false,
       tag = C.Tag.create_event_failure,
   )
 }
