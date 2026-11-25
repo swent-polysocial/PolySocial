@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; venue check-in for #469 under Lucas Pinto
+// Ricardo’s supervision and approval).
 // Contributors: Claude (event detail screen from the Figma "Event detail" Sprint 2 frames, #112;
 // Retry in the offline "not saved" state, #194; Edit and Cancel event for organizers, #131;
 // the association's name, #128).
@@ -80,9 +82,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -130,6 +135,8 @@ import com.polysocial.ui.common.SheetTitle
 import com.polysocial.ui.common.StateButton
 import com.polysocial.ui.event.VERIFIED_PILL_HEIGHT
 import com.polysocial.ui.event.VerifiedPill
+import com.polysocial.ui.event.checkin.CheckInPrompt
+import com.polysocial.ui.event.checkin.CheckInRoute
 import com.polysocial.ui.event.style
 import com.polysocial.ui.group.YourGroupCard
 import com.polysocial.ui.theme.Accent
@@ -252,6 +259,7 @@ fun EventDetailRoute(
     onOpenGroup: () -> Unit = {},
     onShowEntranceQr: () -> Unit = {},
     viewModel: EventDetailViewModel = hiltViewModel(),
+    isStudent: Boolean = true,
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   val cancelState by viewModel.cancelState.collectAsStateWithLifecycle()
@@ -296,6 +304,27 @@ fun EventDetailRoute(
     lifecycleOwner.lifecycle.addObserver(observer)
     onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
   }
+  val checkInEntry by
+      remember(viewModel, isStudent) { viewModel.checkInEntry(isStudent) }
+          .collectAsStateWithLifecycle(initialValue = null)
+  var checkInOpen by rememberSaveable { mutableStateOf(false) }
+  val entry = checkInEntry
+  if (checkInOpen && entry != null) {
+    val hasGroup = (state as? EventDetailUiState.Loaded)?.yourGroup != null
+    CheckInRoute(
+        entry = entry,
+        modifier = modifier,
+        onBack = { checkInOpen = false },
+        onOpenGroup =
+            if (hasGroup) {
+              {
+                checkInOpen = false
+                onOpenGroup()
+              }
+            } else null,
+    )
+    return
+  }
   EventDetailScreen(
       state,
       onBack,
@@ -312,6 +341,7 @@ fun EventDetailRoute(
       onRetryGoing = viewModel::retryGoingCount,
       onFindGroup = onFindGroup,
       onOpenGroup = onOpenGroup,
+      checkInPrompt = { entry?.let { CheckInPrompt(it, onOpen = { checkInOpen = true }) } },
       attendanceFeedback = attendanceFeedback,
       registrationSheet = registrationSheet,
       attendance =
@@ -374,6 +404,7 @@ fun EventDetailScreen(
     registrationSheet: CancelRegistrationState = CancelRegistrationState.Hidden,
     attendance: EventAttendanceActions = EventAttendanceActions(),
     onOpenGroup: () -> Unit = {},
+    checkInPrompt: @Composable () -> Unit = {},
 ) {
   val snackbarHostState = remember { SnackbarHostState() }
   val scope = rememberCoroutineScope()
@@ -410,6 +441,7 @@ fun EventDetailScreen(
                 onFindGroup = onFindGroup,
                 onOpenGroup = onOpenGroup,
                 attendance = attendance,
+                checkInPrompt = checkInPrompt,
             )
           }
       EventDetailUiState.NotFound ->
@@ -477,6 +509,7 @@ private fun EventContent(
     onFindGroup: () -> Unit,
     onOpenGroup: () -> Unit,
     attendance: EventAttendanceActions,
+    checkInPrompt: @Composable () -> Unit,
 ) {
   val details = state.details
   val event = details.event
@@ -563,6 +596,7 @@ private fun EventContent(
                 modifier = Modifier.testTag(EventDetailTags.DESCRIPTION),
             )
           }
+          checkInPrompt()
           state.yourGroup?.let {
             Spacer(Modifier.height(20.dp))
             YourGroupCard(it, onOpenGroup, Modifier.testTag(EventDetailTags.YOUR_GROUP))

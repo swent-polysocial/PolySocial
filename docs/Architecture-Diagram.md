@@ -1,3 +1,4 @@
+<!-- Contributors: OpenAI Codex (GPT-6.2 Sol, high; documented the location path for #469 under Lucas Pinto Ricardo’s supervision and approval). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the check-in window, venue check and repository contract built, #467; the Firestore repository, location rules and TTL policy built, #467). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the entrance code's storage and rules built, #468). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (deleteAccount's one-to-one chats and delete-for-me markers step built, its steps listed in the code's order, and the messages step querying again for a message deleted meanwhile, #429). -->
@@ -724,11 +725,11 @@ flowchart TB
   classDef ext fill:#fff3bf,stroke:#e67700,color:#000
   classDef s1 fill:#d3f9d8,stroke:#2b8a3e,color:#000
 
-  checkUi["Check in<br/>Check my location · Scan entrance QR<br/>Figma section 20, #375"]:::pb --> checkVM["<b>Check-in ViewModel</b><br/>window · one-off fix · result"]:::pb
+  checkUi["Check in<br/>Check my location · Scan entrance QR<br/>Figma section 20, #469"]:::s1 --> checkVM["<b>Check-in ViewModel</b><br/>window · one-off fix · result"]:::s1
   codeUi["Entrance QR<br/>organizers only"]:::pb --> codeVM["<b>Entrance code ViewModel</b><br/>shows the current token, refreshes it"]:::pb
   groupUi["Your group<br/>3 of 4 checked in"]:::pb --> groupVM["<b>Your group ViewModel</b><br/>built, #234"]:::s1
   checkVM --> window["<b>checkInWindow · isAtVenue</b><br/><i>domain</i>, pure Kotlin, haversine<br/>built, #467"]:::s1
-  checkVM --> loc["<b>LocationService</b><br/>one-off precise fix<br/>built (coarse), #51"]:::s1
+  checkVM --> loc["<b>LocationService</b><br/>one-off precise fix (#469)<br/>approximate distances (#51)"]:::s1
   checkVM --> scan["<b>QrScanner · parseQrPayload</b><br/>built, #359, #337"]:::s1
   checkVM --> repo["<b>CheckInRepository</b><br/>checkIn · observeCheckIn · entrance code<br/>location check-in built, #467; entrance code storage built, #468"]:::s1
   codeVM --> repo
