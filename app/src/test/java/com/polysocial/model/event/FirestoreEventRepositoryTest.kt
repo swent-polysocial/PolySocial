@@ -32,8 +32,10 @@ import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.user.AccountType
+import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.ProfileResult
+import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.UserProfile
 import io.mockk.Called
 import io.mockk.every
@@ -87,9 +89,28 @@ class FirestoreEventRepositoryTest {
           year = "BA3",
       )
   private val profiles = FakeUserProfileRepository(ProfileResult.Found(creatorProfile))
+  private val publicProfiles =
+      FakePublicProfileRepository(
+          mutableMapOf(
+              "creator" to
+                  PublicProfile(
+                      uid = "creator",
+                      displayName = "Test Creator",
+                      section = "IN",
+                      year = "BA3",
+                  )
+          )
+      )
 
   private val repository =
-      FirestoreEventRepository(db, auth, profiles, network, Clock.fixed(TEST_NOW, ZoneOffset.UTC))
+      FirestoreEventRepository(
+          db,
+          auth,
+          profiles,
+          publicProfiles,
+          network,
+          Clock.fixed(TEST_NOW, ZoneOffset.UTC),
+      )
 
   @Before
   fun stubFirestore() {
@@ -355,14 +376,29 @@ class FirestoreEventRepositoryTest {
   }
 
   @Test
+  fun upcomingEvents_readsTheSectionFromThePublicProfile_theOneTheRulesCompareWith() = runTest {
+    stubPublicEventsQuery()
+
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) {
+          repository.getUpcomingPublicEvents().collect {}
+        }
+
+    assertEquals(listOf(listOf("creator")), publicProfiles.requestedUids)
+    assertEquals(0, profiles.getProfileCalls)
+    collecting.cancel()
+  }
+
+  @Test
   fun upcomingEvents_aStudentWhoseSectionCantBeRead_stillGetsTheEventsOpenToEverySection() =
       runTest {
-        val noProfile = FakeUserProfileRepository(ProfileResult.NotFound)
+        // A private profile that exists while the public copy doesn't (saved before #229).
         val withoutSection =
             FirestoreEventRepository(
                 db,
                 auth,
-                noProfile,
+                profiles,
+                FakePublicProfileRepository(),
                 network,
                 Clock.fixed(TEST_NOW, ZoneOffset.UTC),
             )
@@ -387,6 +423,7 @@ class FirestoreEventRepositoryTest {
             db,
             FakeAuthRepository(user = null),
             profiles,
+            publicProfiles,
             network,
             Clock.fixed(TEST_NOW, ZoneOffset.UTC),
         )

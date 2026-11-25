@@ -24,6 +24,8 @@ import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.registration.ATTENDEES_COLLECTION
 import com.polysocial.model.user.ProfileResult
+import com.polysocial.model.user.PublicProfileRepository
+import com.polysocial.model.user.PublicProfileResult
 import com.polysocial.model.user.UserProfileRepository
 import java.time.Clock
 import java.time.Instant
@@ -68,6 +70,7 @@ class FirestoreEventRepository(
     private val database: () -> FirebaseFirestore,
     private val auth: AuthRepository,
     private val profiles: UserProfileRepository,
+    private val publicProfiles: PublicProfileRepository,
     private val network: NetworkMonitor,
     private val clock: Clock,
 ) : EventRepository {
@@ -75,9 +78,10 @@ class FirestoreEventRepository(
       db: FirebaseFirestore,
       auth: AuthRepository,
       profiles: UserProfileRepository,
+      publicProfiles: PublicProfileRepository,
       network: NetworkMonitor,
       clock: Clock,
-  ) : this({ db }, auth, profiles, network, clock)
+  ) : this({ db }, auth, profiles, publicProfiles, network, clock)
 
   private val db: FirebaseFirestore
     get() = database()
@@ -272,11 +276,12 @@ class FirestoreEventRepository(
    * Security Rules reject a query that could return a private event), a `startTime` range, and the
    * events open to the student's section (#369): `allowedSections == []` (every section) or
    * `allowedSections` array-contains their section. The rules accept a list only if its constraints
-   * prove each result readable, so a query without that part is denied, and a student whose section
-   * can't be read (no profile yet, or offline without a cached one) gets only the events open to
-   * every section. The section is read once when collection starts, like the window. This needs the
-   * composite indexes in `firebase/firestore/firestore.indexes.json`. See [listenToEvents] for how
-   * it emits and fails.
+   * prove each result readable, so a query without that part is denied. The section is read from
+   * the public profile, the one the rules compare with: a student who has none yet (saved
+   * before #229, repaired at app start), or who is offline without a cached one, gets only the
+   * events open to every section, which the rules accept without it. The section is read once when
+   * collection starts, like the window. This needs the composite indexes in
+   * `firebase/firestore/firestore.indexes.json`. See [listenToEvents] for how it emits and fails.
    */
   override fun getUpcomingPublicEvents(windowDays: Int): Flow<PublicEventsResult> {
     require(windowDays > 0) { "windowDays must be positive, was $windowDays" }
@@ -307,10 +312,15 @@ class FirestoreEventRepository(
     }
   }
 
-  /** The signed-in student's section, or null when it can't be read (see [openToSection]). */
+  /**
+   * The signed-in student's section in their public profile, which is what the Security Rules read,
+   * or null when it can't be read (see [openToSection]).
+   */
   private suspend fun viewerSection(): String? {
     val user = auth.currentUser() ?: return null
-    return (profiles.getProfile(user.uid) as? ProfileResult.Found)?.profile?.section
+    return (publicProfiles.getPublicProfile(user.uid) as? PublicProfileResult.Found)
+        ?.profile
+        ?.section
   }
 
   /**

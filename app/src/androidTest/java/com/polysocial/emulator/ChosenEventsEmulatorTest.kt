@@ -1,5 +1,7 @@
 // Contributors: Claude Opus 5.5 (medium) (chosen events against the rules, #203).
 // Contributors: Claude (Opus 5.5, Anthropic) tested readable private events listed once, #320.
+// Contributors: Claude (Sonnet 5.5, Anthropic) (the public profile as the section source of the
+// upcoming events query, #369).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -13,6 +15,7 @@ import com.polysocial.model.registration.ATTENDEES_COLLECTION
 import com.polysocial.model.registration.ChosenEventsRepository
 import com.polysocial.model.registration.ChosenEventsResult
 import com.polysocial.model.registration.FirestoreRegistrationRepository
+import com.polysocial.model.user.FirestorePublicProfileRepository
 import com.polysocial.model.user.FirestoreUserProfileRepository
 import java.time.Clock
 import java.time.Instant
@@ -50,6 +53,7 @@ class ChosenEventsEmulatorTest {
             db = emulator.firestore,
             auth = auth,
             profiles = FirestoreUserProfileRepository(emulator.firestore),
+            publicProfiles = FirestorePublicProfileRepository(emulator.firestore),
             network = AlwaysOnline,
             clock = Clock.fixed(NOW, ZoneOffset.UTC),
         ),
