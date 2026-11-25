@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #446 repository tests under
+// Lucas Pinto Ricardo’s supervision and approval).
 // Contributors: Claude Opus 5.5 (wrote these tests; cancelled tasks and wrong-typed fields);
 // Claude (isAssociationVerified tests, #45; unexpected failures and cancelled writes, #182; the
 // public profile written with the private one, written test-first, #229; interests, test-first,
@@ -78,6 +80,7 @@ class FirestoreUserProfileRepositoryTest {
   private fun snapshot(fields: Map<String, Any?>?): DocumentSnapshot = mockk {
     every { exists() } returns (fields != null)
     every { getString(any()) } answers { fields?.get(firstArg()) as String? }
+    every { contains(any<String>()) } answers { fields?.containsKey(firstArg()) == true }
     every { this@mockk.get(any<String>()) } answers { fields?.get(firstArg()) }
     every { getTimestamp(any()) } answers { fields?.get(firstArg()) as Timestamp? }
   }
@@ -108,6 +111,24 @@ class FirestoreUserProfileRepositoryTest {
   private fun transactionsFail(error: Exception) {
     every { db.runTransaction(any<Transaction.Function<Boolean>>()) } returns
         Tasks.forException(error)
+  }
+
+  @Test
+  fun getProfile_readsExplicitVisibilityAndBio() = runTest {
+    val details = mapOf("profileVisibility" to "public", "bio" to "Test bio")
+    every { ref.get() } returns Tasks.forResult(snapshot(storedFields + details))
+
+    val loaded = (repository.getProfile("u1") as ProfileResult.Found).profile
+    assertEquals(ProfileVisibility.PUBLIC, loaded.profileVisibility)
+    assertEquals("Test bio", loaded.bio)
+  }
+
+  @Test
+  fun getProfile_reportsMalformedVisibilityOrBio() = runTest {
+    for (details in listOf(mapOf("profileVisibility" to "other"), mapOf("bio" to 7))) {
+      every { ref.get() } returns Tasks.forResult(snapshot(storedFields + details))
+      assertEquals(ProfileResult.UnexpectedError, repository.getProfile("u1"))
+    }
   }
 
   // ---- getProfile ----
@@ -354,6 +375,19 @@ class FirestoreUserProfileRepositoryTest {
   }
 
   @Test
+  fun createProfile_mirrorsVisibilityAndBioInOneTransaction() = runTest {
+    transactionsSee(snapshot(null))
+    val privateWrite = slot<Map<String, Any>>()
+    every { transaction.set(ref, capture(privateWrite)) } returns transaction
+    val edited = profile.copy(profileVisibility = ProfileVisibility.PUBLIC, bio = "Test bio")
+    val details = mapOf("profileVisibility" to "public", "bio" to "Test bio")
+
+    assertEquals(CreateProfileResult.Created, repository.createProfile(edited))
+    assertEquals(details, privateWrite.captured.filterKeys { it in details })
+    verify(exactly = 1) { transaction.set(publicRef, publicFieldsOf(profile) + details) }
+  }
+
+  @Test
   fun createProfile_anAssociation_writesNoPublicProfile() = runTest {
     transactionsSee(snapshot(null))
 
@@ -434,6 +468,36 @@ class FirestoreUserProfileRepositoryTest {
 
     verify(exactly = 1) { transaction.update(ref, any<Map<String, Any>>()) }
     verify(exactly = 0) { transaction.set(publicRef, any()) }
+  }
+
+  @Test
+  fun updateProfile_mirrorsDetailsAndClearsThemWhenReturnedToDefaults() = runTest {
+    val details = mapOf("profileVisibility" to "public", "bio" to "Test bio")
+    val edited = profile.copy(profileVisibility = ProfileVisibility.PUBLIC, bio = "Test bio")
+    transactionsSee(snapshot(storedFields))
+
+    assertEquals(UpdateProfileResult.Updated, repository.updateProfile(edited))
+    verify(exactly = 1) {
+      transaction.update(ref, publicFieldsOf(profile) + details)
+      transaction.set(publicRef, publicFieldsOf(profile) + details)
+    }
+
+    transactionsSee(snapshot(storedFields + details))
+    assertEquals(UpdateProfileResult.Updated, repository.updateProfile(profile))
+    verify(exactly = 1) {
+      transaction.update(ref, publicFieldsOf(profile) + details.mapValues { FieldValue.delete() })
+      transaction.set(publicRef, publicFieldsOf(profile))
+    }
+  }
+
+  @Test
+  fun invalidBioIsRejectedBeforeAnyProfileWrite() = runTest {
+    for (bio in listOf("", "🌱".repeat(76))) {
+      val edited = profile.copy(bio = bio)
+      assertEquals(CreateProfileResult.UnexpectedError, repository.createProfile(edited))
+      assertEquals(UpdateProfileResult.UnexpectedError, repository.updateProfile(edited))
+    }
+    verify(exactly = 0) { db.runTransaction(any<Transaction.Function<Boolean>>()) }
   }
 
   @Test
@@ -726,6 +790,15 @@ class FirestoreUserProfileRepositoryTest {
     verify(exactly = 1) {
       transaction.set(publicRef, publicFieldsOf(profile) + ("username" to "franek"))
     }
+  }
+
+  @Test
+  fun ensurePublicProfile_repairsMissingCopyWithStoredVisibilityAndBio() = runTest {
+    val details = mapOf("profileVisibility" to "public", "bio" to "Test bio")
+    ensureTransactionsSee(snapshot(storedFields + details))
+
+    assertEquals(EnsurePublicProfileResult.Created, repository.ensurePublicProfile("u1"))
+    verify(exactly = 1) { transaction.set(publicRef, publicFieldsOf(profile) + details) }
   }
 
   @Test

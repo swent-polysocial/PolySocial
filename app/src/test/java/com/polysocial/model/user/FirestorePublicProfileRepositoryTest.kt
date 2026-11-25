@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #446 repository tests under
+// Lucas Pinto Ricardo’s supervision and approval).
 // Contributors: Claude (wrote these tests, written test-first, #229; unreadable documents in a
 // batch, tests added in the test audit, #229; several profiles read one document each, in
 // parallel, one failing read failing them all, after review, #229; unknown interest codes left
@@ -85,6 +87,34 @@ class FirestorePublicProfileRepositoryTest {
   private fun documentsSee(vararg uids: String, stored: Map<String, Map<String, Any?>>) {
     for (uid in uids) every { refFor(uid).get() } returns
         Tasks.forResult(snapshot(uid, stored[uid]))
+  }
+
+  @Test
+  fun getPublicProfile_readsBioForEitherVisibilityAndDefaultsLegacyProfilesToPrivate() = runTest {
+    for ((stored, visibility) in
+        listOf(
+            emptyMap<String, String>() to ProfileVisibility.PRIVATE,
+            mapOf("profileVisibility" to "private", "bio" to "Visible bio") to
+                ProfileVisibility.PRIVATE,
+            mapOf("profileVisibility" to "public", "bio" to "Visible bio") to
+                ProfileVisibility.PUBLIC,
+        )) {
+      documentsSee("u1", stored = mapOf("u1" to storedFields + stored))
+      assertEquals(
+          PublicProfileResult.Found(
+              profile.copy(profileVisibility = visibility, bio = stored["bio"])
+          ),
+          repository.getPublicProfile("u1"),
+      )
+    }
+  }
+
+  @Test
+  fun getPublicProfile_reportsMalformedDetails() = runTest {
+    for (details in listOf(mapOf("profileVisibility" to 7), mapOf("bio" to listOf("text")))) {
+      documentsSee("u1", stored = mapOf("u1" to storedFields + details))
+      assertEquals(PublicProfileResult.UnexpectedError, repository.getPublicProfile("u1"))
+    }
   }
 
   // ---- the username (#448) ----

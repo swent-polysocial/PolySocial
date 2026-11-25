@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #446 emulator regression under
+// Lucas Pinto Ricardo’s supervision and approval).
 // Contributors: Claude (profile repository tests against the Firestore emulator, #119; offline,
 // wrong-typed field and createdAt tests after an adversarial test review; offline helper's
 // Wi-Fi hint and failure reporting, #181; offline helper moved to OfflineDevice.kt, #126; the flag
@@ -9,8 +11,11 @@ import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.polysocial.model.user.AccountType
 import com.polysocial.model.user.CreateProfileResult
+import com.polysocial.model.user.FirestorePublicProfileRepository
 import com.polysocial.model.user.FirestoreUserProfileRepository
 import com.polysocial.model.user.ProfileResult
+import com.polysocial.model.user.ProfileVisibility
+import com.polysocial.model.user.PublicProfileResult
 import com.polysocial.model.user.USERS_COLLECTION
 import com.polysocial.model.user.UpdateProfileResult
 import com.polysocial.model.user.UserProfile
@@ -31,7 +36,7 @@ import org.junit.runner.RunWith
  * transactions, field names and types go through the real Firestore and the Security Rules (#35).
  *
  * The rules themselves (other uids, unverified emails, locked fields) are covered in detail by
- * firebase/firestore/firestore.rules.test.js; here only the flag rules are checked, as #119 asks.
+ * firebase/firestore/firestore.rules.test.js. These tests also verify the mirrored profile writes.
  */
 @EmulatorTest
 @RunWith(AndroidJUnit4::class)
@@ -162,6 +167,28 @@ class FirestoreUserProfileRepositoryEmulatorTest {
         created.copy(displayName = "Renamed Student", section = "SC", year = "MA1"),
         storedProfile(profile.uid),
     )
+  }
+
+  @Test
+  fun updateProfile_mirrorsDetailsAndClearsThemThroughFirestore() = runBlocking {
+    val original = signInStudent()
+    val publicProfiles = FirestorePublicProfileRepository(emulator.firestore)
+    assertEquals(CreateProfileResult.Created, repository.createProfile(original))
+    val visible = original.copy(profileVisibility = ProfileVisibility.PUBLIC, bio = "Test bio")
+    for (edited in listOf(visible, original)) {
+      assertEquals(UpdateProfileResult.Updated, repository.updateProfile(edited))
+      val privateProfile = storedProfile(original.uid)
+      val publicResult = publicProfiles.getPublicProfile(original.uid)
+      assertTrue(
+          "Expected a public profile, got $publicResult",
+          publicResult is PublicProfileResult.Found,
+      )
+      val publicProfile = (publicResult as PublicProfileResult.Found).profile
+      assertEquals(edited.profileVisibility, privateProfile.profileVisibility)
+      assertEquals(edited.profileVisibility, publicProfile.profileVisibility)
+      assertEquals(edited.bio, privateProfile.bio)
+      assertEquals(edited.bio, publicProfile.bio)
+    }
   }
 
   @Test
