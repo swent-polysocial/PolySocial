@@ -572,9 +572,9 @@ private fun EventContent(
     }
     if (state.isOffline)
         DetailOfflineBanner(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp))
-    // Frame 17 (#468): while the event hasn't ended; outside the check-in window, the Entrance QR
-    // says when it opens or that it closed.
-    if (state.isOrganizer && !state.hasEnded) {
+    // Frame 17 (#468): until check-in closes, which may be after the event's start when it has no
+    // end time; before the window opens, the Entrance QR says when it does.
+    if (state.isOrganizer && !state.checkInClosed) {
       ShowEntranceQrButton(
           organizer.onShowEntranceQr,
           Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp),

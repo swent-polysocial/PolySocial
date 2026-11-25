@@ -6,6 +6,8 @@
 // Contributors: Claude Opus 5.5 (passed the new reminder scheduler fake, second PR of #123).
 // Contributors: Claude (Opus 5.5, Anthropic) (the organizer's way to the Entrance QR, #468);
 // Konstantinos Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude (Opus 5.5, Anthropic) (the Entrance QR until check-in closes, #538
+// review); Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.event.detail
 
 import android.content.Context
@@ -523,13 +525,28 @@ class EventDetailScreenTest {
   }
 
   @Test
-  fun anEndedEvent_offersItsOrganizerNoEntranceQr() {
+  fun onceCheckInClosed_theOrganizerGetsNoEntranceQr() {
     show(
-        EventDetailUiState.Loaded(details(), isOffline = false, isOrganizer = true, hasEnded = true)
+        EventDetailUiState.Loaded(
+            details(),
+            isOffline = false,
+            isOrganizer = true,
+            hasEnded = true,
+            checkInClosed = true,
+        )
     )
 
     assertAbsent(EventDetailTags.SHOW_ENTRANCE_QR)
     composeTestRule.onNodeWithTag(EventDetailTags.CANCEL_EVENT).assertIsDisplayed()
+  }
+
+  @Test
+  fun anEventPastItsStartWithoutAnEndTime_stillOffersTheEntranceQr_whileCheckInIsOpen() {
+    show(
+        EventDetailUiState.Loaded(details(), isOffline = false, isOrganizer = true, hasEnded = true)
+    )
+
+    composeTestRule.onNodeWithTag(EventDetailTags.SHOW_ENTRANCE_QR).assertIsDisplayed()
   }
 
   @Test
