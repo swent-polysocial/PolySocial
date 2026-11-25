@@ -26,6 +26,8 @@
 // leaves the group and cancels the registration, #318.
 // Contributors: Claude (Opus 5.5, Anthropic) ("Event full", from the event and from a refused
 // registration, #407; only a refusal counts while the registrations are unreadable, after review).
+// Contributors: Claude (Opus 5.5, Anthropic) (whether check-in has closed, for Show entrance QR,
+// #538 review); Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -33,6 +35,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.polysocial.model.association.AssociationNames
 import com.polysocial.model.auth.AuthRepository
+import com.polysocial.model.checkin.checkInWindow
 import com.polysocial.model.event.DeleteEventResult
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventRepository
@@ -208,6 +211,9 @@ sealed interface EventDetailUiState {
    *   screen); it is updated with the event's next change.
    * @property hasEnded true once the event has ended, when it was read ([isPast]), so the detail no
    *   longer offers Find a group; it is updated with the event's next change, like [isLive].
+   * @property checkInClosed true once the event's [checkInWindow] has closed, when it was read, so
+   *   organizers no longer get Show entrance QR (#468); later than [hasEnded] for an event without
+   *   an end time, whose check-in stays open for hours after its start.
    * @property yourGroup the student's group for the event, which then shows instead of Find a group
    *   (#233); null when they aren't in one, while it is read, when it can't be read, and on
    *   [isManaged] events.
@@ -244,6 +250,7 @@ sealed interface EventDetailUiState {
       val going: GoingCount? = null,
       val isLive: Boolean = false,
       val hasEnded: Boolean = false,
+      val checkInClosed: Boolean = false,
       val yourGroup: YourGroup? = null,
       val groupConfirmed: Boolean = false,
       val attendance: Attendance = Attendance.NOT_GOING,
@@ -1175,6 +1182,7 @@ constructor(
                 isOrganizer = auth.currentUser()?.uid in result.event.organizerIds,
                 isLive = result.event.isLive(clock.instant()),
                 hasEnded = result.event.isPast(clock.instant()),
+                checkInClosed = !clock.instant().isBefore(checkInWindow(result.event).closesAt),
             )
         EventResult.NotFound -> EventDetailUiState.NotFound
         // Even offline, the cache answers a moment later and may have the event.

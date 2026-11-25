@@ -4,6 +4,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) whether the event has ended; passed the detail fake
 // groups and profiles, #233.
 // Contributors: Claude Opus 5.5 (passed the new reminder scheduler fake, second PR of #123).
+// Contributors: Claude (Opus 5.5, Anthropic) (whether check-in has closed, #538 review);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.event.detail
 
 import androidx.lifecycle.SavedStateHandle
@@ -730,5 +732,27 @@ class EventDetailViewModelTest {
     val running = viewModel(args = mapOf("eventId" to "running"))
     observe(running)
     assertFalse(running.uiState.value.loaded().hasEnded)
+  }
+
+  @Test
+  fun checkInClosed_followsTheWindow_notTheEnd_forAnEventWithoutAnEndTime() = runTest {
+    // The clock reads 7 October 2026, 10:00 UTC. Without an end time, check-in closes 3 h after
+    // the start, though the event counts as ended right after it.
+    repository.seed(
+        event.copy(id = "open", startTime = Instant.parse("2026-10-07T09:00:00Z"), endTime = null),
+        event.copy(
+            id = "closed",
+            startTime = Instant.parse("2026-10-07T07:00:00Z"),
+            endTime = null,
+        ),
+    )
+    val open = viewModel(args = mapOf("eventId" to "open"))
+    observe(open)
+    assertTrue(open.uiState.value.loaded().hasEnded)
+    assertFalse(open.uiState.value.loaded().checkInClosed)
+
+    val closed = viewModel(args = mapOf("eventId" to "closed"))
+    observe(closed)
+    assertTrue(closed.uiState.value.loaded().checkInClosed)
   }
 }
