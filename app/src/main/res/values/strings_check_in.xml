@@ -44,6 +44,8 @@
     <string name="check_in_not_open_body">You can check in from 30 minutes before the start until the event ends.</string>
     <string name="check_in_closed">Check-in has closed</string>
     <string name="check_in_closed_body">Check-in for %1$s closed at %2$s.</string>
+    <string name="check_in_session_ended">Your session ended</string>
+    <string name="check_in_session_ended_body">Sign in again to check in at this event.</string>
     <string name="check_in_back_to_event">Back to event</string>
     <string name="check_in_try_again">Try again</string>
     <string name="check_in_open_settings">Open settings</string>

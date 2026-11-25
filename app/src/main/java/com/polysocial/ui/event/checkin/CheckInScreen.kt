@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -54,6 +56,7 @@ import com.polysocial.ui.theme.AccentText
 import com.polysocial.ui.theme.Bg
 import com.polysocial.ui.theme.Border
 import com.polysocial.ui.theme.Ink
+import com.polysocial.ui.theme.SuccessSoft
 import com.polysocial.ui.theme.exact
 import java.time.Instant
 import java.time.format.DateTimeFormatter
@@ -61,7 +64,6 @@ import kotlinx.coroutines.launch
 
 internal object CheckInTags {
   const val ENTRY = "venue_check_in_entry"
-  const val SCREEN = "venue_check_in_screen"
   const val BACK = "venue_check_in_back"
   const val LOCATION = "venue_check_in_location"
   const val QR = "venue_check_in_qr"
@@ -102,7 +104,6 @@ internal fun CheckInScreen(
     onOpenGroup: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
-  val event = entry.event
   val outside = entry.availability != CheckInAvailability.OPEN
   val showingWindow =
       outside && state != Stage.LOADING && state != Stage.SAVING && state !is CheckInState.Confirmed
@@ -124,11 +125,11 @@ internal fun CheckInScreen(
     scope.launch { snackbar.showSnackbar(message) }
   }
 
-  Box(modifier.fillMaxSize().background(Bg).testTag(CheckInTags.SCREEN)) {
+  Box(modifier.fillMaxSize().background(Bg)) {
     Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
       GroupHeader(CheckInTags.BACK, onBack) {
         Text(
-            if (prompt || state is CheckInState.Confirmed) event.title
+            if (prompt || state is CheckInState.Confirmed) entry.event.title
             else stringResource(R.string.check_in_title),
             style = MaterialTheme.typography.titleMedium.exact(),
             color = Ink,
@@ -192,7 +193,7 @@ private fun CheckInContent(
       when {
         prompt -> PromptContent(venue)
         state is CheckInState.Confirmed -> {
-          Badge(R.drawable.ic_check_in_check, 72, Color(0xFFE5F4EC), CircleShape)
+          Badge(R.drawable.ic_check_in_check, 72, SuccessSoft, CircleShape)
           Heading(stringResource(R.string.check_in_confirmed), large = true)
           EventLabel(eventLabel)
           Description(
@@ -221,10 +222,10 @@ private fun CheckInContent(
         }
         state is Stage -> {
           val (title, body) = problem(state)
-          Badge(
+          val icon =
               if (state == Stage.OFFLINE) R.drawable.ic_check_in_offline
               else R.drawable.ic_check_in_pin
-          )
+          Badge(icon)
           Heading(stringResource(title))
           Description(
               if (state == Stage.TOO_FAR) stringResource(body, venue) else stringResource(body)
@@ -246,7 +247,6 @@ private fun CheckInButtons(
     onSettings: () -> Unit,
     onOpenGroup: (() -> Unit)?,
 ) {
-  val prompt = state == Stage.READY && !showingWindow
   Column(
       Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 28.dp),
       verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -255,7 +255,7 @@ private fun CheckInButtons(
     val retry = stringResource(R.string.check_in_try_again)
     val scan = stringResource(R.string.check_in_scan_qr)
     when {
-      prompt -> {
+      state == Stage.READY && !showingWindow -> {
         val label = stringResource(R.string.check_in_my_location)
         PrimaryButton(label, true, CheckInTags.LOCATION, onClick = onCheck)
         OutlineButton(scan, CheckInTags.QR, onQr)
@@ -267,42 +267,44 @@ private fun CheckInButtons(
       showingWindow ||
           state is CheckInState.Confirmed ||
           state == Stage.EVENT_UNAVAILABLE ||
-          state == Stage.REGISTRATION_REQUIRED ->
-          OutlineButton(back, CheckInTags.BACK + "_footer", onBack)
-      state in qrFallback -> {
-        val approximate = state == Stage.APPROXIMATE_ONLY
-        if (approximate || state == Stage.DENIED) {
-          val text = if (approximate) retry else stringResource(R.string.check_in_open_settings)
-          val tag = if (approximate) CheckInTags.RETRY else CheckInTags.SETTINGS
-          val action = if (approximate) onCheck else onSettings
-          Text(
-              text,
-              Modifier.align(Alignment.CenterHorizontally)
-                  .heightIn(min = 48.dp)
-                  .clickable(role = Role.Button, onClick = action)
-                  .testTag(tag)
-                  .padding(12.dp),
-              style = MaterialTheme.typography.titleSmall.exact(),
-              color = Ink,
-          )
-        }
-        PrimaryButton(scan, true, CheckInTags.QR, onClick = onQr)
-        if (approximate) {
-          OutlineButton(
-              stringResource(R.string.check_in_open_settings),
-              CheckInTags.SETTINGS,
-              onSettings,
-          )
-        } else {
-          OutlineButton(retry, CheckInTags.RETRY, onCheck)
-        }
-      }
+          state == Stage.REGISTRATION_REQUIRED ||
+          state == Stage.SESSION_ENDED -> OutlineButton(back, CheckInTags.BACK + "_footer", onBack)
+      state in qrFallback -> QrFallbackButtons(state, onCheck, onQr, onSettings)
       else -> {
         PrimaryButton(retry, true, CheckInTags.RETRY, onClick = onCheck)
         OutlineButton(back, CheckInTags.BACK + "_footer", onBack)
       }
     }
   }
+}
+
+@Composable
+private fun ColumnScope.QrFallbackButtons(
+    state: CheckInState,
+    onCheck: () -> Unit,
+    onQr: () -> Unit,
+    onSettings: () -> Unit,
+) {
+  val approximate = state == Stage.APPROXIMATE_ONLY
+  val retry = stringResource(R.string.check_in_try_again)
+  val settings = stringResource(R.string.check_in_open_settings)
+  if (approximate || state == Stage.DENIED) {
+    val action = if (approximate) onCheck else onSettings
+    Text(
+        if (approximate) retry else settings,
+        Modifier.align(Alignment.CenterHorizontally)
+            .heightIn(min = 48.dp)
+            .clickable(role = Role.Button, onClick = action)
+            .testTag(if (approximate) CheckInTags.RETRY else CheckInTags.SETTINGS)
+            .padding(12.dp),
+        style = MaterialTheme.typography.titleSmall.exact(),
+        color = Ink,
+    )
+  }
+  val scan = stringResource(R.string.check_in_scan_qr)
+  PrimaryButton(scan, true, CheckInTags.QR, onClick = onQr)
+  if (approximate) OutlineButton(settings, CheckInTags.SETTINGS, onSettings)
+  else OutlineButton(retry, CheckInTags.RETRY, onCheck)
 }
 
 private val qrFallback =
@@ -323,6 +325,7 @@ private fun problem(stage: Stage): Pair<Int, Int> =
           R.string.check_in_registration_required to R.string.check_in_registration_required_body
       Stage.EVENT_UNAVAILABLE ->
           R.string.check_in_event_unavailable to R.string.check_in_event_unavailable_body
+      Stage.SESSION_ENDED -> R.string.check_in_session_ended to R.string.check_in_session_ended_body
       else -> R.string.check_in_save_error to R.string.check_in_save_error_body
     }
 
@@ -386,10 +389,8 @@ private fun Heading(text: String, large: Boolean = false, centered: Boolean = tr
   Text(
       text,
       modifier = Modifier.semantics { heading() },
-      style =
-          (if (large) type.headlineMedium
-              else type.titleLarge.copy(fontWeight = FontWeight.ExtraBold))
-              .exact(),
+      style = (if (large) type.headlineMedium else type.titleLarge).exact(),
+      fontWeight = if (large) null else FontWeight.ExtraBold,
       textAlign = if (centered) TextAlign.Center else TextAlign.Start,
       color = Ink,
   )
@@ -418,23 +419,20 @@ private fun EventLabel(text: String) {
 
 @Composable
 private fun OutlineButton(text: String, tag: String, onClick: () -> Unit) {
-  Box(
+  Text(
+      text,
       Modifier.fillMaxWidth()
           .heightIn(min = 52.dp)
           .clip(CircleShape)
           .border(1.dp, Border, CircleShape)
           .clickable(role = Role.Button, onClick = onClick)
           .testTag(tag)
-          .padding(8.dp),
-      contentAlignment = Alignment.Center,
-  ) {
-    Text(
-        text,
-        style = MaterialTheme.typography.titleSmall.exact(),
-        color = Ink,
-        textAlign = TextAlign.Center,
-    )
-  }
+          .padding(8.dp)
+          .wrapContentHeight(),
+      style = MaterialTheme.typography.titleSmall.exact(),
+      color = Ink,
+      textAlign = TextAlign.Center,
+  )
 }
 
 @Composable
