@@ -1,5 +1,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, test-first, #468); Konstantinos
 // Perdikeas (directed, reviewed and owns them).
+// Contributors: Claude (Opus 5.5, Anthropic) (a hanging rotation and a schedule change, #538
+// review); Konstantinos Perdikeas (directed, reviewed and owns them).
 package com.polysocial.ui.event.entrance
 
 import androidx.lifecycle.SavedStateHandle
@@ -16,6 +18,7 @@ import java.time.Duration
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -141,6 +144,26 @@ class EntranceQrViewModelTest {
       }
 
   @Test
+  fun aRotationStillWaitingForAnAnswer_stillHidesTheCodeOnceItIsTooOld() =
+      runTest(main.dispatcher) {
+        fake.seedCode(EVENT, code('a', 10))
+        fake.rotateGate = CompletableDeferred()
+        val vm = viewModel()
+
+        // 60 s old: the rotation starts and never answers.
+        advanceTimeBy(50_000)
+        runCurrent()
+        assertEquals(1, fake.rotations.size)
+        shown(vm)
+
+        // 110 s old: too old to scan, though the rotation still hasn't answered.
+        advanceTimeBy(50_000)
+        runCurrent()
+        assertEquals(EntranceQrUiState.Failed("Balélec warm-up"), vm.uiState.value)
+        assertEquals(1, fake.rotations.size)
+      }
+
+  @Test
   fun aCodeTooOldToScan_isNeverShown() =
       runTest(main.dispatcher) {
         // 110 s old: a student scanning now could be refused by the time the rules check it.
@@ -247,6 +270,43 @@ class EntranceQrViewModelTest {
 
         assertEquals(
             EntranceQrUiState.Closed("Balélec warm-up", "Satellite", "19:10"),
+            vm.uiState.value,
+        )
+      }
+
+  @Test
+  fun aStartMovedEarlier_whileWaitingForTheWindow_startsTheCodeAtOnce() =
+      runTest(main.dispatcher) {
+        events.remove(EVENT)
+        events.seed(event.copy(startTime = Instant.parse("2026-11-27T20:00:00Z")))
+        val vm = viewModel()
+        assertEquals(
+            EntranceQrUiState.NotOpenYet("Balélec warm-up", "Satellite", "19:30"),
+            vm.uiState.value,
+        )
+
+        // Another organizer moves it to 19:20: the window opened at 18:50.
+        events.remove(EVENT)
+        events.seed(event.copy(startTime = Instant.parse("2026-11-27T19:20:00Z")))
+        runCurrent()
+
+        assertEquals(listOf<String?>(null), fake.rotations)
+        shown(vm)
+      }
+
+  @Test
+  fun aStartMovedLater_whileShown_hidesTheCode_andSaysWhenItOpens() =
+      runTest(main.dispatcher) {
+        fake.seedCode(EVENT, code('a', 10))
+        val vm = viewModel()
+        shown(vm)
+
+        events.remove(EVENT)
+        events.seed(event.copy(startTime = Instant.parse("2026-11-27T21:00:00Z")))
+        runCurrent()
+
+        assertEquals(
+            EntranceQrUiState.NotOpenYet("Balélec warm-up", "Satellite", "20:30"),
             vm.uiState.value,
         )
       }
