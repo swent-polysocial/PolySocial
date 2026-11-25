@@ -137,12 +137,19 @@ async function deleteCountedRegistration(db, ref) {
 }
 
 /**
+ * What a deleted event takes with it, in this order: its registrations (#121), its check-ins and its
+ * entrance code (#472, `checkInCode/current`).
+ */
+const EVENT_ATTENDANCE_COLLECTIONS = ["attendees", "checkIns", "checkInCode"];
+
+/**
  * Runs when `events/{eventId}` is deleted: deletes the event's registrations
- * `events/{eventId}/attendees/*` (#121), which nobody can list once the event is gone (the rules
- * check the event's organizers), with [deleteOrphans]. The rules refuse a new registration for a
- * missing event, so none can appear afterwards, unless the event is written again under the same
- * ID; its registrations are then kept if its creator wrote it again. A failure is logged and
- * thrown again by [runTriggerWork], so the trigger runs again until the registrations are gone.
+ * `events/{eventId}/attendees/*` (#121), check-ins `checkIns/*` and entrance code `checkInCode/*`
+ * (#472), which nobody can read once the event is gone (the rules check the event), each with
+ * [deleteOrphans]. The rules refuse a new registration, check-in or code for a missing event, so
+ * none can appear afterwards, unless the event is written again under the same ID; they are then
+ * kept if its creator wrote it again. A failure is logged and thrown again by [runTriggerWork], so
+ * the trigger runs again, deleting what is left, until all three are gone.
  *
  * @param {object} args
  * @param {string} args.eventId the deleted event's ID.
@@ -151,9 +158,12 @@ async function deleteCountedRegistration(db, ref) {
  * @param {{error: function(string, object): void}} args.logger where a failure is logged.
  */
 function deleteRegistrationsOfDeletedEvent({ eventId, deleted, db, logger }) {
-  return runTriggerWork("deleteEventRegistrations", logger, () =>
-    deleteOrphans(db, db.collection("events").doc(eventId), "attendees", deleted?.createdBy),
-  );
+  const event = db.collection("events").doc(eventId);
+  return runTriggerWork("deleteEventRegistrations", logger, async () => {
+    for (const collectionId of EVENT_ATTENDANCE_COLLECTIONS) {
+      await deleteOrphans(db, event, collectionId, deleted?.createdBy);
+    }
+  });
 }
 
 module.exports = {

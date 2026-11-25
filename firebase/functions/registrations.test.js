@@ -43,6 +43,60 @@ test("a deleted event's registrations are deleted, other events' are kept", asyn
   assert.deepEqual(logs, []);
 });
 
+// #472: a deleted event's check-ins and entrance code go with it; nobody could read them any more.
+test("a deleted event's check-ins and entrance code are deleted too, other events' are kept", async () => {
+  const { db, documents } = fakeFirestore([
+    "events/e1/attendees/u1",
+    "events/e1/checkIns/u1",
+    "events/e1/checkIns/u2",
+    "events/e1/checkInCode/current",
+    "events/e2/checkIns/u1",
+    "events/e2/checkInCode/current",
+  ]);
+
+  await deleteRegistrationsOfDeletedEvent({ eventId: "e1", db, logger: fakeLogger().logger });
+
+  assert.deepEqual([...documents], ["events/e2/checkIns/u1", "events/e2/checkInCode/current"]);
+});
+
+test("an event its organizer wrote again keeps its check-ins and entrance code", async () => {
+  const paths = ["events/e1", "events/e1/checkIns/u1", "events/e1/checkInCode/current"];
+  const { db, documents, state } = fakeFirestore(paths, {}, { "events/e1": DELETED });
+
+  await deleteRegistrationsOfDeletedEvent({
+    eventId: "e1",
+    deleted: DELETED,
+    db,
+    logger: fakeLogger().logger,
+  });
+
+  assert.deepEqual([...documents], paths);
+  assert.equal(state.commits, 0);
+});
+
+test("a failure before the check-ins is retried, and the retry deletes them", async () => {
+  const { db, documents, state } = fakeFirestore([
+    "events/e1/attendees/u1",
+    "events/e1/checkIns/u1",
+    "events/e1/checkInCode/current",
+  ]);
+  const { logger, logs } = fakeLogger();
+  // The registrations are deleted, then the check-ins' commit fails.
+  state.onCommit = () => {
+    state.onCommit = null;
+    state.failCommit = backendError(14);
+  };
+
+  await assert.rejects(deleteRegistrationsOfDeletedEvent({ eventId: "e1", db, logger }), {
+    code: 14,
+  });
+  assert.deepEqual([...documents], ["events/e1/checkIns/u1", "events/e1/checkInCode/current"]);
+  assert.deepEqual(logs, [["error", "deleteEventRegistrations failed", { code: 14 }]]);
+
+  await deleteRegistrationsOfDeletedEvent({ eventId: "e1", db, logger });
+  assert.equal(documents.size, 0);
+});
+
 test("an event without registrations deletes nothing and succeeds", async () => {
   const { db, documents, state } = fakeFirestore(["events/e2/attendees/u1"]);
   await deleteRegistrationsOfDeletedEvent({ eventId: "e1", db, logger: fakeLogger().logger });

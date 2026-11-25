@@ -1,6 +1,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the emulator test of the trigger deleting a
 // deleted event's registrations, #275; an event written again, after review.
 // Contributors: Claude (Opus 5.5, Anthropic) moved its setup to testing/triggerEmulator.js, #382.
+// Contributors: Claude (Opus 5.5, Anthropic) (check-ins and the entrance code deleted with the
+// event, #472); Konstantinos Perdikeas (directed, reviewed and owns it).
 "use strict";
 
 // Deletes events in the Firestore emulator and waits for the deleteEventRegistrations trigger,
@@ -52,6 +54,42 @@ test("an event with more registrations than one batch holds loses them all", asy
   await seedEvent("crowded", uids);
   await database().doc("events/crowded").delete();
   await waitForRegistrations([]);
+});
+
+/** Stores a check-in of each of `uids` and the entrance code under `eventId`, as the app writes them. */
+async function seedCheckIns(eventId, uids) {
+  const db = database();
+  for (const uid of uids) {
+    await db.doc(`events/${eventId}/checkIns/${uid}`).set({
+      uid, checkedInAt: new Date(), method: "location", expiresAt: new Date(),
+    });
+  }
+  await db.doc(`events/${eventId}/checkInCode/current`).set({
+    token: "a".repeat(22), rotatedAt: new Date(), expiresAt: new Date(),
+  });
+}
+
+/** The paths of every check-in and entrance code left, sorted. */
+async function attendanceLeft() {
+  return [
+    ...(await pathsIn(database(), "checkIns")),
+    ...(await pathsIn(database(), "checkInCode")),
+  ];
+}
+
+test("deleting an event deletes its check-ins and entrance code, other events' are kept (#472)", async () => {
+  await seedEvent("cancelled", ["u1", "u2"]);
+  await seedCheckIns("cancelled", ["u1", "u2"]);
+  await seedEvent("still-on", ["u1"]);
+  await seedCheckIns("still-on", ["u1"]);
+
+  await database().doc("events/cancelled").delete();
+
+  await waitFor(attendanceLeft, [
+    "events/still-on/checkIns/u1",
+    "events/still-on/checkInCode/current",
+  ]);
+  await waitForRegistrations(["events/still-on/attendees/u1"]);
 });
 
 // The demo seed script deletes its events and writes them back under the same IDs, with new
