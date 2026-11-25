@@ -3,6 +3,8 @@
 // the session guard's block, #198; Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude Opus 5.5 (covered the registration repository, #121); Claude (the public
 // profile repair, #291).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (the public profile as the section source of the
+// upcoming events query, #369).
 package com.polysocial.model.firebase
 
 import com.polysocial.model.association.*
@@ -34,6 +36,7 @@ class SessionRepositoryFailureTest {
           { throw accessFailure },
           FakeAuthRepository(AuthUser("fictional", "fictional@epfl.ch", true)),
           FakeUserProfileRepository(),
+          FakePublicProfileRepository(),
           object : NetworkMonitor {
             override fun isOnline() = true
           },

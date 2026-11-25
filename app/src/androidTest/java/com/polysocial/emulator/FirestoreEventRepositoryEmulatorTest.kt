@@ -34,6 +34,7 @@ import com.polysocial.model.event.eventFromFirestore
 import com.polysocial.model.event.toFirestoreMap
 import com.polysocial.model.event.withCreator
 import com.polysocial.model.registration.ATTENDEES_COLLECTION
+import com.polysocial.model.user.FirestorePublicProfileRepository
 import com.polysocial.model.user.FirestoreUserProfileRepository
 import com.polysocial.model.user.USERS_COLLECTION
 import java.time.Clock
@@ -75,6 +76,7 @@ class FirestoreEventRepositoryEmulatorTest {
         db = emulator.firestore,
         auth = EmulatorSignedInUser(emulator),
         profiles = FirestoreUserProfileRepository(emulator.firestore),
+        publicProfiles = FirestorePublicProfileRepository(emulator.firestore),
         network = AlwaysOnline,
         clock = Clock.fixed(NOW, ZoneOffset.UTC),
     )
@@ -124,8 +126,15 @@ class FirestoreEventRepositoryEmulatorTest {
     assertEquals(listOf("atNow", "sooner", "later", "lastMinute"), firstServerResult().ids())
   }
 
-  /** The student's private and public profile in [section], as an admin writes them. */
-  private suspend fun seedStudentProfile(uid: String, section: String) {
+  /**
+   * The student's private and public profile in [section], as an admin writes them; a student saved
+   * before #229 has no public one ([withPublicProfile] false).
+   */
+  private suspend fun seedStudentProfile(
+      uid: String,
+      section: String,
+      withPublicProfile: Boolean = true,
+  ) {
     emulator.createAsAdmin(
         USERS_COLLECTION,
         uid,
@@ -139,6 +148,7 @@ class FirestoreEventRepositoryEmulatorTest {
             "interests" to emptyList<String>(),
         ),
     )
+    if (!withPublicProfile) return
     emulator.createAsAdmin(
         "publicProfiles",
         uid,
@@ -167,8 +177,10 @@ class FirestoreEventRepositoryEmulatorTest {
   }
 
   @Test
-  fun aStudentWhoseSectionCantBeRead_getsOnlyTheEventsOpenToEverySection() = runBlocking {
-    signInStudent()
+  fun aStudentWithoutAPublicProfile_getsOnlyTheEventsOpenToEverySection_notAnError() = runBlocking {
+    // The private profile exists, but the rules compare with the public one, which isn't there.
+    val uid = signInStudent()
+    seedStudentProfile(uid, "IN", withPublicProfile = false)
     seed("everyone", publicEvent(startsIn = Duration.ofHours(1)))
     seed("inOnly", publicEvent(startsIn = Duration.ofHours(2)).copy(allowedSections = listOf("IN")))
 
