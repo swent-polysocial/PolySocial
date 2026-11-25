@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; updated the test location service for #469 under
+// Lucas Pinto Ricardo’s supervision and approval).
 // Contributors: OpenAI Codex (rationale-aware results and review regressions, #278).
 // Contributors: OpenAI Codex (dismissal-aware location permission handling and tests, #278).
 // Contributors: Claude (wrote these tests, #105; search, filters and distance, #115; the
@@ -530,6 +532,8 @@ class EventsViewModelTest {
 
           override suspend fun currentLocation(): LocationResult =
               throw IllegalStateException("No provider")
+
+          override suspend fun currentPreciseLocation() = error("Unexpected precise location read")
         }
     repository.seed(laterToday, inTown)
     val viewModel =

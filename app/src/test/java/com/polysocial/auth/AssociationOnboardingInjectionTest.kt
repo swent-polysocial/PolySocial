@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; isolated check-in test injection for #469 under
+// Lucas Pinto Ricardo’s supervision and approval).
 // Contributors: OpenAI Codex (default association onboarding, session cleanup and session-guard
 // injection integration and offline Firestore binding, #125).
 // Contributors: OpenAI Codex (scoped the chat fake to this Hilt test, #238).
@@ -22,6 +24,9 @@ import com.polysocial.model.chat.MessageModule
 import com.polysocial.model.chat.MessageRepository
 import com.polysocial.model.chat.OneToOneChatModule
 import com.polysocial.model.chat.OneToOneChatRepository
+import com.polysocial.model.checkin.CheckInModule
+import com.polysocial.model.checkin.CheckInRepository
+import com.polysocial.model.checkin.FakeCheckInRepository
 import com.polysocial.model.event.*
 import com.polysocial.model.firebase.*
 import com.polysocial.model.user.*
@@ -46,6 +51,7 @@ import org.robolectric.annotation.Config
     AssociationModule::class,
     EventModule::class,
     FirebaseModule::class,
+    CheckInModule::class,
     MessageModule::class,
     OneToOneChatModule::class,
 )
@@ -59,6 +65,8 @@ class AssociationOnboardingInjectionTest {
   private val identities = FakeAssociationRepository()
   private val writes = mutableListOf<String>()
   private var clears = 0
+  @BindValue @JvmField val checkIns: CheckInRepository = FakeCheckInRepository()
+
   @BindValue @JvmField val messages: MessageRepository = FakeMessageRepository()
   @BindValue @JvmField val oneToOneChats: OneToOneChatRepository = FakeOneToOneChatRepository()
   @BindValue @JvmField val firestore: FirebaseFirestore = mockk()

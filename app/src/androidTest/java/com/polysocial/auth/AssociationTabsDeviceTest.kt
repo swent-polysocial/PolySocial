@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; isolated check-in test injection for #469 under
+// Lucas Pinto Ricardo’s supervision and approval).
 // Contributors: OpenAI Codex (offline Firestore fixture binding after the rebase, #140).
 // Contributors: OpenAI Codex (session-guard fake for rebased association integration tests).
 // Contributors: OpenAI Codex (association activity recreation, navigation and logout regression,
@@ -41,6 +43,9 @@ import com.polysocial.model.chat.MessageModule
 import com.polysocial.model.chat.MessageRepository
 import com.polysocial.model.chat.OneToOneChatModule
 import com.polysocial.model.chat.OneToOneChatRepository
+import com.polysocial.model.checkin.CheckInModule
+import com.polysocial.model.checkin.CheckInRepository
+import com.polysocial.model.checkin.FakeCheckInRepository
 import com.polysocial.model.event.EventModule
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.FakeEventRepository
@@ -80,6 +85,7 @@ import org.junit.runner.RunWith
     AssociationModule::class,
     EventModule::class,
     FirebaseModule::class,
+    CheckInModule::class,
     MessageModule::class,
     OneToOneChatModule::class,
 )
@@ -97,6 +103,8 @@ class AssociationTabsDeviceTest {
   private val fakeAuth = FakeAuthRepository(user)
   private val identities = FakeAssociationRepository(AssociationResult.Found(identity))
   private var clears = 0
+  @BindValue @JvmField val checkIns: CheckInRepository = FakeCheckInRepository()
+
   @BindValue @JvmField val messages: MessageRepository = FakeMessageRepository()
   @BindValue @JvmField val oneToOneChats: OneToOneChatRepository = FakeOneToOneChatRepository()
   @BindValue @JvmField val firestore: FirebaseFirestore = mockk()

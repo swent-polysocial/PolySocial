@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; precise location tests for #469 under Lucas Pinto
+// Ricardo’s supervision and approval).
 // Contributors: OpenAI Codex (rationale-aware results and review regressions, #278).
 // Contributors: OpenAI Codex (permission, one-off fix and cancellation tests for #51).
 // Contributors: OpenAI Codex (denial history and coarse fused-provider regressions, #278).
@@ -348,6 +350,56 @@ class AndroidLocationServiceTest {
     assertEquals(LocationResult.Unavailable, service.currentLocation())
     assertTrue(signal.captured.isCanceled)
     assertEquals(15_000L, testScheduler.currentTime)
+  }
+
+  @Test
+  fun approximateGrant_doesNotReadPreciseLocation() = runTest {
+    permission(coarse = true, fine = false)
+    assertEquals(PreciseLocationResult.PermissionDenied, service.currentPreciseLocation())
+    verify(exactly = 0) { context.getSystemService(Context.LOCATION_SERVICE) }
+  }
+
+  @Test
+  fun preciseGrant_readsGpsWithAccuracyAndStopsAfterOneFix() = runTest {
+    permission(coarse = true, fine = true)
+    every { manager.isProviderEnabled(LocationManager.GPS_PROVIDER) } returns true
+    val request = async { service.currentPreciseLocation() }
+    yield()
+    assertEquals(LocationManager.GPS_PROVIDER, provider.captured)
+    callback.captured.accept(fix().apply { accuracy = 8.5f })
+    assertEquals(PreciseLocationResult.Available(Coordinates(1.0, 2.0), 8.5), request.await())
+    assertTrue(signal.captured.isCanceled)
+  }
+
+  @Test
+  fun preciseRead_doesNotFallBackToCoarseProviders() = runTest {
+    permission(coarse = true, fine = true)
+    every { manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) } returns true
+    assertEquals(PreciseLocationResult.Unavailable, service.currentPreciseLocation())
+    assertFalse(callback.isCaptured)
+  }
+
+  @Test
+  fun preciseReadWithoutValidAccuracy_returnsNoFix() = runTest {
+    permission(coarse = true, fine = true)
+    every { manager.isProviderEnabled(LocationManager.GPS_PROVIDER) } returns true
+    val fixes =
+        listOf(null, fix(), fix().apply { accuracy = Float.NaN }, fix().apply { accuracy = -1f })
+    fixes.forEach { location ->
+      val request = async { service.currentPreciseLocation() }
+      yield()
+      callback.captured.accept(location)
+      assertEquals(PreciseLocationResult.Unavailable, request.await())
+    }
+  }
+
+  @Test
+  fun preciseReadTimesOutAtFifteenSecondsAndCancelsGps() = runTest {
+    permission(coarse = true, fine = true)
+    every { manager.isProviderEnabled(LocationManager.GPS_PROVIDER) } returns true
+    assertEquals(PreciseLocationResult.TimedOut, service.currentPreciseLocation())
+    assertEquals(15_000L, testScheduler.currentTime)
+    assertTrue(signal.captured.isCanceled)
   }
 
   @Test

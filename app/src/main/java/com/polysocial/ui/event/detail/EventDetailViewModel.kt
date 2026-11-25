@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; venue check-in for #469 under Lucas Pinto
+// Ricardo’s supervision and approval).
 // Contributors: Claude (drafted the event detail ViewModel, #112; the server timeout and Retry,
 // #194; Edit and Cancel event for organizers, #131; the association's name, #128; the "Going"
 // count on an association's manage event, #131).
@@ -35,6 +37,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.polysocial.model.association.AssociationNames
 import com.polysocial.model.auth.AuthRepository
+import com.polysocial.model.auth.isExactEpflEmail
 import com.polysocial.model.checkin.checkInWindow
 import com.polysocial.model.event.DeleteEventResult
 import com.polysocial.model.event.Event
@@ -61,6 +64,9 @@ import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.PublicProfileResult
 import com.polysocial.model.user.PublicProfilesResult
+import com.polysocial.ui.event.checkin.CheckInEntry
+import com.polysocial.ui.event.checkin.CheckInTarget
+import com.polysocial.ui.event.checkin.checkInAvailability
 import com.polysocial.ui.group.GroupMember
 import dagger.hilt.android.lifecycle.HiltViewModel
 import java.time.Clock
@@ -661,6 +667,38 @@ constructor(
               SharingStarted.WhileSubscribed(STOP_TIMEOUT_MILLIS),
               EventDetailUiState.Loading,
           )
+
+  /** Only a registered, verified student who does not organize the event sees check-in. */
+  @OptIn(ExperimentalCoroutinesApi::class)
+  internal fun checkInEntry(isStudent: Boolean): Flow<CheckInEntry?> =
+      if (!isStudent) flowOf(null)
+      else
+          uiState
+              .map { state ->
+                val loaded = state as? EventDetailUiState.Loaded
+                val user = auth.currentUser()
+                if (
+                    loaded != null &&
+                        !loaded.isOrganizer &&
+                        loaded.attendance == Attendance.GOING &&
+                        user != null &&
+                        user.isEmailVerified &&
+                        isExactEpflEmail(user.email)
+                )
+                    loaded.details.event to user.uid
+                else null
+              }
+              .distinctUntilChanged()
+              .flatMapLatest { eventAndUid ->
+                if (eventAndUid == null) flowOf(null)
+                else {
+                  val (event, uid) = eventAndUid
+                  val target = CheckInTarget(event, uid)
+                  checkInAvailability(target.window, clock).map {
+                    CheckInEntry(event, target, it, clock.zone)
+                  }
+                }
+              }
 
   /**
    * These states with the organizers' names, for the viewers [namedOrganizers] allows (#281). Whose
