@@ -591,16 +591,24 @@ service cloud.firestore {
         }
 
         // A location check-in carries no token. A QR check-in carries the entrance code's
-        // current or previous token, of a code rotated less than 2 minutes ago, so a forwarded
-        // screenshot stops working (#374).
+        // current or previous token, each less than 2 minutes after it was issued, so a
+        // forwarded screenshot stops working (#374). The previous token is judged by its own
+        // issue time, not by the latest rotation's: a rotation after a pause must not make an
+        // expired token work again (#531's review).
+        function validToken(token) {
+          return (token == code().token
+                  && request.time < code().rotatedAt + duration.value(2, 'm'))
+              || (token == code().get('previousToken', null)
+                  && request.time < code().previousRotatedAt + duration.value(2, 'm'));
+        }
+
         function validMethod(data) {
           return (data.method == 'location'
                   && data.keys().hasOnly(['uid', 'checkedInAt', 'method', 'expiresAt']))
               || (data.method == 'qr'
                   && data.keys().hasOnly(['uid', 'checkedInAt', 'method', 'expiresAt', 'token'])
                   && data.token is string
-                  && data.token in [code().token, code().get('previousToken', null)]
-                  && request.time < code().rotatedAt + duration.value(2, 'm'));
+                  && validToken(data.token));
         }
 
         allow create: if isSelf()
@@ -618,16 +626,18 @@ service cloud.firestore {
 
       // The entrance code an organizer shows (#468, designed in #374, Architecture Diagram
       // 3.10): one document, `current`, with a random 22-character base64url `token` (it passes
-      // #337's QR ID check), the `previousToken`, the server's `rotatedAt` and `expiresAt`, the
-      // window's end + 30 days, so the TTL policy deletes it with the check-ins. Only the event's
-      // organizers (a student or a verified association) read and write it, during the window,
-      // by ID. A rotation keeps the stored token as previousToken, so a student scanning as it
+      // #337's QR ID check), the `previousToken` and `previousRotatedAt` (when it was issued),
+      // the server's `rotatedAt` and `expiresAt`, the window's end + 30 days, so the TTL policy
+      // deletes it with the check-ins. Only the event's organizers (a student or a verified
+      // association) read and write it, during the window, by ID. A rotation keeps the stored
+      // token and rotatedAt as previousToken and previousRotatedAt, so a student scanning as it
       // changes still checks in, and comes at least 50 s after the last one, so a phone with a
       // wrong clock or a modified app can't rotate it every second (the app rotates every
       // 60 s). Nobody lists or deletes it: deleteEventRegistrations does with the event (#472).
       match /checkInCode/{codeId} {
         function validCode(data) {
-          return data.keys().hasOnly(['token', 'previousToken', 'rotatedAt', 'expiresAt'])
+          return data.keys().hasOnly(
+                  ['token', 'previousToken', 'previousRotatedAt', 'rotatedAt', 'expiresAt'])
               && data.token is string
               && data.token.matches('[A-Za-z0-9_-]{22}')
               && data.rotatedAt == request.time
@@ -645,11 +655,13 @@ service cloud.firestore {
 
         allow create: if canUseCode()
             && validCode(request.resource.data)
-            && !('previousToken' in request.resource.data);
+            && !('previousToken' in request.resource.data)
+            && !('previousRotatedAt' in request.resource.data);
 
         allow update: if canUseCode()
             && validCode(request.resource.data)
             && request.resource.data.get('previousToken', null) == resource.data.token
+            && request.resource.data.get('previousRotatedAt', null) == resource.data.rotatedAt
             && request.resource.data.token != resource.data.token
             && request.time >= resource.data.rotatedAt + duration.value(50, 's');
       }
