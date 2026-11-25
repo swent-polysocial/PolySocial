@@ -26,12 +26,21 @@ class FriendCardControllerTest {
   private val fake =
       FakeFriendRepository(currentUid = "alice", now = Instant.parse("2026-11-16T10:00:00Z"))
 
+  /**
+   * The replies of the next requests, in call order, each given when the test completes it, without
+   * writing: the request was stored earlier, only its reply is late.
+   */
+  private val sendReplies = ArrayDeque<CompletableDeferred<SendFriendRequestResult>>()
+
   /** [fake], counting the requests sent through it. */
   private var sendCalls = 0
   private val friends =
       object : FriendRepository by fake {
         override suspend fun sendRequest(otherUid: String): SendFriendRequestResult {
           sendCalls++
+          sendReplies.removeFirstOrNull()?.let {
+            return it.await()
+          }
           return fake.sendRequest(otherUid)
         }
       }
@@ -65,6 +74,44 @@ class FriendCardControllerTest {
 
         assertEquals(1, sendCalls)
         assertEquals(FriendCard(lea, FriendButton.SENT), state.value)
+      }
+
+  @Test
+  fun aLateReply_afterTheCardWasClosedAndReopened_cantHideTheirAcceptance() =
+      runTest(UnconfinedTestDispatcher()) {
+        val controller = controller()
+        state.value = controller.cardFor(lea)
+        val reply = CompletableDeferred<SendFriendRequestResult>()
+        sendReplies.add(reply)
+        controller.onButton()
+
+        state.value = null
+        fake.seedAcceptedFriendship("lea", "alice")
+        state.value = controller.cardFor(lea)
+        reply.complete(SendFriendRequestResult.Sent)
+
+        assertEquals(FriendCard(lea, FriendButton.FRIENDS), state.value)
+      }
+
+  @Test
+  fun aLateReply_toTheClosedCard_leavesTheReopenedCardsOwnRequestRunning() =
+      runTest(UnconfinedTestDispatcher()) {
+        val controller = controller()
+        state.value = controller.cardFor(lea)
+        val first = CompletableDeferred<SendFriendRequestResult>()
+        val second = CompletableDeferred<SendFriendRequestResult>()
+        sendReplies.addAll(listOf(first, second))
+        controller.onButton()
+        state.value = null
+        state.value = controller.cardFor(lea)
+        controller.onButton()
+
+        first.complete(SendFriendRequestResult.UnexpectedError)
+        assertEquals(FriendCard(lea, FriendButton.ADD, busy = true), state.value)
+
+        second.complete(SendFriendRequestResult.Sent)
+        assertEquals(FriendCard(lea, FriendButton.SENT), state.value)
+        assertEquals(2, sendCalls)
       }
 
   @Test
