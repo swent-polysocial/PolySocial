@@ -10,6 +10,7 @@
 // firebase emulators:exec --project demo-polysocial --only firestore,auth,functions "node --test --test-concurrency=1 firebase/functions/*.emulator.test.js"
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+const { deleteRegistrationsOfDeletedEvent } = require("./registrations");
 const { pathsIn, useTriggerEmulators, waitFor, waitUntil } = require("./testing/triggerEmulator");
 
 const database = useTriggerEmulators("deleteEventRegistrations");
@@ -90,6 +91,57 @@ test("deleting an event deletes its check-ins and entrance code, other events' a
     "events/still-on/checkInCode/current",
   ]);
   await waitForRegistrations(["events/still-on/attendees/u1"]);
+});
+
+// #472: a run stopped after the registrations, then retried, as the trigger's retry does. The
+// work is called directly, on documents under an event that was never stored, so the deployed
+// trigger itself doesn't run.
+test("a run stopped after the registrations is retried, and the retry deletes the rest (#472)", async () => {
+  const db = database();
+  await db.doc("events/cancelled/attendees/u1").set({ uid: "u1", registeredAt: new Date() });
+  await seedCheckIns("cancelled", ["u1", "u2"]);
+  await seedCheckIns("still-on", ["u1"]);
+  // deleteOrphans runs one transaction per batch, and one more that finds nothing left: the
+  // registrations take the first two, so the third is the check-ins' first.
+  let transactions = 0;
+  const failing = new Proxy(db, {
+    get(target, key) {
+      if (key === "runTransaction") {
+        return (update) => {
+          transactions += 1;
+          if (transactions === 3) {
+            return Promise.reject(Object.assign(new Error("Fictional failure"), { code: 14 }));
+          }
+          return target.runTransaction(update);
+        };
+      }
+      const value = Reflect.get(target, key);
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  const logs = [];
+  const logger = { error: (...entry) => logs.push(entry) };
+
+  await assert.rejects(
+    deleteRegistrationsOfDeletedEvent({ eventId: "cancelled", db: failing, logger }),
+    { code: 14 },
+  );
+  assert.deepEqual(await registrations(), []);
+  assert.deepEqual(await attendanceLeft(), [
+    "events/cancelled/checkIns/u1",
+    "events/cancelled/checkIns/u2",
+    "events/still-on/checkIns/u1",
+    "events/cancelled/checkInCode/current",
+    "events/still-on/checkInCode/current",
+  ]);
+  assert.deepEqual(logs, [["deleteEventRegistrations failed", { code: 14 }]]);
+
+  await deleteRegistrationsOfDeletedEvent({ eventId: "cancelled", db, logger });
+
+  assert.deepEqual(await attendanceLeft(), [
+    "events/still-on/checkIns/u1",
+    "events/still-on/checkInCode/current",
+  ]);
 });
 
 // The demo seed script deletes its events and writes them back under the same IDs, with new

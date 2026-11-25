@@ -251,6 +251,49 @@ test("a student's check-ins are deleted across events, other students' and the c
   assert.equal(await documentExists(`events/event-of-${uid}/checkInCode/current`), true);
 });
 
+test("a deletion stopped at the check-ins keeps the Auth user, and a retry deletes them (#472)", async () => {
+  const uid = await seedUser("student@epfl.ch", { accountType: "student" });
+  const token = await signIn("student@epfl.ch");
+  for (const [eventId, who] of [["e1", uid], ["e2", uid], ["e1", "fictional-other"]]) {
+    await db.doc(`events/${eventId}/checkIns/${who}`).set({
+      uid: who, checkedInAt: new Date(), method: "location", expiresAt: new Date(),
+    });
+  }
+  await seedRegistration("e1", uid);
+  // The profile and the registrations use transactions, so the first batch is the check-ins'.
+  let commits = 0;
+  const failingDb = new Proxy(db, { get(target, key) {
+    if (key === "batch") return () => {
+      const batch = target.batch();
+      const commit = batch.commit.bind(batch);
+      batch.commit = async () => {
+        if (++commits === 1) throw Object.assign(new Error("Fictional failure"), { code: 14 });
+        return commit();
+      };
+      return batch;
+    };
+    const value = Reflect.get(target, key);
+    return typeof value === "function" ? value.bind(target) : value;
+  } });
+  const logs = [];
+
+  await assert.rejects(deleteAccountHandler({
+    auth: { uid, token: { auth_time: 1_000_000 } }, db: failingDb, adminAuth: auth,
+    now: () => 1_000_000_000, logger: { error: (...entry) => logs.push(entry) },
+  }), (error) => error.code === "unavailable");
+
+  assert.deepEqual(logs, [["deleteAccount step failed", { step: "delete-check-ins", code: 14 }]]);
+  assert.equal(await authUserExists(uid), true);
+  assert.equal(await documentExists(`deletedAccounts/${uid}`), true);
+  assert.equal(await documentExists(`events/e1/attendees/${uid}`), false);
+  assert.equal((await db.collectionGroup("checkIns").where("uid", "==", uid).get()).size, 2);
+
+  assert.equal((await callDeleteAccount(token)).status, 200);
+  const left = await db.collectionGroup("checkIns").get();
+  assert.deepEqual(left.docs.map((document) => document.ref.path), ["events/e1/checkIns/fictional-other"]);
+  assert.equal(await authUserExists(uid), false);
+});
+
 test("a student's friendships are deleted, other students' are kept (#357)", async () => {
   const uid = await seedUser("student@epfl.ch", { accountType: "student" });
   const other = await seedUser("other@epfl.ch", { accountType: "student" });
