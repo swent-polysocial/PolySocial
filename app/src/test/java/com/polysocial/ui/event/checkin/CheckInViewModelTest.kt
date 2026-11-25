@@ -211,7 +211,7 @@ class CheckInViewModelTest {
             CheckInResult.OutsideWindow to Stage.WINDOW_CHANGED,
             CheckInResult.UnexpectedError to Stage.SAVE_ERROR,
             CheckInResult.NotFound to Stage.EVENT_UNAVAILABLE,
-            CheckInResult.NotSignedIn to Stage.EVENT_UNAVAILABLE,
+            CheckInResult.NotSignedIn to Stage.SESSION_ENDED,
         )
     failures.forEach { (result, expected) ->
       val vm = viewModel()

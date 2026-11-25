@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (GPT-6.2 Sol, high; check-in flow for #469 under Lucas Pinto Ricardo’s
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; check-in flow and session-ended state for #469
+// under Lucas Pinto Ricardo’s
 // supervision and approval).
 package com.polysocial.ui.event.checkin
 
@@ -54,6 +55,7 @@ internal sealed interface CheckInState {
     WINDOW_CHANGED,
     REGISTRATION_REQUIRED,
     EVENT_UNAVAILABLE,
+    SESSION_ENDED,
   }
 
   data class Confirmed(val time: Instant) : CheckInState
@@ -178,8 +180,8 @@ constructor(
       CheckInResult.OutsideWindow -> CheckInState.Stage.WINDOW_CHANGED
       CheckInResult.NetworkError -> CheckInState.Stage.OFFLINE
       CheckInResult.NotRegistered -> CheckInState.Stage.REGISTRATION_REQUIRED
-      CheckInResult.NotFound,
-      CheckInResult.NotSignedIn -> CheckInState.Stage.EVENT_UNAVAILABLE
+      CheckInResult.NotFound -> CheckInState.Stage.EVENT_UNAVAILABLE
+      CheckInResult.NotSignedIn -> CheckInState.Stage.SESSION_ENDED
       CheckInResult.UnexpectedError -> CheckInState.Stage.SAVE_ERROR
     }
   }
