@@ -1,5 +1,7 @@
 // Contributors: Claude Opus 5.5 (wrote these tests, #368); Konstantinos Perdikeas (directed,
 // reviewed and owns them).
+// Contributors: Claude (Opus 5.5, Anthropic) (the friend action on a student's profile, #478);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.profile
 
 import android.content.Context
@@ -21,6 +23,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.R
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.resources.C
+import com.polysocial.ui.friend.FriendActionError
+import com.polysocial.ui.friend.FriendButton
+import com.polysocial.ui.friend.FriendCard
 import com.polysocial.ui.theme.PolySocialTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -119,5 +124,44 @@ class StudentProfileScreenTest {
     }
 
     assertEquals(List(states.size) { "back" }, calls)
+  }
+
+  // The friend action (#478, Figma #493).
+
+  private fun showWithCard(card: FriendCard?) {
+    compose.setContent {
+      PolySocialTheme {
+        StudentProfileScreen(
+            StudentProfileUiState.Found(lea),
+            onBack = {},
+            onRetry = {},
+            friendCard = card,
+            onFriendButton = { calls += "friend" },
+        )
+      }
+    }
+  }
+
+  @Test
+  fun anotherStudentsProfile_showsTheFriendButton_andItsNote() {
+    showWithCard(FriendCard(lea, FriendButton.ADD, error = FriendActionError.OFFLINE))
+
+    compose
+        .onNodeWithTag(C.Tag.scan_friend_note)
+        .assertTextEquals(string(R.string.scan_friend_offline))
+    compose
+        .onNodeWithTag(C.Tag.scan_friend_button)
+        .assertTextEquals(string(R.string.scan_friend_add))
+    compose.onNodeWithTag(C.Tag.scan_friend_button).performClick()
+    assertEquals(listOf("friend"), calls)
+  }
+
+  @Test
+  fun withoutACard_yourOwnProfile_hasNoFriendAction() {
+    showWithCard(null)
+
+    compose.onNodeWithTag(C.Tag.student_profile_name).assertTextEquals("Léa Martin")
+    compose.onAllNodesWithTag(C.Tag.scan_friend_button).assertCountEquals(0)
+    compose.onAllNodesWithTag(C.Tag.scan_friend_note).assertCountEquals(0)
   }
 }

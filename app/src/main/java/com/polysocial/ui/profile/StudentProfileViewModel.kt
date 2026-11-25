@@ -3,15 +3,21 @@
 // Contributors: OpenAI Codex (6.2 Sol, high; reuse the bounded profile lookup, #360 review).
 // Contributors: Claude (Sonnet 5.5, Anthropic) (the read-result mapping shared with My profile,
 // #495).
+// Contributors: Claude (Opus 5.5, Anthropic) (the friend action on a student's profile, #478);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.profile
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.polysocial.model.auth.AuthRepository
+import com.polysocial.model.friend.FriendRepository
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.PublicProfileResult
 import com.polysocial.model.user.getPublicProfileWithCache
+import com.polysocial.ui.friend.FriendCard
+import com.polysocial.ui.friend.FriendCardController
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -58,19 +64,59 @@ internal const val PROFILE_READ_TIMEOUT_MILLIS = 5_000L
  * it). On a connection that stalls, Firestore waits about ten seconds before it treats the device
  * as offline, so a read that doesn't answer within [PROFILE_READ_TIMEOUT_MILLIS] falls back to the
  * cached profile; without one the screen shows Couldn't load, so it never stays loading. Only the
- * server can say a profile is missing: a cached miss may be out of date.
+ * server can say a profile is missing: a cached miss may be out of date. Under another student's
+ * profile, [friendCard] offers Add friend, Request sent, Accept request or Friends (#478).
  */
 @HiltViewModel
 class StudentProfileViewModel
 @Inject
-constructor(savedStateHandle: SavedStateHandle, private val profiles: PublicProfileRepository) :
-    ViewModel() {
+constructor(
+    savedStateHandle: SavedStateHandle,
+    private val profiles: PublicProfileRepository,
+    auth: AuthRepository,
+    friends: FriendRepository,
+) : ViewModel() {
   private val uid = savedStateHandle.get<String>(UID_ARG)?.takeIf { it.isNotBlank() }
   private val state = MutableStateFlow<StudentProfileUiState>(StudentProfileUiState.Loading)
   val uiState: StateFlow<StudentProfileUiState> = state.asStateFlow()
 
+  private val card = MutableStateFlow<FriendCard?>(null)
+
+  /**
+   * The friend action under the profile (#478, Figma #493): the card's button and note from the
+   * live friendship. Null while loading, when no profile was found, and on the student's own
+   * profile, which offers no action.
+   */
+  val friendCard: StateFlow<FriendCard?> = card.asStateFlow()
+
+  /**
+   * The request logic shared with the scan and Add by username (#529), created only for another
+   * student's profile: it starts following the friendships at once, so the button is already right
+   * when the profile arrives.
+   */
+  private val cards: FriendCardController<FriendCard?>? =
+      auth
+          .currentUser()
+          ?.uid
+          ?.takeIf { uid != null && it != uid }
+          ?.let { myUid ->
+            FriendCardController(
+                myUid,
+                friends,
+                viewModelScope,
+                card,
+                cardOf = { it },
+                withCard = { _, changed -> changed },
+            )
+          }
+
   init {
     load()
+  }
+
+  /** The friend action's button: Add friend sends a request, Accept request accepts theirs. */
+  fun onFriendButton() {
+    cards?.onButton()
   }
 
   /** Reads the profile again after it couldn't load; does nothing in any other state. */
@@ -87,7 +133,9 @@ constructor(savedStateHandle: SavedStateHandle, private val profiles: PublicProf
             }
     state.value = StudentProfileUiState.Loading
     viewModelScope.launch {
-      state.value = profiles.getPublicProfileWithCache(uid, PROFILE_READ_TIMEOUT_MILLIS).toUiState()
+      val loaded = profiles.getPublicProfileWithCache(uid, PROFILE_READ_TIMEOUT_MILLIS).toUiState()
+      if (loaded is StudentProfileUiState.Found) card.value = cards?.cardFor(loaded.profile)
+      state.value = loaded
     }
   }
 
