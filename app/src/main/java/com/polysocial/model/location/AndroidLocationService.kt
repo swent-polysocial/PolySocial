@@ -1,5 +1,5 @@
-// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #469 under Lucas Pinto Ricardo’s supervision and
-// approval).
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #469 location and provider review fixes under
+// Lucas Pinto Ricardo’s supervision and approval).
 // Contributors: OpenAI Codex (rationale-aware results and review regressions, #278).
 // Contributors: OpenAI Codex (one-off coarse location access and review fixes for #51).
 // Contributors: OpenAI Codex (dismissal-aware permission history and fused fallback, #278).
@@ -113,13 +113,12 @@ class AndroidLocationService @Inject constructor(@ApplicationContext private val
   }
 
   private fun provider(manager: LocationManager, precise: Boolean): String? {
-    if (precise) return LocationManager.GPS_PROVIDER.takeIf(manager::isProviderEnabled)
-    // Fused accepts coarse permission and an emulator's injected fix. Map and Events never probe
-    // GPS, even when the app has precise permission for check-in.
+    // Fused can combine location sources indoors. Only check-in can fall back to GPS.
     return when {
       Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
           manager.isProviderEnabled(LocationManager.FUSED_PROVIDER) ->
           LocationManager.FUSED_PROVIDER
+      precise -> LocationManager.GPS_PROVIDER.takeIf(manager::isProviderEnabled)
       manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) ->
           LocationManager.NETWORK_PROVIDER
       else -> null
