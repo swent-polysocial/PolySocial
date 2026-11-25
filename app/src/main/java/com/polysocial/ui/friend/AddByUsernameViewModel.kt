@@ -53,7 +53,8 @@ data class AddByUsernameUiState(
  * first (Sprint 6 PO, #445). The card's button is the shared [FriendCardController].
  *
  * The student's own name is recognised by its UID, before any profile is read. Editing the name
- * clears the last message and drops the answer of a lookup still running for the old name.
+ * clears the last message and drops the answer of a lookup still running; only the latest submitted
+ * lookup's answer is shown, even when an older one of the same name answers later.
  */
 @HiltViewModel
 class AddByUsernameViewModel
@@ -86,17 +87,22 @@ constructor(
     state.update { it.copy(input = text.removePrefix("@"), looking = false, problem = null) }
   }
 
+  /** How many lookups were submitted: only the latest one's answer is shown. */
+  private var lookups = 0
+
   /** Look up (or Try again): one lookup of the typed name, unless one is already running. */
   fun onLookUp() {
     val current = state.value
     val name = normalizeUsername(current.input)
     if (current.looking || name.isEmpty()) return
     state.value = current.copy(looking = true, problem = null)
+    val lookup = ++lookups
     viewModelScope.launch {
       val found = find(name)
       state.update {
-        // The student edited the name meanwhile: this answer is about another one.
-        if (!it.looking || normalizeUsername(it.input) != name) return@update it
+        // The student edited the name meanwhile, or submitted it again (even unchanged): this
+        // answer is no longer the one the screen waits for.
+        if (!it.looking || lookup != lookups) return@update it
         when (found) {
           is Found.Card -> it.copy(looking = false, card = cards.cardFor(found.profile))
           is Found.Problem -> it.copy(looking = false, problem = found.problem)
