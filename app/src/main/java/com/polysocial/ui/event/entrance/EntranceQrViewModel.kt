@@ -1,5 +1,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (drafted the Entrance QR's states and rotation, #468);
 // Konstantinos Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude (Opus 5.5, Anthropic) (rotation beside the expiry check and following the
+// schedule, #538 review); Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.event.entrance
 
 import androidx.lifecycle.SavedStateHandle
@@ -13,7 +15,6 @@ import com.polysocial.model.checkin.EntranceCodeStatus
 import com.polysocial.model.checkin.RotateCodeResult
 import com.polysocial.model.checkin.checkInWindow
 import com.polysocial.model.checkin.isScannable
-import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.EventResult
 import com.polysocial.model.qr.QrCode
@@ -26,18 +27,22 @@ import java.time.Duration
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.FlowCollector
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.emitAll
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
+import kotlinx.coroutines.launch
 
 /** What the Entrance QR screen shows (Figma section 20). */
 sealed interface EntranceQrUiState {
@@ -74,14 +79,16 @@ sealed interface EntranceQrUiState {
  * it is [ENTRANCE_CODE_ROTATION] old ([CheckInRepository.rotateEntranceCode] writes once even when
  * several phones try).
  *
- * The event is read first, for its title, venue and [checkInWindow]. Before the window opens, the
- * screen says when it does, without reading or writing the code (the rules would refuse it), and
- * starts once it opens; once the window has closed, it says so. During the window it follows
- * [CheckInRepository.observeEntranceCode]: a missing code is created, a code from the cache is
- * hidden (offline), and a stored code is shown while [isScannable] says a student scanning it would
- * still be checked in, re-checked every [TICK]; once it isn't (its rotation kept failing), the
- * screen says it couldn't load. A rotation is tried again after [ROTATION_RETRY] until the listener
- * brings the new code. [retry] starts over, for Try again.
+ * The event is followed for its title, venue and [checkInWindow], so a schedule another organizer
+ * changes while the screen is open applies at once; only a change to these starts the screen over.
+ * Before the window opens, the screen says when it does, without reading or writing the code (the
+ * rules would refuse it), and starts once it opens; once the window has closed, it says so. During
+ * the window it follows [CheckInRepository.observeEntranceCode]: a missing code is created, a code
+ * from the cache is hidden (offline), and a stored code is shown while [isScannable] says a student
+ * scanning it would still be checked in, re-checked every [TICK], also while its rotation is still
+ * waiting for an answer; once it isn't (its rotation kept failing or hangs), the screen says it
+ * couldn't load. A rotation is tried again after [ROTATION_RETRY] until the listener brings the new
+ * code. [retry] starts over, for Try again.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -113,24 +120,42 @@ constructor(
 
   private fun entranceQr(): Flow<EntranceQrUiState> = flow {
     emit(EntranceQrUiState.Loading)
-    val event =
-        when (val result = events.getEvent(eventId).first()) {
-          is EventResult.Found -> result.event
-          EventResult.NotFound,
-          EventResult.NotCached -> null
-        }
-    if (event == null) {
-      emit(EntranceQrUiState.Failed(null))
-      return@flow
-    }
-    val window = checkInWindow(event)
+    emitAll(
+        events
+            .getEvent(eventId)
+            .map { result ->
+              when (result) {
+                is EventResult.Found ->
+                    Schedule(
+                        result.event.title,
+                        result.event.locationName,
+                        checkInWindow(result.event),
+                    )
+                EventResult.NotFound,
+                EventResult.NotCached -> null
+              }
+            }
+            .distinctUntilChanged()
+            .transformLatest { schedule ->
+              if (schedule == null) emit(EntranceQrUiState.Failed(null)) else during(schedule)
+            }
+    )
+  }
+
+  /**
+   * What the screen uses of the event: its other changes (such as the attendee count) don't start
+   * the screen over, which would listen to the code again from the cache.
+   */
+  private data class Schedule(val title: String, val venue: String, val window: CheckInWindow)
+
+  /** The screen for [event]'s schedule, from before its window opens until it closes. */
+  private suspend fun FlowCollector<EntranceQrUiState>.during(event: Schedule) {
+    val window = event.window
     while (clock.instant().isBefore(window.opensAt)) {
-      emit(
-          EntranceQrUiState.NotOpenYet(event.title, event.locationName, time.format(window.opensAt))
-      )
+      emit(EntranceQrUiState.NotOpenYet(event.title, event.venue, time.format(window.opensAt)))
       delay(Duration.between(clock.instant(), window.opensAt).toMillis().coerceAtLeast(1))
     }
-    if (closed(event, window)) return@flow
+    if (closed(event, window)) return
     emitAll(
         checkIns.observeEntranceCode(eventId).transformLatest { status ->
           if (closed(event, window)) return@transformLatest
@@ -150,16 +175,16 @@ constructor(
 
   /** Emits [EntranceQrUiState.Closed] and returns true once [window] has closed. */
   private suspend fun FlowCollector<EntranceQrUiState>.closed(
-      event: Event,
+      event: Schedule,
       window: CheckInWindow,
   ): Boolean {
     if (clock.instant().isBefore(window.closesAt)) return false
-    emit(EntranceQrUiState.Closed(event.title, event.locationName, time.format(window.closesAt)))
+    emit(EntranceQrUiState.Closed(event.title, event.venue, time.format(window.closesAt)))
     return true
   }
 
   /** Creates the event's first code; the listener then shows it. */
-  private suspend fun FlowCollector<EntranceQrUiState>.createFirstCode(event: Event) {
+  private suspend fun FlowCollector<EntranceQrUiState>.createFirstCode(event: Schedule) {
     when (checkIns.rotateEntranceCode(eventId, null)) {
       RotateCodeResult.Done -> Unit
       RotateCodeResult.NetworkError -> emit(EntranceQrUiState.Offline(event.title))
@@ -168,12 +193,14 @@ constructor(
   }
 
   /**
-   * Shows [code] while it is scannable, every [TICK], and rotates it once it is due. Runs until the
-   * listener delivers another status (the new code), which cancels it, or the window closes.
+   * Shows [code] while it is scannable, every [TICK], and rotates it once it is due. The rotation
+   * runs beside the check, so a code whose rotation hangs still disappears once it is too old. Runs
+   * until the listener delivers another status (the new code), which cancels it, or the window
+   * closes.
    */
   private suspend fun FlowCollector<EntranceQrUiState>.show(
       code: EntranceCode,
-      event: Event,
+      event: Schedule,
       window: CheckInWindow,
   ) {
     val qr = checkInQrPayload(eventId, code.token)?.let(::encodeQrCode)
@@ -182,19 +209,25 @@ constructor(
       return
     }
     var rotateAt = code.rotatedAt + ENTRANCE_CODE_ROTATION
-    while (!closed(event, window)) {
-      val now = clock.instant()
-      emit(
-          if (code.isScannable(now)) EntranceQrUiState.Shown(event.title, event.locationName, qr)
-          else EntranceQrUiState.Failed(event.title)
-      )
-      if (!now.isBefore(rotateAt)) {
-        // Done or not, the listener brings any new code, which cancels this loop. Until then, a
-        // failed rotation (offline, refused) is tried again later, never every tick.
-        checkIns.rotateEntranceCode(eventId, code.token)
-        rotateAt = clock.instant() + ROTATION_RETRY
+    var rotation: Job? = null
+    coroutineScope {
+      while (!closed(event, window)) {
+        val now = clock.instant()
+        emit(
+            if (code.isScannable(now)) EntranceQrUiState.Shown(event.title, event.venue, qr)
+            else EntranceQrUiState.Failed(event.title)
+        )
+        if (rotation?.isActive != true && !now.isBefore(rotateAt)) {
+          // Done or not, the listener brings any new code, which cancels this loop. Until then, a
+          // failed rotation (offline, refused) is tried again later, never every tick.
+          rotation = launch {
+            checkIns.rotateEntranceCode(eventId, code.token)
+            rotateAt = clock.instant() + ROTATION_RETRY
+          }
+        }
+        delay(TICK.toMillis())
       }
-      delay(TICK.toMillis())
+      rotation?.cancel()
     }
   }
 
