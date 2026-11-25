@@ -4,6 +4,8 @@
 // event has ended; the detail gets fake groups and profiles, #233.
 // Contributors: Claude Opus 5.5 ("I'm going" is no longer left out, #122).
 // Contributors: Claude Opus 5.5 (passed the new reminder scheduler fake, second PR of #123).
+// Contributors: Claude (Opus 5.5, Anthropic) (the organizer's way to the Entrance QR, #468);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.event.detail
 
 import android.content.Context
@@ -442,6 +444,8 @@ class EventDetailScreenTest {
 
   private var cancels = 0
 
+  private var entranceQrs = 0
+
   private fun showOrganizer(cancelState: CancelEventState = CancelEventState.Hidden) {
     composeTestRule.setContent {
       PolySocialTheme {
@@ -450,7 +454,8 @@ class EventDetailScreenTest {
             onBack = {},
             onRetry = {},
             cancelState = cancelState,
-            organizer = EventOrganizerActions(onEdit = { edits++ }),
+            organizer =
+                EventOrganizerActions(onEdit = { edits++ }, onShowEntranceQr = { entranceQrs++ }),
         )
       }
     }
@@ -506,9 +511,32 @@ class EventDetailScreenTest {
   }
 
   @Test
+  fun anOrganizer_opensTheEntranceQr_fromShowEntranceQr() {
+    showOrganizer()
+
+    composeTestRule
+        .onNodeWithTag(EventDetailTags.SHOW_ENTRANCE_QR)
+        .assertTextEquals(string(R.string.event_detail_show_entrance_qr))
+        .performClick()
+
+    assertEquals(1, entranceQrs)
+  }
+
+  @Test
+  fun anEndedEvent_offersItsOrganizerNoEntranceQr() {
+    show(
+        EventDetailUiState.Loaded(details(), isOffline = false, isOrganizer = true, hasEnded = true)
+    )
+
+    assertAbsent(EventDetailTags.SHOW_ENTRANCE_QR)
+    composeTestRule.onNodeWithTag(EventDetailTags.CANCEL_EVENT).assertIsDisplayed()
+  }
+
+  @Test
   fun anotherStudent_seesNoOrganizerActions() {
     showLoaded()
 
+    assertAbsent(EventDetailTags.SHOW_ENTRANCE_QR)
     assertAbsent(EventDetailTags.EDIT)
     assertAbsent(EventDetailTags.ORGANIZED_BY_YOU)
     assertAbsent(EventDetailTags.CANCEL_EVENT)

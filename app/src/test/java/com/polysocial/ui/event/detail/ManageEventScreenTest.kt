@@ -1,6 +1,8 @@
 // Contributors: Claude (wrote these tests of the association's manage event, #131).
 // Contributors: Claude (Opus 5.5, Anthropic) passed the detail fake groups and profiles, #233.
 // Contributors: Claude Opus 5.5 (passed the new reminder scheduler fake, second PR of #123).
+// Contributors: Claude (Opus 5.5, Anthropic) (the organizer's way to the Entrance QR, #468);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.event.detail
 
 import android.content.Context
@@ -103,6 +105,8 @@ class ManageEventScreenTest {
           isLive = isLive,
       )
 
+  private var entranceQrs = 0
+
   private fun show(state: EventDetailUiState.Loaded) {
     composeTestRule.setContent {
       PolySocialTheme {
@@ -111,7 +115,11 @@ class ManageEventScreenTest {
             onBack = { backs++ },
             onRetry = {},
             organizer =
-                EventOrganizerActions(onEdit = { edits++ }, onCancelEvent = { cancelTaps++ }),
+                EventOrganizerActions(
+                    onEdit = { edits++ },
+                    onShowEntranceQr = { entranceQrs++ },
+                    onCancelEvent = { cancelTaps++ },
+                ),
             onRetryGoing = { goingRetries++ },
         )
       }
@@ -185,7 +193,19 @@ class ManageEventScreenTest {
   }
 
   @Test
-  fun theCountsNotBuiltYet_theQrAndTheAlbum_sayTheyArentAvailable() {
+  fun showFullScreen_opensTheEntranceQr() {
+    show(managed())
+
+    composeTestRule.onNodeWithTag(ManageEventTags.SHOW_FULL_SCREEN).performClick()
+
+    assertEquals(1, entranceQrs)
+    composeTestRule
+        .onAllNodesWithText(string(R.string.manage_event_not_available))
+        .assertCountEquals(0)
+  }
+
+  @Test
+  fun theCountsNotBuiltYet_thePdfAndTheAlbum_sayTheyArentAvailable() {
     show(managed())
     val notAvailable = string(R.string.manage_event_not_available)
 
@@ -193,7 +213,6 @@ class ManageEventScreenTest {
             ManageEventTags.LOOKING_FOR_GROUP,
             ManageEventTags.GROUPS_FORMED,
             ManageEventTags.CHECKED_IN,
-            ManageEventTags.SHOW_FULL_SCREEN,
             ManageEventTags.DOWNLOAD_PDF,
             ManageEventTags.ALBUM,
         )

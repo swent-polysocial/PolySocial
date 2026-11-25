@@ -8,6 +8,8 @@
 // Perdikeas (directed, reviewed and owns it).
 // Contributors: OpenAI Codex (tested the group roster route and return after leaving, #234).
 // Contributors: OpenAI Codex (updated the roster navigation seam for chat, #238).
+// Contributors: Claude (Opus 5.5, Anthropic) (tested opening and leaving the Entrance QR, #468);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.navigation
 
 import androidx.activity.ComponentActivity
@@ -133,6 +135,10 @@ class EventDetailNavigationTest {
                     modifier = Modifier.testTag("open_group_roster"),
                 ) {}
                 Button(
+                    onClick = navigation.onShowEntranceQr,
+                    modifier = Modifier.testTag(DETAIL_ENTRANCE_QR),
+                ) {}
+                Button(
                     onClick = navigation.onCancelled,
                     modifier = Modifier.testTag(DETAIL_CANCELLED),
                 ) {}
@@ -146,6 +152,15 @@ class EventDetailNavigationTest {
               LaunchedEffect(Unit) { if (editClosesAtOnce) onClose() }
               Button(onClick = onClose, modifier = Modifier.testTag(EDIT)) {
                 Text(id.orEmpty(), Modifier.testTag(EDIT_ID))
+              }
+            },
+            entranceQrContent = { onBack ->
+              val id =
+                  navController.currentBackStackEntry
+                      ?.arguments
+                      ?.getString(EventDetailViewModel.EVENT_ID_ARG)
+              Button(onClick = onBack, modifier = Modifier.testTag(ENTRANCE_QR)) {
+                Text(id.orEmpty(), Modifier.testTag(ENTRANCE_QR_ID))
               }
             },
             findGroupContent = { onBack, onDone ->
@@ -500,6 +515,21 @@ class EventDetailNavigationTest {
   }
 
   @Test
+  fun theEntranceQr_opensAboveTheDetail_fullScreen_forThatEvent_andBackReturnsToTheDetail() {
+    composeTestRule.onNodeWithTag(EventsTags.card(trickyId)).performClick()
+
+    composeTestRule.onNodeWithTag(DETAIL_ENTRANCE_QR).performClick()
+
+    composeTestRule.onNodeWithTag(ENTRANCE_QR_ID, useUnmergedTree = true).assertTextEquals(trickyId)
+    assertBarsHidden()
+    composeTestRule.runOnIdle {
+      assertEquals(Tab.EVENTS.entranceQrRoute, navController.currentDestination?.route)
+    }
+    composeTestRule.onNodeWithTag(ENTRANCE_QR).performClick()
+    composeTestRule.onNodeWithTag(DETAIL_ID, useUnmergedTree = true).assertTextEquals(trickyId)
+  }
+
+  @Test
   fun joiningOrStartingAGroup_returnsToTheDetailAndSaysSo() {
     composeTestRule.onNodeWithTag(EventsTags.card(trickyId)).performClick()
     for ((button, text) in
@@ -524,6 +554,9 @@ class EventDetailNavigationTest {
     const val DETAIL_EDIT = "fake_event_detail_edit"
     const val DETAIL_CANCELLED = "fake_event_detail_cancelled"
     const val DETAIL_FIND_GROUP = "fake_event_detail_find_group"
+    const val DETAIL_ENTRANCE_QR = "fake_event_detail_entrance_qr"
+    const val ENTRANCE_QR = "fake_entrance_qr"
+    const val ENTRANCE_QR_ID = "fake_entrance_qr_id"
     const val FIND_GROUP = "fake_find_group"
     const val FIND_GROUP_ID = "fake_find_group_id"
     const val FIND_GROUP_JOINED = "fake_find_group_joined"
