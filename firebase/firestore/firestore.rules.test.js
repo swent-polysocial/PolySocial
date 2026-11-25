@@ -3217,6 +3217,32 @@ test("S18 an organizer can't drop allowedSections by overwriting the event witho
   await assertFails(setDoc(doc(studentDb("u2"), "events/everyone"), without));
 });
 
+test("S19 a student whose section an organizer removes still cancels, and the place is freed", async () => {
+  await seedStudentInSection("u1", "IN");
+  await seedEvent("shrinking", upcomingEventBy("u2", { allowedSections: [], capacity: 1 }));
+  await assertSucceeds(registerCounted(studentDb("u1"), "shrinking", "u1"));
+  await assertSucceeds(updateDoc(doc(studentDb("u2"), "events/shrinking"), { allowedSections: ["MA"] }));
+  await assertFails(getDoc(doc(studentDb("u1"), "events/shrinking")));
+
+  // The app's first attempt: no read, the registration deleted and the counter lowered together.
+  await assertSucceeds(cancelsAsApp("u1", "shrinking"));
+
+  await expectStored("shrinking", 0, []);
+});
+
+test("S20 losing the section gives no other write: no new registration, no decrement without one", async () => {
+  await seedStudentInSection("u1", "IN");
+  await seedStudentInSection("u3", "MA");
+  await seedEvent("shrunk", upcomingEventBy("u2", { allowedSections: ["MA"], attendeeCount: 1 }));
+  await seedUncountedAttendee("shrunk", "u3");
+  // u1 holds no registration: neither a new one nor a decrement of somebody else's place.
+  await assertFails(registerCounted(studentDb("u1"), "shrunk", "u1"));
+  await assertFails(updateDoc(doc(studentDb("u1"), "events/shrunk"), { attendeeCount: 0 }));
+  // u3 reads the event, but lowering the counter without deleting their registration is refused.
+  await assertFails(updateDoc(doc(studentDb("u3"), "events/shrunk"), { attendeeCount: 0 }));
+  await expectStored("shrunk", 1, ["u3"]);
+});
+
 // ---- publicProfiles/{uid} (#229) ----
 // What other students see of a student: exactly displayName, section, year and interests, copied
 // from the owner's users/{uid} in the same write. Never the email. Associations see none.

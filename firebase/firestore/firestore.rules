@@ -558,12 +558,17 @@ service cloud.firestore {
       }
 
       // The only change a non-organizer may make to an event (#372): a student who can read
-      // it changes attendeeCount, and nothing else, with their own registration.
+      // it changes attendeeCount, and nothing else, with their own registration. Cancelling
+      // doesn't need the read: an organizer who limits the event to other sections after the
+      // student registered must not leave the place counted (#369). That holds only for a
+      // public event, which every student reads but for its sections, and only for a
+      // registration that exists, deleted by the same write (isCancelling).
       function countsOwnRegistration() {
         return isStudent()
-            && studentCanReadThisEvent()
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['attendeeCount'])
-            && (isRegistering() || isCancelling());
+            && ((studentCanReadThisEvent() && isRegistering())
+                || (isCancelling()
+                    && (studentCanReadThisEvent() || resource.data.isPrivate == false)));
       }
 
       // Any organizer manages the event. The creator, the badge and the counter are fixed for
