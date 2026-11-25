@@ -1,6 +1,8 @@
 // Contributors: Claude (shared-fake Hilt setup reused from #380);
 // OpenAI Codex (offline journey, cache transition and unmerged semantics lookups, #379).
 // Contributors: Claude (Opus 5.5, Anthropic) (the username fake, for Add by username, #452).
+// Contributors: Claude (Opus 5.5, Anthropic) (a fake check-in repository for the Entrance QR's
+// ViewModel, #468); Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.endtoend
 
 import androidx.compose.ui.test.assertIsDisplayed
@@ -39,6 +41,9 @@ import com.polysocial.model.chat.MessageModule
 import com.polysocial.model.chat.MessageRepository
 import com.polysocial.model.chat.OneToOneChatModule
 import com.polysocial.model.chat.OneToOneChatRepository
+import com.polysocial.model.checkin.CheckInModule
+import com.polysocial.model.checkin.CheckInRepository
+import com.polysocial.model.checkin.FakeCheckInRepository
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
@@ -119,6 +124,7 @@ import org.junit.runner.RunWith
     AccountDeletionModule::class,
     AssociationModule::class,
     AuthModule::class,
+    CheckInModule::class,
     ClockModule::class,
     EventModule::class,
     FirebaseModule::class,
@@ -172,6 +178,7 @@ class OfflineRegisteredEventsEndToEndTest {
           getProfileResult = ProfileResult.Found(UserProfile(UID, EMAIL, NAME, "IN", "BA3"))
       )
   @BindValue @JvmField val usernames: UsernameRepository = FakeUsernameRepository()
+  @BindValue @JvmField val checkIns: CheckInRepository = FakeCheckInRepository()
   @BindValue
   @JvmField
   val publicProfiles: PublicProfileRepository =

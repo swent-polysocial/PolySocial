@@ -14,6 +14,8 @@
 // Contributors: Claude Opus 5.5 (test WorkManager initialization, needed once ProfileViewModel
 // depends on ReminderScheduler for real DI, #123's second PR review).
 // Contributors: Claude (Opus 5.5, Anthropic) (the username fake, for Add by username, #452).
+// Contributors: Claude (Opus 5.5, Anthropic) (a fake check-in repository for the Entrance QR's
+// ViewModel, #468); Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.profile
 
 import androidx.compose.ui.test.*
@@ -40,6 +42,9 @@ import com.polysocial.model.chat.MessageModule
 import com.polysocial.model.chat.MessageRepository
 import com.polysocial.model.chat.OneToOneChatModule
 import com.polysocial.model.chat.OneToOneChatRepository
+import com.polysocial.model.checkin.CheckInModule
+import com.polysocial.model.checkin.CheckInRepository
+import com.polysocial.model.checkin.FakeCheckInRepository
 import com.polysocial.model.event.*
 import com.polysocial.model.firebase.*
 import com.polysocial.model.friend.FakeFriendRepository
@@ -74,6 +79,7 @@ import org.robolectric.annotation.Config
     AccountDeletionModule::class,
     AssociationModule::class,
     AuthModule::class,
+    CheckInModule::class,
     EventModule::class,
     UserProfileModule::class,
     FirebaseModule::class,
@@ -112,6 +118,7 @@ class LogoutInjectionTest {
   @BindValue @JvmField val groups: GroupRepository = FakeGroupRepository()
   @BindValue @JvmField val publicProfiles: PublicProfileRepository = FakePublicProfileRepository()
   @BindValue @JvmField val usernames: UsernameRepository = FakeUsernameRepository()
+  @BindValue @JvmField val checkIns: CheckInRepository = FakeCheckInRepository()
   @BindValue @JvmField val associations: AssociationRepository = FakeAssociationRepository()
   // Hilt checks at build time that every @HiltViewModel's dependencies are bound, including
   // DeleteAccountViewModel's, and the real deletion repository needs the uninstalled Firestore.
