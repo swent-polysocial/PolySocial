@@ -5,6 +5,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) moved the fakes to testing/fakeFirestore.js, #382;
 // an event re-created by someone else loses its registrations, after review; a deletion without
 // its document, after review.
+// Contributors: Claude (Opus 5.5, Anthropic) (check-ins deleted with the account and the event,
+// #472); Konstantinos Perdikeas (directed, reviewed and owns it).
 "use strict";
 
 // Unit tests with fakes, no emulator: node firebase/functions/registrations.test.js
@@ -15,6 +17,7 @@ const {
   TRIGGER_REGION,
   deleteCountedRegistration,
   deleteRegistrationsOfDeletedEvent,
+  deleteUserCheckIns,
   deleteUserRegistrations,
 } = require("./registrations");
 const { backendError, fakeFirestore, fakeLogger } = require("./testing/fakeFirestore");
@@ -285,6 +288,47 @@ test("more registrations than one query returns are all deleted", async () => {
 
   await deleteUserRegistrations(db, "u1");
 
+  assert.equal(documents.size, 0);
+});
+
+// #472: the account's check-ins, found like its registrations, by the collection-group query on uid.
+test("a user's check-ins are deleted across events, other users' are kept", async () => {
+  const { db, documents } = fakeFirestore([
+    "events/e1/checkIns/u1",
+    "events/e2/checkIns/u1",
+    "events/e1/checkIns/u2",
+    "events/e1/attendees/u1",
+    "events/e1/checkInCode/current",
+  ]);
+
+  await deleteUserCheckIns(db, "u1");
+
+  assert.deepEqual([...documents], [
+    "events/e1/checkIns/u2",
+    "events/e1/attendees/u1",
+    "events/e1/checkInCode/current",
+  ]);
+});
+
+test("more check-ins than one batch holds are all deleted", async () => {
+  const count = MAX_BATCH_WRITES + 2;
+  const paths = Array.from({ length: count }, (_, i) => `events/e${i}/checkIns/u1`);
+  const { db, documents, state } = fakeFirestore(paths);
+
+  await deleteUserCheckIns(db, "u1");
+
+  assert.equal(documents.size, 0);
+  assert.equal(state.commits, 2);
+});
+
+test("a failed check-in deletion is thrown, and a retry finishes it", async () => {
+  const { db, documents, state } = fakeFirestore(["events/e1/checkIns/u1"]);
+  state.failCommit = backendError(14);
+
+  await assert.rejects(deleteUserCheckIns(db, "u1"), { code: 14 });
+  assert.equal(documents.size, 1);
+
+  await deleteUserCheckIns(db, "u1");
   assert.equal(documents.size, 0);
 });
 

@@ -11,10 +11,12 @@
 // and the messages step querying again for a message deleted meanwhile, #429).
 // Contributors: Claude (Opus 5.5, Anthropic) (the username freed with the profile, #448; its
 // format shared with the tests, #517 review).
+// Contributors: Claude (Opus 5.5, Anthropic) (the user's check-ins, #472); Konstantinos Perdikeas
+// (directed, reviewed and owns it).
 
 const { HttpsError } = require("firebase-functions/v2/https");
 const { leaveUserChats } = require("./chats");
-const { deleteUserRegistrations, MAX_BATCH_WRITES } = require("./registrations");
+const { deleteUserCheckIns, deleteUserRegistrations, MAX_BATCH_WRITES } = require("./registrations");
 const { deleteUserFriendships } = require("./friendships");
 
 /**
@@ -57,7 +59,8 @@ const TRANSIENT_CODES = new Set([
 /**
  * Deletes the signed-in user's account: first their private profile `users/{uid}` and their public
  * profile `publicProfiles/{uid}` (#229), together, with their username (#448), then their
- * registrations for events (#275), then their friend requests and friendships (#357), then their
+ * registrations for events (#275), then their check-ins (#472), then their friend requests and
+ * friendships (#357), then their
  * place in their one-to-one chats and their delete-for-me markers (#429, see chats.js), then their
  * messages' author links and group memberships (#241), then their Firebase Auth user.
  * Returns `{ deleted: true }` only once all are gone. The same
@@ -66,7 +69,8 @@ const TRANSIENT_CODES = new Set([
  * under a marked UID, so another of the user's devices can't bring the public profile back after
  * the deletion (#229 review). They refuse a new registration under a marked UID too, which is why
  * the registrations are deleted after the marker is written: none can be added once they are
- * deleted. The same holds for friendships: the rules refuse a request from a marked UID.
+ * deleted. The same holds for check-ins and friendships: the rules refuse a check-in or a request
+ * from a marked UID.
  *
  * Refuses, before deleting anything:
  * - a call without a signed-in user (`unauthenticated`);
@@ -119,6 +123,7 @@ async function deleteAccountHandler({ auth, db, adminAuth, now, logger }) {
 
   await callBackend("delete-profile", logger, () => deleteStudentProfile(db, uid));
   await callBackend("delete-registrations", logger, () => deleteUserRegistrations(db, uid));
+  await callBackend("delete-check-ins", logger, () => deleteUserCheckIns(db, uid));
   await callBackend("delete-friendships", logger, () => deleteUserFriendships(db, uid));
   await callBackend("leave-chats", logger, () => leaveUserChats(db, uid));
   await callBackend("anonymise-messages", logger, () => anonymiseMessages(db, uid));
