@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; profile visibility and bio for #446 under
+// Lucas Pinto Ricardo’s supervision and approval).
 // Contributors: Claude (Firestore public profile repository and its stored fields, #229; several
 // profiles read one document each, in parallel, after review, #229; interests, and unknown codes
 // left out after review, #230); Claude Opus 5.5 (the cache-only read, #368 review); Konstantinos
@@ -83,7 +85,7 @@ internal fun UserProfile.toPublicProfileDocument(username: String?): Map<String,
         "section" to section,
         "year" to year,
         "interests" to orderedInterests(interests),
-    ) + listOfNotNull(username?.let { USERNAME_FIELD to it })
+    ) + toProfileDetailsDocument() + listOfNotNull(username?.let { USERNAME_FIELD to it })
 
 /**
  * The public profile in this document, or `null` if a field is missing or stored with the wrong
@@ -108,5 +110,7 @@ private fun DocumentSnapshot.readPublicProfile(): PublicProfile? {
       interests = interests.map { it as? String ?: return null }.filter { it in INTERESTS }.toSet(),
       // The rules only store a string; anything else reads as no username.
       username = get(USERNAME_FIELD) as? String,
+      profileVisibility = readProfileVisibility(),
+      bio = getString(BIO_FIELD),
   )
 }
