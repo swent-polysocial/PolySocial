@@ -145,11 +145,13 @@ const EVENT_ATTENDANCE_COLLECTIONS = ["attendees", "checkIns", "checkInCode"];
 /**
  * Runs when `events/{eventId}` is deleted: deletes the event's registrations
  * `events/{eventId}/attendees/*` (#121), check-ins `checkIns/*` and entrance code `checkInCode/*`
- * (#472), which nobody can read once the event is gone (the rules check the event), each with
- * [deleteOrphans]. The rules refuse a new registration, check-in or code for a missing event, so
- * none can appear afterwards, unless the event is written again under the same ID; they are then
- * kept if its creator wrote it again. A failure is logged and thrown again by [runTriggerWork], so
- * the trigger runs again, deleting what is left, until all three are gone.
+ * (#472), each with [deleteOrphans]. Once the event is gone, the rules refuse reading its
+ * registrations and its code (they check the event), but not its check-ins: a student can still
+ * read their own, and their group theirs, until this deletes them. The rules refuse a new
+ * registration, check-in or code for a missing event, so none can appear afterwards, unless the
+ * event is written again under the same ID; they are then kept if its creator wrote it again. A
+ * failure is logged and thrown again by [runTriggerWork], so the trigger runs again, deleting what
+ * is left, until all three are gone.
  *
  * @param {object} args
  * @param {string} args.eventId the deleted event's ID.
