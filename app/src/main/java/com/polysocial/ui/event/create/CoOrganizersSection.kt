@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (Edit event's organizers and the "Add a co-organizer"
-// sheet, from #400's Figma section 17, #370).
+// sheet, from #400's Figma section 17, #370; the creator's row written like the others, from #498's
+// frames, #499).
 package com.polysocial.ui.event.create
 
 import androidx.annotation.StringRes
@@ -143,19 +144,22 @@ private fun OrganizerEntryRow(
         profilesLoading -> null
         else -> stringResource(R.string.co_organizers_unknown)
       }
+  // The creator's row is written like a co-organizer's, with "Creator" for its role (#498): the
+  // missing × already shows that nobody removes them.
+  val role =
+      stringResource(
+          if (organizer.isCreator) R.string.co_organizers_creator
+          else R.string.co_organizers_co_organizer
+      )
   val details =
       when {
-        organizer.isCreator -> stringResource(R.string.co_organizers_creator)
-        organizer.isYou -> stringResource(R.string.co_organizers_co_organizer)
+        organizer.isYou -> role
         profile != null ->
-            listOf(
-                    profile.section,
-                    profile.year,
-                    stringResource(R.string.co_organizers_co_organizer),
-                )
+            listOf(profile.section, profile.year, role)
                 .filter(String::isNotBlank)
                 .joinToString(" · ")
         profilesLoading -> null
+        organizer.isCreator -> stringResource(R.string.co_organizers_creator_profile_unavailable)
         else -> stringResource(R.string.co_organizers_profile_unavailable)
       }
   Row(
