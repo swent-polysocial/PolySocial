@@ -1,4 +1,5 @@
-// Contributors: OpenAI Codex (GPT-6.2 Sol, high; precise location tests for #469 under Lucas Pinto
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; precise provider and location tests for #469 under
+// Lucas Pinto
 // Ricardo’s supervision and approval).
 // Contributors: OpenAI Codex (rationale-aware results and review regressions, #278).
 // Contributors: OpenAI Codex (permission, one-off fix and cancellation tests for #51).
@@ -360,15 +361,19 @@ class AndroidLocationServiceTest {
   }
 
   @Test
-  fun preciseGrant_readsGpsWithAccuracyAndStopsAfterOneFix() = runTest {
+  fun preciseGrant_prefersFusedThenFallsBackToGps() = runTest {
     permission(coarse = true, fine = true)
     every { manager.isProviderEnabled(LocationManager.GPS_PROVIDER) } returns true
-    val request = async { service.currentPreciseLocation() }
-    yield()
-    assertEquals(LocationManager.GPS_PROVIDER, provider.captured)
-    callback.captured.accept(fix().apply { accuracy = 8.5f })
-    assertEquals(PreciseLocationResult.Available(Coordinates(1.0, 2.0), 8.5), request.await())
-    assertTrue(signal.captured.isCanceled)
+    for (expected in listOf(LocationManager.FUSED_PROVIDER, LocationManager.GPS_PROVIDER)) {
+      every { manager.isProviderEnabled(LocationManager.FUSED_PROVIDER) } returns
+          (expected == LocationManager.FUSED_PROVIDER)
+      val request = async { service.currentPreciseLocation() }
+      yield()
+      assertEquals(expected, provider.captured)
+      callback.captured.accept(fix().apply { accuracy = 8.5f })
+      assertEquals(PreciseLocationResult.Available(Coordinates(1.0, 2.0), 8.5), request.await())
+      assertTrue(signal.captured.isCanceled)
+    }
   }
 
   @Test
