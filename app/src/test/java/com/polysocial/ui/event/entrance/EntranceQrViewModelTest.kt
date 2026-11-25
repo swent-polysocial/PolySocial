@@ -240,6 +240,16 @@ class EntranceQrViewModelTest {
       }
 
   @Test
+  fun aStoredTokenThatMakesNoQrCode_failed_withoutDrawingOne() =
+      runTest(main.dispatcher) {
+        fake.seedCode(EVENT, EntranceCode("not a token/", null, clock.instant()))
+
+        val vm = viewModel()
+
+        assertEquals(EntranceQrUiState.Failed("Balélec warm-up"), vm.uiState.value)
+      }
+
+  @Test
   fun aRefusedRead_orAnEventThatCantBeRead_failed() =
       runTest(main.dispatcher) {
         fake.codeReadFailure = true
