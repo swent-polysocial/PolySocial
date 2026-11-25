@@ -27,6 +27,7 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the check-in rules, TTL policy and index deploy, #467). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (the entrance code's deploy, #468). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (check-ins deleted with the account and the event, and their deploy, #472); Konstantinos Perdikeas (directed, reviewed and owns it). -->
+<!-- Contributors: Claude (Sonnet 5.5, Anthropic) (the allowedSections backfill and the deploy order of #369). -->
 
 # PolySocial
 
@@ -219,6 +220,32 @@ For check-ins (#467), deploy **the rules right after the merge**, before anyone 
 
 `<project-id>` is the `project_id` in your `app/google-services.json`. Functions deploy as described in [Cloud Functions](#cloud-functions). A new index takes a few minutes to build (Firebase console → Firestore → Indexes); until it's ready, the query that needs it fails. The local emulator doesn't need indexes.
 
+## Backfilling allowedSections
+
+Every event keeps `allowedSections`, the EPFL sections whose students can read it (`[]` for every section, #369). The Security Rules treat an event **without** the field as closed to students: a rule that accepted its absence would let a list query return the events of every section (see CONTEXT.md, Traps). Events created before the field existed don't have it, so a script gives it to them.
+
+`firebase/functions/scripts/backfillAllowedSections.js` sets `allowedSections: []` on every event that doesn't have it as a list, each event in its own transaction, and leaves the others alone. It prints only counts, refuses to run without an explicit `--project` and `--yes`, and refuses a `demo-` project outside the emulator, like the attendee recount:
+
+```bash
+npm ci --prefix firebase/functions                     # once
+gcloud auth application-default login                  # once; needs the Google Cloud CLI
+node firebase/functions/scripts/backfillAllowedSections.js --project <project-id> --yes
+```
+
+**Deploy order of #369** (run each step before the next). The restriction is only real once the rules enforce it, so the Sections row of Create event (the picker PR) ships last:
+
+1. Merge the PR with the rules and the section-aware query (#523) and this one. Right after the merge, from an up-to-date `main`, deploy the indexes (`firebase deploy --only firestore:indexes --project <project-id>`) and wait until they are built (Firebase console → Firestore → Indexes). The new upcoming-events query needs two composite indexes; until they exist it fails, so students who already have that app would see an error.
+2. Run the backfill above. It works under the current rules, so nothing breaks while it runs.
+3. Distribute the app (CI publishes the APK when the PR merges). The new query is accepted by the current rules, so students can already update.
+4. Deploy the Security Rules (`firebase deploy --only firestore:rules --project <project-id>`). An app from before the section-aware query can no longer list the upcoming events (its query doesn't prove the section), so do it once most students have updated. Run the backfill once more right before, in case an older app created an event meanwhile.
+5. Only then merge the picker PR (#524). Before the rules are deployed, an event saved as restricted to some sections would still be readable by every student, so the screen that offers the choice must not ship earlier.
+
+Tests (CI doesn't run them; paste their output in a PR that changes the script):
+
+```bash
+node --test firebase/functions/scripts/backfillAllowedSections.test.js
+firebase emulators:exec --project demo-polysocial --only firestore "node firebase/functions/scripts/backfillAllowedSections.emulator.test.js"
+```
 ## Cloud Functions
 
 Server code lives in `firebase/functions` (plain JavaScript, Node.js 22). It has five functions:
