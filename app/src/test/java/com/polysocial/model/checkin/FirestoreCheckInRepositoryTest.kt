@@ -445,15 +445,14 @@ class FirestoreCheckInRepositoryTest {
   private val code = mockk<DocumentReference>()
   private val codeWritten = slot<Map<String, Any>>()
 
+  /** When the stored code was rotated, to the microsecond, as the server stores it. */
+  private val storedRotatedAt = Timestamp(start.epochSecond, 123_456_000)
+
   /** Stubs the code document, holding [token] (null: missing), and its write. */
   private fun stubCode(token: String?) {
     every { event.collection(CHECK_IN_CODE_COLLECTION) } returns codes
     every { codes.document(ENTRANCE_CODE_DOCUMENT) } returns code
-    every { transaction.get(code) } returns
-        mockk<DocumentSnapshot>().also {
-          every { it.exists() } returns (token != null)
-          every { it.getString("token") } returns token
-        }
+    every { transaction.get(code) } returns snapshotWithToken(token)
     every { transaction.set(code, capture(codeWritten)) } returns transaction
   }
 
@@ -464,9 +463,14 @@ class FirestoreCheckInRepositoryTest {
     assertEquals(RotateCodeResult.Done, repository.rotateEntranceCode("event-1", "a".repeat(22)))
 
     val data = codeWritten.captured
-    assertEquals(setOf("token", "previousToken", "rotatedAt", "expiresAt"), data.keys)
+    assertEquals(
+        setOf("token", "previousToken", "previousRotatedAt", "rotatedAt", "expiresAt"),
+        data.keys,
+    )
     assertTrue(Regex("[A-Za-z0-9_-]{22}").matches(data["token"] as String))
     assertEquals("a".repeat(22), data["previousToken"])
+    // The replaced token keeps its own issue time, which the rules require exactly.
+    assertEquals(storedRotatedAt, data["previousRotatedAt"])
     assertSame(FieldValue.serverTimestamp(), data["rotatedAt"])
     val expiry = end + Duration.ofDays(30)
     assertEquals(Timestamp(expiry.epochSecond, expiry.nano), data["expiresAt"])
@@ -557,6 +561,7 @@ class FirestoreCheckInRepositoryTest {
       mockk<DocumentSnapshot>().also {
         every { it.exists() } returns (token != null)
         every { it.getString("token") } returns token
+        every { it.getTimestamp("rotatedAt") } returns storedRotatedAt.takeIf { token != null }
       }
 
   @Test

@@ -234,9 +234,10 @@ class FirestoreCheckInRepository(
    * One transaction reads the event (for `expiresAt`, the window's end + 30 days, which the rules
    * require exactly) and the code, and writes a new token only if the stored one is still
    * [replacing]: a phone that comes second finds the other's token and writes nothing. The new code
-   * keeps [replacing] as `previousToken` and gets the server's `rotatedAt`. A missing or unreadable
-   * event, and any refusal by the rules (not an organizer, outside the window, under 50 s since the
-   * last rotation), are [RotateCodeResult.UnexpectedError].
+   * keeps [replacing] as `previousToken`, with its own `rotatedAt` as `previousRotatedAt` (the
+   * rules judge each token by when it was issued), and gets the server's `rotatedAt`. A missing or
+   * unreadable event, and any refusal by the rules (not an organizer, outside the window, less than
+   * 50 seconds since the last rotation), are [RotateCodeResult.UnexpectedError].
    *
    * When two phones race, the loser's write reaches the server after the winner's and the rules
    * refuse it (its `previousToken` no longer matches), rather than Firestore retrying it (see
@@ -268,7 +269,15 @@ class FirestoreCheckInRepository(
                         ROTATED_AT_FIELD to FieldValue.serverTimestamp(),
                         "expiresAt" to checkInWindow(stored).expiresAt.toTimestamp(),
                     )
-                replacing?.let { data[PREVIOUS_TOKEN_FIELD] = it }
+                if (replacing != null) {
+                  data[PREVIOUS_TOKEN_FIELD] = replacing
+                  // The replaced token keeps its own issue time, so it still expires 2 minutes
+                  // after it was issued, also when this rotation comes after a pause. A missing
+                  // one is refused by the rules, like any other wrong field.
+                  current.getTimestamp(ROTATED_AT_FIELD)?.let {
+                    data[PREVIOUS_ROTATED_AT_FIELD] = it
+                  }
+                }
                 transaction.set(code, data)
                 RotateCodeResult.Done
               }
@@ -354,6 +363,7 @@ class FirestoreCheckInRepository(
   private companion object {
     const val TOKEN_FIELD = "token"
     const val PREVIOUS_TOKEN_FIELD = "previousToken"
+    const val PREVIOUS_ROTATED_AT_FIELD = "previousRotatedAt"
     const val ROTATED_AT_FIELD = "rotatedAt"
 
     /** For the read after a refused rotation, so a network failure answers at once. */
