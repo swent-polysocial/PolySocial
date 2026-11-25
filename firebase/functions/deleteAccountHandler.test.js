@@ -15,6 +15,8 @@
 // malformed uids, after review, #429).
 // Contributors: Claude (Opus 5.5, Anthropic) (the username freed with the profile, #448; its
 // format checked against the app's, #517 review).
+// Contributors: Claude (Opus 5.5, Anthropic) (check-ins deleted with the account and the event,
+// #472); Konstantinos Perdikeas (directed, reviewed and owns it).
 
 // Unit tests with fakes, no emulator: node firebase/functions/deleteAccountHandler.test.js
 const { test } = require("node:test");
@@ -48,6 +50,15 @@ const REGISTRATION_CALLS = [
   `delete:events/e2/attendees/${UID}`,
   "update:events/e2",
   `query:attendees uid == ${UID}`,
+];
+/** Another student's check-in (#472), which deleting the student must keep. */
+const OTHER_CHECK_IN = "events/e1/checkIns/student-uid-2";
+/** The calls deleting the student's two check-ins (#472), as the default fake backend holds them. */
+const CHECK_IN_CALLS = [
+  "collectionGroup:checkIns",
+  `query:checkIns uid == ${UID}`,
+  `commit:events/e1/checkIns/${UID},events/e2/checkIns/${UID}`,
+  `query:checkIns uid == ${UID}`,
 ];
 /** Another pair's friendship, which deleting the student must keep. */
 const OTHER_FRIENDSHIP = "friendships/student-uid-2~student-uid-3";
@@ -92,6 +103,7 @@ function fakeBackend({
   messages = {},
   beforeGroupRead = () => {},
   registrations = [`events/e1/attendees/${UID}`, `events/e2/attendees/${UID}`, OTHER_REGISTRATION],
+  checkIns = [`events/e1/checkIns/${UID}`, `events/e2/checkIns/${UID}`, OTHER_CHECK_IN],
   // Friendships by path, with their uids: a request the student sent, a friend, another pair's.
   friendships = {
     [`friendships/student-uid-0~${UID}`]: ["student-uid-0", UID],
@@ -116,6 +128,7 @@ function fakeBackend({
     deletionMarker: null,
     authUserExists,
     registrations: new Set(registrations),
+    checkIns: new Set(checkIns),
     friendships: { ...friendships },
     events,
     chats,
@@ -153,6 +166,7 @@ function fakeBackend({
     if (path.startsWith("friendships/")) return "friendships-commit";
     if (path.startsWith("chats/")) return "chat-messages-commit";
     if (path.startsWith("users/")) return "hidden-commit";
+    if (path.includes("/checkIns/")) return "check-ins-commit";
     return "commit";
   };
   const db = {
@@ -223,6 +237,19 @@ function fakeBackend({
           return query;
         }};
       }
+      // The collection-group query `checkIns where uid == <uid>` (#472), with a limit.
+      if (group === "checkIns") {
+        calls.push("collectionGroup:checkIns");
+        return { where(field, op, value) {
+          const query = { limit(size) { assert.equal(size, 500); return query; }, async get() {
+            calls.push(`query:checkIns ${field} ${op} ${value}`); failIfAsked("check-ins-query");
+            const docs = [...state.checkIns].filter((path) => path.split("/")[3] === value)
+              .slice(0, 500).map((path) => ({ ref: db.doc(path) }));
+            return { docs, empty: docs.length === 0 };
+          }};
+          return query;
+        }};
+      }
       if (group === "groups") {
       return {
         where(field, operator, uid) {
@@ -279,6 +306,7 @@ function fakeBackend({
           failIfAsked(commitFailure(deletes[0]));
           for (const path of deletes) {
             state.registrations.delete(path);
+            state.checkIns.delete(path);
             delete state.friendships[path];
             delete state.messages[path];
             delete state.hidden[path];
@@ -468,6 +496,7 @@ test("profiles deleted and marked deleted, then registrations, friendships and c
     `delete:users/${UID}`,
     `delete:publicProfiles/${UID}`,
     ...REGISTRATION_CALLS,
+    ...CHECK_IN_CALLS,
     "collection:friendships",
     ...FRIENDSHIP_CALLS,
     ...CHAT_CALLS,
@@ -630,6 +659,41 @@ test("a failed registration deletion keeps the Auth user, and a retry finishes",
   }
 });
 
+// ---- Check-ins (#472) ----
+
+test("only the student's check-ins are deleted, other students' are kept", async () => {
+  const backend = fakeBackend();
+  await call(backend);
+  assert.deepEqual([...backend.state.checkIns], [OTHER_CHECK_IN]);
+});
+
+// The marker written by the profile transaction makes the rules refuse a new check-in from the
+// deleted user's still-valid token, so the step's one sweep leaves none behind.
+test("a failed check-in deletion keeps the Auth user, and a retry finishes", async () => {
+  for (const operation of ["check-ins-query", "check-ins-commit"]) {
+    const backend = fakeBackend();
+    backend.fail[operation] = { error: backendError(14), once: true };
+    await assertHttpsError(call(backend), "unavailable", undefined);
+    assert.deepEqual(backend.logs, [
+      ["error", "deleteAccount step failed", { step: "delete-check-ins", code: 14 }],
+    ]);
+    assert.deepEqual(backend.state.deletionMarker, {});
+    assert.equal(backend.state.checkIns.size, 3);
+    assert.equal(backend.state.authUserExists, true);
+
+    assert.deepEqual(await call(backend), { deleted: true });
+    assert.deepEqual([...backend.state.checkIns], [OTHER_CHECK_IN]);
+    assert.equal(backend.state.authUserExists, false);
+  }
+});
+
+test("a student without check-ins is deleted too", async () => {
+  const backend = fakeBackend({ checkIns: [OTHER_CHECK_IN] });
+  assert.deepEqual(await call(backend), { deleted: true });
+  assert.ok(!backend.calls.some((c) => c.startsWith("commit:events/")));
+  assert.equal(backend.state.authUserExists, false);
+});
+
 // The marker is what the Security Rules check to refuse recreating the profiles with the deleted
 // user's still-valid ID token, so it holds no personal data: only its document ID, the UID.
 test("the deletion marker holds nothing but its UID as document ID", async () => {
@@ -679,7 +743,7 @@ test("an account without a profile (never verified) can delete itself", async ()
   assert.equal(backend.state.authUserExists, false);
 });
 
-test("only the user's profiles, marker, registrations, friendships, chats and markers are touched, and events' counters", async () => {
+test("only the user's profiles, marker, registrations, check-ins, friendships, chats and markers are touched, and events' counters", async () => {
   const backend = fakeBackend();
   await call(backend);
   const collections = backend.calls.filter((c) => c.startsWith("collection"));
@@ -688,14 +752,16 @@ test("only the user's profiles, marker, registrations, friendships, chats and ma
     "collection:deletedAccounts",
     "collection:publicProfiles",
     "collectionGroup:attendees",
+    "collectionGroup:checkIns",
     "collection:friendships",
     "collection:chats",
     `collection:users/${UID}/hiddenChats`,
     `collection:users/${UID}/hiddenGroupChats`,
   ]);
-  // Events are read and written only by the registrations' transactions, for their attendeeCount.
+  // Events are read and written only by the registrations' transactions, for their attendeeCount,
+  // and under them only the student's own check-ins are deleted (#472).
   const eventCalls = backend.calls.filter((c) => c.includes("events"));
-  assert.deepEqual(eventCalls, REGISTRATION_CALLS.slice(2, 8));
+  assert.deepEqual(eventCalls, [...REGISTRATION_CALLS.slice(2, 8), CHECK_IN_CALLS[2]]);
 });
 
 test("account deletion leaves other members and removes empty groups and own markers", async () => {

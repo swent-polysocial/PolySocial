@@ -6,6 +6,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) shared the guarded batch deletion and the trigger's
 // failure logging with the deleted groups' triggers, #382; the guard checks the event's creator,
 // after review; a deletion without its document still cleans up, after review.
+// Contributors: Claude (Opus 5.5, Anthropic) (check-ins and the entrance code deleted with the event
+// and the account, #472); Konstantinos Perdikeas (directed, reviewed and owns it).
 "use strict";
 
 /**
@@ -102,6 +104,17 @@ async function deleteUserRegistrations(db, uid) {
 }
 
 /**
+ * Deletes every check-in of the user `uid`, across events (#472): the collection-group query
+ * `checkIns where uid == <uid>`, with the index #467 deployed, in batches until none is left. A
+ * check-in has no counter to lower, so a plain batch is enough. `deleteAccount` runs it after the
+ * profile transaction, whose deletion marker makes the rules refuse any new check-in, so none can
+ * be written behind it; deleting one that is already gone is not an error, so a retry finishes.
+ */
+function deleteUserCheckIns(db, uid) {
+  return deleteAllMatching(db, db.collectionGroup("checkIns").where("uid", "==", uid));
+}
+
+/**
  * Deletes the registration [ref] (`events/{eventId}/attendees/{uid}`) and lowers its event's
  * `attendeeCount` by one, in one transaction, as the app's cancellation does through the Security
  * Rules (#372). The counter goes down only if the registration still exists when the transaction
@@ -150,6 +163,7 @@ module.exports = {
   deleteCountedRegistration,
   deleteOrphans,
   deleteRegistrationsOfDeletedEvent,
+  deleteUserCheckIns,
   deleteUserRegistrations,
   runTriggerWork,
 };

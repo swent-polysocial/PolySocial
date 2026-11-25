@@ -10,6 +10,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (the username freed, idempotently, #448).
 "use strict";
 // Contributors: OpenAI Codex (real membership cleanup and retryable message anonymisation, #241).
+// Contributors: Claude (Opus 5.5, Anthropic) (the user's check-ins, #472); Konstantinos Perdikeas
+// (directed, reviewed and owns it).
 
 // Calls the deployed-to-emulator deleteAccount over HTTP, as the Android client does, against the
 // Auth, Firestore and Functions emulators. Run from the repository root (see the README):
@@ -221,6 +223,32 @@ test("a student's registrations are deleted, other students' are kept", async ()
     left.docs.map((document) => document.ref.path),
     [`events/event-of-${other}/attendees/${other}`],
   );
+});
+
+test("a student's check-ins are deleted across events, other students' and the codes are kept (#472)", async () => {
+  const uid = await seedUser("student@epfl.ch", { accountType: "student" });
+  const other = await seedUser("other@epfl.ch", { accountType: "student" });
+  const checkIn = (eventId, who) => db.doc(`events/${eventId}/checkIns/${who}`).set({
+    uid: who, checkedInAt: new Date(), method: "location", expiresAt: new Date(),
+  });
+  await checkIn(`event-of-${other}`, uid);
+  await checkIn(`event-of-${uid}`, uid);
+  await checkIn(`event-of-${other}`, other);
+  await db.doc(`events/event-of-${uid}/checkInCode/current`).set({
+    token: "a".repeat(22), rotatedAt: new Date(), expiresAt: new Date(),
+  });
+  const idToken = await signIn("student@epfl.ch");
+
+  const { status } = await callDeleteAccount(idToken);
+
+  assert.equal(status, 200);
+  const left = await db.collectionGroup("checkIns").get();
+  assert.deepEqual(
+    left.docs.map((document) => document.ref.path),
+    [`events/event-of-${other}/checkIns/${other}`],
+  );
+  // The code belongs to the event, which the deleted student's account keeps, not to the student.
+  assert.equal(await documentExists(`events/event-of-${uid}/checkInCode/current`), true);
 });
 
 test("a student's friendships are deleted, other students' are kept (#357)", async () => {

@@ -1,6 +1,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the fake Firestore of the registrations'
 // tests, #275 and #405; moved here and made to hold documents at any depth for the deleted
 // groups' tests, #382, and other fields for the event's creator, after review.
+// Contributors: Claude (Opus 5.5, Anthropic) (check-ins deleted with the account and the event,
+// #472); Konstantinos Perdikeas (directed, reviewed and owns it).
 "use strict";
 
 // Fakes shared by the Cloud Functions' unit tests (no emulator). This folder isn't deployed
@@ -18,8 +20,8 @@ function backendError(code) {
  * `events/{eventId}/attendees/{uid}`, `events/{eventId}/groups/{groupId}/messages/{id}`…), with
  * each event's `attendeeCount` in `counts` (by path, absent when the event has none) and any other
  * field read in `fields` (by path, such as `{ createdBy: "organizer" }`). It answers a
- * collection's documents (its direct children only) and the collection-group query on the
- * attendees' `uid`, with `limit`, and runs batches and transactions (reading a document, a query,
+ * collection's documents (its direct children only) and the collection-group queries on the
+ * attendees' and the check-ins' `uid` (#472), with `limit`, and runs batches and transactions (reading a document, a query,
  * or several documents with `getAll`) whose deletes and updates apply together at commit.
  * `commits` counts the commits that wrote something; `failCommit` makes the next one throw;
  * `onCommit` runs after each commit, and `onTransaction` before each transaction's reads, to write
@@ -80,7 +82,7 @@ function fakeFirestore(paths, counts = {}, fields = {}) {
     doc: docRef,
     collectionGroup: (group) => ({
       where: (field, op, value) => {
-        assert.equal(group, "attendees");
+        assert.ok(["attendees", "checkIns"].includes(group), `no query on ${group}`);
         assert.deepEqual([field, op], ["uid", "=="]);
         return query((path) => path.split("/")[2] === group && uidOf(path) === value);
       },
