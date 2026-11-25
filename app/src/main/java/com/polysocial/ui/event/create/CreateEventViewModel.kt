@@ -598,7 +598,11 @@ constructor(
         }
 
   companion object {
-    /** How long the organizer row waits for its reads before "Organized by you" (#249). */
+    /**
+     * How long the organizer row waits for its reads before "Organized by you" (#249). It also
+     * limits the wait for the server's organizers after a refused organizer change, before the
+     * cache's are taken (#443), so changing it changes both.
+     */
     val ORGANIZER_TIMEOUT: Duration = 5.seconds
   }
 
