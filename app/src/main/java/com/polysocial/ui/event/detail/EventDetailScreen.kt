@@ -23,6 +23,8 @@
 // the Figma "Organizers on the detail" frames, #371).
 // Contributors: Claude (Opus 5.5, Anthropic) ("Event full" and its note, from the Figma "Event
 // detail · full" frame, #407; not while the attendance loads, after review).
+// Contributors: Claude (Opus 5.5, Anthropic) (the organizer's way to the Entrance QR, #468);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.event.detail
 
 import android.Manifest
@@ -35,6 +37,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -83,6 +86,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -166,6 +170,7 @@ object EventDetailTags {
   const val EDIT = "event_detail_edit"
   const val ORGANIZED_BY_YOU = "event_detail_organized_by_you"
   const val CANCEL_EVENT = "event_detail_cancel_event"
+  const val SHOW_ENTRANCE_QR = "event_detail_show_entrance_qr"
   const val CANCEL_SHEET = "event_detail_cancel_sheet"
   const val CONFIRM_CANCEL = "event_detail_confirm_cancel"
   const val KEEP_EVENT = "event_detail_keep_event"
@@ -217,6 +222,7 @@ data class EventAttendanceActions(
  */
 data class EventOrganizerActions(
     val onEdit: () -> Unit = {},
+    val onShowEntranceQr: () -> Unit = {},
     val onCancelEvent: () -> Unit = {},
     val onConfirmCancel: () -> Unit = {},
     val onKeepEvent: () -> Unit = {},
@@ -242,6 +248,7 @@ fun EventDetailRoute(
     onCancelled: () -> Unit = {},
     onFindGroup: () -> Unit = {},
     onOpenGroup: () -> Unit = {},
+    onShowEntranceQr: () -> Unit = {},
     viewModel: EventDetailViewModel = hiltViewModel(),
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
@@ -295,6 +302,7 @@ fun EventDetailRoute(
       cancelState,
       EventOrganizerActions(
           onEdit = onEdit,
+          onShowEntranceQr = onShowEntranceQr,
           onCancelEvent = viewModel::onCancelEvent,
           onConfirmCancel = viewModel::onConfirmCancel,
           onKeepEvent = viewModel::onKeepEvent,
@@ -564,6 +572,14 @@ private fun EventContent(
     }
     if (state.isOffline)
         DetailOfflineBanner(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp))
+    // Frame 17 (#468): while the event hasn't ended; outside the check-in window, the Entrance QR
+    // says when it opens or that it closed.
+    if (state.isOrganizer && !state.hasEnded) {
+      ShowEntranceQrButton(
+          organizer.onShowEntranceQr,
+          Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp),
+      )
+    }
     if (state.isOrganizer) {
       CancelEventButton(
           organizer.onCancelEvent,
@@ -931,6 +947,35 @@ private fun Header(color: Color, onBack: () -> Unit, onEdit: (() -> Unit)? = nul
         }
       }
     }
+  }
+}
+
+/**
+ * Figma frame 17's outlined "Show entrance QR" (#468), above "Cancel event": like it, but with the
+ * QR icon and dark text, as it isn't destructive.
+ */
+@Composable
+private fun ShowEntranceQrButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+  Row(
+      modifier =
+          modifier
+              .fillMaxWidth()
+              .height(48.dp)
+              .clip(RoundedCornerShape(24.dp))
+              .background(Bg)
+              .border(1.dp, Border, RoundedCornerShape(24.dp))
+              .clickable(role = Role.Button, onClick = onClick)
+              .testTag(EventDetailTags.SHOW_ENTRANCE_QR),
+      horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+      verticalAlignment = Alignment.CenterVertically,
+  ) {
+    Image(
+        painterResource(R.drawable.ic_qr),
+        contentDescription = null,
+        modifier = Modifier.size(18.dp),
+        colorFilter = ColorFilter.tint(Ink),
+    )
+    Text(stringResource(R.string.event_detail_show_entrance_qr), style = CANCEL_STYLE, color = Ink)
   }
 }
 

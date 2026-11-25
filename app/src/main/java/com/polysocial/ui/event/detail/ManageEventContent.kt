@@ -1,5 +1,7 @@
 // Contributors: Claude (the association's manage event from the Figma "Association · manage event"
 // frame, #131).
+// Contributors: Claude (Opus 5.5, Anthropic) (the organizer's way to the Entrance QR, #468);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.event.detail
 
 import androidx.annotation.DrawableRes
@@ -93,8 +95,9 @@ object ManageEventTags {
  * instead of the students' detail: Edit, the counts, the Entrance QR, the album and Cancel event.
  *
  * Only "Going" is built: it shows [EventDetailUiState.Loaded.going], and tapping it when it
- * couldn't be read calls [onRetryGoing]. The other counts, the QR's buttons and the album aren't
- * built yet, so they show "—" or a "not available yet" Snackbar, which [onUnavailable] shows.
+ * couldn't be read calls [onRetryGoing]. "Show full screen" opens the Entrance QR (#468). The other
+ * counts, Download PDF and the album aren't built yet, so they show "—" or a "not available yet"
+ * Snackbar, which [onUnavailable] shows.
  */
 @Composable
 internal fun ManageEventContent(
@@ -123,7 +126,7 @@ internal fun ManageEventContent(
           QrButton(
               R.string.manage_event_show_full_screen,
               filled = true,
-              onClick = onUnavailable,
+              onClick = organizer.onShowEntranceQr,
               tag = ManageEventTags.SHOW_FULL_SCREEN,
           )
           QrButton(

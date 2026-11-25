@@ -16,6 +16,8 @@
 // Contributors: Claude (Sonnet 5.5, Anthropic) (My profile and Edit profile routes; no Profile
 // action, #495).
 // Contributors: Claude (Opus 5.5, Anthropic) (the one-to-one chat route, #431).
+// Contributors: Claude (Opus 5.5, Anthropic) (the organizer's way to the Entrance QR, #468);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.navigation
 
 import android.net.Uri
@@ -156,6 +158,16 @@ enum class Tab(
 
   /** The route that opens Find a group for the event [eventId] inside this tab. */
   fun findGroupRoute(eventId: String): String = "${eventDetailRoute(eventId)}/groups"
+
+  /**
+   * The organizer's Entrance QR (#468), one level below the event's detail in this tab's graph, so
+   * Back returns to the detail.
+   */
+  val entranceQrRoute: String
+    get() = "$eventDetailRoute/entrance-qr"
+
+  /** The route that opens the Entrance QR of the event [eventId] inside this tab. */
+  fun entranceQrRoute(eventId: String): String = "${eventDetailRoute(eventId)}/entrance-qr"
 
   /** The student's current group, under the event detail in the same tab. */
   val yourGroupRoute: String

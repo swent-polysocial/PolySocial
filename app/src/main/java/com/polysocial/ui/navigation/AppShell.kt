@@ -32,6 +32,8 @@
 // tab's pencil, #495).
 // Contributors: Claude (Opus 5.5, Anthropic) (the one-to-one chat route, from Friends, #431, and
 // from the Chats list, #432).
+// Contributors: Claude (Opus 5.5, Anthropic) (the organizer's way to the Entrance QR, #468);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.navigation
 
 import androidx.compose.foundation.layout.Box
@@ -102,6 +104,7 @@ import com.polysocial.ui.event.create.CreateEventScreen
 import com.polysocial.ui.event.create.EditEventScreen
 import com.polysocial.ui.event.detail.EventDetailRoute
 import com.polysocial.ui.event.detail.EventDetailViewModel
+import com.polysocial.ui.event.entrance.EntranceQrRoute
 import com.polysocial.ui.event.list.EventsTabRoute
 import com.polysocial.ui.friend.FriendsRoute
 import com.polysocial.ui.friend.ScanFriendRoute
@@ -141,7 +144,8 @@ data class CreateEventNavigation(
 /**
  * Where the event detail leaves to: [onBack] to the screen it was opened from, [onEdit] to Edit
  * event, [onCancelled] back to that screen once the event is cancelled, which then says so, and
- * [onFindGroup] to Find a group (#233) and [onOpenGroup] to the group roster (#234).
+ * [onFindGroup] to Find a group (#233), [onOpenGroup] to the group roster (#234), and
+ * [onShowEntranceQr] to an organizer's Entrance QR (#468).
  */
 data class EventDetailNavigation(
     val onBack: () -> Unit,
@@ -149,6 +153,7 @@ data class EventDetailNavigation(
     val onCancelled: () -> Unit,
     val onFindGroup: () -> Unit = {},
     val onOpenGroup: () -> Unit = {},
+    val onShowEntranceQr: () -> Unit = {},
 )
 
 /**
@@ -219,8 +224,10 @@ fun AppShell(
           onCancelled = navigation.onCancelled,
           onFindGroup = navigation.onFindGroup,
           onOpenGroup = navigation.onOpenGroup,
+          onShowEntranceQr = navigation.onShowEntranceQr,
       )
     },
+    entranceQrContent: @Composable (onBack: () -> Unit) -> Unit = { EntranceQrRoute(it) },
     editEventContent: @Composable (onClose: () -> Unit) -> Unit = { onClose ->
       EditEventScreen(onClose = onClose)
     },
@@ -289,6 +296,7 @@ fun AppShell(
       destination?.route != currentTab.createEventRoute &&
           destination?.route != currentTab.editEventRoute &&
           destination?.route != currentTab.findGroupRoute &&
+          destination?.route != currentTab.entranceQrRoute &&
           destination?.route != currentTab.yourGroupRoute &&
           destination?.route != currentTab.groupChatRoute &&
           destination?.route != currentTab.oneToOneChatRoute &&
@@ -470,6 +478,11 @@ fun AppShell(
                       navController.navigate(tab.yourGroupRoute(id))
                     }
                   },
+                  onShowEntranceQr = {
+                    if (entry.isResumed && id != null) {
+                      navController.navigate(tab.entranceQrRoute(id))
+                    }
+                  },
                   // Not isResumed: the event may be deleted while a transition runs.
                   onCancelled = {
                     if (navController.currentBackStackEntry == entry) {
@@ -480,6 +493,15 @@ fun AppShell(
                   },
               )
           )
+        }
+        composable(
+            tab.entranceQrRoute,
+            arguments =
+                listOf(
+                    navArgument(EventDetailViewModel.EVENT_ID_ARG) { type = NavType.StringType }
+                ),
+        ) { entry ->
+          entranceQrContent { if (entry.isResumed) navController.popBackStack() }
         }
         composable(
             tab.editEventRoute,
