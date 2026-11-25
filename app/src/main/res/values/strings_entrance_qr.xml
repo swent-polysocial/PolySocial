@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (the Entrance QR's texts from Figma section 20, #468); Konstantinos Perdikeas (directed, reviewed and owns it). -->
+<resources>
+    <string name="entrance_qr_title">Entrance QR</string>
+    <string name="entrance_qr_back">Back</string>
+    <string name="entrance_qr_loading">Loading the entrance code</string>
+    <string name="entrance_qr_subtitle">Show this code at the entrance so students going can check in.</string>
+    <!-- The event's venue, then the note, for example "Satellite · The code refreshes every minute". -->
+    <string name="entrance_qr_caption">%1$s · The code refreshes every minute</string>
+    <string name="entrance_qr_caption_no_venue">The code refreshes every minute</string>
+    <string name="entrance_qr_description">Entrance QR code for %1$s</string>
+    <string name="entrance_qr_offline">You’re offline. Reconnect to show a code that works: a code older than 2 minutes can’t be used.</string>
+    <string name="entrance_qr_waiting">Waiting for a connection…</string>
+    <string name="entrance_qr_failed">The entrance code couldn’t be loaded. Try again, or go back to the event.</string>
+    <string name="entrance_qr_try_again">Try again</string>
+    <string name="entrance_qr_back_to_event">Back to event</string>
+    <!-- The window's opening time, for example "Check-in opens at 19:30". -->
+    <string name="entrance_qr_not_open_title">Check-in opens at %1$s</string>
+    <string name="entrance_qr_not_open_body">You can show the entrance code from 30 minutes before the start until the event ends.</string>
+    <string name="entrance_qr_closed_title">Check-in has closed</string>
+    <!-- The event's title, then the window's closing time, for example "Check-in closed when Balélec warm-up ended at 01:00." -->
+    <string name="entrance_qr_closed_body">Check-in closed when %1$s ended at %2$s.</string>
+    <!-- The event's title, then its venue, for example "Balélec warm-up · Satellite". -->
+    <string name="entrance_qr_event_place">%1$s · %2$s</string>
+    <string name="event_detail_show_entrance_qr">Show entrance QR</string>
+</resources>

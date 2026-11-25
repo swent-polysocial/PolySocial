@@ -6,6 +6,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) typed the message through typeText, #427.
 // Contributors: Claude (Opus 5.5, Anthropic) (a friend's group says so, #497).
 // Contributors: Claude (Opus 5.5, Anthropic) (the username fake, for Add by username, #452).
+// Contributors: Claude (Opus 5.5, Anthropic) (a fake check-in repository for the Entrance QR's
+// ViewModel, #468); Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.endtoend
 
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -48,6 +50,9 @@ import com.polysocial.model.chat.MessageModule
 import com.polysocial.model.chat.MessageRepository
 import com.polysocial.model.chat.OneToOneChatModule
 import com.polysocial.model.chat.OneToOneChatRepository
+import com.polysocial.model.checkin.CheckInModule
+import com.polysocial.model.checkin.CheckInRepository
+import com.polysocial.model.checkin.FakeCheckInRepository
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
@@ -143,6 +148,7 @@ import org.junit.runner.RunWith
     AccountDeletionModule::class,
     AssociationModule::class,
     AuthModule::class,
+    CheckInModule::class,
     ClockModule::class,
     EventModule::class,
     FirebaseModule::class,
@@ -236,6 +242,7 @@ class FindGroupAndChatEndToEndTest {
       }
 
   @BindValue @JvmField val usernames: UsernameRepository = FakeUsernameRepository()
+  @BindValue @JvmField val checkIns: CheckInRepository = FakeCheckInRepository()
   @BindValue @JvmField val registrations: RegistrationRepository = fakeRegistrations
   @BindValue @JvmField val groups: GroupRepository = fakeGroups
   @BindValue

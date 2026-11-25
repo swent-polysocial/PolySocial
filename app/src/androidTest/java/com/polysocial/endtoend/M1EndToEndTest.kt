@@ -23,6 +23,8 @@
 // Contributors: Claude Fable 5.2 (the organizer's name on an event the student is going to, #281).
 // Contributors: Claude (Opus 5.5, Anthropic) typed through typeText, which closes the keyboard
 // before the next tap, in every step, the date picker and Delete account included, #427.
+// Contributors: Claude (Opus 5.5, Anthropic) (a fake check-in repository for the Entrance QR's
+// ViewModel, #468); Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.endtoend
 
 import androidx.activity.compose.setContent
@@ -80,6 +82,9 @@ import com.polysocial.model.chat.MessageModule
 import com.polysocial.model.chat.MessageRepository
 import com.polysocial.model.chat.OneToOneChatModule
 import com.polysocial.model.chat.OneToOneChatRepository
+import com.polysocial.model.checkin.CheckInModule
+import com.polysocial.model.checkin.CheckInRepository
+import com.polysocial.model.checkin.FakeCheckInRepository
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.Event
 import com.polysocial.model.event.EventCategory
@@ -191,6 +196,7 @@ import org.junit.runner.RunWith
     AccountDeletionModule::class,
     AssociationModule::class,
     AuthModule::class,
+    CheckInModule::class,
     ClockModule::class,
     EventModule::class,
     FirebaseModule::class,
@@ -232,6 +238,7 @@ class M1EndToEndTest {
   val registrations: RegistrationRepository =
       FakeRegistrationRepository(currentUid = UID).apply { seedRegistration(PARTY.id, UID) }
   @BindValue @JvmField val usernames: UsernameRepository = FakeUsernameRepository()
+  @BindValue @JvmField val checkIns: CheckInRepository = FakeCheckInRepository()
   @BindValue @JvmField val groups: GroupRepository = FakeGroupRepository()
   @BindValue
   @JvmField
