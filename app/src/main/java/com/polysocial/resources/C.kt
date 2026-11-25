@@ -8,6 +8,8 @@
 // Contributors: Claude Opus 5.5 (My friend code tags, #339); Konstantinos Perdikeas (directed,
 // reviewed and owns them).
 // Contributors: OpenAI Codex (group and chat privacy notice tags, #241).
+// Contributors: Claude (Opus 5.5, Anthropic) (the notice's check-in tag, #473); Konstantinos
+// Perdikeas (directed, reviewed and owns it).
 // Contributors: Claude (Opus 5.5, Anthropic) (Edit event's capacity warning tag, #407).
 // Contributors: Claude Opus 5.5 (student profile tags, #368); Konstantinos Perdikeas (directed,
 // reviewed and owns them).
@@ -83,6 +85,7 @@ object C {
     const val privacy_chats = "privacy_chats"
     const val privacy_notice_groups = "privacy_notice_groups"
     const val privacy_notice_chats = "privacy_notice_chats"
+    const val privacy_notice_check_in = "privacy_notice_check_in"
 
     const val app_bar_action_notifications = "app_bar_action_notifications"
     const val app_bar_action_search_chats = "app_bar_action_search_chats"
