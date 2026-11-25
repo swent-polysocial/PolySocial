@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #446 under Lucas Pinto Ricardo’s supervision and approval).
 // Contributors: OpenAI Codex (deleted-token chat access, #241).
 // Contributors: Claude (isEpflUser helper, #33; own users/{uid} rule and no catch-all, #35;
 // fixed uid and accountType after review, #35; @epfl.ch associations aren't students and
@@ -108,6 +109,18 @@ service cloud.firestore {
               && data.interests.toSet().size() == data.interests.size());
     }
 
+    // Student profile details (#446). Missing visibility is private, and a missing bio is valid.
+    function hasValidProfileDetails(data) {
+      return data.get('profileVisibility', 'private') in ['public', 'private']
+          && (!('bio' in data)
+              || (data.bio is string && data.bio.size() >= 1 && data.bio.size() <= 150));
+    }
+
+    function copiesProfileDetails(data, owner) {
+      return data.get('profileVisibility', 'private') == owner.get('profileVisibility', 'private')
+          && data.get('bio', null) == owner.get('bio', null);
+    }
+
     // Each account's private profile. Open to any verified email (most associations have no
     // EPFL email); besides it, an unverified association reaches only its own
     // associations/{uid} (#126).
@@ -129,12 +142,23 @@ service cloud.firestore {
                 && request.resource.data.displayName.size() <= 50);
       }
 
+      // A student setting either field needs the matching public copy after this write.
+      function hasMirroredStudentDetails() {
+        let data = request.resource.data;
+        return !data.keys().hasAny(['profileVisibility', 'bio'])
+            || (isEpflUser() && data.get('accountType', 'student') == 'student'
+                && hasValidProfileDetails(data)
+                && copiesProfileDetails(
+                    data, getAfter(/databases/$(database)/documents/publicProfiles/$(uid)).data));
+      }
+
       // Once a public profile exists, a change to a field it copies must update it in the same
       // write, so other students never see stale values (#229 review). A profile saved before #229
       // has no public copy yet, and an association never gets one: neither needs it. Removing a
       // copied field fails the comparison too.
       function keepsPublicProfile() {
-        let copied = ['displayName', 'section', 'year', 'interests', 'username'];
+        let copied = ['displayName', 'section', 'year', 'interests', 'username',
+            'profileVisibility', 'bio'];
         let publicProfile = /databases/$(database)/documents/publicProfiles/$(uid);
         let data = request.resource.data;
         return !data.diff(resource.data).affectedKeys().hasAny(copied)
@@ -144,7 +168,8 @@ service cloud.firestore {
                 && getAfter(publicProfile).data.year == data.get('year', null)
                 && getAfter(publicProfile).data.interests == data.get('interests', [])
                 && getAfter(publicProfile).data.get('username', null)
-                    == data.get('username', null));
+                    == data.get('username', null)
+                && copiesProfileDetails(getAfter(publicProfile).data, data));
       }
 
       function usernameDocument(name) {
@@ -186,6 +211,7 @@ service cloud.firestore {
               || request.resource.data.isAssociationVerified == false)
           && hasValidDisplayName()
           && hasKnownInterests(request.resource.data)
+          && hasMirroredStudentDetails()
           // A username is claimed once the profile exists (#448).
           && !('username' in request.resource.data);
       allow update: if isOwner()
@@ -193,12 +219,13 @@ service cloud.firestore {
               .hasAny(['uid', 'accountType', 'isAssociationVerified'])
           && hasValidDisplayName()
           && hasKnownInterests(request.resource.data)
+          && hasMirroredStudentDetails()
           && keepsPublicProfile()
           && keepsUsername();
     }
 
     // What other students see of a student (#229): exactly displayName, section, year and
-    // interests, and the username when they have one (#448), never the email. Any student reads
+    // interests, plus username (#448), visibility and bio when set (#446), never the email. Any student reads
     // one by its UID, to match with and show group members, but can't list the collection, so no
     // student directory is exposed; associations read none. Only its owner writes it, a student,
     // and only as a copy of their users/{uid} as it is after the same write (getAfter), so it is
@@ -229,7 +256,8 @@ service cloud.firestore {
 
       function copiesPrivateProfile() {
         let data = request.resource.data;
-        let fields = ['displayName', 'section', 'year', 'interests', 'username'];
+        let fields = ['displayName', 'section', 'year', 'interests', 'username',
+            'profileVisibility', 'bio'];
         let owner = privateProfileAfter().data;
         return data.keys().hasOnly(fields)
             && owner.get('accountType', 'student') == 'student'
@@ -240,7 +268,9 @@ service cloud.firestore {
             && isKnownYear(data.year)
             && data.interests == owner.get('interests', [])
             && hasKnownInterests(data)
-            && data.get('username', null) == owner.get('username', null);
+            && data.get('username', null) == owner.get('username', null)
+            && hasValidProfileDetails(data)
+            && copiesProfileDetails(data, owner);
       }
 
       allow get: if isStudent();

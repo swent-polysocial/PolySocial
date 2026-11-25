@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #446 rules tests under Lucas Pinto Ricardo’s supervision and approval).
 // Contributors: OpenAI Codex (deleted-token chat reads and immutable deleted authors, #241).
 // Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143; publicProfiles/{uid} tests, written test-first, #229; reads by ID only and the fixed section and year lists, after review, #229; private edits keep the public copy, and deleted accounts stay deleted, after review, #229; interests from the fixed list, test-first, #230; any code read in the list check, after review, #230); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121; deleted accounts can't register, #275); Claude (Opus 5.5, Anthropic) (event group and groupMembers marker tests, #232, with more after review; group chat message tests, #237, and a deleted account's messages, after review).
 // Contributors: Claude (Opus 5.5, Anthropic) (a non-EPFL association in allowedUids can't run My events' private query, #320).
@@ -3111,7 +3112,7 @@ for (const [name, changes] of [
   ["the email", { email: "u5@epfl.ch" }],
   ["the uid", { uid: "u5" }],
   ["the account type", { accountType: "student" }],
-  ["another field", { bio: "Hello" }],
+  ["another field", { photoUpdatedAt: 123 }],
   ["no displayName", { displayName: undefined }],
   ["no section", { section: undefined }],
   ["no year", { year: undefined }],
@@ -3201,6 +3202,98 @@ test("nobody else can delete a public profile", async () => {
   await seedStudentWithPublicProfile("u2");
   await assertFails(deleteDoc(doc(studentDb("u1"), "publicProfiles/u2")));
   await assertFails(deleteDoc(doc(associationDb("verifiedClub"), "publicProfiles/u2")));
+});
+
+// -- visibility and bio (#446) --
+
+/** Updates the two copies as one write, with an explicit public payload for rejection cases. */
+function editBothProfileDetails(db, uid, privateChanges, publicChanges = privateChanges) {
+  const batch = writeBatch(db);
+  batch.update(doc(db, `users/${uid}`), privateChanges);
+  batch.update(doc(db, `publicProfiles/${uid}`), publicChanges);
+  return batch.commit();
+}
+
+test("a newly created student can mirror either visibility and an optional bio", async () => {
+  await assertSucceeds(createBoth(studentDb("u5"), "u5", { profileVisibility: "private", bio: "x" }, { bio: "x" }));
+  const maxBio = "🌱".repeat(75);
+  const details = { profileVisibility: "public", bio: maxBio };
+  await assertSucceeds(createBoth(studentDb("u6"), "u6", details, details));
+  const read = await assertSucceeds(getDoc(doc(studentDb("u1"), "publicProfiles/u5")));
+  assert.equal(read.data().bio, "x");
+  const association = associationDb("verifiedClub");
+  await assertFails(getDoc(doc(association, "publicProfiles/u6")));
+});
+
+test("an older student can set both details and remove them atomically", async () => {
+  await seedStudentWithPublicProfile("u5");
+  const db = studentDb("u5");
+  await assertSucceeds(editBothProfileDetails(db, "u5", { profileVisibility: "public", bio: "Test bio" }));
+  // An older app would replace the public document without the new fields.
+  await assertFails(setDoc(doc(db, "publicProfiles/u5"), publicProfile()));
+  await assertFails(updateDoc(doc(db, "users/u5"), { bio: deleteField() }));
+  await assertFails(updateDoc(doc(db, "publicProfiles/u5"), { bio: deleteField() }));
+  await assertSucceeds(editBothProfileDetails(db, "u5", { profileVisibility: deleteField(), bio: deleteField() }));
+  for (const path of ["users/u5", "publicProfiles/u5"]) {
+    const { profileVisibility, bio } = (await assertSucceeds(getDoc(doc(db, path)))).data();
+    assert.equal(profileVisibility, undefined);
+    assert.equal(bio, undefined);
+  }
+});
+
+for (const [label, details] of [
+  ["unknown visibility", { profileVisibility: "friends" }],
+  ["numeric visibility", { profileVisibility: 1 }],
+  ["null visibility", { profileVisibility: null }],
+  ["empty bio", { bio: "" }],
+  ["oversized bio", { bio: "x".repeat(151) }],
+  ["oversized emoji bio", { bio: "🌱".repeat(76) }],
+  ["non-string bio", { bio: ["text"] }],
+  ["null bio", { bio: null }],
+]) {
+  test(`mirroring ${label} cannot create or update profiles`, async () => {
+    await assertFails(createBoth(studentDb("u5"), "u5", details, details));
+    await seedStudentWithPublicProfile("u5");
+    await assertFails(editBothProfileDetails(studentDb("u5"), "u5", details));
+  });
+}
+
+for (const [field, different] of [
+  ["profileVisibility", ["public", "private"]],
+  ["bio", ["New bio", "Other bio"]],
+]) {
+  test(`neither profile can set ${field} without a matching copy`, async () => {
+    await seedStudentWithPublicProfile("u5");
+    const db = studentDb("u5");
+    const changes = { [field]: different[0] };
+    await assertFails(updateDoc(doc(db, "users/u5"), changes));
+    await assertFails(updateDoc(doc(db, "publicProfiles/u5"), changes));
+    await assertFails(editBothProfileDetails(db, "u5", changes, { [field]: different[1] }));
+  });
+}
+
+test("setting a bio requires a public copy on profile creation and legacy repair", async () => {
+  const db = studentDb("u5");
+  const changes = { bio: "Test bio" };
+  await assertFails(setDoc(doc(db, "users/u5"), privateProfile("u5", changes)));
+  await seedUser("u5", privateProfile("u5"));
+  await assertFails(updateDoc(doc(db, "users/u5"), changes));
+  const batch = writeBatch(db);
+  batch.update(doc(db, "users/u5"), changes);
+  batch.set(doc(db, "publicProfiles/u5"), publicProfile(changes));
+  await assertSucceeds(batch.commit());
+});
+
+test("only the student owner writes profile visibility and bio", async () => {
+  await seedStudentWithPublicProfile("u5");
+  const details = { profileVisibility: "public", bio: "Test bio" };
+  await assertFails(editBothProfileDetails(studentDb("u1"), "u5", details));
+  await assertFails(editBothProfileDetails(associationDb("verifiedClub"), "u5", details));
+  await assertFails(setDoc(doc(studentDb("u6"), "users/u6"), privateProfile("u6", {
+    ...details,
+    accountType: "association",
+  })));
+  await assertFails(updateDoc(doc(epflAssociationDb("verifiedClub"), "users/verifiedClub"), details));
 });
 
 // -- a private edit keeps the public copy in step (#229 review) --
