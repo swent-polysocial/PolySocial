@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #469 under Lucas Pinto Ricardo’s supervision and
+// approval).
 // Contributors: OpenAI Codex (rationale-aware results and review regressions, #278).
 // Contributors: OpenAI Codex (one-off coarse location access and review fixes for #51).
 // Contributors: OpenAI Codex (dismissal-aware permission history and fused fallback, #278).
@@ -6,6 +8,7 @@ package com.polysocial.model.location
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.location.Location
 import android.location.LocationManager
 import android.os.Build
 import android.os.CancellationSignal
@@ -59,25 +62,30 @@ class AndroidLocationService @Inject constructor(@ApplicationContext private val
     }
   }
 
-  override suspend fun currentLocation(): LocationResult {
+  override suspend fun currentLocation(): LocationResult =
+      when (val result = readLocation(precise = false)) {
+        is PreciseLocationResult.Available -> LocationResult.Available(result.coordinates)
+        PreciseLocationResult.PermissionDenied -> LocationResult.PermissionDenied
+        PreciseLocationResult.Unavailable,
+        PreciseLocationResult.TimedOut -> LocationResult.Unavailable
+      }
+
+  override suspend fun currentPreciseLocation(): PreciseLocationResult =
+      readLocation(precise = true)
+
+  private suspend fun readLocation(precise: Boolean): PreciseLocationResult {
     val signal = CancellationSignal()
     return try {
-      if (!hasPermission()) return LocationResult.PermissionDenied
+      val granted =
+          if (precise) {
+            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
+                PackageManager.PERMISSION_GRANTED
+          } else hasPermission()
+      if (!granted) return PreciseLocationResult.PermissionDenied
       val manager =
           context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
-              ?: return LocationResult.Unavailable
-      // Android's fused provider accepts coarse access and can use an emulator's injected fix,
-      // even when its network provider is present but has no cell/Wi-Fi fix.
-      // Never fall back to GPS, which requires precise permission on older Android versions.
-      val provider =
-          when {
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                manager.isProviderEnabled(LocationManager.FUSED_PROVIDER) ->
-                LocationManager.FUSED_PROVIDER
-            manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) ->
-                LocationManager.NETWORK_PROVIDER
-            else -> return LocationResult.Unavailable
-          }
+              ?: return PreciseLocationResult.Unavailable
+      val provider = provider(manager, precise) ?: return PreciseLocationResult.Unavailable
       withTimeoutOrNull(LOCATION_TIMEOUT_MILLIS) {
         suspendCancellableCoroutine { continuation ->
           continuation.invokeOnCancellation { signal.cancel() }
@@ -87,38 +95,49 @@ class AndroidLocationService @Inject constructor(@ApplicationContext private val
               signal,
               ContextCompat.getMainExecutor(context),
           ) { location ->
-            if (continuation.isActive) {
-              val latitude = location?.latitude
-              val longitude = location?.longitude
-              val result =
-                  if (
-                      latitude != null &&
-                          longitude != null &&
-                          latitude.isFinite() &&
-                          longitude.isFinite() &&
-                          latitude in -90.0..90.0 &&
-                          longitude in -180.0..180.0
-                  ) {
-                    LocationResult.Available(Coordinates(latitude, longitude))
-                  } else {
-                    LocationResult.Unavailable
-                  }
-              continuation.resume(result)
-            }
+            if (continuation.isActive) continuation.resume(fixResult(location, precise))
           }
         }
-      } ?: LocationResult.Unavailable
+      } ?: PreciseLocationResult.TimedOut
     } catch (_: SecurityException) {
-      LocationResult.PermissionDenied
+      PreciseLocationResult.PermissionDenied
     } catch (_: IllegalArgumentException) {
       // A provider may disappear after the enabled check.
-      LocationResult.Unavailable
+      PreciseLocationResult.Unavailable
     } catch (_: Exception) {
       currentCoroutineContext().ensureActive()
-      LocationResult.Unavailable
+      PreciseLocationResult.Unavailable
     } finally {
       signal.cancel()
     }
+  }
+
+  private fun provider(manager: LocationManager, precise: Boolean): String? {
+    if (precise) return LocationManager.GPS_PROVIDER.takeIf(manager::isProviderEnabled)
+    // Fused accepts coarse permission and an emulator's injected fix. Map and Events never probe
+    // GPS, even when the app has precise permission for check-in.
+    return when {
+      Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+          manager.isProviderEnabled(LocationManager.FUSED_PROVIDER) ->
+          LocationManager.FUSED_PROVIDER
+      manager.isProviderEnabled(LocationManager.NETWORK_PROVIDER) ->
+          LocationManager.NETWORK_PROVIDER
+      else -> null
+    }
+  }
+
+  private fun fixResult(location: Location?, precise: Boolean): PreciseLocationResult {
+    if (location == null) return PreciseLocationResult.Unavailable
+    val latitude = location.latitude
+    val longitude = location.longitude
+    if (latitude !in -90.0..90.0 || longitude !in -180.0..180.0) {
+      return PreciseLocationResult.Unavailable
+    }
+    val accuracy = location.accuracy.toDouble()
+    if (precise && (!location.hasAccuracy() || !accuracy.isFinite() || accuracy < 0.0)) {
+      return PreciseLocationResult.Unavailable
+    }
+    return PreciseLocationResult.Available(Coordinates(latitude, longitude), accuracy)
   }
 
   private companion object {

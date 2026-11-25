@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #469 under Lucas Pinto Ricardo’s supervision and approval).
 // Contributors: OpenAI Codex (rationale-aware results and review regressions, #278).
 // Contributors: OpenAI Codex (deterministic location fake for #51 tests).
 // Contributors: OpenAI Codex (completed denial history for #278).
@@ -7,11 +8,15 @@ package com.polysocial.model.location
 class FakeLocationService(
     var permissionGranted: Boolean = false,
     var result: LocationResult = LocationResult.Unavailable,
+    var preciseResult: PreciseLocationResult = PreciseLocationResult.Unavailable,
 ) : LocationService {
   var permissionRequested = false
     private set
 
   var requestCount = 0
+    private set
+
+  var preciseRequestCount = 0
     private set
 
   override fun hasPermission(): Boolean = permissionGranted
@@ -37,5 +42,9 @@ class FakeLocationService(
     if (!permissionGranted) return LocationResult.PermissionDenied
     requestCount++
     return result
+  }
+  override suspend fun currentPreciseLocation(): PreciseLocationResult {
+    preciseRequestCount++
+    return preciseResult
   }
 }

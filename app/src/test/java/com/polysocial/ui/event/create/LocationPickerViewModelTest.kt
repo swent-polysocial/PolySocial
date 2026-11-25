@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; updated the test location service for #469 under
+// Lucas Pinto Ricardo’s supervision and approval).
 // Contributors: OpenAI Codex (rationale-aware results and review regressions, #278).
 // Contributors: OpenAI Codex (dismissal-aware location permission handling and tests, #278).
 // Contributors: Claude (drafted the location picker ViewModel tests, #111; timings from
@@ -907,6 +909,8 @@ class LocationPickerViewModelTest {
     override fun recordPermissionResult(granted: Boolean?, showRationale: Boolean) = Unit
 
     override suspend fun currentLocation() = answer.await()
+
+    override suspend fun currentPreciseLocation() = error("Unexpected precise location read")
   }
 
   private companion object {

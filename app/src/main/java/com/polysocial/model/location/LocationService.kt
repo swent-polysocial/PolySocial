@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #469 under Lucas Pinto Ricardo’s supervision and
+// approval).
 // Contributors: OpenAI Codex (rationale-aware results and review regressions, #278).
 // Contributors: OpenAI Codex (one-off location contract, #51; distinguish dismissed prompts, #278).
 package com.polysocial.model.location
@@ -21,10 +23,23 @@ sealed interface LocationResult {
 }
 
 /**
- * Foreground, one-off device location access for Map and Events. No location history is stored or
- * sent to a server. The Map asks only for approximate permission, which is sufficient for distance
- * badges. The service uses coarse-capable providers and never requests precise or background
- * access.
+ * The outcome of one precise venue check. Only an available fix contains coordinates and reported
+ * horizontal accuracy in meters.
+ */
+sealed interface PreciseLocationResult {
+  data class Available(val coordinates: Coordinates, val accuracyMeters: Double) :
+      PreciseLocationResult
+
+  data object PermissionDenied : PreciseLocationResult
+
+  data object Unavailable : PreciseLocationResult
+
+  data object TimedOut : PreciseLocationResult
+}
+
+/**
+ * One-off foreground location access. Map and Events use approximate location for distances;
+ * check-in uses precise location after an explicit tap. No location history is stored or sent.
  */
 interface LocationService {
   /** Whether approximate permission is currently granted. This query never changes history. */
@@ -52,4 +67,10 @@ interface LocationService {
    * and propagates to the caller. The service never requests a permission dialog itself.
    */
   suspend fun currentLocation(): LocationResult
+
+  /**
+   * Reads one precise fix with its horizontal accuracy. The caller must have obtained precise
+   * permission; this does not prompt, fall back to approximate access, or start a subscription.
+   */
+  suspend fun currentPreciseLocation(): PreciseLocationResult
 }
