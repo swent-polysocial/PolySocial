@@ -1,6 +1,8 @@
 // Contributors: Claude Opus 5.5 (drafted the scanned student's card from Figma section 15 and its
 // #359 states, in ScanFriendScreen.kt); Claude (Opus 5.5, Anthropic) (moved it here to share it,
 // #452; the lookup's note, #452); Konstantinos Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude (Opus 5.5, Anthropic) (the friend action on a student's profile, #478);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.friend
 
 import androidx.compose.foundation.background
@@ -53,13 +55,17 @@ internal fun FriendCardScreen(
       Spacer(Modifier.height(16.dp))
       StudentProfileCard(card.profile)
     }
-    CardAction(card, addNote, onButton)
+    FriendCardAction(card, addNote, onButton)
   }
 }
 
-/** The note above the button (the friendship, or why the last tap failed) and the button. */
+/**
+ * The note above the button (the friendship, or why the last tap failed) and the button, at the
+ * bottom of a student's card: the scan's and Add by username's card, and a student's profile
+ * (#478).
+ */
 @Composable
-private fun CardAction(card: FriendCard, addNote: String?, onButton: () -> Unit) {
+internal fun FriendCardAction(card: FriendCard, addNote: String?, onButton: () -> Unit) {
   val firstName = card.profile.displayName.trim().substringBefore(' ')
   val note =
       when {

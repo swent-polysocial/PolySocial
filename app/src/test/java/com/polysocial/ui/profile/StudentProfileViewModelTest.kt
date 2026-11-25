@@ -1,15 +1,27 @@
 // Contributors: Claude Opus 5.5 (wrote these tests, #368, and the cached-profile tests after
 // review); Konstantinos Perdikeas (directed, reviewed and owns them).
 // Contributors: OpenAI Codex (6.2 Sol, high; cache fallback on a network error, #360 review).
+// Contributors: Claude (Opus 5.5, Anthropic) (the friend action on a student's profile, #478);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.profile
 
 import androidx.lifecycle.SavedStateHandle
+import com.polysocial.model.auth.AuthUser
+import com.polysocial.model.auth.FakeAuthRepository
+import com.polysocial.model.friend.FakeFriendRepository
+import com.polysocial.model.friend.Friendship
+import com.polysocial.model.friend.FriendshipStatus
+import com.polysocial.model.friend.SendFriendRequestResult
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.PublicProfileResult
 import com.polysocial.model.user.PublicProfilesResult
+import com.polysocial.ui.friend.FriendActionError
+import com.polysocial.ui.friend.FriendButton
+import com.polysocial.ui.friend.FriendCard
 import com.polysocial.utils.MainDispatcherRule
+import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
@@ -18,6 +30,8 @@ import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
@@ -28,12 +42,18 @@ class StudentProfileViewModelTest {
   private val lea = PublicProfile("lea", "Léa Martin", "IN", "BA3", setOf("sports"))
   private val profiles = FakePublicProfileRepository(mutableMapOf("lea" to lea))
 
+  private val auth = FakeAuthRepository(AuthUser("alice", "alice@epfl.ch", true))
+  private val friends =
+      FakeFriendRepository(currentUid = "alice", now = Instant.parse("2026-11-25T18:00:00Z"))
+
   private fun viewModel(uid: String? = "lea", repository: PublicProfileRepository = profiles) =
       StudentProfileViewModel(
           SavedStateHandle(
               if (uid == null) emptyMap() else mapOf(StudentProfileViewModel.UID_ARG to uid)
           ),
           repository,
+          auth,
+          friends,
       )
 
   @Test
@@ -252,4 +272,107 @@ class StudentProfileViewModelTest {
     override suspend fun getPublicProfiles(uids: Collection<String>): PublicProfilesResult =
         awaitCancellation()
   }
+
+  // The friend action (#478, Figma #493): the shared card logic of the scan and Add by username.
+
+  @Test
+  fun anotherStudentsProfile_offersAddFriend_andSendsTheRequest() =
+      runTest(main.dispatcher) {
+        val vm = viewModel()
+        runCurrent()
+        assertEquals(FriendCard(lea, FriendButton.ADD), vm.friendCard.value)
+
+        vm.onFriendButton()
+        runCurrent()
+
+        assertEquals(FriendCard(lea, FriendButton.SENT), vm.friendCard.value)
+        assertEquals("alice", friends.friendship("alice~lea")?.requestedBy)
+      }
+
+  @Test
+  fun theButton_followsTheFriendship_requestSentAcceptOrFriends() =
+      runTest(main.dispatcher) {
+        friends.seedFriendship(pending(requestedBy = "lea"))
+        val vm = viewModel()
+        runCurrent()
+        assertEquals(FriendButton.ACCEPT, vm.friendCard.value?.button)
+
+        vm.onFriendButton()
+        runCurrent()
+        assertEquals(FriendButton.FRIENDS, vm.friendCard.value?.button)
+      }
+
+  @Test
+  fun aRequestTheStudentSent_showsRequestSent() =
+      runTest(main.dispatcher) {
+        friends.seedFriendship(pending(requestedBy = "alice"))
+        val vm = viewModel()
+        runCurrent()
+
+        assertEquals(FriendButton.SENT, vm.friendCard.value?.button)
+      }
+
+  @Test
+  fun aRequestThatFails_offlineOrNot_saysSo_andTappingAgainRetries() =
+      runTest(main.dispatcher) {
+        val vm = viewModel()
+        runCurrent()
+
+        friends.sendFailure = SendFriendRequestResult.NetworkError
+        vm.onFriendButton()
+        runCurrent()
+        assertEquals(
+            FriendCard(lea, FriendButton.ADD, error = FriendActionError.OFFLINE),
+            vm.friendCard.value,
+        )
+
+        friends.sendFailure = SendFriendRequestResult.UnexpectedError
+        vm.onFriendButton()
+        runCurrent()
+        assertEquals(
+            FriendCard(lea, FriendButton.ADD, error = FriendActionError.FAILED),
+            vm.friendCard.value,
+        )
+
+        friends.sendFailure = null
+        vm.onFriendButton()
+        runCurrent()
+        assertEquals(FriendCard(lea, FriendButton.SENT), vm.friendCard.value)
+      }
+
+  @Test
+  fun yourOwnProfile_offersNoFriendAction() =
+      runTest(main.dispatcher) {
+        profiles.profiles["alice"] = PublicProfile("alice", "Alice B", "IN", "BA3", emptySet())
+        val vm = viewModel(uid = "alice")
+        runCurrent()
+
+        assertTrue(vm.uiState.value is StudentProfileUiState.Found)
+        assertNull(vm.friendCard.value)
+        vm.onFriendButton()
+        runCurrent()
+        assertNull(friends.friendship("alice~alice"))
+      }
+
+  @Test
+  fun noProfile_orStillLoading_offersNoFriendAction() =
+      runTest(main.dispatcher) {
+        val loading = viewModel()
+        assertNull(loading.friendCard.value)
+
+        val gone = viewModel(uid = "gone")
+        runCurrent()
+        assertEquals(StudentProfileUiState.NotFound, gone.uiState.value)
+        assertNull(gone.friendCard.value)
+      }
+
+  private fun pending(requestedBy: String) =
+      Friendship(
+          id = "alice~lea",
+          uids = listOf("alice", "lea"),
+          requestedBy = requestedBy,
+          status = FriendshipStatus.PENDING,
+          createdAt = Instant.parse("2026-11-25T17:00:00Z"),
+          acceptedAt = null,
+      )
 }
