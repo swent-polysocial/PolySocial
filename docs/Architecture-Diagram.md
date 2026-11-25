@@ -738,9 +738,9 @@ flowchart TB
 - **Precise location, asked at the tap.** The app has only had approximate location so far (#51), and Android's approximate location is accurate to about 3 km², which can't tell the venue from the next building. Check-in therefore adds `ACCESS_FINE_LOCATION` to the manifest and asks for it **only when the student taps Check my location**, never at app start. `LocationService` gets a one-off precise read, with the 15 s timeout it already has. If the student refuses, or on Android 12+ allows only approximate location, the screen says so and offers the entrance QR (#375's frame 04, plus an "approximate only" variant). Android's new location button (`androidx.core:core-locationbutton`, made for one-off check-ins) was considered and left for later: it is an experimental alpha library, a new dependency, and only Play Store apps targeting API 37 must use it.
 - **Honest-client limit, accepted.** The rules can't see a GPS fix, so a modified app could claim to be at the venue. The rules still enforce everything they can see (registration, window, the entrance token), and the stakes are low: a fake check-in only shows "arrived" to the student's own group and, later, lets them add photos to the album (#421). The entrance QR is the strong path.
 - **The entrance code rotates every 60 s, so a screenshot stops working within 2 minutes.**
-  - **Stored** in `events/{eventId}/checkInCode/current`: `token` (a random 128-bit value, 22 base64url characters, so it passes #337's ID check), `previousToken`, `rotatedAt` (server time) and `expiresAt` (below). Only the event's organizers read or write it.
+  - **Stored** in `events/{eventId}/checkInCode/current`: `token` (a random 128-bit value, 22 base64url characters, so it passes #337's ID check), `previousToken`, `previousRotatedAt` (when `previousToken` was issued: the replaced code's `rotatedAt`, which the rules require exactly), `rotatedAt` (server time) and `expiresAt` (below). Only the event's organizers read or write it.
   - **Shown** on an organizer's "Entrance QR" screen (#375's frame 06), during the window only, as #337's `polysocial://checkin/{eventId}/{token}`. The screen listens to the document and draws the **stored** token, so every organizer's phone shows the same code. When `rotatedAt` is 60 s old, the screen writes a new token in a transaction (the old one becomes `previousToken`), so two organizers' phones never both rotate.
-  - **Checked by the rules,** not the app: a QR check-in is accepted only if its token equals `token` or `previousToken` **and** `rotatedAt` is less than 2 minutes old.
+  - **Checked by the rules,** not the app: a QR check-in is accepted only if its token equals `token` with `rotatedAt` less than 2 minutes old, or `previousToken` with `previousRotatedAt` less than 2 minutes old. Each token is judged by its own issue time, so a rotation after a pause (the screen reopened later) doesn't make an expired token work again (#531's review).
   - **Built (#468):** `CheckInRepository.observeEntranceCode` and `rotateEntranceCode(eventId, replacing)`, a transaction that writes only if the stored token is still the one the phone showed (or none yet), so a second phone writes nothing; `EntranceCode.kt` (`newEntranceToken`, `isDue` at 60 s, `isScannable` until 10 s before the 2 minutes run out); `checkInQrPayload`. The rules also refuse a rotation less than 50 s after the last (owner decision), so a phone with a wrong clock can't rotate it every second. No client deletes it: #472's trigger does with the event. A forwarded screenshot or photo is refused within 2 minutes, and the student sees #375's "expired code" frame.
   - **Cost, accepted:** the organizer's phone must stay online with the screen open. Offline, it can't refresh, the code expires, and the screen says to reconnect. It writes once a minute, about 300 writes for a 5-hour event, well within the free quota.
   - A code of **another event** is "wrong event" (#375's frame 09), checked in the app before any write, and the rules refuse it anyway (the token is per event).
@@ -780,14 +780,18 @@ match /checkIns/{uid} {
     return get(/databases/$(database)/documents/events/$(eventId)/checkInCode/current).data;
   }
   // A location check-in carries no token; a QR one carries the current or previous entrance
-  // token, refreshed less than 2 minutes ago.
+  // token, each issued less than 2 minutes ago.
+  function validToken(token) {
+    return (token == code().token && request.time < code().rotatedAt + duration.value(2, 'm'))
+        || (token == code().get('previousToken', null)
+            && request.time < code().previousRotatedAt + duration.value(2, 'm'));
+  }
   function validMethod(data) {
     return (data.method == 'location'
             && data.keys().hasOnly(['uid', 'checkedInAt', 'method', 'expiresAt']))
         || (data.method == 'qr'
             && data.keys().hasOnly(['uid', 'checkedInAt', 'method', 'expiresAt', 'token'])
-            && data.token in [code().token, code().get('previousToken', null)]
-            && request.time < code().rotatedAt + duration.value(2, 'm'));
+            && validToken(data.token));
   }
   allow get: if isStudent() && !isDeletedAccount(request.auth.uid)
       && (request.auth.uid == uid || sameGroup());
@@ -804,14 +808,17 @@ match /checkIns/{uid} {
 match /checkInCode/{codeId} {
   allow get: if codeId == 'current' && isEventOrganizer();
   allow create, update: if codeId == 'current' && isEventOrganizer() && inWindow()
-      && request.resource.data.keys().hasOnly(['token', 'previousToken', 'rotatedAt', 'expiresAt'])
+      && request.resource.data.keys()
+          .hasOnly(['token', 'previousToken', 'previousRotatedAt', 'rotatedAt', 'expiresAt'])
       && request.resource.data.token is string
       && request.resource.data.token.matches('[A-Za-z0-9_-]{22}')
       && request.resource.data.rotatedAt == request.time
       && request.resource.data.expiresAt == windowEnd() + duration.value(30, 'd')
       && (resource == null
           ? !('previousToken' in request.resource.data)
-          : request.resource.data.previousToken == resource.data.token);
+              && !('previousRotatedAt' in request.resource.data)
+          : request.resource.data.previousToken == resource.data.token
+              && request.resource.data.previousRotatedAt == resource.data.rotatedAt);
   allow delete: if isEventOrganizer();
 }
 ```
@@ -1065,7 +1072,7 @@ flowchart LR
 | `events/{eventId}/groupMembers/{uid}` | `groupId`: the student's group for this event, written in the same transaction as `memberUids` | 🟦 S4 #232 |
 | `events/{eventId}/groups/{groupId}/messages/{id}` | `senderId` (empty after account deletion, displayed as Deleted account), `text` (1–1000; empty once its sender unsends it, decided in #365), server-set `createdAt` | 🟩 S5 #237 (built); unsend 🟦 decided in #365 |
 | `events/{eventId}/checkIns/{uid}` | student UID as document ID; `uid`, server-set `checkedInAt`, `method` (`location` or `qr`), `expiresAt` (the window's end + 30 days, computed by the rules; a TTL policy deletes the document after it), and `token` for `qr` only. No coordinates ([3.10](#310-check-in-at-the-venue-product-backlog-decided-in-374)) | 🟩 S7 #467 (`location`); `qr` 🟦 #468 |
-| `events/{eventId}/checkInCode/current` | `token` (22 base64url characters), `previousToken`, server-set `rotatedAt`, `expiresAt`; rotated every 60 s by an organizer's Entrance QR screen | 🟦 decided in #374 |
+| `events/{eventId}/checkInCode/current` | `token` (22 base64url characters), `previousToken`, `previousRotatedAt`, server-set `rotatedAt`, `expiresAt`; rotated every 60 s by an organizer's Entrance QR screen | 🟦 decided in #374 |
 | `events/{eventId}/groups/{groupId}/locations/{uid}` | position, `updatedAt`. Only during the event, deleted after | 🟦 #20 |
 | `friendships/{pairId}` | `pairId` = `{lowerUid}~{higherUid}`; `uids` (the two UIDs, sorted), `requestedBy` (the sender), `status` (`pending` or `accepted`), server-set `createdAt`, server-set `acceptedAt` once accepted. Deleted on decline, cancel or removal, and with either account | 🟦 PB, decided in #338 |
 | `publicProfiles/{uid}/friends/{friendUid}` | the friend's UID as document ID; `acceptedAt`. Written and deleted only by the `syncFriendLists` trigger, from `friendships` ([3.9](#39-profile-visibility-and-usernames-product-backlog-decided-in-366)) | 🟦 decided in #366 |
