@@ -256,21 +256,14 @@ private fun CheckInButtons(
     val scan = stringResource(R.string.check_in_scan_qr)
     when {
       prompt -> {
-        PrimaryButton(
-            stringResource(R.string.check_in_my_location),
-            true,
-            CheckInTags.LOCATION,
-            onClick = onCheck,
-        )
+        val label = stringResource(R.string.check_in_my_location)
+        PrimaryButton(label, true, CheckInTags.LOCATION, onClick = onCheck)
         OutlineButton(scan, CheckInTags.QR, onQr)
       }
-      state is CheckInState.Confirmed && onOpenGroup != null ->
-          PrimaryButton(
-              stringResource(R.string.check_in_view_group),
-              true,
-              CheckInTags.GROUP,
-              onClick = onOpenGroup,
-          )
+      state is CheckInState.Confirmed && onOpenGroup != null -> {
+        val label = stringResource(R.string.check_in_view_group)
+        PrimaryButton(label, true, CheckInTags.GROUP, onClick = onOpenGroup)
+      }
       showingWindow ||
           state is CheckInState.Confirmed ||
           state == Stage.EVENT_UNAVAILABLE ||
