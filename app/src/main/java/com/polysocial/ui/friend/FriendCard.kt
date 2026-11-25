@@ -1,6 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (moved the friend button and its request logic out of
-// Scan a friend's code to share it, #452; the logic itself is #359's); Konstantinos Perdikeas
-// (directed, reviewed and owns it).
+// Scan a friend's code to share it, and made a late response apply only to the card that tapped,
+// #452; the logic itself is #359's); Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.friend
 
 import com.polysocial.model.friend.FriendRepository
@@ -79,6 +79,9 @@ class FriendCardController<S>(
    */
   private var cardFriendshipChanges = 0
 
+  /** How many taps sent a request: only the latest one's response can change the card. */
+  private var taps = 0
+
   /** True once the listener ended on [FriendshipsResult.Error]: it shows no change after that. */
   private var listenerStopped = false
 
@@ -145,9 +148,11 @@ class FriendCardController<S>(
   }
 
   /**
-   * Runs [call] with the card busy, then shows the button and error it returns, on the same
-   * student's card only. The button it proves is kept only if the listener changed nothing
-   * meanwhile: otherwise the listener's is newer (accepted or declined before the response came).
+   * Runs [call] with the card busy, then shows the button and error it returns, only on the card
+   * that tapped: still shown and busy, and not tapped again since. A card closed meanwhile (and
+   * reopened, which is a new card) shows the listener's button instead, which may be newer than the
+   * response. The button it proves is kept only if the listener changed nothing meanwhile:
+   * otherwise the listener's is newer (accepted or declined before the response came).
    *
    * A response that leaves the current state to the listener ([Outcome.fromListener]) can't be
    * shown while the listener is stopped: it says it failed, and listening starts again, so the
@@ -156,12 +161,16 @@ class FriendCardController<S>(
   private fun act(card: FriendCard, call: suspend () -> Outcome) {
     state.update { withCard(it, card.copy(busy = true, error = null)) }
     val changesAtTap = cardFriendshipChanges
+    val tap = ++taps
     scope.launch {
       val outcome = call()
       val unseen = outcome.fromListener && listenerStopped
       state.update {
         val current = cardOf(it)
-        if (current == null || current.profile.uid != card.profile.uid) return@update it
+        if (current == null || !current.busy || current.profile.uid != card.profile.uid) {
+          return@update it
+        }
+        if (tap != taps) return@update it
         val proven = outcome.button.takeIf { cardFriendshipChanges == changesAtTap }
         withCard(
             it,
