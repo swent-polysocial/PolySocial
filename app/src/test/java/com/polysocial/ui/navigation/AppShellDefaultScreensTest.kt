@@ -1,4 +1,4 @@
-// Contributors: OpenAI Codex (GPT-6.2 Sol high, #469 check-in route test).
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #469 permission and group navigation tests).
 // Contributors: OpenAI Codex (6.2 Sol, high; real request action integration, #361).
 // Contributors: OpenAI Codex (6.2 Sol, high; Friends route and association visibility tests, #360).
 // Contributors: Claude Opus 5.5 (a fake FriendRepository for the scanner's ViewModel, #359; the
@@ -192,7 +192,8 @@ class AppShellDefaultScreensTest {
 
   private val fakeRegistrations = FakeRegistrationRepository()
   @BindValue @JvmField val registrations: RegistrationRepository = fakeRegistrations
-  @BindValue @JvmField val checkIns: CheckInRepository = FakeCheckInRepository()
+  private val fakeCheckIns = FakeCheckInRepository()
+  @BindValue @JvmField val checkIns: CheckInRepository = fakeCheckIns
 
   @BindValue
   @JvmField
@@ -308,15 +309,14 @@ class AppShellDefaultScreensTest {
   @OptIn(ExperimentalTestApi::class)
   @Test
   fun theRealRosterOpensFromEventDetailAndBackReturnsToThatEvent() {
+    val eventId = "group-event"
+    val student = "test-student"
     showMap()
     composeTestRule.runOnIdle {
-      val eventId = "group-event"
-      val student = "test-student"
       auth.user = AuthUser(student, "fictional@epfl.ch", true)
       val event = completeForm().toEvent(ZURICH)!!.withCreator("organizer", false)
       events.seed(event.copy(id = eventId, startTime = FORM_NOW.plusSeconds(600), endTime = null))
       fakeRegistrations.seedRegistration(eventId, student)
-      groups.seedGroup(eventId, listOf(student, "peer"))
       navController.navigate(Tab.MAP.eventDetailRoute(eventId))
     }
     composeTestRule.waitUntilAtLeastOneExists(hasTestTag(CheckInTags.ENTRY), 10_000)
@@ -336,8 +336,13 @@ class AppShellDefaultScreensTest {
     node(CheckInTags.SETTINGS).performClick()
     assertEquals("package:${activity.packageName}", app.nextStartedActivity.dataString)
     node(CheckInTags.BACK).performClick()
-    composeTestRule.waitUntilAtLeastOneExists(hasTestTag(EventDetailTags.YOUR_GROUP), 10_000)
-    node(EventDetailTags.YOUR_GROUP).performScrollTo().performClick()
+    composeTestRule.runOnIdle { fakeCheckIns.seedCheckIn(eventId, student, FORM_NOW) }
+    node(CheckInTags.ENTRY).performScrollTo().performClick()
+    composeTestRule.onNodeWithText("Checked in at 12:00.").assertIsDisplayed()
+    assertGone(CheckInTags.GROUP)
+    composeTestRule.runOnIdle { groups.seedGroup(eventId, listOf(student, "peer")) }
+    composeTestRule.waitUntilAtLeastOneExists(hasTestTag(CheckInTags.GROUP), 10_000)
+    node(CheckInTags.GROUP).performClick()
     node(YourGroupTags.SCREEN).assertIsDisplayed()
     composeTestRule.onNodeWithText("Test Peer").assertIsDisplayed()
     assertGone(C.Tag.bottom_nav)

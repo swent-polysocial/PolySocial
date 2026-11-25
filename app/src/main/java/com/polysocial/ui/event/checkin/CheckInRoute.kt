@@ -2,8 +2,9 @@
 // supervision and approval).
 package com.polysocial.ui.event.checkin
 
-import android.Manifest
-import android.content.pm.PackageManager
+import android.Manifest.permission.ACCESS_COARSE_LOCATION
+import android.Manifest.permission.ACCESS_FINE_LOCATION
+import android.content.pm.PackageManager.PERMISSION_GRANTED
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -35,8 +36,8 @@ internal fun CheckInRoute(
       rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
           grants ->
         viewModel.onPermissionResult(
-            precise = grants[Manifest.permission.ACCESS_FINE_LOCATION] == true,
-            approximate = grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true,
+            precise = grants[ACCESS_FINE_LOCATION] == true,
+            approximate = grants[ACCESS_COARSE_LOCATION] == true,
         )
       }
   LaunchedEffect(entry.target) { viewModel.open(entry.target) }
@@ -53,16 +54,9 @@ internal fun CheckInRoute(
       onOpenGroup = onOpenGroup,
       onSettings = { context.openAppSettings() },
       onCheck = {
-        val precise =
-            ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) ==
-                PackageManager.PERMISSION_GRANTED
-        if (viewModel.onLocationAction(precise)) {
-          permissions.launch(
-              arrayOf(
-                  Manifest.permission.ACCESS_FINE_LOCATION,
-                  Manifest.permission.ACCESS_COARSE_LOCATION,
-              )
-          )
+        val grant = ContextCompat.checkSelfPermission(context, ACCESS_FINE_LOCATION)
+        if (viewModel.onLocationAction(grant == PERMISSION_GRANTED)) {
+          permissions.launch(arrayOf(ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION))
         }
       },
   )

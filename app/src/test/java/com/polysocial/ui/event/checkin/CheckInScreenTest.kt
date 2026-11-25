@@ -79,36 +79,34 @@ class CheckInScreenTest {
   }
 
   @Test
-  fun beforeAndAfterTheWindowShowTimesAndDoNotOfferLocationUnlessOpen() {
+  fun theWindowControlsLocationButDoesNotHideAPendingOrCompletedCheckIn() {
     val entry = mutableStateOf(open.copy(availability = CheckInAvailability.NOT_OPEN))
     val state = mutableStateOf<CheckInState>(Stage.READY)
     var back = 0
-    var group = 0
     compose.setContent {
-      PolySocialTheme {
-        CheckInScreen(entry.value, state.value, { back++ }, {}, { true }, { group++ })
-      }
+      PolySocialTheme { CheckInScreen(entry.value, state.value, { back++ }, {}, { true }, null) }
     }
     compose.onNodeWithText("Check-in opens at 19:30").assertIsDisplayed()
     compose.onNodeWithTag(CheckInTags.LOCATION).assertDoesNotExist()
-    compose.runOnIdle { entry.value = open }
+    compose.runOnIdle { entry.value = open.copy(event = event.copy(locationName = "")) }
+    compose.onNodeWithText("Check in at Place on the map").assertIsDisplayed()
     compose.onNodeWithTag(CheckInTags.LOCATION).assertIsDisplayed()
+    compose.runOnIdle { state.value = Stage.SAVING }
     compose.runOnIdle { entry.value = open.copy(availability = CheckInAvailability.CLOSED) }
+    compose.onNodeWithText("Confirming your check-in…").assertIsDisplayed()
+    compose.runOnIdle { state.value = CheckInState.Confirmed(start.plusSeconds(480)) }
+    compose.onNodeWithText("Checked in at 20:08.").assertIsDisplayed()
+    compose.onNodeWithTag(CheckInTags.GROUP).assertDoesNotExist()
+
+    compose.runOnIdle { state.value = Stage.READY }
     compose.onNodeWithText("Check-in has closed").assertIsDisplayed()
     compose.onNodeWithTag(CheckInTags.LOCATION).assertDoesNotExist()
     compose.onNodeWithText("Back to event").performClick()
     assertEquals(1, back)
-
-    compose.runOnIdle { state.value = CheckInState.Confirmed(start.plusSeconds(480)) }
-    compose
-        .onNodeWithText("Checked in at 20:08. Your group can see that you’ve arrived.")
-        .assertIsDisplayed()
-    compose.onNodeWithTag(CheckInTags.GROUP).performClick()
-    assertEquals(1, group)
   }
 
   @Test
-  fun progressFailuresAndConfirmationWithoutAGroupRenderTheCorrectActions() {
+  fun progressAndFailuresRenderTheCorrectActions() {
     val state = mutableStateOf<CheckInState>(Stage.LOADING)
     var retries = 0
     compose.setContent {
@@ -146,9 +144,6 @@ class CheckInScreenTest {
       compose.onNodeWithText("Back to event").assertIsDisplayed()
       compose.onNodeWithTag(CheckInTags.RETRY).assertDoesNotExist()
     }
-    compose.runOnIdle { state.value = CheckInState.Confirmed(start) }
-    compose.onNodeWithText("Checked in at 20:00.").assertIsDisplayed()
-    compose.onNodeWithTag(CheckInTags.GROUP).assertDoesNotExist()
     assertEquals(4, retries)
   }
 }
