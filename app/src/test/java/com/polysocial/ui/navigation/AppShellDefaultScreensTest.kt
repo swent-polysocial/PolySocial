@@ -12,6 +12,10 @@
 // EventDetailViewModel depends on ReminderScheduler for real DI, #123's second PR review).
 package com.polysocial.ui.navigation
 
+import android.Manifest.permission.ACCESS_COARSE_LOCATION
+import android.Manifest.permission.ACCESS_FINE_LOCATION
+import android.content.pm.PackageManager.PERMISSION_DENIED
+import android.content.pm.PackageManager.PERMISSION_GRANTED
 import android.content.res.Resources
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.CompositionLocalProvider
@@ -118,6 +122,7 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
 /**
@@ -316,7 +321,20 @@ class AppShellDefaultScreensTest {
     }
     composeTestRule.waitUntilAtLeastOneExists(hasTestTag(CheckInTags.ENTRY), 10_000)
     node(CheckInTags.ENTRY).performScrollTo().performClick()
-    node(CheckInTags.LOCATION).assertIsDisplayed()
+    val activity = composeTestRule.activity
+    val app = shadowOf(activity.application)
+    app.grantPermissions(ACCESS_COARSE_LOCATION)
+    node(CheckInTags.LOCATION).performClick()
+    val request = shadowOf(activity).lastRequestedPermission
+    val requested = request.requestedPermissions
+    assertEquals(listOf(ACCESS_FINE_LOCATION, ACCESS_COARSE_LOCATION), requested.toList())
+    composeTestRule.runOnIdle {
+      val grants = intArrayOf(PERMISSION_DENIED, PERMISSION_GRANTED)
+      activity.onRequestPermissionsResult(request.requestCode, requested, grants)
+    }
+    composeTestRule.onNodeWithText("Precise location is off").assertIsDisplayed()
+    node(CheckInTags.SETTINGS).performClick()
+    assertEquals("package:${activity.packageName}", app.nextStartedActivity.dataString)
     node(CheckInTags.BACK).performClick()
     composeTestRule.waitUntilAtLeastOneExists(hasTestTag(EventDetailTags.YOUR_GROUP), 10_000)
     node(EventDetailTags.YOUR_GROUP).performScrollTo().performClick()
