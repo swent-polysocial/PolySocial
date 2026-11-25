@@ -1,14 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (Edit event's organizers and the "Add a
-     co-organizer" sheet, from #400's Figma section 17, #370). -->
+     co-organizer" sheet, from #400's Figma section 17, #370; the creator's row as "Creator", #499). -->
 <resources>
     <!-- Edit event's organizers block. -->
     <string name="co_organizers_label">Organizers · %1$d of %2$d</string>
     <string name="co_organizers_you">You</string>
     <string name="co_organizers_unknown">Organizer</string>
-    <string name="co_organizers_creator">Creator · can\'t be removed</string>
+    <string name="co_organizers_creator">Creator</string>
     <string name="co_organizers_co_organizer">Co-organizer</string>
     <string name="co_organizers_profile_unavailable">Profile unavailable · Co-organizer</string>
+    <string name="co_organizers_creator_profile_unavailable">Profile unavailable · Creator</string>
     <string name="co_organizers_remove">Remove %1$s</string>
     <string name="co_organizers_remove_yourself">Remove yourself</string>
     <string name="co_organizers_add">Add a co-organizer</string>

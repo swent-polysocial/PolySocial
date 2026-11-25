@@ -1,4 +1,5 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #370).
+// Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #370; the creator's row as
+// "Creator", #499).
 package com.polysocial.ui.event.create
 
 import android.app.Application
@@ -132,7 +133,8 @@ class EditEventCoOrganizersScreenTest {
     show()
 
     node(CoOrganizerTags.LABEL).performScrollTo().assertTextEquals("Organizers · 2 of 5")
-    assertRow("creator", string(R.string.co_organizers_you), string(R.string.co_organizers_creator))
+    // #499: "You" over "Creator", written like the co-organizers' rows.
+    assertRow("creator", string(R.string.co_organizers_you), "Creator")
     assertRow("lea", "Léa Martin", "IN · BA3 · Co-organizer")
     node(CoOrganizerTags.remove("creator")).assertDoesNotExist()
     node(CoOrganizerTags.remove("lea")).assert(hasContentDescription("Remove Léa Martin"))
@@ -143,13 +145,56 @@ class EditEventCoOrganizersScreenTest {
   fun aCoOrganizer_seesTheCreatorByNameAndCanRemoveThemselves() {
     show(me = "lea")
 
-    assertRow("creator", "Franz Keller", string(R.string.co_organizers_creator))
+    // #499: the creator's name over "section · year · Creator", as a co-organizer's row.
+    assertRow("creator", "Franz Keller", "IN · BA5 · Creator")
+    node(CoOrganizerTags.remove("creator")).assertDoesNotExist()
     assertRow(
         "lea",
         string(R.string.co_organizers_you),
         string(R.string.co_organizers_co_organizer),
     )
     node(CoOrganizerTags.remove("lea")).assert(hasContentDescription("Remove yourself"))
+  }
+
+  // ---- The creator's row as "Creator" (#499, #498's frames) ----
+
+  @Test
+  fun theCreatorAlone_isYouOverCreator_withoutRemove() {
+    show(event = stored.copy(organizerIds = listOf("creator"), allowedUids = listOf("creator")))
+
+    node(CoOrganizerTags.LABEL).performScrollTo().assertTextEquals("Organizers · 1 of 5")
+    assertRow("creator", string(R.string.co_organizers_you), "Creator")
+    node(CoOrganizerTags.remove("creator")).assertDoesNotExist()
+  }
+
+  @Test
+  fun theCreatorsRow_leavesABlankSectionOrYearOut() {
+    publicProfiles.profiles["creator"] = PublicProfile("creator", "Franz Keller", "IN", "")
+
+    show(me = "lea")
+
+    assertRow("creator", "Franz Keller", "IN · Creator")
+  }
+
+  @Test
+  fun aCreatorWhoseProfileCantBeRead_isStillTheCreator_withoutRemove() {
+    publicProfiles.profiles.remove("creator")
+
+    show(me = "lea")
+
+    assertRow(
+        "creator",
+        string(R.string.co_organizers_unknown),
+        string(R.string.co_organizers_creator_profile_unavailable),
+    )
+    node(CoOrganizerTags.remove("creator")).assertDoesNotExist()
+  }
+
+  @Test
+  fun noRowSaysCantBeRemovedAnyMore() {
+    show()
+
+    composeTestRule.onNodeWithText("can't be removed", substring = true).assertDoesNotExist()
   }
 
   @Test
