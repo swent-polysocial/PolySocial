@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; venue check-in for #469 under Lucas Pinto
+// Ricardo’s supervision and approval).
 // Contributors: OpenAI Codex (6.2 Sol, high; student Friends navigation, #360).
 // Contributors: Claude Opus 5.5 (a group member's public profile opened from Your group, #368);
 // Konstantinos Perdikeas (directed, reviewed and owns it).
@@ -227,6 +229,7 @@ fun AppShell(
           onFindGroup = navigation.onFindGroup,
           onOpenGroup = navigation.onOpenGroup,
           onShowEntranceQr = navigation.onShowEntranceQr,
+          isStudent = accountType == AccountType.STUDENT,
       )
     },
     entranceQrContent: @Composable (onBack: () -> Unit) -> Unit = { EntranceQrRoute(it) },

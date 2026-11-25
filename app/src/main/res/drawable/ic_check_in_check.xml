@@ -1,0 +1,14 @@
+<!-- Contributors: Figma (Section 20 asset); OpenAI Codex (GPT-6.2 Sol, high; imported for #469 under Lucas Pinto Ricardo’s supervision and approval). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="25dp"
+    android:height="25dp"
+    android:viewportWidth="25"
+    android:viewportHeight="25">
+  <path
+      android:pathData="M5.208,12.5L9.375,16.667L19.792,6.25"
+      android:strokeLineJoin="round"
+      android:strokeWidth="1.97917"
+      android:fillColor="#00000000"
+      android:strokeColor="#176340"
+      android:strokeLineCap="round"/>
+</vector>

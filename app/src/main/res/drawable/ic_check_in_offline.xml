@@ -1,0 +1,14 @@
+<!-- Contributors: Figma (Section 20 asset); OpenAI Codex (GPT-6.2 Sol, high; imported for #469 under Lucas Pinto Ricardo’s supervision and approval). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="25dp"
+    android:height="25dp"
+    android:viewportWidth="25"
+    android:viewportHeight="25">
+  <path
+      android:pathData="M2.083,2.083L22.917,22.917M8.854,17.188C9.828,16.233 11.137,15.699 12.5,15.699C13.863,15.699 15.172,16.233 16.146,17.188M12.5,20.833H12.51M5.208,13.021C6.393,11.862 7.814,10.973 9.375,10.417M15.104,9.896C16.902,10.531 18.514,11.605 19.792,13.021M14.583,5.208C17.72,5.717 20.627,7.171 22.917,9.375M2.083,9.375C3.167,8.336 4.395,7.459 5.729,6.771"
+      android:strokeLineJoin="round"
+      android:strokeWidth="1.97917"
+      android:fillColor="#00000000"
+      android:strokeColor="#17171C"
+      android:strokeLineCap="round"/>
+</vector>

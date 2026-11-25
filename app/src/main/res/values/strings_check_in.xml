@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: OpenAI Codex (GPT-6.2 Sol, high; adapted Figma copy for #469 under Lucas Pinto Ricardo’s supervision and approval). -->
+<resources>
+    <string name="check_in_title">Check in</string>
+    <string name="check_in_entry_body">Arrived? Check in so your group knows.</string>
+    <string name="check_in_at_venue">Check in at %1$s</string>
+    <string name="check_in_prompt_body">Check in when you arrive so your group knows you’re here.</string>
+    <string name="check_in_privacy_title">One-time location check</string>
+    <string name="check_in_privacy_body">PolySocial checks your precise location once, on this phone, to see that you’re near the venue. It isn’t stored. Your group sees that you’ve checked in.</string>
+    <string name="check_in_my_location">Check my location</string>
+    <string name="check_in_scan_qr">Scan entrance QR</string>
+    <string name="check_in_qr_unavailable">Entrance QR scanning isn’t available yet.</string>
+    <string name="check_in_loading">Loading check-in…</string>
+    <string name="check_in_checking">Checking your location…</string>
+    <string name="check_in_saving">Confirming your check-in…</string>
+    <string name="check_in_confirmed">You’re checked in</string>
+    <string name="check_in_confirmed_body">Checked in at %1$s. Your group can see that you’ve arrived.</string>
+    <string name="check_in_confirmed_without_group">Checked in at %1$s.</string>
+    <string name="check_in_event_and_venue">%1$s · %2$s</string>
+    <string name="check_in_view_group">View your group</string>
+    <string name="check_in_denied">Location access is off</string>
+    <string name="check_in_denied_body">You can still check in by scanning the QR code at the entrance.</string>
+    <string name="check_in_approximate">Precise location is off</string>
+    <string name="check_in_approximate_body">Check-in needs your precise location once. Allow it in Settings, or scan the QR code at the entrance.</string>
+    <string name="check_in_too_far">You’re too far from the venue</string>
+    <string name="check_in_too_far_body">Move closer to %1$s and retry, or scan the QR code at the entrance if you’re already there.</string>
+    <string name="check_in_no_fix">Couldn’t find your location</string>
+    <string name="check_in_no_fix_body">Make sure device location is on and try again, or scan the QR code at the entrance.</string>
+    <string name="check_in_timed_out">Location check timed out</string>
+    <string name="check_in_timed_out_body">Try again where your phone has a clearer signal, or scan the QR code at the entrance.</string>
+    <string name="check_in_offline">You’re offline</string>
+    <string name="check_in_offline_body">Reconnect and try again to confirm your check-in.</string>
+    <string name="check_in_status_error">Couldn’t load your check-in</string>
+    <string name="check_in_status_error_body">Reconnect if needed and try loading your check-in again.</string>
+    <string name="check_in_save_error">Couldn’t confirm your check-in</string>
+    <string name="check_in_save_error_body">Try again while the check-in window is open.</string>
+    <string name="check_in_window_changed">The check-in window changed</string>
+    <string name="check_in_window_changed_body">Go back to the event to see when you can check in.</string>
+    <string name="check_in_registration_required">Registration required</string>
+    <string name="check_in_registration_required_body">To check in, register for this event first.</string>
+    <string name="check_in_event_unavailable">Event unavailable</string>
+    <string name="check_in_event_unavailable_body">Go back to the event and refresh its details.</string>
+    <string name="check_in_opens_at">Check-in opens at %1$s</string>
+    <string name="check_in_not_open_body">You can check in from 30 minutes before the start until the event ends.</string>
+    <string name="check_in_closed">Check-in has closed</string>
+    <string name="check_in_closed_body">Check-in for %1$s closed at %2$s.</string>
+    <string name="check_in_back_to_event">Back to event</string>
+    <string name="check_in_try_again">Try again</string>
+    <string name="check_in_open_settings">Open settings</string>
+    <string name="check_in_settings_unavailable">Couldn’t open Settings.</string>
+</resources>

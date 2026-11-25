@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol high, #469 check-in route test).
 // Contributors: OpenAI Codex (6.2 Sol, high; real request action integration, #361).
 // Contributors: OpenAI Codex (6.2 Sol, high; Friends route and association visibility tests, #360).
 // Contributors: Claude Opus 5.5 (a fake FriendRepository for the scanner's ViewModel, #359; the
@@ -52,6 +53,9 @@ import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.auth.FakeAuthSessionSource
 import com.polysocial.model.auth.VerificationClock
 import com.polysocial.model.auth.VerificationStore
+import com.polysocial.model.checkin.CheckInModule
+import com.polysocial.model.checkin.CheckInRepository
+import com.polysocial.model.checkin.FakeCheckInRepository
 import com.polysocial.model.event.EventModule
 import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.FakeEventRepository
@@ -88,6 +92,7 @@ import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileModule
 import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.resources.C
+import com.polysocial.ui.event.checkin.CheckInTags
 import com.polysocial.ui.event.create.FORM_NOW
 import com.polysocial.ui.event.create.ZURICH
 import com.polysocial.ui.event.create.completeForm
@@ -134,6 +139,7 @@ import org.robolectric.annotation.Config
     NetworkModule::class,
     PublicProfileModule::class,
     RegistrationModule::class,
+    CheckInModule::class,
     FriendModule::class,
 )
 @Config(application = HiltTestApplication::class)
@@ -179,7 +185,9 @@ class AppShellDefaultScreensTest {
 
   @BindValue @JvmField val friends: FriendRepository = fakeFriends
 
-  @BindValue @JvmField val registrations: RegistrationRepository = FakeRegistrationRepository()
+  private val fakeRegistrations = FakeRegistrationRepository()
+  @BindValue @JvmField val registrations: RegistrationRepository = fakeRegistrations
+  @BindValue @JvmField val checkIns: CheckInRepository = FakeCheckInRepository()
 
   @BindValue
   @JvmField
@@ -300,12 +308,16 @@ class AppShellDefaultScreensTest {
       val eventId = "group-event"
       val student = "test-student"
       auth.user = AuthUser(student, "fictional@epfl.ch", true)
-      events.seed(
-          completeForm().toEvent(ZURICH)!!.withCreator("organizer", false).copy(id = eventId)
-      )
+      val event = completeForm().toEvent(ZURICH)!!.withCreator("organizer", false)
+      events.seed(event.copy(id = eventId, startTime = FORM_NOW.plusSeconds(600), endTime = null))
+      fakeRegistrations.seedRegistration(eventId, student)
       groups.seedGroup(eventId, listOf(student, "peer"))
       navController.navigate(Tab.MAP.eventDetailRoute(eventId))
     }
+    composeTestRule.waitUntilAtLeastOneExists(hasTestTag(CheckInTags.ENTRY), 10_000)
+    node(CheckInTags.ENTRY).performScrollTo().performClick()
+    node(CheckInTags.LOCATION).assertIsDisplayed()
+    node(CheckInTags.BACK).performClick()
     composeTestRule.waitUntilAtLeastOneExists(hasTestTag(EventDetailTags.YOUR_GROUP), 10_000)
     node(EventDetailTags.YOUR_GROUP).performScrollTo().performClick()
     node(YourGroupTags.SCREEN).assertIsDisplayed()
