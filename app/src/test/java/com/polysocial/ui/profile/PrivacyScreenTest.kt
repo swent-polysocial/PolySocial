@@ -279,7 +279,7 @@ class PrivacyScreenTest {
         .onNodeWithText(text(R.string.privacy_attendance_body))
         .performScrollTo()
         .says(
-            "A check-in keeps only its time and how you checked in",
+            "A check-in records its time and how you checked in, linked to your account",
             "your group for that event sees it",
             "deleted 30 days after the event, or sooner with your registration, the event or " +
                 "your account",
@@ -297,7 +297,9 @@ class PrivacyScreenTest {
         .says(
             "Check-in is never automatic.",
             "reads one precise location fix",
-            "only when you tap Check my location",
+            "For check-in, PolySocial reads one precise location fix when you tap Check my location",
+            "That tap is when it asks for precise location",
+            "Android can then also give precise fixes to the app's other foreground features",
             "compares the fix with the venue on your phone",
             "never stored or sent to PolySocial",
             "only your account identifier, the time and how you checked in",
@@ -307,6 +309,10 @@ class PrivacyScreenTest {
                 "your account",
         )
     rule.onNodeWithText(text(R.string.privacy_notice_check_in_title)).assertExists()
+    // The entrance code isn't described until students can check in with it (#470, review).
+    org.junit.Assert.assertFalse(
+        text(R.string.privacy_notice_check_in_body).contains("entrance code", ignoreCase = true)
+    )
     rule
         .onNodeWithText(text(R.string.privacy_notice_deletion_body))
         .says("your event registrations, your check-ins,")
