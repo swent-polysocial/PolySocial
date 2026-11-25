@@ -43,9 +43,15 @@ class AddByUsernameViewModelTest {
 
   /** When set, [lookUp] waits for it before answering, like a slow connection. */
   private var lookUpGate: CompletableDeferred<Unit>? = null
+
+  /** The answers of the next lookups, in call order, each given when the test completes it. */
+  private val lookUpAnswers = ArrayDeque<CompletableDeferred<UsernameLookupResult>>()
   private val usernames =
       object : UsernameRepository by names {
         override suspend fun lookUp(name: String): UsernameLookupResult {
+          lookUpAnswers.removeFirstOrNull()?.let {
+            return it.await()
+          }
           lookUpGate?.await()
           return names.lookUp(name)
         }
@@ -205,6 +211,24 @@ class AddByUsernameViewModelTest {
     assertNull(vm.uiState.value.problem)
     assertFalse(vm.uiState.value.looking)
     assertEquals("someone_else", vm.uiState.value.input)
+  }
+
+  @Test
+  fun anOlderLookupOfTheSameName_answeringLate_cantHideTheLatestOne() {
+    val vm = viewModel()
+    val older = CompletableDeferred<UsernameLookupResult>()
+    val latest = CompletableDeferred<UsernameLookupResult>()
+    lookUpAnswers.addAll(listOf(older, latest))
+    vm.lookUp("nora_meier")
+    vm.onInput("nora_meie")
+    vm.lookUp("nora_meier")
+
+    older.complete(UsernameLookupResult.NetworkError)
+    latest.complete(UsernameLookupResult.Found("nora"))
+
+    assertEquals(FriendCard(nora, FriendButton.ADD), vm.uiState.value.card)
+    assertNull(vm.uiState.value.problem)
+    assertFalse(vm.uiState.value.looking)
   }
 
   @Test
