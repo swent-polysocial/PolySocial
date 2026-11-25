@@ -2,6 +2,8 @@
 // reviewed and owns them).
 // Contributors: Claude (Opus 5.5, Anthropic) (the friend action on a student's profile, #478);
 // Konstantinos Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude (Opus 5.5, Anthropic) (the changed-request message, #539 review);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.profile
 
 import android.content.Context
@@ -154,6 +156,18 @@ class StudentProfileScreenTest {
         .assertTextEquals(string(R.string.scan_friend_add))
     compose.onNodeWithTag(C.Tag.scan_friend_button).performClick()
     assertEquals(listOf("friend"), calls)
+  }
+
+  @Test
+  fun aRequestThatChanged_saysSo_aboveTheCurrentButton() {
+    showWithCard(FriendCard(lea, FriendButton.ADD, error = FriendActionError.CHANGED))
+
+    compose
+        .onNodeWithTag(C.Tag.scan_friend_note)
+        .assertTextEquals(string(R.string.friends_request_changed))
+    compose
+        .onNodeWithTag(C.Tag.scan_friend_button)
+        .assertTextEquals(string(R.string.scan_friend_add))
   }
 
   @Test

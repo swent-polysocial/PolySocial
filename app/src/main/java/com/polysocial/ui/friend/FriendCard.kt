@@ -1,6 +1,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (moved the friend button and its request logic out of
 // Scan a friend's code to share it, and made a late response apply only to the card that tapped,
 // #452; the logic itself is #359's); Konstantinos Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude (Opus 5.5, Anthropic) (the changed-request message and the listener's first
+// answer, #478 review); Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.friend
 
 import com.polysocial.model.friend.FriendRepository
@@ -12,6 +14,8 @@ import com.polysocial.model.friend.SendFriendRequestResult
 import com.polysocial.model.user.PublicProfile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -30,10 +34,16 @@ enum class FriendButton {
   FRIENDS,
 }
 
-/** Why the card's button didn't work. Nothing was written or queued in either case. */
+/** Why the card's button didn't work. Nothing was written or queued in any case. */
 enum class FriendActionError {
   OFFLINE,
   FAILED,
+
+  /**
+   * The request was withdrawn or changed before Accept reached it (`Gone`); the button shows the
+   * friendship as it is now. Only when the controller is created with `reportChanged` (#478).
+   */
+  CHANGED,
 }
 
 /**
@@ -60,6 +70,9 @@ data class FriendCard(
  * back. It starts listening when created and stops with [scope].
  *
  * @param myUid the signed-in student, or null when nobody is signed in.
+ * @param reportChanged when true, an Accept that finds the request gone says so
+ *   ([FriendActionError.CHANGED]) until the next tap, instead of only showing the listener's button
+ *   (#478). The scan and Add by username keep the silent update (#359).
  */
 class FriendCardController<S>(
     private val myUid: String?,
@@ -68,6 +81,7 @@ class FriendCardController<S>(
     private val state: MutableStateFlow<S>,
     private val cardOf: (S) -> FriendCard?,
     private val withCard: (S, FriendCard) -> S,
+    private val reportChanged: Boolean = false,
 ) {
   /** The student's friendships, as last delivered by the listener; empty until it delivers. */
   private var friendships: List<Friendship> = emptyList()
@@ -85,6 +99,14 @@ class FriendCardController<S>(
   /** True once the listener ended on [FriendshipsResult.Error]: it shows no change after that. */
   private var listenerStopped = false
 
+  private val answered = MutableStateFlow(false)
+
+  /**
+   * True once the listener first answered, with the friendships or an error: until then every
+   * button would be a guess (Add friend even to a friend), so a host may wait for it (#478).
+   */
+  val listenerAnswered: StateFlow<Boolean> = answered.asStateFlow()
+
   init {
     listen()
   }
@@ -101,6 +123,7 @@ class FriendCardController<S>(
     listenerStopped = false
     scope.launch {
       friends.observeFriendships().collect { result ->
+        answered.value = true
         when (result) {
           is FriendshipsResult.Success -> onFriendships(result.friendships)
           FriendshipsResult.Error -> listenerStopped = true
@@ -111,7 +134,8 @@ class FriendCardController<S>(
 
   /**
    * Shows the card's button from [latest]. When the friendship with the card's student changed, an
-   * earlier tap's error is cleared too: it was about a state that no longer holds.
+   * earlier tap's error is cleared too: it was about a state that no longer holds. A
+   * [FriendActionError.CHANGED] stays: it explains that very change, which may arrive after it.
    */
   private fun onFriendships(latest: List<Friendship>) {
     val cardUid = cardOf(state.value)?.profile?.uid
@@ -125,7 +149,7 @@ class FriendCardController<S>(
           it,
           card.copy(
               button = buttonFor(card.profile.uid),
-              error = if (changed) null else card.error,
+              error = if (changed && card.error != FriendActionError.CHANGED) null else card.error,
           ),
       )
     }
@@ -209,7 +233,12 @@ class FriendCardController<S>(
       when (result) {
         FriendshipActionResult.Done -> Outcome(FriendButton.FRIENDS)
         // Cancelled or changed since: the listener shows what it is now.
-        FriendshipActionResult.Gone -> Outcome(null, fromListener = true)
+        FriendshipActionResult.Gone ->
+            Outcome(
+                null,
+                FriendActionError.CHANGED.takeIf { reportChanged },
+                fromListener = true,
+            )
         FriendshipActionResult.NetworkError -> Outcome(null, FriendActionError.OFFLINE)
         FriendshipActionResult.UnexpectedError -> Outcome(null, FriendActionError.FAILED)
       }

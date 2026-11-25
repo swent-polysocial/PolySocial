@@ -3,14 +3,19 @@
 // Contributors: OpenAI Codex (6.2 Sol, high; cache fallback on a network error, #360 review).
 // Contributors: Claude (Opus 5.5, Anthropic) (the friend action on a student's profile, #478);
 // Konstantinos Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude (Opus 5.5, Anthropic) (the changed-request message and waiting for the
+// friendship, #539 review); Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.profile
 
 import androidx.lifecycle.SavedStateHandle
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.friend.FakeFriendRepository
+import com.polysocial.model.friend.FriendRepository
 import com.polysocial.model.friend.Friendship
+import com.polysocial.model.friend.FriendshipActionResult
 import com.polysocial.model.friend.FriendshipStatus
+import com.polysocial.model.friend.FriendshipsResult
 import com.polysocial.model.friend.SendFriendRequestResult
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.PublicProfile
@@ -25,6 +30,8 @@ import java.time.Instant
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
@@ -46,14 +53,18 @@ class StudentProfileViewModelTest {
   private val friends =
       FakeFriendRepository(currentUid = "alice", now = Instant.parse("2026-11-25T18:00:00Z"))
 
-  private fun viewModel(uid: String? = "lea", repository: PublicProfileRepository = profiles) =
+  private fun viewModel(
+      uid: String? = "lea",
+      repository: PublicProfileRepository = profiles,
+      friendRepository: FriendRepository = friends,
+  ) =
       StudentProfileViewModel(
           SavedStateHandle(
               if (uid == null) emptyMap() else mapOf(StudentProfileViewModel.UID_ARG to uid)
           ),
           repository,
           auth,
-          friends,
+          friendRepository,
       )
 
   @Test
@@ -365,6 +376,90 @@ class StudentProfileViewModelTest {
         assertEquals(StudentProfileUiState.NotFound, gone.uiState.value)
         assertNull(gone.friendCard.value)
       }
+
+  @Test
+  fun acceptingARequestWithdrawnMeanwhile_saysItChanged_andShowsAddFriend() =
+      runTest(main.dispatcher) {
+        friends.seedFriendship(pending(requestedBy = "lea"))
+        val vm = viewModel()
+        runCurrent()
+        assertEquals(FriendButton.ACCEPT, vm.friendCard.value?.button)
+
+        friends.acceptFailure = FriendshipActionResult.Gone
+        vm.onFriendButton()
+        friends.deleteFriendship("alice~lea")
+        runCurrent()
+
+        assertEquals(
+            FriendCard(lea, FriendButton.ADD, error = FriendActionError.CHANGED),
+            vm.friendCard.value,
+        )
+      }
+
+  @Test
+  fun theChangedMessage_staysWhenTheWithdrawalArrivesAfterTheResponse_untilTheNextTap() =
+      runTest(main.dispatcher) {
+        friends.seedFriendship(pending(requestedBy = "lea"))
+        val vm = viewModel()
+        runCurrent()
+
+        friends.acceptFailure = FriendshipActionResult.Gone
+        vm.onFriendButton()
+        runCurrent()
+        assertEquals(
+            FriendCard(lea, FriendButton.ACCEPT, error = FriendActionError.CHANGED),
+            vm.friendCard.value,
+        )
+
+        friends.deleteFriendship("alice~lea")
+        runCurrent()
+        assertEquals(
+            FriendCard(lea, FriendButton.ADD, error = FriendActionError.CHANGED),
+            vm.friendCard.value,
+        )
+
+        vm.onFriendButton()
+        runCurrent()
+        assertEquals(FriendCard(lea, FriendButton.SENT), vm.friendCard.value)
+      }
+
+  @Test
+  fun aFriendsProfile_showsTheProfile_butNoActionUntilTheFriendshipLoads() =
+      runTest(main.dispatcher) {
+        friends.seedAcceptedFriendship("alice", "lea")
+        val gate = CompletableDeferred<Unit>()
+        val vm = viewModel(friendRepository = LateListener(friends, gate))
+        runCurrent()
+
+        assertEquals(StudentProfileUiState.Found(lea), vm.uiState.value)
+        assertNull(vm.friendCard.value)
+        vm.onFriendButton()
+        runCurrent()
+        assertEquals(FriendshipStatus.ACCEPTED, friends.friendship("alice~lea")?.status)
+
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(FriendCard(lea, FriendButton.FRIENDS), vm.friendCard.value)
+      }
+
+  @Test
+  fun aListenerThatFailsBeforeAnswering_stillOffersAddFriend() =
+      runTest(main.dispatcher) {
+        friends.readFailure = true
+        val vm = viewModel()
+        runCurrent()
+
+        assertEquals(FriendCard(lea, FriendButton.ADD), vm.friendCard.value)
+      }
+
+  /** [delegate], whose friendships listener delivers nothing until [gate] completes. */
+  private class LateListener(
+      private val delegate: FakeFriendRepository,
+      private val gate: CompletableDeferred<Unit>,
+  ) : FriendRepository by delegate {
+    override fun observeFriendships(): Flow<FriendshipsResult> =
+        delegate.observeFriendships().onStart { gate.await() }
+  }
 
   private fun pending(requestedBy: String) =
       Friendship(
