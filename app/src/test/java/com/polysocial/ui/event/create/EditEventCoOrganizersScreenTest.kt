@@ -1,5 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #370; the creator's row as
-// "Creator", #499).
+// "Creator", #499; refused organizer changes, #443).
 package com.polysocial.ui.event.create
 
 import android.app.Application
@@ -8,6 +8,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasContentDescription
@@ -18,6 +19,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextReplacement
 import androidx.lifecycle.SavedStateHandle
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -308,5 +310,56 @@ class EditEventCoOrganizersScreenTest {
     node(CoOrganizerTags.SHEET_NOBODY).assertDoesNotExist()
     node(CoOrganizerTags.ADD).performScrollTo().assertIsEnabled()
     node(CoOrganizerTags.LABEL).assertTextEquals("Organizers · 2 of 5")
+  }
+
+  @Test
+  fun aStudentWhoCancelled_isExplained_withTheSavedOrganizersAndSaveChanges() {
+    publicProfiles.profiles["dan"] = PublicProfile("dan", "Dan Weber", "ME", "BA1")
+    registrations.attendeesFailure = AttendeesResult.Attendees(listOf("dan"))
+    show()
+    node(C.Tag.create_event_title).performScrollTo().performTextReplacement("Exam review")
+    click(CoOrganizerTags.ADD)
+    node(CoOrganizerTags.addStudent("dan")).performClick()
+    composeTestRule.waitForIdle()
+
+    node(C.Tag.create_event_submit).performClick()
+    composeTestRule.waitForIdle()
+
+    node(C.Tag.create_event_failure).performScrollTo().assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText(string(R.string.edit_event_organizers_refused_title))
+        .assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText(string(R.string.edit_event_organizers_not_going_body))
+        .assertIsDisplayed()
+    composeTestRule.onNodeWithText(string(R.string.edit_event_failed_title)).assertDoesNotExist()
+    node(CoOrganizerTags.organizer("dan")).assertDoesNotExist()
+    node(CoOrganizerTags.LABEL).performScrollTo().assertTextEquals("Organizers · 2 of 5")
+    node(C.Tag.create_event_title).performScrollTo().assertTextContains("Exam review")
+    node(C.Tag.create_event_submit)
+        .assertTextContains(string(R.string.edit_event_submit))
+        .assertIsEnabled()
+  }
+
+  @Test
+  fun organizersChangedMeanwhile_isExplained_withTheOrganizersAsStoredNow() {
+    show()
+    click(CoOrganizerTags.ADD)
+    node(CoOrganizerTags.addStudent("tom")).performClick()
+    composeTestRule.waitForIdle()
+    val full = listOf("creator", "lea", "a", "b", "c")
+    events.events[0] = stored.copy(organizerIds = full, allowedUids = full)
+
+    node(C.Tag.create_event_submit).performClick()
+    composeTestRule.waitForIdle()
+
+    node(C.Tag.create_event_failure).performScrollTo().assertIsDisplayed()
+    composeTestRule
+        .onNodeWithText(string(R.string.edit_event_organizers_changed_body))
+        .assertIsDisplayed()
+    node(CoOrganizerTags.LABEL).performScrollTo().assertTextEquals("Organizers · 5 of 5")
+    node(CoOrganizerTags.organizer("tom")).assertDoesNotExist()
+    node(CoOrganizerTags.ADD).performScrollTo().assertIsNotEnabled()
+    node(C.Tag.create_event_submit).assertTextContains(string(R.string.edit_event_submit))
   }
 }

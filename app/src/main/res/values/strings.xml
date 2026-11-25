@@ -1,3 +1,4 @@
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (Edit event's refused organizer changes, #443). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (matching with friends in the privacy notice, #497). -->
 <!-- Contributors: Claude Fable 5.2 (who sees a student organizer's name, in the privacy notice, #281). -->
 <!-- Contributors: OpenAI Codex (local permission-history privacy notice, #278). -->
@@ -179,6 +180,10 @@
     <string name="edit_event_failed_title">Couldn\'t save your changes</string>
     <string name="edit_event_offline_body">You\'re offline. Your changes are kept, so try again once you\'re back online.</string>
     <string name="edit_event_unexpected_body">Something went wrong. Your changes are kept, so try again.</string>
+    <!-- Edit event's refused organizer changes (Figma section 17, #483/#443) -->
+    <string name="edit_event_organizers_refused_title">Couldn\'t save the organizers</string>
+    <string name="edit_event_organizers_not_going_body">A student you added isn\'t going to this event any more. The organizers are back to the saved ones: add someone else, then save again. Your other changes are kept.</string>
+    <string name="edit_event_organizers_changed_body">Another organizer changed the organizers while you were editing. Here they are now: check them, then save again. Your other changes are kept.</string>
 
     <string name="event_created_title">Event created</string>
     <string name="event_created_private_message">%1$s is ready. As its organizer you can edit it and approve who joins.</string>

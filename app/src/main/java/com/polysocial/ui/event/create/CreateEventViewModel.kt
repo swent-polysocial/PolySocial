@@ -6,6 +6,8 @@
 // timeout, #249 in #371).
 // Contributors: Claude (Opus 5.5, Anthropic) (the warning for a capacity below the number going,
 // #407).
+// Contributors: Claude (Opus 5.5, Anthropic) (refused organizer changes explained, from #483's
+// frames, #443).
 package com.polysocial.ui.event.create
 
 import androidx.lifecycle.SavedStateHandle
@@ -21,6 +23,7 @@ import com.polysocial.model.event.EventRepository
 import com.polysocial.model.event.EventResult
 import com.polysocial.model.event.EventValidationError
 import com.polysocial.model.event.OrganizerChanges
+import com.polysocial.model.event.OrganizerError
 import com.polysocial.model.event.UpdateEventResult
 import com.polysocial.model.registration.AttendeesResult
 import com.polysocial.model.registration.RegistrationRepository
@@ -76,6 +79,24 @@ sealed interface CreateEventStatus {
     enum class Reason {
       OFFLINE,
       UNEXPECTED,
+    }
+  }
+
+  /**
+   * Edit event only (#443, Figma's #483 frames): the repository refused the organizer changes. The
+   * block is back to the organizers as stored now, the other edits are kept, and the button stays
+   * "Save changes", since saving again can succeed.
+   */
+  data class OrganizersRefused(val reason: Reason) : CreateEventStatus {
+    enum class Reason {
+      /** A student added isn't going to the event any more ([OrganizerError.NOT_REGISTERED]). */
+      NOT_GOING,
+
+      /**
+       * Another organizer changed the organizers meanwhile, so the changes no longer fit
+       * ([OrganizerError.TOO_MANY_ORGANIZERS]).
+       */
+      CHANGED,
     }
   }
 }
@@ -168,7 +189,9 @@ data class CreateEventUiState(
  * students going ([RegistrationRepository.getAttendeeUids]). Adding and removing only change the
  * form: they are saved with the rest of the event, as [OrganizerChanges], by Save changes. An
  * organizer who removes themselves stops managing the event once it is saved, and Edit event closes
- * as after any save.
+ * as after any save. If the save is refused because of the organizers (#443), the changes are
+ * dropped and the organizers read again, so the next save can succeed
+ * ([CreateEventStatus.OrganizersRefused]).
  *
  * @param clock gives the current time and time zone, so tests can fix them.
  * @param savedStateHandle holds the navigation arguments; without an event ID, it creates an event.
@@ -373,8 +396,7 @@ constructor(
     organizerChanges = changes
     refused = emptySet()
     val state = _uiState.value
-    val status =
-        if (state.status is CreateEventStatus.Failed) CreateEventStatus.Editing else state.status
+    val status = state.status.afterEdit()
     publish(state.form, status)
   }
 
@@ -443,16 +465,57 @@ constructor(
         is UpdateEventResult.Invalid -> refuse(result.errors)
         UpdateEventResult.NetworkError ->
             CreateEventStatus.Failed(CreateEventStatus.Failed.Reason.OFFLINE)
-        // Never reported as saved: the form stays, with Try again (#131). The block itself never
-        // removes the creator or adds a sixth organizer, so InvalidOrganizers means a student
-        // cancelled since being picked, or another organizer changed the list meanwhile. Figma
-        // reuses section 10's couldn't-save frame for it (#400).
-        is UpdateEventResult.InvalidOrganizers,
+        is UpdateEventResult.InvalidOrganizers -> refuseOrganizers(event.id, result.error)
+        // Never reported as saved: the form stays, with Try again (#131).
         UpdateEventResult.NotOrganizer,
         UpdateEventResult.NotFound,
         UpdateEventResult.UnexpectedError ->
             CreateEventStatus.Failed(CreateEventStatus.Failed.Reason.UNEXPECTED)
       }
+
+  /**
+   * After the organizer changes were refused for [error] (#443): the block itself never removes the
+   * creator or adds a sixth organizer, so a student cancelled since being picked, or another
+   * organizer changed the list meanwhile. Trying the same changes again would fail the same way, so
+   * they are dropped and the organizers read again from event [id]; the rest of the form is kept.
+   * The other errors can't come from the block, and keep section 10's couldn't-save banner.
+   */
+  private suspend fun refuseOrganizers(id: String, error: OrganizerError): CreateEventStatus {
+    val reason =
+        when (error) {
+          OrganizerError.NOT_REGISTERED -> CreateEventStatus.OrganizersRefused.Reason.NOT_GOING
+          OrganizerError.TOO_MANY_ORGANIZERS -> CreateEventStatus.OrganizersRefused.Reason.CHANGED
+          OrganizerError.CREATOR_REMOVED,
+          OrganizerError.ASSOCIATION_EVENT ->
+              return CreateEventStatus.Failed(CreateEventStatus.Failed.Reason.UNEXPECTED)
+        }
+    organizerChanges = OrganizerChanges.NONE
+    storedOrganizers(id)?.let { organizerIds ->
+      stored = stored?.copy(organizerIds = organizerIds)
+      val unknown = organizerIds - knownProfiles.keys
+      if (unknown.isNotEmpty()) {
+        profilesLoading = true
+        viewModelScope.launch { readOrganizerProfiles(unknown) }
+      }
+    }
+    return CreateEventStatus.OrganizersRefused(reason)
+  }
+
+  /**
+   * The organizers of event [id] as stored now: the first answer from the server, or within
+   * [ORGANIZER_TIMEOUT] the latest from the cache. Null if neither has the event, so the block
+   * keeps the organizers read when the form opened.
+   */
+  private suspend fun storedOrganizers(id: String): List<String>? {
+    var latest: List<String>? = null
+    withTimeoutOrNull(ORGANIZER_TIMEOUT) {
+      repository.getEvent(id).first { result ->
+        (result as? EventResult.Found)?.let { latest = it.event.organizerIds }
+        result !is EventResult.Found || !result.fromCache
+      }
+    }
+    return latest
+  }
 
   private suspend fun create(event: Event): CreateEventStatus =
       when (val result = repository.createEvent(event)) {
@@ -477,8 +540,7 @@ constructor(
     if (state.status.isLocked) return
     field?.let { changedFields += it }
     refused = emptySet()
-    val status =
-        if (state.status is CreateEventStatus.Failed) CreateEventStatus.Editing else state.status
+    val status = state.status.afterEdit()
     publish(change(state.form), status)
   }
 
@@ -511,12 +573,23 @@ constructor(
   private fun currentErrors(form: CreateEventForm) =
       form.errors(clock.instant(), clock.zone, keptStart = stored?.startTime)
 
+  /**
+   * The status once the form changes: a failure or refusal banner goes, as the form isn't the same.
+   */
+  private fun CreateEventStatus.afterEdit(): CreateEventStatus =
+      when (this) {
+        is CreateEventStatus.Failed,
+        is CreateEventStatus.OrganizersRefused -> CreateEventStatus.Editing
+        else -> this
+      }
+
   /** True while the form can't be changed or sent: before it is filled in, or once it is sent. */
   private val CreateEventStatus.isLocked: Boolean
     get() =
         when (this) {
           CreateEventStatus.Editing,
-          is CreateEventStatus.Failed -> false
+          is CreateEventStatus.Failed,
+          is CreateEventStatus.OrganizersRefused -> false
           CreateEventStatus.Loading,
           CreateEventStatus.Saving,
           is CreateEventStatus.Created,
