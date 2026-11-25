@@ -2,6 +2,8 @@
 // Perdikeas (directed, reviewed and owns them).
 // Contributors: Claude (Opus 5.5, Anthropic) (a hanging rotation and a schedule change, #538
 // review); Konstantinos Perdikeas (directed, reviewed and owns them).
+// Contributors: Claude (Opus 5.5, Anthropic) (a first code that never answers, #538 review);
+// Konstantinos Perdikeas (directed, reviewed and owns them).
 package com.polysocial.ui.event.entrance
 
 import androidx.lifecycle.SavedStateHandle
@@ -194,6 +196,47 @@ class EntranceQrViewModelTest {
 
         fake.rotateFailure = RotateCodeResult.UnexpectedError
         assertEquals(EntranceQrUiState.Failed("Balélec warm-up"), viewModel().uiState.value)
+      }
+
+  @Test
+  fun aFirstCodeThatNeverAnswers_failsAfter10Seconds_andTryAgainCreatesIt() =
+      runTest(main.dispatcher) {
+        fake.rotateGate = CompletableDeferred()
+        val vm = viewModel()
+        assertEquals(EntranceQrUiState.Loading, vm.uiState.value)
+
+        advanceTimeBy(9_999)
+        runCurrent()
+        assertEquals(EntranceQrUiState.Loading, vm.uiState.value)
+
+        advanceTimeBy(1)
+        runCurrent()
+        assertEquals(EntranceQrUiState.Failed("Balélec warm-up"), vm.uiState.value)
+
+        fake.rotateGate = null
+        vm.retry()
+        runCurrent()
+        assertEquals(listOf<String?>(null, null), fake.rotations)
+        shown(vm)
+      }
+
+  @Test
+  fun aFirstCodeStillWaiting_whenTheWindowCloses_saysItClosed() =
+      runTest(main.dispatcher) {
+        // The window closes at 19:10:05, before the 10 s wait is over.
+        events.remove(EVENT)
+        events.seed(event.copy(endTime = Instant.parse("2026-11-27T19:10:05Z")))
+        fake.rotateGate = CompletableDeferred()
+        val vm = viewModel()
+        assertEquals(EntranceQrUiState.Loading, vm.uiState.value)
+
+        advanceTimeBy(5_000)
+        runCurrent()
+
+        assertEquals(
+            EntranceQrUiState.Closed("Balélec warm-up", "Satellite", "19:10"),
+            vm.uiState.value,
+        )
       }
 
   @Test

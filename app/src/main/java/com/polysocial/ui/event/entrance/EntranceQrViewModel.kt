@@ -2,6 +2,8 @@
 // Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: Claude (Opus 5.5, Anthropic) (rotation beside the expiry check and following the
 // schedule, #538 review); Konstantinos Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude (Opus 5.5, Anthropic) (a bounded wait for the first code, #538 review);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.event.entrance
 
 import androidx.lifecycle.SavedStateHandle
@@ -43,6 +45,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.transformLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /** What the Entrance QR screen shows (Figma section 20). */
 sealed interface EntranceQrUiState {
@@ -83,12 +86,13 @@ sealed interface EntranceQrUiState {
  * changes while the screen is open applies at once; only a change to these starts the screen over.
  * Before the window opens, the screen says when it does, without reading or writing the code (the
  * rules would refuse it), and starts once it opens; once the window has closed, it says so. During
- * the window it follows [CheckInRepository.observeEntranceCode]: a missing code is created, a code
- * from the cache is hidden (offline), and a stored code is shown while [isScannable] says a student
- * scanning it would still be checked in, re-checked every [TICK], also while its rotation is still
- * waiting for an answer; once it isn't (its rotation kept failing or hangs), the screen says it
- * couldn't load. A rotation is tried again after [ROTATION_RETRY] until the listener brings the new
- * code. [retry] starts over, for Try again.
+ * the window it follows [CheckInRepository.observeEntranceCode]: a missing code is created (waiting
+ * at most [FIRST_CODE_TIMEOUT], and never past the window's close), a code from the cache is hidden
+ * (offline), and a stored code is shown while [isScannable] says a student scanning it would still
+ * be checked in, re-checked every [TICK], also while its rotation is still waiting for an answer;
+ * once it isn't (its rotation kept failing or hangs), the screen says it couldn't load. A rotation
+ * is tried again after [ROTATION_RETRY] until the listener brings the new code. [retry] starts
+ * over, for Try again.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -163,7 +167,7 @@ constructor(
             EntranceCodeStatus.Error -> emit(EntranceQrUiState.Failed(event.title))
             EntranceCodeStatus.Missing -> {
               emit(EntranceQrUiState.Loading)
-              createFirstCode(event)
+              createFirstCode(event, window)
             }
             is EntranceCodeStatus.Code ->
                 if (status.fromCache) emit(EntranceQrUiState.Offline(event.title))
@@ -183,9 +187,19 @@ constructor(
     return true
   }
 
-  /** Creates the event's first code; the listener then shows it. */
-  private suspend fun FlowCollector<EntranceQrUiState>.createFirstCode(event: Schedule) {
-    when (checkIns.rotateEntranceCode(eventId, null)) {
+  /**
+   * Creates the event's first code; the listener then shows it. A creation still unanswered after
+   * [FIRST_CODE_TIMEOUT] fails (Try again), and one still unanswered when [window] closes gives
+   * [EntranceQrUiState.Closed], so the screen never stays loading.
+   */
+  private suspend fun FlowCollector<EntranceQrUiState>.createFirstCode(
+      event: Schedule,
+      window: CheckInWindow,
+  ) {
+    val untilClosed = Duration.between(clock.instant(), window.closesAt)
+    val wait = minOf(FIRST_CODE_TIMEOUT, untilClosed).toMillis().coerceAtLeast(1)
+    when (withTimeoutOrNull(wait) { checkIns.rotateEntranceCode(eventId, null) }) {
+      null -> if (!closed(event, window)) emit(EntranceQrUiState.Failed(event.title))
       RotateCodeResult.Done -> Unit
       RotateCodeResult.NetworkError -> emit(EntranceQrUiState.Offline(event.title))
       RotateCodeResult.UnexpectedError -> emit(EntranceQrUiState.Failed(event.title))
@@ -234,6 +248,9 @@ constructor(
   private companion object {
     /** How often the shown code's age is checked again. */
     val TICK: Duration = Duration.ofSeconds(1)
+
+    /** How long the first code's creation may wait for an answer before it fails. */
+    val FIRST_CODE_TIMEOUT: Duration = Duration.ofSeconds(10)
 
     /** How long after a failed rotation this phone tries again. */
     val ROTATION_RETRY: Duration = Duration.ofSeconds(10)
