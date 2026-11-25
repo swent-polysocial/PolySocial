@@ -21,8 +21,11 @@ import com.polysocial.ui.friend.FriendCardController
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /** What a student's public profile screen shows. */
@@ -83,13 +86,6 @@ constructor(
   private val card = MutableStateFlow<FriendCard?>(null)
 
   /**
-   * The friend action under the profile (#478, Figma #493): the card's button and note from the
-   * live friendship. Null while loading, when no profile was found, and on the student's own
-   * profile, which offers no action.
-   */
-  val friendCard: StateFlow<FriendCard?> = card.asStateFlow()
-
-  /**
    * The request logic shared with the scan and Add by username (#529), created only for another
    * student's profile: it starts following the friendships at once, so the button is already right
    * when the profile arrives.
@@ -107,8 +103,21 @@ constructor(
                 card,
                 cardOf = { it },
                 withCard = { _, changed -> changed },
+                reportChanged = true,
             )
           }
+
+  /**
+   * The friend action under the profile (#478, Figma #493): the card's button and note from the
+   * live friendship. Null while loading, when no profile was found, on the student's own profile,
+   * which offers no action, and until the friendships listener first answers, so a friend's profile
+   * never offers Add friend for a moment (#539 review); the profile shows meanwhile.
+   */
+  val friendCard: StateFlow<FriendCard?> =
+      cards?.let { controller ->
+        combine(card, controller.listenerAnswered) { shown, answered -> shown.takeIf { answered } }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, null)
+      } ?: card.asStateFlow()
 
   init {
     load()

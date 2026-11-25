@@ -71,6 +71,7 @@ internal fun FriendCardAction(card: FriendCard, addNote: String?, onButton: () -
       when {
         card.error == FriendActionError.OFFLINE -> stringResource(R.string.scan_friend_offline)
         card.error == FriendActionError.FAILED -> stringResource(R.string.scan_friend_failed)
+        card.error == FriendActionError.CHANGED -> stringResource(R.string.friends_request_changed)
         card.button == FriendButton.SENT ->
             stringResource(R.string.scan_friend_sent_note, firstName)
         card.button == FriendButton.ACCEPT ->
