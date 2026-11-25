@@ -1,4 +1,4 @@
-// Contributors: OpenAI Codex (GPT-6.2 Sol, high; GPS verification for #469 under
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; fused location verification for #469 under
 // Lucas Pinto Ricardo’s supervision and approval).
 package com.polysocial.ui.event.checkin
 
@@ -42,11 +42,9 @@ class CheckInLocationDeviceTest {
   private val instrumentation = InstrumentationRegistry.getInstrumentation()
 
   @Test
-  fun injectedGpsFixShowsTooFarThenConfirmsAtTheVenue() {
+  fun injectedFusedFixShowsTooFarThenConfirmsAtTheVenue() {
     val now = Instant.parse("2026-11-25T20:08:00Z")
-    val event =
-        validEvent(title = "Balélec warm-up", startTime = now.minusSeconds(480))
-            .copy(id = "venue-test", locationName = "Satellite")
+    val event = validEvent(startTime = now.minusSeconds(480)).copy(id = "venue-test")
     val uid = "test-student"
     val repository =
         FakeCheckInRepository(currentUid = uid, now = now).apply {
@@ -64,9 +62,9 @@ class CheckInLocationDeviceTest {
         )
     shell("appops set com.android.shell android:mock_location allow")
     try {
-      shell("cmd location providers add-test-provider gps")
+      shell("cmd location providers add-test-provider fused")
       try {
-        shell("cmd location providers set-test-provider-enabled gps true")
+        shell("cmd location providers set-test-provider-enabled fused true")
         compose.setContent { PolySocialTheme { CheckInRoute(entry, {}, {}, viewModel = vm) } }
         compose.onNodeWithTag(CheckInTags.LOCATION).assertIsDisplayed()
         assertNull(repository.checkInOf(event.id, uid))
@@ -86,7 +84,7 @@ class CheckInLocationDeviceTest {
             .assertIsDisplayed()
         assertEquals(now, repository.checkInOf(event.id, uid))
       } finally {
-        shell("cmd location providers remove-test-provider gps")
+        shell("cmd location providers remove-test-provider fused")
       }
     } finally {
       shell("appops set com.android.shell android:mock_location default")
@@ -95,7 +93,7 @@ class CheckInLocationDeviceTest {
 
   private fun injectFix(latitude: Double, longitude: Double) {
     shell(
-        "cmd location providers set-test-provider-location gps --location $latitude,$longitude --accuracy 5"
+        "cmd location providers set-test-provider-location fused --location $latitude,$longitude --accuracy 5"
     )
   }
 

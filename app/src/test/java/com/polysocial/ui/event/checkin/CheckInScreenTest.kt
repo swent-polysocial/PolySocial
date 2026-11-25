@@ -138,6 +138,7 @@ class CheckInScreenTest {
         listOf(
             Stage.EVENT_UNAVAILABLE to "Event unavailable",
             Stage.REGISTRATION_REQUIRED to "Registration required",
+            Stage.SESSION_ENDED to "Your session ended",
         )) {
       compose.runOnIdle { state.value = stage }
       compose.onNodeWithText(text).assertIsDisplayed()

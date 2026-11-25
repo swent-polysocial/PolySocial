@@ -259,7 +259,7 @@ fun EventDetailRoute(
     onOpenGroup: () -> Unit = {},
     onShowEntranceQr: () -> Unit = {},
     viewModel: EventDetailViewModel = hiltViewModel(),
-    isStudent: Boolean = true,
+    isStudent: Boolean = false,
 ) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   val cancelState by viewModel.cancelState.collectAsStateWithLifecycle()
@@ -307,6 +307,7 @@ fun EventDetailRoute(
   val checkInEntry by
       remember(viewModel, isStudent) { viewModel.checkInEntry(isStudent) }
           .collectAsStateWithLifecycle(initialValue = null)
+  // Keep check-in on this destination so eligibility and group updates come from the same detail.
   var checkInOpen by rememberSaveable { mutableStateOf(false) }
   val entry = checkInEntry
   if (checkInOpen && entry != null) {
