@@ -533,6 +533,26 @@ class FirestoreCheckInRepositoryTest {
     )
   }
 
+  @Test
+  fun rotate_refused_thenTheReReadCantFinish_isUnexpected() = runTest {
+    stubCode("a".repeat(22))
+    every {
+      db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Any>>())
+    } returnsMany listOf(Tasks.forException(failed(PERMISSION_DENIED)), Tasks.forCanceled())
+    assertEquals(
+        RotateCodeResult.UnexpectedError,
+        repository.rotateEntranceCode("event-1", "a".repeat(22)),
+    )
+
+    every { db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Any>>()) } returns
+        Tasks.forException(failed(PERMISSION_DENIED)) andThenThrows
+        IllegalStateException("broken")
+    assertEquals(
+        RotateCodeResult.UnexpectedError,
+        repository.rotateEntranceCode("event-1", "a".repeat(22)),
+    )
+  }
+
   private fun snapshotWithToken(token: String?) =
       mockk<DocumentSnapshot>().also {
         every { it.exists() } returns (token != null)
@@ -563,6 +583,8 @@ class FirestoreCheckInRepositoryTest {
     stubCode(null)
     commits += failed(UNAVAILABLE)
     assertEquals(RotateCodeResult.NetworkError, repository.rotateEntranceCode("event-1", null))
+    commits += failed(ABORTED)
+    assertEquals(RotateCodeResult.UnexpectedError, repository.rotateEntranceCode("event-1", null))
     every { transaction.get(code) } throws IllegalStateException("broken")
     assertEquals(RotateCodeResult.UnexpectedError, repository.rotateEntranceCode("event-1", null))
   }
@@ -661,6 +683,53 @@ class FirestoreCheckInRepositoryTest {
       assertEquals(listOf(EntranceCodeStatus.Error), statuses)
       assertTrue(collecting.isCompleted)
     }
+  }
+
+  @Test
+  fun observeCode_aFieldThatThrowsWhenRead_isAnError_insteadOfACrash() = runTest {
+    stubCodeListener()
+    val statuses = mutableListOf<EntranceCodeStatus>()
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) {
+          repository.observeEntranceCode("event-1").toList(statuses)
+        }
+    val throwing =
+        storedCode("t", null, null, false).also {
+          every { it.getTimestamp("rotatedAt", ServerTimestampBehavior.ESTIMATE) } throws
+              RuntimeException("Field 'rotatedAt' is not a Timestamp")
+        }
+
+    codeListener.captured.onEvent(throwing, null)
+
+    assertEquals(listOf(EntranceCodeStatus.Error), statuses)
+    assertTrue(collecting.isCompleted)
+  }
+
+  @Test
+  fun observeCode_aFailureBuildingTheListener_isAnError() = runTest {
+    every { event.collection(CHECK_IN_CODE_COLLECTION) } returns codes
+    every { codes.document(ENTRANCE_CODE_DOCUMENT) } throws IllegalArgumentException("bad path")
+
+    assertEquals(
+        listOf(EntranceCodeStatus.Error),
+        repository.observeEntranceCode("event-1").toList(),
+    )
+  }
+
+  @Test
+  fun observeCode_aFailureStoppingTheListener_endsWithAnError_insteadOfThrowing() = runTest {
+    stubCodeListener()
+    every { codeRegistration.remove() } throws IllegalStateException("broken")
+    val statuses = mutableListOf<EntranceCodeStatus>()
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) {
+          repository.observeEntranceCode("event-1").toList(statuses)
+        }
+
+    codeListener.captured.onEvent(null, failed(PERMISSION_DENIED))
+
+    assertEquals(EntranceCodeStatus.Error, statuses.last())
+    assertTrue(collecting.isCompleted)
   }
 
   @Test
