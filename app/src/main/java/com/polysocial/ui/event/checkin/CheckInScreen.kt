@@ -63,7 +63,6 @@ internal object CheckInTags {
   const val ENTRY = "venue_check_in_entry"
   const val SCREEN = "venue_check_in_screen"
   const val BACK = "venue_check_in_back"
-  const val TITLE = "venue_check_in_title"
   const val LOCATION = "venue_check_in_location"
   const val QR = "venue_check_in_qr"
   const val RETRY = "venue_check_in_retry"
@@ -393,7 +392,7 @@ private fun Heading(text: String, large: Boolean = false, centered: Boolean = tr
   val type = MaterialTheme.typography
   Text(
       text,
-      modifier = Modifier.semantics { heading() }.testTag(CheckInTags.TITLE),
+      modifier = Modifier.semantics { heading() },
       style =
           (if (large) type.headlineMedium
               else type.titleLarge.copy(fontWeight = FontWeight.ExtraBold))
