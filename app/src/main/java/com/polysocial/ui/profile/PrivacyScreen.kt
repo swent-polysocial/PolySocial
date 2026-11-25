@@ -1,6 +1,8 @@
 // Contributors: OpenAI Codex (Profile privacy entry, dated offline notice, Figma UI and contact,
 // #103).
 // Contributors: OpenAI Codex (offline group and chat collection/access notice, #241).
+// Contributors: Claude (Opus 5.5, Anthropic) (the notice's check-in section, #473); Konstantinos
+// Perdikeas (directed, reviewed and owns it).
 // Contributors: Claude Opus 5.5 (an optional header color for the dark scanner, #359); Konstantinos
 // Perdikeas (directed, reviewed and owns it).
 // Contributors: Claude (Opus 5.5, Anthropic) connected Delete account to its flow, #207; Mohamed
@@ -315,6 +317,11 @@ fun FullPrivacyNoticeScreen(
           NoticeSection(
               R.string.privacy_notice_location_title,
               R.string.privacy_notice_location_body,
+          )
+          NoticeSection(
+              R.string.privacy_notice_check_in_title,
+              R.string.privacy_notice_check_in_body,
+              Modifier.testTag(C.Tag.privacy_notice_check_in),
           )
           NoticeSection(
               R.string.privacy_notice_services_title,

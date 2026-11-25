@@ -16,6 +16,9 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (the notice's new date and matching with friends,
 // #497).
 // Contributors: Claude (Opus 5.5, Anthropic) (the notice's new date, for the number going, #407).
+// Contributors: Claude (Opus 5.5, Anthropic) (the notice's new date and check-in, #473);
+// Konstantinos
+// Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.profile
 
 import android.content.Context
@@ -215,7 +218,7 @@ class PrivacyScreenTest {
     rule.onNodeWithTag(C.Tag.privacy_chats).performScrollTo().assertIsDisplayed()
     rule.onNodeWithText(text(R.string.privacy_chats_body)).assertIsDisplayed()
     rule.onNodeWithTag(C.Tag.privacy_full_notice).performScrollTo().performClick()
-    rule.onNodeWithTag(C.Tag.privacy_notice_date).assertTextEquals("Updated 23 November 2026")
+    rule.onNodeWithTag(C.Tag.privacy_notice_date).assertTextEquals("Updated 25 November 2026")
   }
 
   @Test
@@ -259,6 +262,54 @@ class PrivacyScreenTest {
         )
         .performScrollTo()
         .assertTextEquals(text(R.string.privacy_notice_deletion_body))
+  }
+
+  @Test
+  fun summarySaysCheckInReadsTheLocationOnce_andWhatItKeepsForHowLong() {
+    openFromProfile()
+    rule
+        .onNodeWithText(text(R.string.privacy_location_body))
+        .performScrollTo()
+        .says(
+            "Check my location reads one precise fix",
+            "compares it with the venue on your phone",
+            "never stores or sends it",
+        )
+    rule
+        .onNodeWithText(text(R.string.privacy_attendance_body))
+        .performScrollTo()
+        .says(
+            "A check-in keeps only its time and how you checked in",
+            "your group for that event sees it",
+            "deleted 30 days after the event, or sooner with your registration, the event or " +
+                "your account",
+        )
+  }
+
+  @Test
+  fun fullNoticeExplainsCheckIn_andDeletesItWithTheAccount() {
+    openFromProfile()
+    rule.onNodeWithTag(C.Tag.privacy_full_notice).performScrollTo().performClick()
+    rule
+        .onNodeWithTag(C.Tag.privacy_notice_check_in)
+        .performScrollTo()
+        .assertTextEquals(text(R.string.privacy_notice_check_in_body))
+        .says(
+            "Check-in is never automatic.",
+            "reads one precise location fix",
+            "only when you tap Check my location",
+            "compares the fix with the venue on your phone",
+            "never stored or sent to PolySocial",
+            "only your account identifier, the time and how you checked in",
+            "the members of your group for that event",
+            "deleted 30 days after the event",
+            "when you cancel your registration, when the event is deleted or when you delete " +
+                "your account",
+        )
+    rule.onNodeWithText(text(R.string.privacy_notice_check_in_title)).assertExists()
+    rule
+        .onNodeWithText(text(R.string.privacy_notice_deletion_body))
+        .says("your event registrations, your check-ins,")
   }
 
   /** Asserts that this node's text contains each of [parts]. */
