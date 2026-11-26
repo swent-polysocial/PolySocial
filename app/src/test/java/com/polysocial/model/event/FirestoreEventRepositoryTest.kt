@@ -997,6 +997,20 @@ class FirestoreEventRepositoryTest {
   }
 
   @Test
+  fun update_fromAFormLoadedBeforeTheSectionsChanged_keepsTheStoredSections() = runTest {
+    // The stored event is open to IN only, but the form was loaded when it was open to IN and MA.
+    val restricted =
+        managed.copy(isAssociationEvent = false, isPrivate = false, allowedSections = listOf("IN"))
+    stubStoredEvent(restricted.toFirestoreMap())
+
+    val staleEdit = edit.copy(isPrivate = false, allowedSections = listOf("IN", "MA"))
+    assertEquals(UpdateEventResult.Updated, repository.updateEvent(staleEdit))
+
+    assertEquals(listOf("IN"), updatedFields()["allowedSections"])
+    assertEquals("Exam review", updatedFields()["title"])
+  }
+
+  @Test
   fun update_byAnOrganizerWhoIsNotTheCreator_isSaved() = runTest {
     stubStoredEvent()
     auth.user = AuthUser("co-organizer", "co@epfl.ch", true)

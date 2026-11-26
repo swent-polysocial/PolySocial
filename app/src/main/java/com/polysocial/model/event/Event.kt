@@ -102,9 +102,12 @@ fun Event.withCreator(uid: String, isVerifiedAssociation: Boolean): Event =
 
 /**
  * Returns this event as an update of [stored]: it keeps [stored]'s [Event.id], [Event.createdBy],
- * [Event.organizerIds], [Event.allowedUids], [Event.attendeeCount] and [Event.isAssociationEvent],
- * replacing the caller's values, so editing an event can't change who manages or reads it, how many
- * are going, or its verified badge.
+ * [Event.organizerIds], [Event.allowedUids], [Event.attendeeCount], [Event.isAssociationEvent] and
+ * [Event.allowedSections], replacing the caller's values, so editing an event can't change who
+ * manages or reads it, how many are going, or its verified badge. The sections are the ones stored
+ * now, not the ones the edit form loaded: a co-organizer may have narrowed them while the form was
+ * open, and an unrelated edit must not bring the old audience back (#369). Changing them is a
+ * separate, explicit action that the section picker adds.
  *
  * Repositories call this with the event as it is stored now.
  */
@@ -116,6 +119,7 @@ fun Event.withOwnershipOf(stored: Event): Event =
             allowedUids = stored.allowedUids,
             attendeeCount = stored.attendeeCount,
             isAssociationEvent = stored.isAssociationEvent,
+            allowedSections = stored.allowedSections,
         )
         .withSectionRestriction()
 

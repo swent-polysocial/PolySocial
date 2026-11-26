@@ -41,12 +41,24 @@ class EventTest {
   }
 
   @Test
-  fun withOwnershipOf_letsAnOrganizerChangeTheSections_butNotOnAnAssociationsEvent() {
+  fun withOwnershipOf_keepsTheStoredSections_notTheOnesTheFormLoaded() {
+    // The form loaded [IN, MA]; a co-organizer has narrowed the stored event to [IN] since.
+    val stored =
+        validEvent().copy(isPrivate = false, allowedSections = listOf("IN")).withCreator("c", false)
+    val fromAStaleForm = stored.copy(title = "Exam review", allowedSections = listOf("IN", "MA"))
+
+    val saved = fromAStaleForm.withOwnershipOf(stored)
+
+    assertEquals(listOf("IN"), saved.allowedSections)
+    assertEquals("Exam review", saved.title)
+  }
+
+  @Test
+  fun withOwnershipOf_neverGivesSectionsToAnAssociationsEvent() {
     val stored = validEvent().copy(isPrivate = false).withCreator("creator", false)
     val edited = stored.copy(allowedSections = listOf("MA", "IN"))
     val association = stored.copy(isAssociationEvent = true)
 
-    assertEquals(listOf("IN", "MA"), edited.withOwnershipOf(stored).allowedSections)
     assertEquals(emptyList<String>(), edited.withOwnershipOf(association).allowedSections)
   }
 
