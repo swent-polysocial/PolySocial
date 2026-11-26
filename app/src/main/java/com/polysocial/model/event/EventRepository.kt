@@ -189,9 +189,9 @@ interface EventRepository {
 
   /**
    * Saves [event]'s new values over the stored `events/[Event.id]`, if the signed-in user is one of
-   * its organizers. The stored [Event.createdBy], [Event.organizerIds], [Event.allowedUids] and
-   * [Event.isAssociationEvent] are kept, ignoring the caller's values (see [withOwnershipOf]),
-   * except for the changes in [organizers].
+   * its organizers. The stored [Event.createdBy], [Event.organizerIds], [Event.allowedUids],
+   * [Event.isAssociationEvent] and [Event.allowedSections] are kept, ignoring the caller's values
+   * (see [withOwnershipOf]), except for the changes in [organizers].
    *
    * The checks run in this order, and each one stops before anything is written: new values that
    * [validateNewEvent] rejects for another reason than a start in the past return
