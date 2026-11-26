@@ -50,6 +50,7 @@ import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.tasks.await
 
 /** Firestore collection holding the events, one document per event. */
@@ -296,57 +297,45 @@ class FirestoreEventRepository(
   @OptIn(ExperimentalCoroutinesApi::class)
   override fun getUpcomingPublicEvents(windowDays: Int): Flow<PublicEventsResult> {
     require(windowDays > 0) { "windowDays must be positive, was $windowDays" }
-    return viewerSections()
-        .flatMapLatest { signedIn ->
-          if (!signedIn.isSignedIn) flowOf(PublicEventsResult.Error)
-          else
-              listenToEvents(
-                  query = {
-                    val now = clock.instant()
-                    db.collection(EVENTS_COLLECTION)
-                        .where(
-                            Filter.and(
-                                Filter.equalTo("isPrivate", false),
-                                Filter.greaterThanOrEqualTo("startTime", now.toTimestamp()),
-                                Filter.lessThan(
-                                    "startTime",
-                                    upcomingWindowEnd(now, windowDays).toTimestamp(),
-                                ),
-                                openToSection(signedIn.section),
-                            )
-                        )
-                        .orderBy("startTime")
-                  },
-                  events = PublicEventsResult::Events,
-                  error = PublicEventsResult.Error,
-              )
+    return viewerSectionsFlow()
+        .flatMapLatest { viewer ->
+          if (viewer !is Viewer.SignedIn) flowOf(PublicEventsResult.Error)
+          else upcomingListener(viewer.section, windowDays)
         }
-        // The inner flows are conflated, but flatMapLatest buffers its own output.
+        // The listener emits [PublicEventsResult.Error] as a terminal result: stop here, so the
+        // retry loop in [viewerSectionsFlow] is cancelled and the flow ends.
+        .transformWhile { result ->
+          emit(result)
+          result !is PublicEventsResult.Error
+        }
         .buffer(Channel.CONFLATED)
   }
 
-  /** Who is listening to the upcoming events: [section] is null while it can't be read. */
-  private data class Viewer(val isSignedIn: Boolean, val section: String?)
+  /** Who is listening to the upcoming events, as emitted by [viewerSectionsFlow]. */
+  private sealed interface Viewer {
+    data object SignedOut : Viewer
+
+    data class SignedIn(val section: String?) : Viewer
+  }
 
   /**
-   * The signed-in student's section in their public profile, which is what the Security Rules read,
-   * as a [Viewer] that changes at most once: first what a bounded lookup finds (the server for
-   * [PROFILE_TIMEOUT_MILLIS], then the cache, or the cache alone offline). If the section wasn't
-   * found, the lookup runs again at each reconnection and at a short backoff
-   * ([PROFILE_RETRY_DELAYS]) while the device stays online, to catch an
-   * [UserProfileRepository.ensurePublicProfile] repair started in the background at app start (a
-   * profile saved before #229). A student with no public profile at all costs a few reads at
-   * startup and one per reconnection, which is cheap.
+   * The signed-in student's viewer state, which drives the query the listener builds: the initial
+   * section lookup, then, if the section was still unknown, the lookup again at each reconnection
+   * and at a short backoff ([PROFILE_RETRY_DELAYS]) while the device stays online. The latter
+   * catches an [UserProfileRepository.ensurePublicProfile] repair started in the background at app
+   * start (a profile saved before #229). The lookup is bounded with a cache fallback (see
+   * [viewerSection]). A student with no public profile at all costs a few reads at startup and one
+   * per reconnection, which is cheap.
    */
-  private fun viewerSections(): Flow<Viewer> = flow {
+  private fun viewerSectionsFlow(): Flow<Viewer> = flow {
     val user = auth.currentUser()
     if (user == null) {
-      emit(Viewer(isSignedIn = false, section = null))
+      emit(Viewer.SignedOut)
       return@flow
     }
-    val first = viewerSection(user.uid)
-    emit(Viewer(isSignedIn = true, section = first))
-    if (first == null) {
+    val initial = viewerSection(user.uid)
+    emit(Viewer.SignedIn(initial))
+    if (initial == null) {
       val reconnections = network.observeOnline().filter { it }
       val onlineRetries = flow {
         for (delayMs in PROFILE_RETRY_DELAYS) {
@@ -354,11 +343,35 @@ class FirestoreEventRepository(
           if (network.isOnline()) emit(Unit)
         }
       }
-      val triggers = merge(reconnections, onlineRetries)
-      val found = triggers.map { viewerSection(user.uid) }.firstOrNull { it != null } ?: return@flow
-      emit(Viewer(isSignedIn = true, section = found))
+      merge(reconnections, onlineRetries)
+          .map { viewerSection(user.uid) }
+          .firstOrNull { it != null }
+          ?.let { emit(Viewer.SignedIn(it)) }
     }
   }
+
+  /** The upcoming events query for [section] (null is the open-to-all query). */
+  private fun upcomingListener(section: String?, windowDays: Int): Flow<PublicEventsResult> =
+      listenToEvents(
+          query = {
+            val now = clock.instant()
+            db.collection(EVENTS_COLLECTION)
+                .where(
+                    Filter.and(
+                        Filter.equalTo("isPrivate", false),
+                        Filter.greaterThanOrEqualTo("startTime", now.toTimestamp()),
+                        Filter.lessThan(
+                            "startTime",
+                            upcomingWindowEnd(now, windowDays).toTimestamp(),
+                        ),
+                        openToSection(section),
+                    )
+                )
+                .orderBy("startTime")
+          },
+          events = PublicEventsResult::Events,
+          error = PublicEventsResult.Error,
+      )
 
   private suspend fun viewerSection(uid: String): String? =
       (publicProfiles.getPublicProfileWithCache(uid, PROFILE_TIMEOUT_MILLIS, network.isOnline())
