@@ -452,7 +452,12 @@ fun CreateEventFormContent(
             Spacer(Modifier.height(8.dp))
             VisibilityOption(
                 title = R.string.create_event_public,
-                hint = R.string.create_event_public_hint,
+                // Audience-aware hint (#524 review): say "the picked sections" when the picker has
+                // narrowed the audience, so the copy matches what the student will see.
+                hint =
+                    if (!form.isPrivate && form.allowedSections.isNotEmpty())
+                        R.string.create_event_public_restricted_hint
+                    else R.string.create_event_public_hint,
                 unselectedIcon = R.drawable.ic_globe,
                 selected = !form.isPrivate,
                 enabled = editable,

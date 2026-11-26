@@ -247,6 +247,13 @@ constructor(
   /** The organizers added and removed in the form, saved with the rest of the event. */
   private var organizerChanges = OrganizerChanges.NONE
 
+  /**
+   * True once the organizer has picked or unpicked a section in the picker (#524): an unrelated
+   * edit then keeps the sections stored now (set by a co-organizer meanwhile), while an explicit
+   * change still lands. See [EventRepository.updateEvent] and [Event.withOwnershipOf].
+   */
+  private var sectionsEdited = false
+
   /** The public profiles read so far, of the organizers and of the students going, by UID. */
   private var knownProfiles: Map<String, PublicProfile> = emptyMap()
 
@@ -446,6 +453,7 @@ constructor(
    */
   fun onSectionToggle(section: String) {
     if (section !in SECTIONS) return
+    sectionsEdited = true
     edit(null) {
       it.copy(
           allowedSections =
@@ -477,7 +485,7 @@ constructor(
   }
 
   private suspend fun save(event: Event): CreateEventStatus =
-      when (val result = repository.updateEvent(event, organizerChanges)) {
+      when (val result = repository.updateEvent(event, organizerChanges, sectionsEdited)) {
         UpdateEventResult.Updated -> CreateEventStatus.Saved
         is UpdateEventResult.Invalid -> refuse(result.errors)
         UpdateEventResult.NetworkError ->

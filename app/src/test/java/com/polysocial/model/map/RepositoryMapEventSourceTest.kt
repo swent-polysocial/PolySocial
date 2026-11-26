@@ -145,6 +145,7 @@ class RepositoryMapEventSourceTest {
           override suspend fun updateEvent(
               event: Event,
               organizers: OrganizerChanges,
+              sectionsEdited: Boolean,
           ): UpdateEventResult = error("This test only observes events")
 
           override suspend fun deleteEvent(id: String): DeleteEventResult =

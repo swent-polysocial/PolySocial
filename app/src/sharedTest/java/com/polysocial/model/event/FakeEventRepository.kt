@@ -62,6 +62,9 @@ class FakeEventRepository(
   /** The organizer changes passed to [updateEvent] so far, in call order. */
   val organizerRequests = mutableListOf<OrganizerChanges>()
 
+  /** The [updateEvent] calls' sectionsEdited flag so far, in call order (#524). */
+  val sectionsEditedRequests = mutableListOf<Boolean>()
+
   /** The IDs passed to [deleteEvent] so far, in call order. */
   val deleteRequests = mutableListOf<String>()
 
@@ -127,9 +130,11 @@ class FakeEventRepository(
   override suspend fun updateEvent(
       event: Event,
       organizers: OrganizerChanges,
+      sectionsEdited: Boolean,
   ): UpdateEventResult {
     updateRequests += event
     organizerRequests += organizers
+    sectionsEditedRequests += sectionsEdited
     val errors = validateNewEvent(event, now) - EventValidationError.START_IN_PAST
     if (errors.isNotEmpty()) return UpdateEventResult.Invalid(errors)
     if (!isReadableEventId(event.id)) return UpdateEventResult.NotFound
@@ -154,7 +159,7 @@ class FakeEventRepository(
     }
     events[index] =
         event
-            .withOwnershipOf(stored)
+            .withOwnershipOf(stored, sectionsEdited)
             .copy(organizerIds = update.organizerIds, allowedUids = update.allowedUids)
     changes.value++
     return UpdateEventResult.Updated

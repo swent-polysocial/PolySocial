@@ -128,6 +128,7 @@ class FirestoreEventRepository(
   override suspend fun updateEvent(
       event: Event,
       organizers: OrganizerChanges,
+      sectionsEdited: Boolean,
   ): UpdateEventResult {
     val now = clock.instant()
     // A start in the past depends on the stored start, so it is checked after the read.
@@ -140,7 +141,9 @@ class FirestoreEventRepository(
     val refusal = AtomicReference<UpdateEventResult>()
     val outcome =
         writeAsOrganizer(event.id, user.uid) { transaction, document, stored ->
-          refusal.set(writeUpdate(transaction, document, stored, event, organizers, now))
+          refusal.set(
+              writeUpdate(transaction, document, stored, event, organizers, sectionsEdited, now)
+          )
           refusal.get() == null
         }
     return when (outcome) {
@@ -166,6 +169,7 @@ class FirestoreEventRepository(
       stored: Event,
       event: Event,
       organizers: OrganizerChanges,
+      sectionsEdited: Boolean,
       now: Instant,
   ): UpdateEventResult? {
     if (validateEventUpdate(event, stored, now).isNotEmpty()) {
@@ -181,7 +185,7 @@ class FirestoreEventRepository(
     }
     val edited =
         event
-            .withOwnershipOf(stored)
+            .withOwnershipOf(stored, sectionsEdited)
             .copy(organizerIds = update.organizerIds, allowedUids = update.allowedUids)
     // `update`, not `set`, so fields this app version doesn't write are kept.
     transaction.update(document, edited.toFirestoreMap())

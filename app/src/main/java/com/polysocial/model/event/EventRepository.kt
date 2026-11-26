@@ -212,6 +212,7 @@ interface EventRepository {
   suspend fun updateEvent(
       event: Event,
       organizers: OrganizerChanges = OrganizerChanges.NONE,
+      sectionsEdited: Boolean = false,
   ): UpdateEventResult
 
   /**
