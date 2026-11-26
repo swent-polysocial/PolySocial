@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #450 under Lucas Pinto Ricardo's supervision and
+// approval).
 // Contributors: Claude (Fable 5.1, Anthropic) drafted the clean-cache tracking and guard blocking,
 // #198; Mohamed Khellaf (reviewed and revised).
 // Contributors: OpenAI Codex (logout cache reset boundary and cancellation/thread safety, #156).
@@ -8,6 +10,7 @@ import com.google.firebase.firestore.FirebaseFirestore
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -36,8 +39,17 @@ interface SessionCache {
 
 /** Owns the replaceable Firestore instance; persistence remains enabled between logouts. */
 @Singleton
-class FirestoreSession(private val provider: () -> FirebaseFirestore) : SessionCache {
-  @Inject constructor() : this({ FirebaseFirestore.getInstance() })
+class FirestoreSession(
+    private val clearFriendsCache: suspend () -> Unit = {},
+    private val provider: () -> FirebaseFirestore,
+) : SessionCache {
+  @Inject
+  constructor(
+      friendsCache: ProfileFriendsCache
+  ) : this(
+      { withContext(Dispatchers.IO) { friendsCache.clear() } },
+      { FirebaseFirestore.getInstance() },
+  )
 
   private val stateLock = Any()
   private val cleanupLock = Mutex()
@@ -102,6 +114,7 @@ class FirestoreSession(private val provider: () -> FirebaseFirestore) : SessionC
                 synchronized(stateLock) { terminated = true }
               }
               previous.clearPersistence().await()
+              clearFriendsCache()
             }
             synchronized(stateLock) {
               current = null

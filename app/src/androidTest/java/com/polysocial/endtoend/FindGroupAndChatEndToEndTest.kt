@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #450 under Lucas Pinto Ricardo's supervision and
+// approval).
 // Contributors: Claude Opus 5.5 (a fake FriendRepository for the scanner's ViewModel, #359);
 // Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: Claude (Fable 5.2, Anthropic) wrote this end-to-end test of going to an event,
@@ -91,9 +93,12 @@ import com.polysocial.model.reminder.FakeReminderScheduler
 import com.polysocial.model.reminder.ReminderModule
 import com.polysocial.model.reminder.ReminderScheduler
 import com.polysocial.model.time.ClockModule
+import com.polysocial.model.user.FakeProfileFriendsRepository
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.FakeUsernameRepository
+import com.polysocial.model.user.ProfileFriendsModule
+import com.polysocial.model.user.ProfileFriendsRepository
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileModule
@@ -160,6 +165,7 @@ import org.junit.runner.RunWith
     NetworkModule::class,
     UserProfileModule::class,
     PublicProfileModule::class,
+    ProfileFriendsModule::class,
     UsernameModule::class,
     RegistrationModule::class,
     FriendModule::class,
@@ -255,6 +261,8 @@ class FindGroupAndChatEndToEndTest {
       )
   // Once going, the detail reads whether a reminder is scheduled: not from the device's
   // WorkManager.
+  @BindValue @JvmField val profileFriends: ProfileFriendsRepository = FakeProfileFriendsRepository()
+
   @BindValue @JvmField val reminders: ReminderScheduler = FakeReminderScheduler(clock)
   // The flow never logs out or deletes the account, but the app's graph still needs these.
   @BindValue @JvmField val deletion: AccountDeletionRepository = FakeAccountDeletionRepository()

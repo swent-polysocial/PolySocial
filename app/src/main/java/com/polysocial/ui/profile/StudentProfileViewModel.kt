@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #450 under Lucas Pinto Ricardo's supervision and
+// approval).
 // Contributors: Claude Opus 5.5 (a group member's public profile, #368, and the cached fallback
 // after review); Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: OpenAI Codex (6.2 Sol, high; reuse the bounded profile lookup, #360 review).
@@ -12,19 +14,32 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.friend.FriendRepository
+import com.polysocial.model.network.NetworkMonitor
+import com.polysocial.model.user.ProfileFriendsRepository
+import com.polysocial.model.user.ProfileFriendsResult
+import com.polysocial.model.user.ProfileVisibility
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.PublicProfileResult
 import com.polysocial.model.user.getPublicProfileWithCache
+import com.polysocial.ui.friend.FriendButton
 import com.polysocial.ui.friend.FriendCard
 import com.polysocial.ui.friend.FriendCardController
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -78,10 +93,17 @@ constructor(
     private val profiles: PublicProfileRepository,
     auth: AuthRepository,
     friends: FriendRepository,
+    private val friendLists: ProfileFriendsRepository,
+    private val network: NetworkMonitor,
 ) : ViewModel() {
   private val uid = savedStateHandle.get<String>(UID_ARG)?.takeIf { it.isNotBlank() }
   private val state = MutableStateFlow<StudentProfileUiState>(StudentProfileUiState.Loading)
   val uiState: StateFlow<StudentProfileUiState> = state.asStateFlow()
+
+  private val viewerUid = auth.currentUser()?.uid
+  private val friendsState = MutableStateFlow<ProfileFriendsUiState>(ProfileFriendsUiState.Loading)
+  val profileFriends: StateFlow<ProfileFriendsUiState> = friendsState.asStateFlow()
+  private var friendsJob: Job? = null
 
   private val card = MutableStateFlow<FriendCard?>(null)
 
@@ -91,9 +113,7 @@ constructor(
    * when the profile arrives.
    */
   private val cards: FriendCardController<FriendCard?>? =
-      auth
-          .currentUser()
-          ?.uid
+      viewerUid
           ?.takeIf { uid != null && it != uid }
           ?.let { myUid ->
             FriendCardController(
@@ -143,10 +163,77 @@ constructor(
     state.value = StudentProfileUiState.Loading
     viewModelScope.launch {
       val loaded = profiles.getPublicProfileWithCache(uid, PROFILE_READ_TIMEOUT_MILLIS).toUiState()
-      if (loaded is StudentProfileUiState.Found) card.value = cards?.cardFor(loaded.profile)
       state.value = loaded
+      if (loaded is StudentProfileUiState.Found) {
+        card.value = cards?.cardFor(loaded.profile)
+        observeProfileFriends(loaded.profile)
+      }
     }
   }
+
+  /** Retries the list without taking the profile card off screen. */
+  fun retryProfileFriends() {
+    if (friendsState.value != ProfileFriendsUiState.Error) return
+    (state.value as? StudentProfileUiState.Found)?.let { observeProfileFriends(it.profile) }
+  }
+
+  private fun observeProfileFriends(profile: PublicProfile) {
+    friendsJob?.cancel()
+    friendsState.value = ProfileFriendsUiState.Loading
+    // A private list may become readable after the friend action, or lose access after removal.
+    val restricted =
+        profile.profileVisibility == ProfileVisibility.PRIVATE && viewerUid != profile.uid
+    val knownFriend =
+        if (restricted) friendCard.map { card -> card?.let { it.button == FriendButton.FRIENDS } }
+        else flowOf(null)
+    friendsJob = viewModelScope.launch {
+      network
+          .observeOnline()
+          .combine(knownFriend) { online, friend -> online to friend }
+          .distinctUntilChanged()
+          .collectLatest { (online, friend) ->
+            friendsState.value = loadProfileFriends(profile, online, restricted, friend)
+          }
+    }
+  }
+
+  private suspend fun loadProfileFriends(
+      profile: PublicProfile,
+      online: Boolean,
+      restricted: Boolean,
+      friend: Boolean?,
+  ): ProfileFriendsUiState {
+    if (!online && friend == false) return ProfileFriendsUiState.Private
+    return when (val result = friendLists.read(profile, online)) {
+      is ProfileFriendsResult.Found ->
+          if (result.fromCache && friend == false) ProfileFriendsUiState.Private
+          else ProfileFriendsUiState.Listed(friendNames(result), offline = result.fromCache)
+      ProfileFriendsResult.Denied ->
+          if (restricted) ProfileFriendsUiState.Private else ProfileFriendsUiState.Error
+      ProfileFriendsResult.Offline ->
+          if (friend == false) ProfileFriendsUiState.Private else ProfileFriendsUiState.Offline
+      ProfileFriendsResult.Error -> ProfileFriendsUiState.Error
+    }
+  }
+
+  /** A missing or uncached name leaves its row in place, so the count still matches the list. */
+  private suspend fun friendNames(result: ProfileFriendsResult.Found): List<String?> =
+      coroutineScope {
+        result.uids
+            .map { uid ->
+              async {
+                (profiles.getPublicProfileWithCache(
+                        uid,
+                        PROFILE_READ_TIMEOUT_MILLIS,
+                        online = !result.fromCache,
+                    ) as? PublicProfileResult.Found)
+                    ?.profile
+                    ?.displayName
+              }
+            }
+            .awaitAll()
+            .sortedWith(compareBy(nullsLast(String.CASE_INSENSITIVE_ORDER)) { it })
+      }
 
   companion object {
     /** The route argument holding the student's UID. */

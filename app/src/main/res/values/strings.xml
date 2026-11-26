@@ -32,6 +32,7 @@
 <!-- Contributors: Claude Opus 5.5 (a group member's public profile copy, #368); Konstantinos Perdikeas (directed, reviewed and owns it). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (one-to-one chats in the privacy notice, #433). -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (Edit event's capacity warning and the number going in the privacy notice, #407). -->
+<!-- Contributors: OpenAI Codex (GPT-6.2 Sol, high; #450 under Lucas Pinto Ricardo's supervision and approval). -->
 <resources>
     <string name="app_start_loading">Loading your profile…</string>
     <string name="app_start_error_title">Couldn\'t load your profile</string>
@@ -279,7 +280,15 @@
     <string name="scan_friend_try_again">Try again</string>
     <string name="scan_friend_profile_title">Public profile</string>
     <string name="scan_friend_interests">Interests</string>
-    <string name="student_profile_title">Public profile</string>
+    <string name="student_profile_title">Student profile</string>
+    <string name="profile_friends_title">Friends</string>
+    <string name="profile_friends_count">Friends · %1$d</string>
+    <string name="profile_friends_unknown_count">Friends · –</string>
+    <string name="profile_friends_loading">Loading friends…</string>
+    <string name="profile_friends_offline">You’re offline</string>
+    <string name="profile_friends_error">Couldn’t load friends</string>
+    <string name="profile_friends_private_title">Private friends list</string>
+    <string name="profile_friends_private_body">Only %1$s’s friends can see this list.</string>
     <string name="student_profile_loading">Loading profile…</string>
     <string name="student_profile_error_title">Couldn\'t load this profile</string>
     <string name="student_profile_error_body">Check your connection and try again.</string>

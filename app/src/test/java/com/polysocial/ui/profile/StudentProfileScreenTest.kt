@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #450 under Lucas Pinto Ricardo's supervision and
+// approval).
 // Contributors: Claude Opus 5.5 (wrote these tests, #368); Konstantinos Perdikeas (directed,
 // reviewed and owns them).
 // Contributors: Claude (Opus 5.5, Anthropic) (the friend action on a student's profile, #478);
@@ -126,6 +128,53 @@ class StudentProfileScreenTest {
     }
 
     assertEquals(List(states.size) { "back" }, calls)
+  }
+
+  @Test
+  fun friendsSectionShowsCountNamesAndMissingProfiles() {
+    showFriends(ProfileFriendsUiState.Listed(listOf("Julia Schmid", null), offline = true))
+
+    compose.onNodeWithTag(C.Tag.profile_friends_count).assertTextEquals("Friends · 2")
+    compose.onNodeWithTag(C.Tag.profile_friends_status).assertTextEquals("You’re offline")
+    compose.onAllNodesWithTag(C.Tag.profile_friend_row).assertCountEquals(2)
+    compose.onNodeWithText("Julia Schmid").assertIsDisplayed()
+    compose.onNodeWithText(string(R.string.group_profile_unavailable)).assertIsDisplayed()
+  }
+
+  @Test
+  fun privateListShowsTheFigmaNoteAndNoCount() {
+    showFriends(ProfileFriendsUiState.Private)
+
+    compose.onNodeWithTag(C.Tag.profile_friends_private).assertIsDisplayed()
+    compose.onNodeWithText("Private friends list").assertIsDisplayed()
+    compose.onNodeWithText("Only Léa Martin’s friends can see this list.").assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.profile_friends_count).assertDoesNotExist()
+    compose.onNodeWithTag(C.Tag.profile_friends_retry).assertDoesNotExist()
+  }
+
+  @Test
+  fun anUnconfirmedOfflineListNeverShowsZero() {
+    showFriends(ProfileFriendsUiState.Offline)
+
+    compose.onNodeWithTag(C.Tag.profile_friends_count).assertTextEquals("Friends · –")
+    compose.onNodeWithTag(C.Tag.profile_friends_status).assertTextEquals("You’re offline")
+    compose.onAllNodesWithTag(C.Tag.profile_friend_row).assertCountEquals(0)
+  }
+
+  @Test
+  fun loadingFriendsLeavesTheProfileVisible() {
+    showFriends(ProfileFriendsUiState.Loading)
+
+    compose.onNodeWithTag(C.Tag.student_profile_name).assertIsDisplayed()
+    compose.onNodeWithTag(C.Tag.profile_friends_status).assertTextEquals("Loading friends…")
+  }
+
+  private fun showFriends(state: ProfileFriendsUiState) {
+    compose.setContent {
+      PolySocialTheme {
+        StudentProfileScreen(StudentProfileUiState.Found(lea), {}, {}, friends = state)
+      }
+    }
   }
 
   // The friend action (#478, Figma #493).
