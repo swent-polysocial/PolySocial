@@ -1,5 +1,6 @@
 // Contributors: Claude (wrote these tests); Mohamed Khellaf (reviewed).
 // Contributors: Claude (Opus 5.5, Anthropic) (the attendee count and when an event is full, #373).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (the sections an event is open to, #369).
 package com.polysocial.model.event
 
 import org.junit.Assert.assertEquals
@@ -8,6 +9,67 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class EventTest {
+
+  @Test
+  fun anEventWithoutSections_isOpenToEverySection() {
+    assertTrue(validEvent().isOpenToAllSections())
+    assertFalse(validEvent().copy(allowedSections = listOf("IN")).isOpenToAllSections())
+  }
+
+  @Test
+  fun withCreator_keepsTheSectionsOfAPublicStudentEvent_inOrder_withoutDuplicatesOrUnknownCodes() {
+    val event =
+        validEvent()
+            .copy(isPrivate = false, allowedSections = listOf("SC", "IN", "IN", "XX"))
+            .withCreator("creator", isVerifiedAssociation = false)
+
+    assertEquals(listOf("IN", "SC"), event.allowedSections)
+  }
+
+  @Test
+  fun withCreator_dropsTheSectionsOfAPrivateEventAndOfAnAssociations() {
+    val restricted = validEvent().copy(allowedSections = listOf("IN"))
+
+    assertEquals(
+        emptyList<String>(),
+        restricted.copy(isPrivate = true).withCreator("creator", false).allowedSections,
+    )
+    assertEquals(
+        emptyList<String>(),
+        restricted.copy(isPrivate = false).withCreator("club", true).allowedSections,
+    )
+  }
+
+  @Test
+  fun withOwnershipOf_keepsTheStoredSections_notTheOnesTheFormLoaded() {
+    // The form loaded [IN, MA]; a co-organizer has narrowed the stored event to [IN] since.
+    val stored =
+        validEvent().copy(isPrivate = false, allowedSections = listOf("IN")).withCreator("c", false)
+    val fromAStaleForm = stored.copy(title = "Exam review", allowedSections = listOf("IN", "MA"))
+
+    val saved = fromAStaleForm.withOwnershipOf(stored)
+
+    assertEquals(listOf("IN"), saved.allowedSections)
+    assertEquals("Exam review", saved.title)
+  }
+
+  @Test
+  fun withOwnershipOf_neverGivesSectionsToAnAssociationsEvent() {
+    val stored = validEvent().copy(isPrivate = false).withCreator("creator", false)
+    val edited = stored.copy(allowedSections = listOf("MA", "IN"))
+    val association = stored.copy(isAssociationEvent = true)
+
+    assertEquals(emptyList<String>(), edited.withOwnershipOf(association).allowedSections)
+  }
+
+  @Test
+  fun aPrivateEventIsMadeOpenToEverySectionWhenSaved() {
+    val stored = validEvent().copy(isPrivate = false).withCreator("creator", false)
+
+    val edited = stored.copy(isPrivate = true, allowedSections = listOf("IN"))
+
+    assertEquals(emptyList<String>(), edited.withOwnershipOf(stored).allowedSections)
+  }
 
   @Test
   fun withCreator_makesTheCreatorOrganizerAndAllowedReader() {

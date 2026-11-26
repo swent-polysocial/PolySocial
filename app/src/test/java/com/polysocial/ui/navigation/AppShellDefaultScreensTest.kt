@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #450 under Lucas Pinto Ricardo's supervision and
+// approval).
 // Contributors: OpenAI Codex (GPT-6.2 Sol, high; #469 permission and group navigation tests).
 // Contributors: OpenAI Codex (6.2 Sol, high; real request action integration, #361).
 // Contributors: OpenAI Codex (6.2 Sol, high; Friends route and association visibility tests, #360).
@@ -92,6 +94,9 @@ import com.polysocial.model.registration.RegistrationRepository
 import com.polysocial.model.time.ClockModule
 import com.polysocial.model.user.AccountType
 import com.polysocial.model.user.FakePublicProfileRepository
+import com.polysocial.model.user.ProfileFriendsModule
+import com.polysocial.model.user.ProfileFriendsRepository
+import com.polysocial.model.user.ProfileFriendsResult
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileModule
 import com.polysocial.model.user.PublicProfileRepository
@@ -143,6 +148,7 @@ import org.robolectric.annotation.Config
     GroupModule::class,
     NetworkModule::class,
     PublicProfileModule::class,
+    ProfileFriendsModule::class,
     RegistrationModule::class,
     CheckInModule::class,
     FriendModule::class,
@@ -194,6 +200,14 @@ class AppShellDefaultScreensTest {
   @BindValue @JvmField val registrations: RegistrationRepository = fakeRegistrations
   private val fakeCheckIns = FakeCheckInRepository()
   @BindValue @JvmField val checkIns: CheckInRepository = fakeCheckIns
+
+  @BindValue
+  @JvmField
+  val profileFriends: ProfileFriendsRepository =
+      object : ProfileFriendsRepository {
+        override suspend fun read(profile: PublicProfile, online: Boolean) =
+            ProfileFriendsResult.Denied
+      }
 
   @BindValue
   @JvmField
@@ -374,6 +388,7 @@ class AppShellDefaultScreensTest {
     // The real route, with its Hilt ViewModel reading the peer's public profile by UID.
     node(C.Tag.student_profile_name).assertTextEquals("Test Peer")
     node(C.Tag.student_profile_details).assertTextEquals("SC · BA4")
+    node(C.Tag.profile_friends_private).assertIsDisplayed()
     assertGone(C.Tag.bottom_nav)
     node(C.Tag.student_profile_back).performClick()
     node(YourGroupTags.SCREEN).assertIsDisplayed()

@@ -6,6 +6,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) tested opening and leaving Find a group, #233.
 // Contributors: Claude Opus 5.5 (tested opening a group member's profile, #368); Konstantinos
 // Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude Opus 5.5 (tested your own row opening My profile, #501); Konstantinos
+// Perdikeas (directed, reviewed and owns it).
 // Contributors: OpenAI Codex (tested the group roster route and return after leaving, #234).
 // Contributors: OpenAI Codex (updated the roster navigation seam for chat, #238).
 // Contributors: Claude (Opus 5.5, Anthropic) (tested opening and leaving the Entrance QR, #468);
@@ -98,6 +100,7 @@ class EventDetailNavigationTest {
       PolySocialTheme {
         AppShell(
             navController = navController,
+            signedInUid = { ME },
             eventsContent = { onEventClick ->
               EventsScreen(
                   EventsUiState(events),
@@ -200,6 +203,7 @@ class EventDetailNavigationTest {
                     onClick = { openMember("student 1/2") },
                     modifier = Modifier.testTag("open_member"),
                 ) {}
+                Button(onClick = { openMember(ME) }, modifier = Modifier.testTag("open_own_row")) {}
                 // Two taps that land before the next frame.
                 Button(
                     onClick = {
@@ -228,6 +232,9 @@ class EventDetailNavigationTest {
                     modifier = Modifier.testTag("student_back_twice"),
                 ) {}
               }
+            },
+            myProfileContent = { onBack, _ ->
+              Button(onClick = onBack, modifier = Modifier.testTag("my_profile_back")) {}
             },
             groupChatContent = { onBack ->
               Button(onClick = onBack, modifier = Modifier.testTag("chat_back")) {
@@ -268,6 +275,24 @@ class EventDetailNavigationTest {
 
     composeTestRule.onNodeWithTag("finish_leave_group").assertTextEquals(trickyId)
     composeTestRule.onNodeWithTag("open_member").performClick()
+    pressBack()
+    composeTestRule.onNodeWithTag("finish_leave_group").assertTextEquals(trickyId)
+  }
+
+  @Test
+  fun yourOwnRow_opensMyProfileInTheSameTab_notYourPublicProfile_andBackReturnsToTheRoster() {
+    composeTestRule.onNodeWithTag(EventsTags.card(trickyId)).performClick()
+    composeTestRule.onNodeWithTag("open_group_roster").performClick()
+
+    composeTestRule.onNodeWithTag("open_own_row").performClick()
+    composeTestRule.onNodeWithTag("my_profile_back").assertIsDisplayed()
+    composeTestRule.onNodeWithTag("student_back").assertDoesNotExist()
+    assertEquals(Tab.EVENTS.myProfileRoute, navController.currentDestination?.route)
+    assertBarsHidden()
+
+    composeTestRule.onNodeWithTag("my_profile_back").performClick()
+    composeTestRule.onNodeWithTag("finish_leave_group").assertTextEquals(trickyId)
+    composeTestRule.onNodeWithTag("open_own_row").performClick()
     pressBack()
     composeTestRule.onNodeWithTag("finish_leave_group").assertTextEquals(trickyId)
   }
@@ -547,6 +572,8 @@ class EventDetailNavigationTest {
   }
 
   private companion object {
+    /** The signed-in student's UID, with a slash so its route must encode it. */
+    const val ME = "me 1/2"
     const val DETAIL = "fake_event_detail"
     const val DETAIL_ID = "fake_event_detail_id"
     const val EDIT = "fake_edit_event"

@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #446 review under Lucas Pinto Ricardo’s
+// supervision and approval).
 // Contributors: OpenAI Codex (verify profile isolation through replaceable Firestore provider,
 // #109).
 // Contributors: Claude (wrote this test, #45; a stored profile without interests, #230; and
@@ -43,16 +45,13 @@ class UserProfileModuleTest {
             "section" to previousProfile.section,
             "year" to previousProfile.year,
             "accountType" to "student",
+            "isAssociationVerified" to false,
         )
     val previous = mockk<DocumentSnapshot>()
     every { previous.exists() } returns true
-    every { previous.getString(any()) } answers { fields[firstArg<String>()] }
-    every { previous.get("isAssociationVerified") } returns false
+    every { previous.getString(any()) } answers { fields[firstArg<String>()] as? String }
+    every { previous.get(any<String>()) } answers { fields[firstArg<String>()] }
     every { previous.getTimestamp("createdAt") } returns null
-    // Saved before interests existed (#230).
-    every { previous.get("interests") } returns null
-    // And before usernames (#448).
-    every { previous.get("username") } returns null
     every { oldRef.get() } returns Tasks.forResult(previous)
     every { freshRef.get() } returns Tasks.forResult(missing)
     val repository = UserProfileModule.userProfileRepository(Provider { current })

@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; profile visibility and bio for #446 under
+// Lucas Pinto Ricardo’s supervision and approval).
 // Contributors: Claude (profile lookup needed by app-start routing, #32; profile model, create and
 // update, #34; isAssociationVerified, #45; the public profile written with it, #229; interests,
 // #230; the missing public profile repaired, #291).
@@ -13,6 +15,18 @@ enum class AccountType(val value: String) {
 }
 
 /**
+ * The student's visibility choice (#366). A missing stored value means [PRIVATE]. The fields in
+ * [PublicProfile], including a bio, are visible to verified students either way.
+ */
+enum class ProfileVisibility(val value: String) {
+  PUBLIC("public"),
+  PRIVATE("private"),
+}
+
+/** Maximum bio length, in UTF-16 units as in the Security Rules. */
+const val MAX_PROFILE_BIO_LENGTH = 150
+
+/**
  * A profile document `users/{uid}`, private to its owner. [section] and [year] are codes such as
  * `IN` and `BA3`. [interests] are codes from [INTERESTS], chosen on the profile step (#230); a
  * profile saved before then has none. [createdAt] is set by the server when the profile is created,
@@ -23,6 +37,7 @@ enum class AccountType(val value: String) {
  *
  * [username] is the student's username without the `@`, or null if they have none (#448). Only
  * [UsernameRepository.setUsername] changes it; [UserProfileRepository.updateProfile] keeps it.
+ * [profileVisibility] defaults to private. [bio] is optional and copied to the public profile.
  */
 data class UserProfile(
     val uid: String,
@@ -35,6 +50,8 @@ data class UserProfile(
     val createdAt: Instant? = null,
     val interests: Set<String> = emptySet(),
     val username: String? = null,
+    val profileVisibility: ProfileVisibility = ProfileVisibility.PRIVATE,
+    val bio: String? = null,
 ) {
   /** Whether this account may publish events under its association's name, with the badge. */
   val isVerifiedAssociation: Boolean
@@ -124,13 +141,13 @@ interface UserProfileRepository {
 
   /**
    * Saves the fields a user can edit ([UserProfile.displayName], [UserProfile.section],
-   * [UserProfile.year] and [UserProfile.interests]) in the existing `users/{profile.uid}`, all of
-   * them: start from the profile [getProfile] returned, or an edit of the name erases the
-   * interests. The other fields never change after creation, except the username, which only
-   * [UsernameRepository.setUsername] changes: the stored one is kept. Unless the stored profile is
-   * an association's, the public profile is saved with the same values and the stored username in
-   * the same write, and created if it is missing (a profile saved before #229). Offline, nothing is
-   * queued and [UpdateProfileResult.NetworkError] is returned.
+   * [UserProfile.year], [UserProfile.interests], [UserProfile.profileVisibility] and
+   * [UserProfile.bio]) in the existing `users/{profile.uid}`. Pass the complete edited profile,
+   * starting from [getProfile]. The other fields never change after creation, except the username,
+   * which only [UsernameRepository.setUsername] changes: the stored one is kept. Unless the stored
+   * profile is an association's, the public profile is saved with the same values and the stored
+   * username in the same write, and created if it is missing (a profile saved before #229).
+   * Offline, nothing is queued and [UpdateProfileResult.NetworkError] is returned.
    */
   suspend fun updateProfile(profile: UserProfile): UpdateProfileResult
 

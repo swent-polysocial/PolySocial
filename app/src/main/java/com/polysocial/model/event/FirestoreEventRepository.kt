@@ -7,10 +7,13 @@
 // Contributors: Claude (Opus 5.5, Anthropic) saved co-organizer changes with an update, #370.
 // Contributors: Claude (Opus 5.5, Anthropic) (a new event's attendee count, and organizer writes
 // with the SDK's default attempts, #373).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (the upcoming events open to the student's section,
+// #369).
 package com.polysocial.model.event
 
 import com.google.firebase.FirebaseException
 import com.google.firebase.firestore.DocumentReference
+import com.google.firebase.firestore.Filter
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.MetadataChanges
@@ -21,21 +24,33 @@ import com.polysocial.model.auth.AuthRepository
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.registration.ATTENDEES_COLLECTION
 import com.polysocial.model.user.ProfileResult
+import com.polysocial.model.user.PublicProfileRepository
+import com.polysocial.model.user.PublicProfileResult
 import com.polysocial.model.user.UserProfileRepository
+import com.polysocial.model.user.getPublicProfileWithCache
 import java.time.Clock
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
+import kotlinx.coroutines.flow.transformWhile
 import kotlinx.coroutines.tasks.await
 
 /** Firestore collection holding the events, one document per event. */
@@ -63,6 +78,7 @@ class FirestoreEventRepository(
     private val database: () -> FirebaseFirestore,
     private val auth: AuthRepository,
     private val profiles: UserProfileRepository,
+    private val publicProfiles: PublicProfileRepository,
     private val network: NetworkMonitor,
     private val clock: Clock,
 ) : EventRepository {
@@ -70,9 +86,10 @@ class FirestoreEventRepository(
       db: FirebaseFirestore,
       auth: AuthRepository,
       profiles: UserProfileRepository,
+      publicProfiles: PublicProfileRepository,
       network: NetworkMonitor,
       clock: Clock,
-  ) : this({ db }, auth, profiles, network, clock)
+  ) : this({ db }, auth, profiles, publicProfiles, network, clock)
 
   private val db: FirebaseFirestore
     get() = database()
@@ -264,24 +281,112 @@ class FirestoreEventRepository(
 
   /**
    * Listens to the query Firestore needs for [isUpcomingPublicEvent]: `isPrivate == false` (the
-   * Security Rules reject a query that could return a private event) and a `startTime` range. This
-   * equality plus range needs the composite index in `firebase/firestore/firestore.indexes.json`.
-   * The window is fixed when collection starts. See [listenToEvents] for how it emits and fails.
+   * Security Rules reject a query that could return a private event), a `startTime` range, and the
+   * events open to the student's section (#369): `allowedSections == []` (every section) or
+   * `allowedSections` array-contains their section. The rules accept a list only if its constraints
+   * prove each result readable, so a query without that part is denied. The section is read from
+   * the public profile, the one the rules compare with, with a bounded wait and the cache as a
+   * fallback (see [viewerSections]). A student who has none yet (saved before #229, repaired at app
+   * start), or who is offline without a cached one, gets only the events open to every section,
+   * which the rules accept without it; when the section becomes available later (the device comes
+   * back online), the query is rebuilt with it and the same flow goes on, so the events open to
+   * that section appear instead of staying missing behind a successful result. The window is read
+   * once when collection starts. This needs the composite indexes in
+   * `firebase/firestore/firestore.indexes.json`. See [listenToEvents] for how it emits and fails.
    */
+  @OptIn(ExperimentalCoroutinesApi::class)
   override fun getUpcomingPublicEvents(windowDays: Int): Flow<PublicEventsResult> {
     require(windowDays > 0) { "windowDays must be positive, was $windowDays" }
-    return listenToEvents(
-        query = {
-          val now = clock.instant()
-          db.collection(EVENTS_COLLECTION)
-              .whereEqualTo("isPrivate", false)
-              .whereGreaterThanOrEqualTo("startTime", now.toTimestamp())
-              .whereLessThan("startTime", upcomingWindowEnd(now, windowDays).toTimestamp())
-              .orderBy("startTime")
-        },
-        events = PublicEventsResult::Events,
-        error = PublicEventsResult.Error,
-    )
+    return viewerSectionsFlow()
+        .flatMapLatest { viewer ->
+          if (viewer !is Viewer.SignedIn) flowOf(PublicEventsResult.Error)
+          else upcomingListener(viewer.section, windowDays)
+        }
+        // The listener emits [PublicEventsResult.Error] as a terminal result: stop here, so the
+        // retry loop in [viewerSectionsFlow] is cancelled and the flow ends.
+        .transformWhile { result ->
+          emit(result)
+          result !is PublicEventsResult.Error
+        }
+        .buffer(Channel.CONFLATED)
+  }
+
+  /** Who is listening to the upcoming events, as emitted by [viewerSectionsFlow]. */
+  private sealed interface Viewer {
+    data object SignedOut : Viewer
+
+    data class SignedIn(val section: String?) : Viewer
+  }
+
+  /**
+   * The signed-in student's viewer state, which drives the query the listener builds: the initial
+   * section lookup, then, if the section was still unknown, the lookup again at each reconnection
+   * and at a short backoff ([PROFILE_RETRY_DELAYS]) while the device stays online. The latter
+   * catches an [UserProfileRepository.ensurePublicProfile] repair started in the background at app
+   * start (a profile saved before #229). The lookup is bounded with a cache fallback (see
+   * [viewerSection]). A student with no public profile at all costs a few reads at startup and one
+   * per reconnection, which is cheap.
+   */
+  private fun viewerSectionsFlow(): Flow<Viewer> = flow {
+    val user = auth.currentUser()
+    if (user == null) {
+      emit(Viewer.SignedOut)
+      return@flow
+    }
+    val initial = viewerSection(user.uid)
+    emit(Viewer.SignedIn(initial))
+    if (initial == null) {
+      val reconnections = network.observeOnline().filter { it }
+      val onlineRetries = flow {
+        for (delayMs in PROFILE_RETRY_DELAYS) {
+          delay(delayMs)
+          if (network.isOnline()) emit(Unit)
+        }
+      }
+      merge(reconnections, onlineRetries)
+          .map { viewerSection(user.uid) }
+          .firstOrNull { it != null }
+          ?.let { emit(Viewer.SignedIn(it)) }
+    }
+  }
+
+  /** The upcoming events query for [section] (null is the open-to-all query). */
+  private fun upcomingListener(section: String?, windowDays: Int): Flow<PublicEventsResult> =
+      listenToEvents(
+          query = {
+            val now = clock.instant()
+            db.collection(EVENTS_COLLECTION)
+                .where(
+                    Filter.and(
+                        Filter.equalTo("isPrivate", false),
+                        Filter.greaterThanOrEqualTo("startTime", now.toTimestamp()),
+                        Filter.lessThan(
+                            "startTime",
+                            upcomingWindowEnd(now, windowDays).toTimestamp(),
+                        ),
+                        openToSection(section),
+                    )
+                )
+                .orderBy("startTime")
+          },
+          events = PublicEventsResult::Events,
+          error = PublicEventsResult.Error,
+      )
+
+  private suspend fun viewerSection(uid: String): String? =
+      (publicProfiles.getPublicProfileWithCache(uid, PROFILE_TIMEOUT_MILLIS, network.isOnline())
+              as? PublicProfileResult.Found)
+          ?.profile
+          ?.section
+
+  /**
+   * The part of a list query that makes every result readable under the rules: events open to every
+   * section, and, when [section] is known, those open to it.
+   */
+  private fun openToSection(section: String?): Filter {
+    val everyone = Filter.equalTo("allowedSections", emptyList<String>())
+    return if (section == null) everyone
+    else Filter.or(everyone, Filter.arrayContains("allowedSections", section))
   }
 
   /**
@@ -449,5 +554,15 @@ class FirestoreEventRepository(
 
     /** The SDK's own number of attempts, which retries a commit another write overtook. */
     val DEFAULT_ATTEMPTS: TransactionOptions = TransactionOptions.Builder().build()
+
+    /** How long the viewer's public profile is waited for before the cache is read instead. */
+    const val PROFILE_TIMEOUT_MILLIS = 10_000L
+
+    /**
+     * Delays between the retries of the public profile lookup while the device stays online and the
+     * section is still unknown, in milliseconds. Covers an
+     * [UserProfileRepository.ensurePublicProfile] repair started in the background at app start.
+     */
+    val PROFILE_RETRY_DELAYS = longArrayOf(2_000L, 5_000L, 10_000L, 20_000L)
   }
 }

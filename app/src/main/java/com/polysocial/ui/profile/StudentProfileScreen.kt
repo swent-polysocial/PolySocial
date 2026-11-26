@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #450 under Lucas Pinto Ricardo's supervision and
+// approval).
 // Contributors: Claude Opus 5.5 (a group member's public profile from Figma's #368 frames);
 // Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: Claude (Sonnet 5.5, Anthropic) (the screen body shared with My profile, #495).
@@ -22,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
+import com.polysocial.model.user.PublicProfile
 import com.polysocial.resources.C
 import com.polysocial.ui.common.ErrorState
 import com.polysocial.ui.common.LoadingState
@@ -36,7 +39,16 @@ import com.polysocial.ui.theme.Bg
 fun StudentProfileRoute(onBack: () -> Unit, viewModel: StudentProfileViewModel = hiltViewModel()) {
   val state by viewModel.uiState.collectAsStateWithLifecycle()
   val friendCard by viewModel.friendCard.collectAsStateWithLifecycle()
-  StudentProfileScreen(state, onBack, viewModel::retry, friendCard, viewModel::onFriendButton)
+  val friends by viewModel.profileFriends.collectAsStateWithLifecycle()
+  StudentProfileScreen(
+      state,
+      onBack,
+      viewModel::retry,
+      friendCard,
+      viewModel::onFriendButton,
+      friends,
+      viewModel::retryProfileFriends,
+  )
 }
 
 /**
@@ -53,6 +65,8 @@ fun StudentProfileScreen(
     onRetry: () -> Unit,
     friendCard: FriendCard? = null,
     onFriendButton: () -> Unit = {},
+    friends: ProfileFriendsUiState? = null,
+    onFriendsRetry: () -> Unit = {},
 ) {
   Column(Modifier.fillMaxSize().background(Bg).testTag(C.Tag.student_profile_screen)) {
     GroupHeader(R.string.student_profile_title, C.Tag.student_profile_back, onBack)
@@ -60,6 +74,9 @@ fun StudentProfileScreen(
       StudentProfileBody(
           state,
           onRetry,
+          content = { profile ->
+            friends?.let { ProfileFriendsSection(it, profile.displayName, onFriendsRetry) }
+          },
           action = friendCard?.let { { FriendCardAction(it, addNote = null, onFriendButton) } },
       )
     }
@@ -77,6 +94,7 @@ internal fun StudentProfileBody(
     state: StudentProfileUiState,
     onRetry: () -> Unit,
     action: (@Composable () -> Unit)? = null,
+    content: @Composable (PublicProfile) -> Unit = {},
     notFound: @Composable () -> Unit = {
       ErrorState(
           title = stringResource(R.string.student_profile_not_found_title),
@@ -95,13 +113,15 @@ internal fun StudentProfileBody(
         )
     is StudentProfileUiState.Found ->
         Column(Modifier.fillMaxSize()) {
-          StudentProfileCard(
-              state.profile,
+          Column(
               Modifier.weight(1f)
                   .fillMaxWidth()
                   .verticalScroll(rememberScrollState())
-                  .padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 24.dp),
-          )
+                  .padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 24.dp)
+          ) {
+            StudentProfileCard(state.profile)
+            content(state.profile)
+          }
           action?.invoke()
         }
     StudentProfileUiState.NotFound -> notFound()

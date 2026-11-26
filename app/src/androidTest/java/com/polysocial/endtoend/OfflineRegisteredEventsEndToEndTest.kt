@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #450 under Lucas Pinto Ricardo's supervision and
+// approval).
 // Contributors: Claude (shared-fake Hilt setup reused from #380);
 // OpenAI Codex (offline journey, cache transition and unmerged semantics lookups, #379).
 // Contributors: Claude (Opus 5.5, Anthropic) (the username fake, for Add by username, #452).
@@ -82,9 +84,12 @@ import com.polysocial.model.reminder.FakeReminderScheduler
 import com.polysocial.model.reminder.ReminderModule
 import com.polysocial.model.reminder.ReminderScheduler
 import com.polysocial.model.time.ClockModule
+import com.polysocial.model.user.FakeProfileFriendsRepository
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.FakeUsernameRepository
+import com.polysocial.model.user.ProfileFriendsModule
+import com.polysocial.model.user.ProfileFriendsRepository
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileModule
@@ -136,6 +141,7 @@ import org.junit.runner.RunWith
     NetworkModule::class,
     UserProfileModule::class,
     PublicProfileModule::class,
+    ProfileFriendsModule::class,
     UsernameModule::class,
     RegistrationModule::class,
     FriendModule::class,
@@ -183,6 +189,8 @@ class OfflineRegisteredEventsEndToEndTest {
   @JvmField
   val publicProfiles: PublicProfileRepository =
       FakePublicProfileRepository(mutableMapOf(UID to PublicProfile(UID, NAME, "IN", "BA3")))
+  @BindValue @JvmField val profileFriends: ProfileFriendsRepository = FakeProfileFriendsRepository()
+
   @BindValue @JvmField val associations: AssociationRepository = FakeAssociationRepository()
   @BindValue @JvmField val clock: Clock = Clock.fixed(NOW, ZURICH)
   @BindValue @JvmField val verificationClock = VerificationClock { NOW.toEpochMilli() }

@@ -1,6 +1,7 @@
 // Contributors: Claude (wrote these tests; the place name tests, #112); Mohamed Khellaf
 // (reviewed). Claude (filling the form from an event to edit it, #131).
 // Contributors: Claude (Opus 5.5, Anthropic) (a capacity below the number going, #407).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (the sections the event is open to, #369).
 package com.polysocial.ui.event.create
 
 import com.polysocial.model.event.Coordinates
@@ -286,6 +287,25 @@ class CreateEventFormTest {
       assertEquals(form, event.toForm(ZURICH))
       assertEquals(event, event.toForm(ZURICH).toEvent(ZURICH))
     }
+  }
+
+  @Test
+  fun toForm_thenToEvent_keepsTheSectionsOfAPublicEvent() {
+    val event =
+        completeForm()
+            .copy(isPrivate = false)
+            .toEvent(ZURICH)!!
+            .copy(allowedSections = listOf("IN", "SC"))
+
+    assertEquals(setOf("IN", "SC"), event.toForm(ZURICH).allowedSections)
+    assertEquals(event, event.toForm(ZURICH).toEvent(ZURICH))
+  }
+
+  @Test
+  fun toEvent_leavesAPrivateEventOpenToEverySection() {
+    val form = completeForm().copy(isPrivate = true, allowedSections = setOf("IN"))
+
+    assertTrue(form.toEvent(ZURICH)!!.allowedSections.isEmpty())
   }
 
   @Test

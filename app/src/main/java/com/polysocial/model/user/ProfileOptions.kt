@@ -62,3 +62,9 @@ val INTERESTS: List<String> =
 fun orderedInterests(interests: Collection<String>): List<String> = INTERESTS.filter {
   it in interests
 }
+
+/**
+ * [sections] in the order of [SECTIONS], without duplicates, and without the codes the app doesn't
+ * offer, so an event's list of sections is the same wherever it is written (#369).
+ */
+fun orderedSections(sections: Collection<String>): List<String> = SECTIONS.filter { it in sections }

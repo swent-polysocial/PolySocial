@@ -2,6 +2,7 @@
 // the place's name, #112); Mohamed Khellaf (reviewed). Claude (filling the form from an event to
 // edit it, #131; the repository's errors, #131 review).
 // Contributors: Claude (Opus 5.5, Anthropic) (a capacity below the number going, #407).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (the sections the event is open to, #369).
 package com.polysocial.ui.event.create
 
 import com.polysocial.model.event.Coordinates
@@ -11,6 +12,7 @@ import com.polysocial.model.event.EventValidationError
 import com.polysocial.model.event.MAX_LOCATION_NAME_LENGTH
 import com.polysocial.model.event.MIN_CAPACITY
 import com.polysocial.model.event.validateNewEvent
+import com.polysocial.model.user.orderedSections
 import java.time.Instant
 import java.time.LocalDate
 import java.time.LocalTime
@@ -42,6 +44,7 @@ data class CreateEventForm(
     val location: PickedLocation? = null,
     val capacityText: String = "",
     val isPrivate: Boolean = true,
+    val allowedSections: Set<String> = emptySet(),
 )
 
 /** A problem the form shows next to a field. */
@@ -86,6 +89,9 @@ fun CreateEventForm.toEvent(zone: ZoneId): Event? {
       endTime = endAfter(start, zone),
       capacity = capacity,
       isPrivate = isPrivate,
+      // Only a public event has sections (#369); a private one keeps what was picked in the form,
+      // in case it is made public again, but is saved open to every section.
+      allowedSections = if (isPrivate) emptyList() else orderedSections(allowedSections),
   )
 }
 
@@ -106,6 +112,7 @@ fun Event.toForm(zone: ZoneId): CreateEventForm {
       location = PickedLocation(location, locationName, isNamed = locationName.isNotBlank()),
       capacityText = capacity?.toString().orEmpty(),
       isPrivate = isPrivate,
+      allowedSections = allowedSections.toSet(),
   )
 }
 

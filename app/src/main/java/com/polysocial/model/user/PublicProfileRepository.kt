@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; profile visibility and bio for #446 under
+// Lucas Pinto Ricardo’s supervision and approval).
 // Contributors: Claude (public profile model and repository contract, #229; reads by UID only and
 // what a missing profile means, after review, #229; interests, #230); Claude Opus 5.5 (the
 // cache-only read, #368 review); Konstantinos Perdikeas (directed, reviewed and owns it).
@@ -27,7 +29,8 @@ internal suspend fun PublicProfileRepository.getPublicProfileWithCache(
  * and a group shows, never the email. [uid] is the document ID, the student's Firebase Auth UID.
  * [section] and [year] are codes such as `IN` and `BA3`, as in [UserProfile]. [interests] are codes
  * from [INTERESTS] (#230), empty when the student picked none. [username] is the student's username
- * without the `@`, or null if they have none (#448).
+ * without the `@`, or null if they have none (#448). [profileVisibility] defaults to private, and
+ * [bio] is visible to students at either setting.
  *
  * The Security Rules let any student read it and associations none, and let its owner write it only
  * as a copy of their `users/{uid}` in the same write, so it is written by [UserProfileRepository],
@@ -40,6 +43,8 @@ data class PublicProfile(
     val year: String,
     val interests: Set<String> = emptySet(),
     val username: String? = null,
+    val profileVisibility: ProfileVisibility = ProfileVisibility.PRIVATE,
+    val bio: String? = null,
 )
 
 /** Outcome of [PublicProfileRepository.getPublicProfile]. */

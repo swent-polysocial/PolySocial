@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #450 under Lucas Pinto Ricardo's supervision and
+// approval).
 // Contributors: Claude Opus 5.5 (wrote these tests, #368 review); Konstantinos Perdikeas
 // (directed, reviewed and owns them).
 // Contributors: Claude (Opus 5.5, Anthropic) (the friend action on a student's profile, #478);
@@ -14,7 +16,10 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
 import com.polysocial.model.friend.FakeFriendRepository
+import com.polysocial.model.network.FakeNetworkMonitor
+import com.polysocial.model.user.FakeProfileFriendsRepository
 import com.polysocial.model.user.FakePublicProfileRepository
+import com.polysocial.model.user.ProfileFriendsResult
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.resources.C
 import com.polysocial.ui.theme.PolySocialTheme
@@ -34,6 +39,7 @@ class StudentProfileRouteTest {
   private val profiles = FakePublicProfileRepository(mutableMapOf("lea" to lea))
   private var backs = 0
   private val friends = FakeFriendRepository(currentUid = "alice")
+  private val friendLists = FakeProfileFriendsRepository()
 
   private fun show() {
     val viewModel =
@@ -42,6 +48,8 @@ class StudentProfileRouteTest {
             profiles,
             FakeAuthRepository(AuthUser("alice", "alice@epfl.ch", true)),
             friends,
+            friendLists,
+            FakeNetworkMonitor(),
         )
     compose.setContent { PolySocialTheme { StudentProfileRoute({ backs++ }, viewModel) } }
   }
@@ -64,6 +72,21 @@ class StudentProfileRouteTest {
     profiles.failure = null
     compose.onNodeWithTag(C.Tag.error_retry).performClick()
 
+    compose.onNodeWithTag(C.Tag.student_profile_name).assertTextEquals("Léa Martin")
+    assertEquals(listOf(listOf("lea"), listOf("lea")), profiles.requestedUids)
+  }
+
+  @Test
+  fun retryReloadsTheFriendsListWhenTheProfileRefreshFails() {
+    friendLists.online = ProfileFriendsResult.Error
+    show()
+    compose.onNodeWithTag(C.Tag.profile_friends_status).assertTextEquals("Couldn’t load friends")
+
+    friendLists.online = ProfileFriendsResult.Found(emptyList())
+    profiles.failure = FakePublicProfileRepository.Failure.Offline
+    compose.onNodeWithTag(C.Tag.profile_friends_retry).performClick()
+
+    compose.onNodeWithTag(C.Tag.profile_friends_count).assertTextEquals("Friends · 0")
     compose.onNodeWithTag(C.Tag.student_profile_name).assertTextEquals("Léa Martin")
     assertEquals(listOf(listOf("lea"), listOf("lea")), profiles.requestedUids)
   }

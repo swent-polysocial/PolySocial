@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; profile visibility and bio for #446 under
+// Lucas Pinto Ricardo’s supervision and approval).
 // Contributors: OpenAI Codex (refresh Firestore and handle blocked cache access, #156).
 // Contributors: Claude (Firestore profile repository, #34; cancelled tasks and wrong-typed fields
 // reported as errors after review; reading isAssociationVerified, #45; other unexpected failures
@@ -55,6 +57,7 @@ class FirestoreUserProfileRepository(private val database: () -> FirebaseFiresto
 
   override suspend fun createProfile(profile: UserProfile): CreateProfileResult =
       reportFailures(CreateProfileResult.NetworkError, CreateProfileResult.UnexpectedError) {
+        profile.requireValidBio()
         val ref = document(profile.uid)
         val created =
             db.runTransaction { transaction ->
@@ -76,13 +79,17 @@ class FirestoreUserProfileRepository(private val database: () -> FirebaseFiresto
 
   override suspend fun updateProfile(profile: UserProfile): UpdateProfileResult =
       reportFailures(UpdateProfileResult.NetworkError, UpdateProfileResult.UnexpectedError) {
+        profile.requireValidBio()
         val ref = document(profile.uid)
         val updated =
             db.runTransaction { transaction ->
                   val stored = transaction.get(ref)
                   if (!stored.exists()) false
                   else {
-                    transaction.update(ref, profile.toEditableFields())
+                    transaction.update(
+                        ref,
+                        profile.toEditableFields() + profile.detailsUpdate(stored),
+                    )
                     // Also writes one a student saved before #229 lacks. The stored username is
                     // kept: it isn't an editable field.
                     if (stored.getString("accountType") != AccountType.ASSOCIATION.value)
@@ -126,6 +133,7 @@ class FirestoreUserProfileRepository(private val database: () -> FirebaseFiresto
 /** The fields of a new `users/{uid}` document. `isAssociationVerified` is never written here. */
 private fun UserProfile.toNewDocument(): Map<String, Any> =
     toEditableFields() +
+        toProfileDetailsDocument() +
         mapOf(
             "uid" to uid,
             "email" to email,
@@ -140,6 +148,15 @@ private fun UserProfile.toEditableFields(): Map<String, Any> =
         "year" to year,
         "interests" to orderedInterests(interests),
     )
+
+private fun UserProfile.detailsUpdate(stored: DocumentSnapshot): Map<String, Any> {
+  val details = toProfileDetailsDocument()
+  val removed =
+      listOf(PROFILE_VISIBILITY_FIELD, BIO_FIELD)
+          .filter { it !in details && stored.contains(it) }
+          .associateWith { FieldValue.delete() }
+  return details + removed
+}
 
 /**
  * The profile in this document, or `null` if a required field is missing, unknown, or stored with
@@ -170,6 +187,8 @@ private fun DocumentSnapshot.readUserProfile(): UserProfile? {
       interests = readInterests() ?: return null,
       // The rules only store a string; anything else reads as no username.
       username = get(USERNAME_FIELD) as? String,
+      profileVisibility = readProfileVisibility(),
+      bio = readBio(),
   )
 }
 

@@ -3,6 +3,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (the co-organizer repositories, #370).
 // Contributors: Claude (Opus 5.5, Anthropic) (the warning for a capacity below the number going,
 // #407).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (an edit keeps the event's sections, #369).
 package com.polysocial.ui.event.create
 
 import androidx.lifecycle.SavedStateHandle
@@ -108,6 +109,22 @@ class EditEventViewModelTest {
     assertEquals("event-1", repository.updateRequests.single().id)
     assertEquals("Exam review", repository.events.single().title)
     assertEquals(stored.startTime, repository.events.single().startTime)
+  }
+
+  @Test
+  fun savingAnUnrelatedChange_keepsTheSectionsOfAPublicEvent() {
+    val restricted = stored.copy(isPrivate = false, allowedSections = listOf("IN", "SC"))
+    repository.seed(restricted)
+    val viewModel = editing()
+    runPending()
+
+    viewModel.onTitleChange("Exam review")
+    viewModel.onSubmit()
+    runPending()
+
+    assertEquals(CreateEventStatus.Saved, viewModel.state().status)
+    assertEquals(listOf("IN", "SC"), repository.updateRequests.single().allowedSections)
+    assertEquals(listOf("IN", "SC"), repository.events.single().allowedSections)
   }
 
   @Test

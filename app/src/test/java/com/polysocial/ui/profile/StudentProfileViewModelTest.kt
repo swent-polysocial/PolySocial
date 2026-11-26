@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #450 under Lucas Pinto Ricardo's supervision and
+// approval).
 // Contributors: Claude Opus 5.5 (wrote these tests, #368, and the cached-profile tests after
 // review); Konstantinos Perdikeas (directed, reviewed and owns them).
 // Contributors: OpenAI Codex (6.2 Sol, high; cache fallback on a network error, #360 review).
@@ -17,7 +19,11 @@ import com.polysocial.model.friend.FriendshipActionResult
 import com.polysocial.model.friend.FriendshipStatus
 import com.polysocial.model.friend.FriendshipsResult
 import com.polysocial.model.friend.SendFriendRequestResult
+import com.polysocial.model.network.FakeNetworkMonitor
+import com.polysocial.model.user.FakeProfileFriendsRepository
 import com.polysocial.model.user.FakePublicProfileRepository
+import com.polysocial.model.user.ProfileFriendsResult
+import com.polysocial.model.user.ProfileVisibility
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.PublicProfileResult
@@ -53,6 +59,9 @@ class StudentProfileViewModelTest {
   private val friends =
       FakeFriendRepository(currentUid = "alice", now = Instant.parse("2026-11-25T18:00:00Z"))
 
+  private val network = FakeNetworkMonitor()
+  private val friendLists = FakeProfileFriendsRepository()
+
   private fun viewModel(
       uid: String? = "lea",
       repository: PublicProfileRepository = profiles,
@@ -65,7 +74,139 @@ class StudentProfileViewModelTest {
           repository,
           auth,
           friendRepository,
+          friendLists,
+          network,
       )
+
+  @Test
+  fun friendNameReadsAreBoundedAndMissingProfilesKeepTheirRows() =
+      runTest(main.dispatcher) {
+        profiles.profiles["lea"] = lea.copy(profileVisibility = ProfileVisibility.PUBLIC)
+        profiles.profiles["other"] = lea.copy(uid = "other", displayName = "Other Student")
+        val uids = (1..9).map { "missing-$it" } + "other"
+        friendLists.online = ProfileFriendsResult.Found(uids)
+        val gate = CompletableDeferred<Unit>()
+        val started = mutableListOf<String>()
+        val repository =
+            object : PublicProfileRepository by profiles {
+              override suspend fun getPublicProfile(uid: String): PublicProfileResult {
+                if (uid in uids) {
+                  started += uid
+                  gate.await()
+                }
+                return profiles.getPublicProfile(uid)
+              }
+            }
+        val vm = viewModel(repository = repository)
+        runCurrent()
+        assertEquals(ProfileFriendsUiState.Loading, vm.profileFriends.value)
+        assertEquals(8, started.size)
+
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(uids.toSet(), started.toSet())
+        assertEquals(
+            ProfileFriendsUiState.Listed(listOf("Other Student") + List(9) { null }),
+            vm.profileFriends.value,
+        )
+      }
+
+  @Test
+  fun retryRefreshesAProfileThatHasBecomePrivate() =
+      runTest(main.dispatcher) {
+        profiles.profiles["lea"] = lea.copy(profileVisibility = ProfileVisibility.PUBLIC)
+        friendLists.online = ProfileFriendsResult.Denied
+        val vm = viewModel()
+        runCurrent()
+        assertEquals(ProfileFriendsUiState.Error, vm.profileFriends.value)
+
+        profiles.profiles["lea"] = lea
+        vm.retryProfileFriends()
+        assertEquals(ProfileFriendsUiState.Loading, vm.profileFriends.value)
+        runCurrent()
+
+        assertEquals(ProfileFriendsUiState.Private, vm.profileFriends.value)
+        assertEquals(StudentProfileUiState.Found(lea), vm.uiState.value)
+      }
+
+  @Test
+  fun reconnectReplacesAnUnknownCountWithTheConfirmedList() =
+      runTest(main.dispatcher) {
+        profiles.profiles["lea"] = lea.copy(profileVisibility = ProfileVisibility.PUBLIC)
+        network.online = false
+        val vm = viewModel()
+        runCurrent()
+        assertEquals(ProfileFriendsUiState.Offline, vm.profileFriends.value)
+
+        friendLists.online = ProfileFriendsResult.Found(emptyList())
+        network.online = true
+        runCurrent()
+        assertEquals(ProfileFriendsUiState.Listed(emptyList()), vm.profileFriends.value)
+      }
+
+  @Test
+  fun confirmedOfflineListUsesCachedPeerNames() =
+      runTest(main.dispatcher) {
+        val publicLea = lea.copy(profileVisibility = ProfileVisibility.PUBLIC)
+        val other = lea.copy(uid = "other", displayName = "Cached Student")
+        val repository =
+            object : PublicProfileRepository by profiles {
+              override suspend fun getCachedPublicProfile(uid: String) =
+                  PublicProfileResult.Found(other)
+
+              override suspend fun getPublicProfile(uid: String): PublicProfileResult {
+                assertEquals("lea", uid)
+                return PublicProfileResult.Found(publicLea)
+              }
+            }
+        network.online = false
+        friendLists.cached = ProfileFriendsResult.Found(listOf("other"), fromCache = true)
+        val vm = viewModel(repository = repository)
+        runCurrent()
+
+        assertEquals(
+            ProfileFriendsUiState.Listed(listOf("Cached Student"), offline = true),
+            vm.profileFriends.value,
+        )
+      }
+
+  @Test
+  fun acceptedFriendCanSeeAPrivateListButLosesItWhenRemoved() =
+      runTest(main.dispatcher) {
+        friendLists.online = ProfileFriendsResult.Denied
+        val vm = viewModel()
+        runCurrent()
+        assertEquals(ProfileFriendsUiState.Private, vm.profileFriends.value)
+
+        friendLists.online = ProfileFriendsResult.Found(emptyList())
+        val accepted = friends.seedAcceptedFriendship("alice", "lea")
+        runCurrent()
+        assertEquals(ProfileFriendsUiState.Listed(emptyList()), vm.profileFriends.value)
+
+        friendLists.cached = ProfileFriendsResult.Found(emptyList(), fromCache = true)
+        network.online = false
+        runCurrent()
+        assertEquals(
+            ProfileFriendsUiState.Listed(emptyList(), offline = true),
+            vm.profileFriends.value,
+        )
+
+        friends.deleteFriendship(accepted.id)
+        runCurrent()
+        assertEquals(ProfileFriendsUiState.Private, vm.profileFriends.value)
+      }
+
+  @Test
+  fun anOnlineDeviceWithAStalledServerDoesNotShowCachedPrivateRowsToANonfriend() =
+      runTest(main.dispatcher) {
+        friendLists.online = ProfileFriendsResult.Found(listOf("other"), fromCache = true)
+        val vm = viewModel()
+        vm.retryProfileFriends()
+        runCurrent()
+
+        assertEquals(ProfileFriendsUiState.Private, vm.profileFriends.value)
+        assertTrue(profiles.requestedUids.none { "other" in it })
+      }
 
   @Test
   fun loadsTheStudentsPublicProfileByUid() =

@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #447 under Lucas Pinto Ricardo’s supervision and approval).
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the Cloud Functions entry point, #206; Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (the trigger deleting a deleted event's registrations, #275).
 // Contributors: Claude (Fable 5.2, Anthropic) (the scheduled cleanup of unverified accounts, #226).
@@ -9,13 +10,14 @@ const { initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const { getFirestore } = require("firebase-admin/firestore");
 const logger = require("firebase-functions/logger");
-const { onDocumentDeleted } = require("firebase-functions/v2/firestore");
+const { onDocumentDeleted, onDocumentWritten } = require("firebase-functions/v2/firestore");
 const { onCall } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { REGION, deleteAccountHandler } = require("./deleteAccountHandler");
 const { deleteUnverifiedAccountsHandler } = require("./deleteUnverifiedAccountsHandler");
 const { deleteGroupsOfDeletedEvent, deleteMessagesOfDeletedGroup } = require("./groups");
 const { TRIGGER_REGION, deleteRegistrationsOfDeletedEvent } = require("./registrations");
+const { syncFriendLists } = require("./syncFriendLists");
 
 initializeApp();
 
@@ -74,4 +76,10 @@ exports.deleteUnverifiedAccounts = onSchedule(
       now: Date.now,
       logger,
     }),
+);
+
+/** Mirrors current friendships into both students' profile friend lists (#447). */
+exports.syncFriendLists = onDocumentWritten(
+  { document: "friendships/{pairId}", region: TRIGGER_REGION, retry: true },
+  ({ params }) => syncFriendLists(getFirestore(), params.pairId),
 );

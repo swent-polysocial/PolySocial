@@ -18,6 +18,7 @@ import com.google.firebase.firestore.CollectionReference
 import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot
 import com.google.firebase.firestore.EventListener
+import com.google.firebase.firestore.Filter
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.ListenerRegistration
@@ -29,10 +30,16 @@ import com.google.firebase.firestore.Transaction
 import com.google.firebase.firestore.TransactionOptions
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
+import com.polysocial.model.network.FakeNetworkMonitor
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.user.AccountType
+import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.ProfileResult
+import com.polysocial.model.user.PublicProfile
+import com.polysocial.model.user.PublicProfileRepository
+import com.polysocial.model.user.PublicProfileResult
+import com.polysocial.model.user.PublicProfilesResult
 import com.polysocial.model.user.UserProfile
 import io.mockk.Called
 import io.mockk.every
@@ -50,6 +57,7 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -86,9 +94,28 @@ class FirestoreEventRepositoryTest {
           year = "BA3",
       )
   private val profiles = FakeUserProfileRepository(ProfileResult.Found(creatorProfile))
+  private val publicProfiles =
+      FakePublicProfileRepository(
+          mutableMapOf(
+              "creator" to
+                  PublicProfile(
+                      uid = "creator",
+                      displayName = "Test Creator",
+                      section = "IN",
+                      year = "BA3",
+                  )
+          )
+      )
 
   private val repository =
-      FirestoreEventRepository(db, auth, profiles, network, Clock.fixed(TEST_NOW, ZoneOffset.UTC))
+      FirestoreEventRepository(
+          db,
+          auth,
+          profiles,
+          publicProfiles,
+          network,
+          Clock.fixed(TEST_NOW, ZoneOffset.UTC),
+      )
 
   @Before
   fun stubFirestore() {
@@ -299,9 +326,8 @@ class FirestoreEventRepositoryTest {
 
   // Reading the public upcoming events (#49)
 
-  private val publicQuery = mockk<Query>()
-  private val fromNow = mockk<Query>()
   private val inWindow = mockk<Query>()
+  private val filter = slot<Filter>()
   private val sorted = mockk<Query>()
   private val registration = mockk<ListenerRegistration>(relaxed = true)
   private val listener = slot<EventListener<QuerySnapshot>>()
@@ -309,11 +335,12 @@ class FirestoreEventRepositoryTest {
   private val windowStart = Timestamp(TEST_NOW.epochSecond, 0)
   private val windowEnd = Timestamp(TEST_NOW.plus(Duration.ofDays(14)).epochSecond, 0)
 
-  /** Stubs exactly the query the repository must build, so any other query fails the test. */
+  /**
+   * Stubs the query the repository must build: one filter (public, in the window, open to the
+   * student's section, see [filter]) sorted by start, so any other query fails the test.
+   */
   private fun stubPublicEventsQuery() {
-    every { collection.whereEqualTo("isPrivate", false) } returns publicQuery
-    every { publicQuery.whereGreaterThanOrEqualTo("startTime", windowStart) } returns fromNow
-    every { fromNow.whereLessThan("startTime", windowEnd) } returns inWindow
+    every { collection.where(capture(filter)) } returns inWindow
     every { inWindow.orderBy("startTime") } returns sorted
     every { sorted.addSnapshotListener(MetadataChanges.INCLUDE, capture(listener)) } returns
         registration
@@ -344,12 +371,224 @@ class FirestoreEventRepositoryTest {
         }
 
     verify {
-      collection.whereEqualTo("isPrivate", false)
-      publicQuery.whereGreaterThanOrEqualTo("startTime", windowStart)
-      fromNow.whereLessThan("startTime", windowEnd)
+      collection.where(any<Filter>())
       inWindow.orderBy("startTime")
     }
+    // One composite filter: public, in the window, and open to the student's section (the rules
+    // and the emulator tests check what it returns, since a Filter can't be read back here).
+    assertEquals("CompositeFilter", filter.captured.javaClass.simpleName)
     collecting.cancel()
+  }
+
+  @Test
+  fun upcomingEvents_readsTheSectionFromThePublicProfile_theOneTheRulesCompareWith() = runTest {
+    stubPublicEventsQuery()
+
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) {
+          repository.getUpcomingPublicEvents().collect {}
+        }
+
+    assertEquals(listOf(listOf("creator")), publicProfiles.requestedUids)
+    assertEquals(0, profiles.getProfileCalls)
+    collecting.cancel()
+  }
+
+  @Test
+  fun upcomingEvents_aStudentWhoseSectionCantBeRead_stillGetsTheEventsOpenToEverySection() =
+      runTest {
+        // A private profile that exists while the public copy doesn't (saved before #229).
+        val withoutSection =
+            FirestoreEventRepository(
+                db,
+                auth,
+                profiles,
+                FakePublicProfileRepository(),
+                network,
+                Clock.fixed(TEST_NOW, ZoneOffset.UTC),
+            )
+        stubPublicEventsQuery()
+        val results = mutableListOf<PublicEventsResult>()
+        val collecting =
+            launch(UnconfinedTestDispatcher(testScheduler)) {
+              withoutSection.getUpcomingPublicEvents().toList(results)
+            }
+
+        listener.captured.onEvent(snapshot(document("e1", stored.toFirestoreMap())), null)
+
+        assertTrue(filter.isCaptured)
+        assertEquals(1, (results.single() as PublicEventsResult.Events).events.size)
+        collecting.cancel()
+      }
+
+  /** Every query built, in order, so a test can tell that it was rebuilt. */
+  private val filters = mutableListOf<Filter>()
+
+  private fun stubEveryPublicEventsQuery() {
+    every { collection.where(capture(filters)) } returns inWindow
+    every { inWindow.orderBy("startTime") } returns sorted
+    every { sorted.addSnapshotListener(MetadataChanges.INCLUDE, capture(listener)) } returns
+        registration
+  }
+
+  private fun repositoryWith(profiles: PublicProfileRepository, network: NetworkMonitor) =
+      FirestoreEventRepository(
+          db,
+          auth,
+          this.profiles,
+          profiles,
+          network,
+          Clock.fixed(TEST_NOW, ZoneOffset.UTC),
+      )
+
+  /** A device that is offline: the server read fails, and only [cached] is saved. */
+  private class OfflineProfiles(private val cached: PublicProfile?) : PublicProfileRepository {
+    var serverReads = 0
+      private set
+
+    override suspend fun getPublicProfile(uid: String): PublicProfileResult {
+      serverReads++
+      return PublicProfileResult.NetworkError
+    }
+
+    override suspend fun getCachedPublicProfile(uid: String) =
+        cached?.let { PublicProfileResult.Found(it) } ?: PublicProfileResult.NetworkError
+
+    override suspend fun getPublicProfiles(uids: Collection<String>) =
+        PublicProfilesResult.NetworkError
+  }
+
+  private val inSection =
+      PublicProfile(uid = "creator", displayName = "Test Creator", section = "IN", year = "BA3")
+
+  @Test
+  fun upcomingEvents_openedOfflineWithoutTheSection_isRebuiltWhenItBecomesAvailable() = runTest {
+    // Offline and nothing cached: the first query can only ask for the events open to every
+    // section.
+    val monitor = FakeNetworkMonitor(online = false)
+    val students = FakePublicProfileRepository()
+    stubEveryPublicEventsQuery()
+    val results = mutableListOf<PublicEventsResult>()
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) {
+          repositoryWith(students, monitor).getUpcomingPublicEvents().toList(results)
+        }
+    assertEquals(1, filters.size)
+    listener.captured.onEvent(snapshot(), null)
+
+    // The device reconnects, and the profile can be read.
+    students.profiles["creator"] = inSection
+    monitor.online = true
+
+    // The same collection goes on with a query that includes the student's section.
+    assertEquals(2, filters.size)
+    verify(exactly = 1) { registration.remove() }
+    assertTrue(collecting.isActive)
+    listener.captured.onEvent(snapshot(document("e1", stored.toFirestoreMap())), null)
+    assertEquals(1, (results.last() as PublicEventsResult.Events).events.size)
+    collecting.cancel()
+  }
+
+  @Test
+  fun upcomingEvents_reconnectingWithoutTheSectionStill_keepsTheQueryAndTriesAgain() = runTest {
+    val monitor = FakeNetworkMonitor(online = false)
+    val students = FakePublicProfileRepository()
+    stubEveryPublicEventsQuery()
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) {
+          repositoryWith(students, monitor).getUpcomingPublicEvents().collect {}
+        }
+
+    // Online, but the profile still can't be read: nothing to rebuild, the listener stays.
+    monitor.online = true
+    assertEquals(1, filters.size)
+    verify(exactly = 0) { registration.remove() }
+
+    // It can be read after the next reconnection.
+    monitor.online = false
+    students.profiles["creator"] = inSection
+    monitor.online = true
+    assertEquals(2, filters.size)
+    collecting.cancel()
+  }
+
+  @Test
+  fun upcomingEvents_openedOnlineWithoutTheProfile_rebuildsOnceTheStartupRepairWrites() = runTest {
+    // Online but no public profile (saved before #229 and still being repaired in the background
+    // by AppStartViewModel; the device never goes offline).
+    val monitor = FakeNetworkMonitor(online = true)
+    val students = FakePublicProfileRepository()
+    stubEveryPublicEventsQuery()
+    val results = mutableListOf<PublicEventsResult>()
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) {
+          repositoryWith(students, monitor).getUpcomingPublicEvents().toList(results)
+        }
+    assertEquals(1, filters.size)
+    listener.captured.onEvent(snapshot(), null)
+
+    // The background repair writes the profile; connectivity never changes.
+    students.profiles["creator"] = inSection
+    // Give the first retry time to run.
+    advanceTimeBy(3_000L)
+
+    assertEquals(2, filters.size)
+    verify(exactly = 1) { registration.remove() }
+    assertTrue(collecting.isActive)
+    listener.captured.onEvent(snapshot(document("e1", stored.toFirestoreMap())), null)
+    assertEquals(1, (results.last() as PublicEventsResult.Events).events.size)
+    collecting.cancel()
+  }
+
+  @Test
+  fun upcomingEvents_withTheSectionKnown_isNotRebuiltWhenTheConnectionChanges() = runTest {
+    val monitor = FakeNetworkMonitor(online = true)
+    stubEveryPublicEventsQuery()
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) {
+          repositoryWith(publicProfiles, monitor).getUpcomingPublicEvents().collect {}
+        }
+
+    monitor.online = false
+    monitor.online = true
+
+    assertEquals(1, filters.size)
+    verify(exactly = 0) { registration.remove() }
+    collecting.cancel()
+  }
+
+  @Test
+  fun upcomingEvents_offlineWithTheProfileCached_usesTheCachedSectionWithoutAskingTheServer() =
+      runTest {
+        val students = OfflineProfiles(cached = inSection)
+        stubEveryPublicEventsQuery()
+        val collecting =
+            launch(UnconfinedTestDispatcher(testScheduler)) {
+              repositoryWith(students, FakeNetworkMonitor(online = false))
+                  .getUpcomingPublicEvents()
+                  .collect {}
+            }
+
+        assertEquals(1, filters.size)
+        assertEquals(0, students.serverReads)
+        collecting.cancel()
+      }
+
+  @Test
+  fun upcomingEvents_nobodySignedIn_isAnErrorWithoutAnyQuery() = runTest {
+    val signedOut =
+        FirestoreEventRepository(
+            db,
+            FakeAuthRepository(user = null),
+            profiles,
+            publicProfiles,
+            network,
+            Clock.fixed(TEST_NOW, ZoneOffset.UTC),
+        )
+
+    val results = signedOut.getUpcomingPublicEvents().toList()
+
+    assertEquals(listOf<PublicEventsResult>(PublicEventsResult.Error), results)
   }
 
   @Test
@@ -913,6 +1152,20 @@ class FirestoreEventRepositoryTest {
     assertFalse(ATTENDEE_COUNT_FIELD in updatedFields())
     // A registration that commits between the read and the commit is retried by the SDK (#373).
     assertEquals(DEFAULT_MAX_ATTEMPTS, options.captured.maxAttempts)
+  }
+
+  @Test
+  fun update_fromAFormLoadedBeforeTheSectionsChanged_keepsTheStoredSections() = runTest {
+    // The stored event is open to IN only, but the form was loaded when it was open to IN and MA.
+    val restricted =
+        managed.copy(isAssociationEvent = false, isPrivate = false, allowedSections = listOf("IN"))
+    stubStoredEvent(restricted.toFirestoreMap())
+
+    val staleEdit = edit.copy(isPrivate = false, allowedSections = listOf("IN", "MA"))
+    assertEquals(UpdateEventResult.Updated, repository.updateEvent(staleEdit))
+
+    assertEquals(listOf("IN"), updatedFields()["allowedSections"])
+    assertEquals("Exam review", updatedFields()["title"])
   }
 
   @Test

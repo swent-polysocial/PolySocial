@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #447 under Lucas Pinto Ricardo’s supervision and approval).
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the deleteAccount emulator test, #206; Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (the public profile deleted with the account, #229; profiles can't be saved
 // again once deleted, after review, #229; the user's registrations, #275; the user's
@@ -22,7 +23,7 @@ const { deleteApp, initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
 const { DocumentReference, getFirestore, Timestamp } = require("firebase-admin/firestore");
 const { DETAILS, REGION, deleteAccountHandler } = require("./deleteAccountHandler");
-const { setBackgroundTriggers } = require("./testing/triggerEmulator");
+const { setBackgroundTriggers, waitFor } = require("./testing/triggerEmulator");
 
 // A "demo-" project never reaches a real Firebase project.
 const PROJECT_ID = "demo-polysocial";
@@ -314,6 +315,32 @@ test("a student's friendships are deleted, other students' are kept (#357)", asy
   assert.equal(status, 200);
   const left = await db.collection("friendships").get();
   assert.deepEqual(left.docs.map((document) => document.id), [pair(other, "fictional-2")]);
+});
+
+test("deleting an account removes the mirrored friend entries on both sides (#447)", async () => {
+  const uid = await seedUser("student@epfl.ch", { accountType: "student" });
+  const other = await seedUser("other@epfl.ch", { accountType: "student" });
+  const references = [
+    db.doc(`publicProfiles/${uid}/friends/${other}`),
+    db.doc(`publicProfiles/${other}/friends/${uid}`),
+  ];
+  const listEntries = async () => (await db.getAll(...references)).map((entry) => entry.exists);
+
+  await setBackgroundTriggers(true);
+  try {
+    const id = pair(uid, other);
+    await db.doc(`friendships/${id}`).set({
+      uids: id.split("~"), requestedBy: other, status: "accepted",
+      createdAt: Timestamp.fromMillis(1_790_000_000_000),
+      acceptedAt: Timestamp.fromMillis(1_790_000_001_000),
+    });
+    await waitFor(listEntries, [true, true]);
+    const { status } = await callDeleteAccount(await signIn("student@epfl.ch"));
+    assert.equal(status, 200);
+    await waitFor(listEntries, [false, false]);
+  } finally {
+    await setBackgroundTriggers(false);
+  }
 });
 
 test("each event the student was going to counts one student less (#405)", async () => {

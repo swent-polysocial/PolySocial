@@ -5,6 +5,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) added the readable private events to this fake, #320.
 // Contributors: Claude (Opus 5.5, Anthropic) added co-organizer changes to this fake, #370, and
 // read the registrations from a FakeRegistrationRepository, #370 review.
+// Contributors: Claude (Sonnet 5.5, Anthropic) (events restricted to sections, #369).
 package com.polysocial.model.event
 
 import java.time.Instant
@@ -78,6 +79,14 @@ class FakeEventRepository(
    * deny.
    */
   var privateEventsFailure = false
+
+  /**
+   * The signed-in student's section, which decides the events restricted to sections that
+   * [getUpcomingPublicEvents] and [getEvent] show them (#369). Null, the default, is a student whose
+   * section can't be read: only the events open to every section. An organizer reads their event
+   * whatever their section, like the Security Rules.
+   */
+  var viewerSection: String? = null
 
   /** The `fromCache` flag the event flows report, to simulate being offline. */
   var readFromCache = false
@@ -178,7 +187,9 @@ class FakeEventRepository(
     val start = now
     return changes.map {
       PublicEventsResult.Events(
-          events.filter { it.isUpcomingPublicEvent(start, windowDays) }.sortedBy { it.startTime },
+          events
+              .filter { it.isUpcomingPublicEvent(start, windowDays) && it.isOpenToViewer() }
+              .sortedBy { it.startTime },
           readFromCache,
       )
     }
@@ -229,7 +240,7 @@ class FakeEventRepository(
   override fun getEvent(id: String): Flow<EventResult> {
     if (!isReadableEventId(id) || id in deniedIds) return flowOf(EventResult.NotFound)
     return changes.map {
-      val event = events.firstOrNull { it.id == id }
+      val event = events.firstOrNull { it.id == id }?.takeIf { it.isOpenToViewer() }
       when {
         event != null -> EventResult.Found(event, readFromCache)
         readFromCache -> EventResult.NotCached
@@ -237,4 +248,14 @@ class FakeEventRepository(
       }
     }
   }
+
+  /**
+   * Whether [viewerSection] (or an organizer of the event, which is [currentUid]) can read this
+   * event, as the Security Rules decide (#369): it has no restriction, or lists the section.
+   */
+  private fun Event.isOpenToViewer(): Boolean =
+      allowedSections.isEmpty() ||
+          (viewerSection != null && viewerSection in allowedSections) ||
+          (currentUid != null && currentUid in organizerIds)
+
 }

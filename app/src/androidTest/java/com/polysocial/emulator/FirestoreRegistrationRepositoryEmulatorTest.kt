@@ -3,6 +3,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (listing the attendees against the rules, #370;
 // counted registrations, full events, bursts and offline writes against the rules, #373, after
 // #372's JS SDK prototype by Claude (Fable 5.2 and Opus 5.5, Anthropic)).
+// Contributors: Claude (Sonnet 5.5, Anthropic) (the public profile as the section source of the
+// upcoming events query, #369).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -22,6 +24,7 @@ import com.polysocial.model.registration.CancelRegistrationResult
 import com.polysocial.model.registration.FirestoreRegistrationRepository
 import com.polysocial.model.registration.MyRegistrationsResult
 import com.polysocial.model.registration.RegisterResult
+import com.polysocial.model.user.FirestorePublicProfileRepository
 import com.polysocial.model.user.FirestoreUserProfileRepository
 import com.polysocial.model.user.USERS_COLLECTION
 import java.time.Clock
@@ -491,6 +494,7 @@ class FirestoreRegistrationRepositoryEmulatorTest {
             db = emulator.firestore,
             auth = EmulatorSignedInUser(emulator),
             profiles = FirestoreUserProfileRepository(emulator.firestore),
+            publicProfiles = FirestorePublicProfileRepository(emulator.firestore),
             network = AlwaysOnline,
             clock = Clock.fixed(Instant.parse("2030-03-01T12:00:00Z"), ZoneOffset.UTC),
         )

@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #450 under Lucas Pinto Ricardo's supervision and
+// approval).
 // Contributors: OpenAI Codex (Organization navigation tag, #140).
 // Contributors: Claude (app shell and tab test tags, #41; loading state tag, #43; Create Event
 // tags, #46; "+" button, #110; app bar action tags, #84; error state tags, #74; Create Event
@@ -55,6 +57,11 @@ object C {
     const val scan_friend_card = "scan_friend_card"
     const val scan_friend_button = "scan_friend_button"
     const val scan_friend_note = "scan_friend_note"
+    const val profile_friends_count = "profile_friends_count"
+    const val profile_friends_status = "profile_friends_status"
+    const val profile_friends_retry = "profile_friends_retry"
+    const val profile_friends_private = "profile_friends_private"
+    const val profile_friend_row = "profile_friend_row"
     const val student_profile_name = "student_profile_name"
     const val student_profile_details = "student_profile_details"
     const val student_profile_interest = "student_profile_interest"
