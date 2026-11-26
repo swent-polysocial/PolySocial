@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #450 under Lucas Pinto Ricardo's supervision and
+// approval).
 // Contributors: OpenAI Codex (verify session Firestore provider, #109).
 // Contributors: Claude (wrote this test, #45).
 package com.polysocial.model.firebase
@@ -54,6 +56,9 @@ class FirebaseModuleTest {
       )
     }
 
-    assertSame(FirebaseFirestore.getInstance(), FirebaseModule.firestore(FirestoreSession()))
+    assertSame(
+        FirebaseFirestore.getInstance(),
+        FirebaseModule.firestore(FirestoreSession(ProfileFriendsCache(context))),
+    )
   }
 }

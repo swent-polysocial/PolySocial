@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #450 under Lucas Pinto Ricardo's supervision and
+// approval).
 // Contributors: Claude Opus 5.5 (a fake FriendRepository for the scanner's ViewModel, #359);
 // Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: Claude (end-to-end test of the organizer flow: create, edit and cancel an event,
@@ -91,9 +93,12 @@ import com.polysocial.model.registration.FakeRegistrationRepository
 import com.polysocial.model.registration.RegistrationModule
 import com.polysocial.model.registration.RegistrationRepository
 import com.polysocial.model.time.ClockModule
+import com.polysocial.model.user.FakeProfileFriendsRepository
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.FakeUsernameRepository
+import com.polysocial.model.user.ProfileFriendsModule
+import com.polysocial.model.user.ProfileFriendsRepository
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileModule
@@ -158,6 +163,7 @@ import org.junit.runner.RunWith
     NetworkModule::class,
     UserProfileModule::class,
     PublicProfileModule::class,
+    ProfileFriendsModule::class,
     UsernameModule::class,
     RegistrationModule::class,
     FriendModule::class,
@@ -204,6 +210,8 @@ class ManageEventEndToEndTest {
   val publicProfiles: PublicProfileRepository =
       FakePublicProfileRepository(mutableMapOf(UID to PublicProfile(UID, NAME, "IN", "BA3")))
   // The flow never logs out or deletes the account, but the app's graph still needs these.
+  @BindValue @JvmField val profileFriends: ProfileFriendsRepository = FakeProfileFriendsRepository()
+
   @BindValue @JvmField val deletion: AccountDeletionRepository = FakeAccountDeletionRepository()
   @BindValue
   @JvmField

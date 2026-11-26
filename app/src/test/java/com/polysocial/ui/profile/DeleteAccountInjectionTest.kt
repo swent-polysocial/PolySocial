@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #450 under Lucas Pinto Ricardo's supervision and
+// approval).
 // Contributors: Claude Opus 5.5 (a fake FriendRepository for the scanner's ViewModel, #359);
 // Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the account deletion flow through the real
@@ -78,9 +80,12 @@ import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.registration.FakeRegistrationRepository
 import com.polysocial.model.registration.RegistrationModule
 import com.polysocial.model.registration.RegistrationRepository
+import com.polysocial.model.user.FakeProfileFriendsRepository
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.FakeUsernameRepository
+import com.polysocial.model.user.ProfileFriendsModule
+import com.polysocial.model.user.ProfileFriendsRepository
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.PublicProfileModule
 import com.polysocial.model.user.PublicProfileRepository
@@ -125,6 +130,7 @@ import org.robolectric.annotation.Config
     FriendModule::class,
     GroupModule::class,
     PublicProfileModule::class,
+    ProfileFriendsModule::class,
     UsernameModule::class,
     UserProfileModule::class,
 )
@@ -153,6 +159,7 @@ class DeleteAccountInjectionTest {
 
   @BindValue @JvmField val registrations: RegistrationRepository = FakeRegistrationRepository()
   @BindValue @JvmField val groups: GroupRepository = FakeGroupRepository()
+  @BindValue @JvmField val profileFriends: ProfileFriendsRepository = FakeProfileFriendsRepository()
   @BindValue @JvmField val publicProfiles: PublicProfileRepository = FakePublicProfileRepository()
   @BindValue @JvmField val usernames: UsernameRepository = FakeUsernameRepository()
   @BindValue @JvmField val checkIns: CheckInRepository = FakeCheckInRepository()

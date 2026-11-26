@@ -1,3 +1,5 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #450 under Lucas Pinto Ricardo's supervision and
+// approval).
 // Contributors: Claude Opus 5.5 (a fake FriendRepository for the scanner's ViewModel, #359);
 // Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: OpenAI Codex (keep association onboarding dependencies fake in Hilt tests, #125).
@@ -119,9 +121,12 @@ import com.polysocial.model.registration.FakeRegistrationRepository
 import com.polysocial.model.registration.RegistrationModule
 import com.polysocial.model.registration.RegistrationRepository
 import com.polysocial.model.time.ClockModule
+import com.polysocial.model.user.FakeProfileFriendsRepository
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.FakeUsernameRepository
+import com.polysocial.model.user.ProfileFriendsModule
+import com.polysocial.model.user.ProfileFriendsRepository
 import com.polysocial.model.user.PublicProfile
 import com.polysocial.model.user.PublicProfileModule
 import com.polysocial.model.user.PublicProfileRepository
@@ -210,6 +215,7 @@ import org.junit.runner.RunWith
     FriendModule::class,
     GroupModule::class,
     PublicProfileModule::class,
+    ProfileFriendsModule::class,
     UsernameModule::class,
 )
 @RunWith(AndroidJUnit4::class)
@@ -248,6 +254,8 @@ class M1EndToEndTest {
               PARTY_ORGANIZER to PublicProfile(PARTY_ORGANIZER, PARTY_ORGANIZER_NAME, "SC", "MA1")
           )
       )
+  @BindValue @JvmField val profileFriends: ProfileFriendsRepository = FakeProfileFriendsRepository()
+
   @BindValue @JvmField val profiles: UserProfileRepository = fakeProfiles
   @BindValue @JvmField val associations: AssociationRepository = FakeAssociationRepository()
   @BindValue @JvmField val clock: Clock = Clock.fixed(NOW, ZURICH)
