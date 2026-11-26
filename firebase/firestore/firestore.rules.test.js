@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #447 under Lucas Pinto Ricardo’s supervision and approval).
 // Contributors: OpenAI Codex (GPT-6.2 Sol, high; #446 rules tests under Lucas Pinto Ricardo’s supervision and approval).
 // Contributors: OpenAI Codex (deleted-token chat reads and immutable deleted authors, #241).
 // Contributors: Claude (rules tests for #33, and firebase/package.json, which can't hold a comment; edge-case, operation and path coverage, #33; users/{uid} tests, no catch-all, batches, transactions, queries, flag edge cases, uid paths, other paths, and fixed uid and accountType, #35; @epfl.ch association tests, accountType values on create and association profile deletes, #161; associations/{uid} tests, #126, with more from a test audit and a review; displayName limit, written test-first, #143; publicProfiles/{uid} tests, written test-first, #229; reads by ID only and the fixed section and year lists, after review, #229; private edits keep the public copy, and deleted accounts stay deleted, after review, #229; interests from the fixed list, test-first, #230; any code read in the list check, after review, #230); OpenAI Codex (event visibility and query tests, #52); Claude Opus 5.5 (event write tests, #47; badge, locationName, profile-delete and organizer-reader tests after review; registration tests, #121; deleted accounts can't register, #275); Claude (Opus 5.5, Anthropic) (event group and groupMembers marker tests, #232, with more after review; group chat message tests, #237, and a deleted account's messages, after review).
@@ -202,6 +203,77 @@ for (const email of [
     await assertAllAccessDenied(firestoreAs(email, true));
   });
 }
+
+// ---- publicProfiles/{uid}/friends/{friendUid} (#447) ----
+
+const friendListPath = "publicProfiles/u1/friends";
+const friendEntry = { acceptedAt: Timestamp.fromMillis(1_790_000_001_000) };
+
+async function seedProfileFriends(visibility) {
+  await seedStudentWithPublicProfile("u1");
+  await env.withSecurityRulesDisabled(async (context) => {
+    const db = context.firestore();
+    if (visibility) await updateDoc(doc(db, "publicProfiles/u1"), { profileVisibility: visibility });
+    await setDoc(doc(db, friendListPath, "u2"), friendEntry);
+  });
+}
+
+for (const [description, viewer, visibility, status] of [
+  ["owner of a legacy private profile", "u1", null, null],
+  ["student viewing a public profile", "u3", "public", null],
+  ["accepted friend of a private profile", "u2", "private", "accepted"],
+]) {
+  test(`profile friends: ${description} can get and list`, async () => {
+    await seedProfileFriends(visibility);
+    if (status) await seedFriends("u1", "u2", status);
+    const db = studentDb(viewer);
+    assert.deepEqual((await assertSucceeds(getDoc(doc(db, friendListPath, "u2")))).data(), friendEntry);
+    assert.equal((await assertSucceeds(getDocs(collection(db, friendListPath)))).size, 1);
+  });
+}
+
+for (const [description, visibility, setupViewer] of [
+  ["stranger on a legacy private profile", null, async () => studentDb("u3")],
+  ["pending friend on a private profile", "private", async () => {
+    await seedFriends("u1", "u2", "pending");
+    return studentDb("u2");
+  }],
+  ["removed friend while entries are still present", "private", async () => {
+    await seedFriends("u1", "u2");
+    await assertSucceeds(deleteDoc(doc(studentDb("u2"), "friendships/u1~u2")));
+    return studentDb("u2");
+  }],
+  ["unverified student on a public profile", "public", async () => firestoreAs("student@epfl.ch", false)],
+  ["signed-out viewer on a public profile", "public", async () => env.unauthenticatedContext().firestore()],
+  ["verified EPFL association on a public profile", "public", seededEpflAssociationDb],
+  ["deleted student on a public profile", "public", async () => {
+    await seedDeletedAccount("u3");
+    return studentDb("u3");
+  }],
+  ["student on a deleted owner's stale public list", "public", async () => {
+    await seedDeletedAccount("u1");
+    return studentDb("u3");
+  }],
+]) {
+  test(`profile friends: ${description} cannot get or list`, async () => {
+    await seedProfileFriends(visibility);
+    const db = await setupViewer();
+    await assertFails(getDoc(doc(db, friendListPath, "u2")));
+    await assertFails(getDocs(collection(db, friendListPath)));
+  });
+}
+
+test("profile friends: the owner and an accepted friend cannot create, update or delete entries", async () => {
+  await seedProfileFriends("public");
+  await seedFriends("u1", "u2");
+  for (const viewer of ["u1", "u2"]) {
+    const db = studentDb(viewer);
+    const entry = doc(db, friendListPath, "u2");
+    await assertFails(setDoc(doc(db, friendListPath, "u3"), friendEntry));
+    await assertFails(updateDoc(entry, { acceptedAt: Timestamp.fromMillis(1_790_000_002_000) }));
+    await assertFails(deleteDoc(entry));
+  }
+});
 
 // ---- users/{uid} (#35) ----
 
