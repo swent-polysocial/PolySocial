@@ -28,6 +28,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) wired Verify Email's Log out anyway, #225 review.
 // Contributors: Claude (Sonnet 5.5, Anthropic) (keyboard Next and Done actions on the Sign up
 // fields, #381).
+// Contributors: Claude Opus 5.5 (passed the signed-in UID to the shell, #501); Konstantinos
+// Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.auth
 
 import androidx.activity.compose.BackHandler
@@ -248,6 +250,7 @@ fun AuthFlow(
     signedInContent: @Composable (() -> Unit) -> Unit = { done ->
       AppShell(
           onLoggedOut = done,
+          signedInUid = startViewModel::signedInUid,
           // After the reset, so the notice survives it (Figma "Delete account · done", #207).
           onAccountDeleted = {
             done()

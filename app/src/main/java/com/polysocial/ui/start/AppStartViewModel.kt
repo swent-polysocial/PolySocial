@@ -8,6 +8,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) awaited the session guard before the profile read,
 // #198; Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (a student's missing public profile repaired without waiting, #291).
+// Contributors: Claude Opus 5.5 (the signed-in UID for opening your own profile, #501);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.start
 
 import androidx.lifecycle.ViewModel
@@ -107,6 +109,12 @@ constructor(
 ) : ViewModel() {
   private val _destination = MutableStateFlow<StartDestination>(StartDestination.Loading)
   val destination: StateFlow<StartDestination> = _destination.asStateFlow()
+
+  /**
+   * The signed-in account's UID, read at each call so it is never a previous account's, or null
+   * when signed out. The shell uses it to open My profile for your own UID (#501).
+   */
+  fun signedInUid(): String? = auth.currentUser()?.uid
 
   /** The running profile read, cancelled by [logOut] so it can't route the signed-out user. */
   private var profileRead: Job? = null

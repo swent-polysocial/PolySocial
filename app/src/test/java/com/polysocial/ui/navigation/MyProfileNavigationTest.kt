@@ -2,6 +2,8 @@
 // Profile tab or any tab, and Edit profile above it, #495).
 // Contributors: Claude (Opus 5.5, Anthropic) (the Chats tab's stand-in takes the one-to-one opener,
 // #432).
+// Contributors: Claude Opus 5.5 (your own UID from a friends list opens My profile, #501);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.navigation
 
 import androidx.activity.ComponentActivity
@@ -20,6 +22,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.polysocial.resources.C
 import com.polysocial.ui.profile.LogoutState
 import com.polysocial.ui.profile.ProfileScreen
+import com.polysocial.ui.profile.StudentProfileViewModel
 import com.polysocial.ui.theme.PolySocialTheme
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -49,6 +52,7 @@ class MyProfileNavigationTest {
       PolySocialTheme {
         AppShell(
             navController = navController,
+            signedInUid = { ME },
             eventsContent = { TabRootScreen(Tab.EVENTS) },
             mapContent = { _, _ -> TabRootScreen(Tab.MAP) },
             chatsContent = { _, _ -> TabRootScreen(Tab.CHATS) },
@@ -70,6 +74,21 @@ class MyProfileNavigationTest {
                   Text("edit")
                 }
               }
+            },
+            friendsContent = { navigation ->
+              Column {
+                Button(
+                    onClick = { navigation.onOpenProfile(ME) },
+                    modifier = Modifier.testTag(FRIENDS_OPEN_ME),
+                ) {}
+                Button(
+                    onClick = { navigation.onOpenProfile(PEER) },
+                    modifier = Modifier.testTag(FRIENDS_OPEN_PEER),
+                ) {}
+              }
+            },
+            studentProfileContent = { onBack ->
+              Button(onClick = onBack, modifier = Modifier.testTag(STUDENT_PROFILE_BACK)) {}
             },
             editProfileContent = { onBack ->
               Button(
@@ -143,7 +162,32 @@ class MyProfileNavigationTest {
     assertEquals(Tab.EVENTS.rootRoute, route())
   }
 
+  @Test
+  fun yourOwnUidFromAFriendsList_opensMyProfile_andAnotherUidTheirPublicProfile() {
+    rule.runOnIdle { navController.navigate(Tab.PROFILE.friendsRoute) }
+
+    rule.onNodeWithTag(FRIENDS_OPEN_ME).performClick()
+    rule.onNodeWithTag(C.Tag.my_profile_screen).assertIsDisplayed()
+    rule.onNodeWithTag(STUDENT_PROFILE_BACK).assertDoesNotExist()
+    assertEquals(Tab.PROFILE.myProfileRoute, route())
+    rule.onNodeWithTag(C.Tag.my_profile_back).performClick()
+    assertEquals(Tab.PROFILE.friendsRoute, route())
+
+    rule.onNodeWithTag(FRIENDS_OPEN_PEER).performClick()
+    rule.onNodeWithTag(STUDENT_PROFILE_BACK).assertIsDisplayed()
+    assertEquals(Tab.PROFILE.studentProfileRoute, route())
+    assertEquals(
+        PEER,
+        navController.currentBackStackEntry?.arguments?.getString(StudentProfileViewModel.UID_ARG),
+    )
+  }
+
   private companion object {
+    const val ME = "me"
+    const val PEER = "peer 1/2"
+    const val FRIENDS_OPEN_ME = "fake_friends_open_me"
+    const val FRIENDS_OPEN_PEER = "fake_friends_open_peer"
+    const val STUDENT_PROFILE_BACK = "fake_student_profile_back"
     const val EDIT_CLOSE = "fake_edit_profile_close"
   }
 }

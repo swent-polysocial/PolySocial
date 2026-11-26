@@ -7,6 +7,8 @@
 // waiting for it, #198; Mohamed Khellaf (reviewed and revised).
 // Contributors: Claude (testing agent: look-alike domains, letter case and Retry for the non-EPFL
 // error, #208).
+// Contributors: Claude Opus 5.5 (the signed-in UID read for opening your own profile, #501);
+// Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.start
 
 import com.polysocial.model.association.FakeAssociationRepository
@@ -44,6 +46,25 @@ class AppStartViewModelTest {
 
   private val auth = FakeAuthRepository()
   private val profiles = FakeUserProfileRepository()
+
+  @Test
+  fun signedInUid_isTheCurrentAccountsUid_readAtEachCall() = runTest {
+    val viewModel =
+        AppStartViewModel(
+            auth,
+            profiles,
+            associationSignup = EmptyAssociationSignupStore,
+            associations = FakeAssociationRepository(),
+            sessions = FakeSessionGuard(),
+        )
+    assertEquals(null, viewModel.signedInUid())
+
+    auth.user = verified
+    assertEquals("u1", viewModel.signedInUid())
+
+    auth.user = verified.copy(uid = "u2")
+    assertEquals("u2", viewModel.signedInUid())
+  }
 
   @Test
   fun noUser_routesToLoginWithoutLoadingAProfile() = runTest {

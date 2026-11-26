@@ -1,6 +1,9 @@
 // Contributors: OpenAI Codex (GPT-6.2 Sol, high; venue check-in for #469 under Lucas Pinto
 // Ricardo’s supervision and approval).
 // Contributors: OpenAI Codex (6.2 Sol, high; student Friends navigation, #360).
+// Contributors: Claude Opus 5.5 (your own UID opens My profile from Your group and Friends,
+// through Tab.profileRouteOf, and the Friends seam, #501); Konstantinos Perdikeas (directed,
+// reviewed and owns it).
 // Contributors: Claude Opus 5.5 (a group member's public profile opened from Your group, #368);
 // Konstantinos Perdikeas (directed, reviewed and owns it).
 // Contributors: Claude Opus 5.5 (Scan a friend's code opened from My friend code, #359);
@@ -161,6 +164,18 @@ data class EventDetailNavigation(
 )
 
 /**
+ * Where Friends leaves to (#360): [onBack] to the Profile tab, [onOpenProfile] to a student's
+ * profile by UID (My profile for your own, #501), [onScan] to Scan a friend's code, and
+ * [onOpenChat] to a one-to-one chat by pair ID (#431).
+ */
+data class FriendsNavigation(
+    val onBack: () -> Unit,
+    val onOpenProfile: (uid: String) -> Unit,
+    val onScan: () -> Unit,
+    val onOpenChat: (pairId: String) -> Unit,
+)
+
+/**
  * Approved associations use Events, Map and Organization; students retain their four tabs.
  * Organization reuses the Profile graph for its own identity, privacy and cache-first logout. The
  * association's Map shows its own upcoming events (#133) under the app bar, which the students' map
@@ -243,6 +258,9 @@ fun AppShell(
     associationHeader: @Composable (title: Int) -> Unit = { title -> AssociationTabHeader(title) },
     onLoggedOut: () -> Unit = {},
     onAccountDeleted: () -> Unit = onLoggedOut,
+    // The signed-in student's UID, read when a profile is opened, so your own opens My profile
+    // (#501). Null opens every UID as a public profile.
+    signedInUid: () -> String? = { null },
     organizationContent: @Composable (() -> Unit, () -> Unit) -> Unit = { done, privacy ->
       OrganizationRoute(done, privacy)
     },
@@ -274,6 +292,14 @@ fun AppShell(
         { onOpenChat, onOpenOneToOneChat ->
           ChatsRoute(onOpenChat, onOpenOneToOneChat = onOpenOneToOneChat)
         },
+    friendsContent: @Composable (FriendsNavigation) -> Unit = { navigation ->
+      FriendsRoute(
+          onBack = navigation.onBack,
+          onOpenProfile = navigation.onOpenProfile,
+          onScan = navigation.onScan,
+          onOpenChat = navigation.onOpenChat,
+      )
+    },
     studentProfileContent: @Composable (() -> Unit) -> Unit = { StudentProfileRoute(it) },
     myProfileContent: @Composable (onBack: () -> Unit, onEdit: () -> Unit) -> Unit =
         { onBack, onEdit ->
@@ -434,15 +460,18 @@ fun AppShell(
           // Friends and QR codes are student-only destinations.
           if (!association) {
             composable(tab.friendsRoute) { entry ->
-              FriendsRoute(
-                  onBack = { if (entry.isResumed) navController.popBackStack() },
-                  onOpenProfile = { uid ->
-                    if (entry.isResumed) navController.navigate(tab.studentProfileRoute(uid))
-                  },
-                  onScan = { if (entry.isResumed) navController.navigate(tab.scanFriendRoute) },
-                  onOpenChat = { pairId ->
-                    if (entry.isResumed) navController.navigate(tab.oneToOneChatRoute(pairId))
-                  },
+              friendsContent(
+                  FriendsNavigation(
+                      onBack = { if (entry.isResumed) navController.popBackStack() },
+                      onOpenProfile = { uid ->
+                        if (entry.isResumed)
+                            navController.navigate(tab.profileRouteOf(uid, signedInUid()))
+                      },
+                      onScan = { if (entry.isResumed) navController.navigate(tab.scanFriendRoute) },
+                      onOpenChat = { pairId ->
+                        if (entry.isResumed) navController.navigate(tab.oneToOneChatRoute(pairId))
+                      },
+                  )
               )
             }
             composable(tab.friendCodeRoute) { entry ->
@@ -541,7 +570,8 @@ fun AppShell(
                   }
                 },
                 { uid ->
-                  if (entry.isResumed) navController.navigate(tab.studentProfileRoute(uid))
+                  if (entry.isResumed)
+                      navController.navigate(tab.profileRouteOf(uid, signedInUid()))
                 },
             )
           }
