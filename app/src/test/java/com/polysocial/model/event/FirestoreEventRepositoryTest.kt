@@ -30,12 +30,16 @@ import com.google.firebase.firestore.Transaction
 import com.google.firebase.firestore.TransactionOptions
 import com.polysocial.model.auth.AuthUser
 import com.polysocial.model.auth.FakeAuthRepository
+import com.polysocial.model.network.FakeNetworkMonitor
 import com.polysocial.model.network.NetworkMonitor
 import com.polysocial.model.user.AccountType
 import com.polysocial.model.user.FakePublicProfileRepository
 import com.polysocial.model.user.FakeUserProfileRepository
 import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.PublicProfile
+import com.polysocial.model.user.PublicProfileRepository
+import com.polysocial.model.user.PublicProfileResult
+import com.polysocial.model.user.PublicProfilesResult
 import com.polysocial.model.user.UserProfile
 import io.mockk.Called
 import io.mockk.every
@@ -413,6 +417,131 @@ class FirestoreEventRepositoryTest {
 
         assertTrue(filter.isCaptured)
         assertEquals(1, (results.single() as PublicEventsResult.Events).events.size)
+        collecting.cancel()
+      }
+
+  /** Every query built, in order, so a test can tell that it was rebuilt. */
+  private val filters = mutableListOf<Filter>()
+
+  private fun stubEveryPublicEventsQuery() {
+    every { collection.where(capture(filters)) } returns inWindow
+    every { inWindow.orderBy("startTime") } returns sorted
+    every { sorted.addSnapshotListener(MetadataChanges.INCLUDE, capture(listener)) } returns
+        registration
+  }
+
+  private fun repositoryWith(profiles: PublicProfileRepository, network: NetworkMonitor) =
+      FirestoreEventRepository(
+          db,
+          auth,
+          this.profiles,
+          profiles,
+          network,
+          Clock.fixed(TEST_NOW, ZoneOffset.UTC),
+      )
+
+  /** A device that is offline: the server read fails, and only [cached] is saved. */
+  private class OfflineProfiles(private val cached: PublicProfile?) : PublicProfileRepository {
+    var serverReads = 0
+      private set
+
+    override suspend fun getPublicProfile(uid: String): PublicProfileResult {
+      serverReads++
+      return PublicProfileResult.NetworkError
+    }
+
+    override suspend fun getCachedPublicProfile(uid: String) =
+        cached?.let { PublicProfileResult.Found(it) } ?: PublicProfileResult.NetworkError
+
+    override suspend fun getPublicProfiles(uids: Collection<String>) =
+        PublicProfilesResult.NetworkError
+  }
+
+  private val inSection =
+      PublicProfile(uid = "creator", displayName = "Test Creator", section = "IN", year = "BA3")
+
+  @Test
+  fun upcomingEvents_openedOfflineWithoutTheSection_isRebuiltWhenItBecomesAvailable() = runTest {
+    // Offline and nothing cached: the first query can only ask for the events open to every
+    // section.
+    val monitor = FakeNetworkMonitor(online = false)
+    val students = FakePublicProfileRepository()
+    stubEveryPublicEventsQuery()
+    val results = mutableListOf<PublicEventsResult>()
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) {
+          repositoryWith(students, monitor).getUpcomingPublicEvents().toList(results)
+        }
+    assertEquals(1, filters.size)
+    listener.captured.onEvent(snapshot(), null)
+
+    // The device reconnects, and the profile can be read.
+    students.profiles["creator"] = inSection
+    monitor.online = true
+
+    // The same collection goes on with a query that includes the student's section.
+    assertEquals(2, filters.size)
+    verify(exactly = 1) { registration.remove() }
+    assertTrue(collecting.isActive)
+    listener.captured.onEvent(snapshot(document("e1", stored.toFirestoreMap())), null)
+    assertEquals(1, (results.last() as PublicEventsResult.Events).events.size)
+    collecting.cancel()
+  }
+
+  @Test
+  fun upcomingEvents_reconnectingWithoutTheSectionStill_keepsTheQueryAndTriesAgain() = runTest {
+    val monitor = FakeNetworkMonitor(online = false)
+    val students = FakePublicProfileRepository()
+    stubEveryPublicEventsQuery()
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) {
+          repositoryWith(students, monitor).getUpcomingPublicEvents().collect {}
+        }
+
+    // Online, but the profile still can't be read: nothing to rebuild, the listener stays.
+    monitor.online = true
+    assertEquals(1, filters.size)
+    verify(exactly = 0) { registration.remove() }
+
+    // It can be read after the next reconnection.
+    monitor.online = false
+    students.profiles["creator"] = inSection
+    monitor.online = true
+    assertEquals(2, filters.size)
+    collecting.cancel()
+  }
+
+  @Test
+  fun upcomingEvents_withTheSectionKnown_isNotRebuiltWhenTheConnectionChanges() = runTest {
+    val monitor = FakeNetworkMonitor(online = true)
+    stubEveryPublicEventsQuery()
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) {
+          repositoryWith(publicProfiles, monitor).getUpcomingPublicEvents().collect {}
+        }
+
+    monitor.online = false
+    monitor.online = true
+
+    assertEquals(1, filters.size)
+    verify(exactly = 0) { registration.remove() }
+    collecting.cancel()
+  }
+
+  @Test
+  fun upcomingEvents_offlineWithTheProfileCached_usesTheCachedSectionWithoutAskingTheServer() =
+      runTest {
+        val students = OfflineProfiles(cached = inSection)
+        stubEveryPublicEventsQuery()
+        val collecting =
+            launch(UnconfinedTestDispatcher(testScheduler)) {
+              repositoryWith(students, FakeNetworkMonitor(online = false))
+                  .getUpcomingPublicEvents()
+                  .collect {}
+            }
+
+        assertEquals(1, filters.size)
+        assertEquals(0, students.serverReads)
         collecting.cancel()
       }
 
