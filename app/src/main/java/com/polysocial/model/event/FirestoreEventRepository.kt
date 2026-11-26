@@ -37,6 +37,7 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
@@ -48,6 +49,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.tasks.await
 
 /** Firestore collection holding the events, one document per event. */
@@ -329,9 +331,12 @@ class FirestoreEventRepository(
   /**
    * The signed-in student's section in their public profile, which is what the Security Rules read,
    * as a [Viewer] that changes at most once: first what a bounded lookup finds (the server for
-   * [PROFILE_TIMEOUT_MILLIS], then the cache, or the cache alone offline), then, if the section
-   * wasn't found, the lookup again each time the device is online, until it is. A student with no
-   * public profile at all costs one more read per reconnection, which is cheap.
+   * [PROFILE_TIMEOUT_MILLIS], then the cache, or the cache alone offline). If the section wasn't
+   * found, the lookup runs again at each reconnection and at a short backoff
+   * ([PROFILE_RETRY_DELAYS]) while the device stays online, to catch an
+   * [UserProfileRepository.ensurePublicProfile] repair started in the background at app start (a
+   * profile saved before #229). A student with no public profile at all costs a few reads at
+   * startup and one per reconnection, which is cheap.
    */
   private fun viewerSections(): Flow<Viewer> = flow {
     val user = auth.currentUser()
@@ -342,8 +347,16 @@ class FirestoreEventRepository(
     val first = viewerSection(user.uid)
     emit(Viewer(isSignedIn = true, section = first))
     if (first == null) {
-      val later = network.observeOnline().filter { it }.map { viewerSection(user.uid) }
-      later.firstOrNull { it != null }?.let { emit(Viewer(isSignedIn = true, section = it)) }
+      val reconnections = network.observeOnline().filter { it }
+      val onlineRetries = flow {
+        for (delayMs in PROFILE_RETRY_DELAYS) {
+          delay(delayMs)
+          if (network.isOnline()) emit(Unit)
+        }
+      }
+      val triggers = merge(reconnections, onlineRetries)
+      val found = triggers.map { viewerSection(user.uid) }.firstOrNull { it != null } ?: return@flow
+      emit(Viewer(isSignedIn = true, section = found))
     }
   }
 
@@ -531,5 +544,12 @@ class FirestoreEventRepository(
 
     /** How long the viewer's public profile is waited for before the cache is read instead. */
     const val PROFILE_TIMEOUT_MILLIS = 10_000L
+
+    /**
+     * Delays between the retries of the public profile lookup while the device stays online and the
+     * section is still unknown, in milliseconds. Covers an
+     * [UserProfileRepository.ensurePublicProfile] repair started in the background at app start.
+     */
+    val PROFILE_RETRY_DELAYS = longArrayOf(2_000L, 5_000L, 10_000L, 20_000L)
   }
 }

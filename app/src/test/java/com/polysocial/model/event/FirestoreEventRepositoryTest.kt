@@ -57,6 +57,7 @@ import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
@@ -508,6 +509,34 @@ class FirestoreEventRepositoryTest {
     students.profiles["creator"] = inSection
     monitor.online = true
     assertEquals(2, filters.size)
+    collecting.cancel()
+  }
+
+  @Test
+  fun upcomingEvents_openedOnlineWithoutTheProfile_rebuildsOnceTheStartupRepairWrites() = runTest {
+    // Online but no public profile (saved before #229 and still being repaired in the background
+    // by AppStartViewModel; the device never goes offline).
+    val monitor = FakeNetworkMonitor(online = true)
+    val students = FakePublicProfileRepository()
+    stubEveryPublicEventsQuery()
+    val results = mutableListOf<PublicEventsResult>()
+    val collecting =
+        launch(UnconfinedTestDispatcher(testScheduler)) {
+          repositoryWith(students, monitor).getUpcomingPublicEvents().toList(results)
+        }
+    assertEquals(1, filters.size)
+    listener.captured.onEvent(snapshot(), null)
+
+    // The background repair writes the profile; connectivity never changes.
+    students.profiles["creator"] = inSection
+    // Give the first retry time to run.
+    advanceTimeBy(3_000L)
+
+    assertEquals(2, filters.size)
+    verify(exactly = 1) { registration.remove() }
+    assertTrue(collecting.isActive)
+    listener.captured.onEvent(snapshot(document("e1", stored.toFirestoreMap())), null)
+    assertEquals(1, (results.last() as PublicEventsResult.Events).events.size)
     collecting.cancel()
   }
 
