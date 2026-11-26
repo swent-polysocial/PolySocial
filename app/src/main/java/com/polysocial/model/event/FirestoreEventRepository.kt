@@ -27,11 +27,13 @@ import com.polysocial.model.user.ProfileResult
 import com.polysocial.model.user.PublicProfileRepository
 import com.polysocial.model.user.PublicProfileResult
 import com.polysocial.model.user.UserProfileRepository
+import com.polysocial.model.user.getPublicProfileWithCache
 import java.time.Clock
 import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.currentCoroutineContext
@@ -40,9 +42,12 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.catch
-import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.tasks.await
 
 /** Firestore collection holding the events, one document per event. */
@@ -277,51 +282,76 @@ class FirestoreEventRepository(
    * events open to the student's section (#369): `allowedSections == []` (every section) or
    * `allowedSections` array-contains their section. The rules accept a list only if its constraints
    * prove each result readable, so a query without that part is denied. The section is read from
-   * the public profile, the one the rules compare with: a student who has none yet (saved
-   * before #229, repaired at app start), or who is offline without a cached one, gets only the
-   * events open to every section, which the rules accept without it. The section is read once when
-   * collection starts, like the window. This needs the composite indexes in
+   * the public profile, the one the rules compare with, with a bounded wait and the cache as a
+   * fallback (see [viewerSections]). A student who has none yet (saved before #229, repaired at app
+   * start), or who is offline without a cached one, gets only the events open to every section,
+   * which the rules accept without it; when the section becomes available later (the device comes
+   * back online), the query is rebuilt with it and the same flow goes on, so the events open to
+   * that section appear instead of staying missing behind a successful result. The window is read
+   * once when collection starts. This needs the composite indexes in
    * `firebase/firestore/firestore.indexes.json`. See [listenToEvents] for how it emits and fails.
    */
+  @OptIn(ExperimentalCoroutinesApi::class)
   override fun getUpcomingPublicEvents(windowDays: Int): Flow<PublicEventsResult> {
     require(windowDays > 0) { "windowDays must be positive, was $windowDays" }
-    return flow {
-      val section = viewerSection()
-      emitAll(
-          listenToEvents(
-              query = {
-                val now = clock.instant()
-                db.collection(EVENTS_COLLECTION)
-                    .where(
-                        Filter.and(
-                            Filter.equalTo("isPrivate", false),
-                            Filter.greaterThanOrEqualTo("startTime", now.toTimestamp()),
-                            Filter.lessThan(
-                                "startTime",
-                                upcomingWindowEnd(now, windowDays).toTimestamp(),
-                            ),
-                            openToSection(section),
+    return viewerSections()
+        .flatMapLatest { signedIn ->
+          if (!signedIn.isSignedIn) flowOf(PublicEventsResult.Error)
+          else
+              listenToEvents(
+                  query = {
+                    val now = clock.instant()
+                    db.collection(EVENTS_COLLECTION)
+                        .where(
+                            Filter.and(
+                                Filter.equalTo("isPrivate", false),
+                                Filter.greaterThanOrEqualTo("startTime", now.toTimestamp()),
+                                Filter.lessThan(
+                                    "startTime",
+                                    upcomingWindowEnd(now, windowDays).toTimestamp(),
+                                ),
+                                openToSection(signedIn.section),
+                            )
                         )
-                    )
-                    .orderBy("startTime")
-              },
-              events = PublicEventsResult::Events,
-              error = PublicEventsResult.Error,
-          )
-      )
-    }
+                        .orderBy("startTime")
+                  },
+                  events = PublicEventsResult::Events,
+                  error = PublicEventsResult.Error,
+              )
+        }
+        // The inner flows are conflated, but flatMapLatest buffers its own output.
+        .buffer(Channel.CONFLATED)
   }
+
+  /** Who is listening to the upcoming events: [section] is null while it can't be read. */
+  private data class Viewer(val isSignedIn: Boolean, val section: String?)
 
   /**
    * The signed-in student's section in their public profile, which is what the Security Rules read,
-   * or null when it can't be read (see [openToSection]).
+   * as a [Viewer] that changes at most once: first what a bounded lookup finds (the server for
+   * [PROFILE_TIMEOUT_MILLIS], then the cache, or the cache alone offline), then, if the section
+   * wasn't found, the lookup again each time the device is online, until it is. A student with no
+   * public profile at all costs one more read per reconnection, which is cheap.
    */
-  private suspend fun viewerSection(): String? {
-    val user = auth.currentUser() ?: return null
-    return (publicProfiles.getPublicProfile(user.uid) as? PublicProfileResult.Found)
-        ?.profile
-        ?.section
+  private fun viewerSections(): Flow<Viewer> = flow {
+    val user = auth.currentUser()
+    if (user == null) {
+      emit(Viewer(isSignedIn = false, section = null))
+      return@flow
+    }
+    val first = viewerSection(user.uid)
+    emit(Viewer(isSignedIn = true, section = first))
+    if (first == null) {
+      val later = network.observeOnline().filter { it }.map { viewerSection(user.uid) }
+      later.firstOrNull { it != null }?.let { emit(Viewer(isSignedIn = true, section = it)) }
+    }
   }
+
+  private suspend fun viewerSection(uid: String): String? =
+      (publicProfiles.getPublicProfileWithCache(uid, PROFILE_TIMEOUT_MILLIS, network.isOnline())
+              as? PublicProfileResult.Found)
+          ?.profile
+          ?.section
 
   /**
    * The part of a list query that makes every result readable under the rules: events open to every
@@ -498,5 +528,8 @@ class FirestoreEventRepository(
 
     /** The SDK's own number of attempts, which retries a commit another write overtook. */
     val DEFAULT_ATTEMPTS: TransactionOptions = TransactionOptions.Builder().build()
+
+    /** How long the viewer's public profile is waited for before the cache is read instead. */
+    const val PROFILE_TIMEOUT_MILLIS = 10_000L
   }
 }
