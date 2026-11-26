@@ -123,8 +123,25 @@ class EditEventViewModelTest {
     runPending()
 
     assertEquals(CreateEventStatus.Saved, viewModel.state().status)
-    assertEquals(listOf("IN", "SC"), repository.updateRequests.single().allowedSections)
+    assertEquals(false, repository.sectionsEditedRequests.single())
+    // The repository preserves the stored sections when nothing was explicitly picked.
     assertEquals(listOf("IN", "SC"), repository.events.single().allowedSections)
+  }
+
+  @Test
+  fun savingAnExplicitSectionChange_writesTheNewAudience() {
+    val restricted = stored.copy(isPrivate = false, allowedSections = listOf("IN"))
+    repository.seed(restricted)
+    val viewModel = editing()
+    runPending()
+
+    viewModel.onSectionToggle("MA")
+    viewModel.onSubmit()
+    runPending()
+
+    assertEquals(CreateEventStatus.Saved, viewModel.state().status)
+    assertEquals(true, repository.sectionsEditedRequests.single())
+    assertEquals(listOf("IN", "MA"), repository.events.single().allowedSections)
   }
 
   @Test

@@ -137,6 +137,7 @@
     <string name="create_event_private_hint">Not on the map. People ask to join, you approve each one.</string>
     <string name="create_event_public">Public</string>
     <string name="create_event_public_hint">Shown on the map to every student.</string>
+    <string name="create_event_public_restricted_hint">Shown on the map to the picked sections.</string>
     <string name="create_event_submit_private">Create private event</string>
     <string name="create_event_submit_public">Create public event</string>
     <string name="create_event_saving">Creating event…</string>

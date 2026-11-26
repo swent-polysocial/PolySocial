@@ -1169,6 +1169,22 @@ class FirestoreEventRepositoryTest {
   }
 
   @Test
+  fun update_withSectionsEdited_writesTheNewAudience() = runTest {
+    val restricted =
+        managed.copy(isAssociationEvent = false, isPrivate = false, allowedSections = listOf("IN"))
+    stubStoredEvent(restricted.toFirestoreMap())
+
+    // The organizer explicitly picked [IN, MA] in the picker.
+    val pickerEdit = edit.copy(isPrivate = false, allowedSections = listOf("IN", "MA"))
+    assertEquals(
+        UpdateEventResult.Updated,
+        repository.updateEvent(pickerEdit, sectionsEdited = true),
+    )
+
+    assertEquals(listOf("IN", "MA"), updatedFields()["allowedSections"])
+  }
+
+  @Test
   fun update_byAnOrganizerWhoIsNotTheCreator_isSaved() = runTest {
     stubStoredEvent()
     auth.user = AuthUser("co-organizer", "co@epfl.ch", true)

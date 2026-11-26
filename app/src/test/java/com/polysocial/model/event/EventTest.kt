@@ -54,6 +54,18 @@ class EventTest {
   }
 
   @Test
+  fun withOwnershipOf_withSectionsEdited_writesTheNewSections() {
+    // The picker changed the stored [IN] to [IN, MA]; the explicit edit must land.
+    val stored =
+        validEvent().copy(isPrivate = false, allowedSections = listOf("IN")).withCreator("c", false)
+    val picked = stored.copy(allowedSections = listOf("IN", "MA"))
+
+    val saved = picked.withOwnershipOf(stored, sectionsEdited = true)
+
+    assertEquals(listOf("IN", "MA"), saved.allowedSections)
+  }
+
+  @Test
   fun withOwnershipOf_neverGivesSectionsToAnAssociationsEvent() {
     val stored = validEvent().copy(isPrivate = false).withCreator("creator", false)
     val edited = stored.copy(allowedSections = listOf("MA", "IN"))
