@@ -145,6 +145,30 @@ class EditEventViewModelTest {
   }
 
   @Test
+  fun revertedSectionToggles_keepTheSectionsStoredByACoOrganizer() {
+    // The event is visible to every section when the form opens; a co-organizer narrows it to IN
+    // meanwhile. The organizer toggles IN on and off (ending back at the empty selection) and
+    // saves an unrelated title change; the stored IN restriction must stay.
+    val openToAll = stored.copy(isPrivate = false, allowedSections = emptyList())
+    repository.seed(openToAll)
+    val viewModel = editing()
+    runPending()
+    // The co-organizer's narrowing happens meanwhile, directly in the repository.
+    repository.events[0] = openToAll.copy(allowedSections = listOf("IN"))
+
+    viewModel.onSectionToggle("IN")
+    viewModel.onSectionToggle("IN")
+    viewModel.onTitleChange("Exam review")
+    viewModel.onSubmit()
+    runPending()
+
+    assertEquals(CreateEventStatus.Saved, viewModel.state().status)
+    assertEquals(false, repository.sectionsEditedRequests.single())
+    // The repository preserves the co-organizer's IN restriction on an unrelated edit.
+    assertEquals(listOf("IN"), repository.events.single().allowedSections)
+  }
+
+  @Test
   fun aCapacityBelowTheNumberGoing_warns_andStillSaves() {
     repository.seed(stored.copy(capacity = 20, attendeeCount = 12))
     val viewModel = editing()

@@ -248,11 +248,13 @@ constructor(
   private var organizerChanges = OrganizerChanges.NONE
 
   /**
-   * True once the organizer has picked or unpicked a section in the picker (#524): an unrelated
-   * edit then keeps the sections stored now (set by a co-organizer meanwhile), while an explicit
-   * change still lands. See [EventRepository.updateEvent] and [Event.withOwnershipOf].
+   * The sections the form was loaded with, kept to tell an actual picker edit from a toggle the
+   * organizer reverted (#524 review): an unrelated edit after a chip was toggled on and off keeps
+   * the sections stored now (which a co-organizer may have narrowed meanwhile), while a selection
+   * that truly differs from this one still lands. See [EventRepository.updateEvent] and
+   * [Event.withOwnershipOf].
    */
-  private var sectionsEdited = false
+  private var loadedSections: Set<String>? = null
 
   /** The public profiles read so far, of the organizers and of the students going, by UID. */
   private var knownProfiles: Map<String, PublicProfile> = emptyMap()
@@ -316,6 +318,7 @@ constructor(
     when (val result = repository.getEvent(id).first()) {
       is EventResult.Found -> {
         stored = result.event
+        loadedSections = result.event.allowedSections.toSet()
         viewModelScope.launch { showOrganizer { eventOrganizer(result.event) } }
         profilesLoading = !result.event.isAssociationEvent
         publish(result.event.toForm(clock.zone), CreateEventStatus.Editing)
@@ -453,7 +456,6 @@ constructor(
    */
   fun onSectionToggle(section: String) {
     if (section !in SECTIONS) return
-    sectionsEdited = true
     edit(null) {
       it.copy(
           allowedSections =
@@ -484,19 +486,21 @@ constructor(
     }
   }
 
-  private suspend fun save(event: Event): CreateEventStatus =
-      when (val result = repository.updateEvent(event, organizerChanges, sectionsEdited)) {
-        UpdateEventResult.Updated -> CreateEventStatus.Saved
-        is UpdateEventResult.Invalid -> refuse(result.errors)
-        UpdateEventResult.NetworkError ->
-            CreateEventStatus.Failed(CreateEventStatus.Failed.Reason.OFFLINE)
-        is UpdateEventResult.InvalidOrganizers -> refuseOrganizers(event.id, result.error)
-        // Never reported as saved: the form stays, with Try again (#131).
-        UpdateEventResult.NotOrganizer,
-        UpdateEventResult.NotFound,
-        UpdateEventResult.UnexpectedError ->
-            CreateEventStatus.Failed(CreateEventStatus.Failed.Reason.UNEXPECTED)
-      }
+  private suspend fun save(event: Event): CreateEventStatus {
+    val sectionsEdited = event.allowedSections.toSet() != loadedSections
+    return when (val result = repository.updateEvent(event, organizerChanges, sectionsEdited)) {
+      UpdateEventResult.Updated -> CreateEventStatus.Saved
+      is UpdateEventResult.Invalid -> refuse(result.errors)
+      UpdateEventResult.NetworkError ->
+          CreateEventStatus.Failed(CreateEventStatus.Failed.Reason.OFFLINE)
+      is UpdateEventResult.InvalidOrganizers -> refuseOrganizers(event.id, result.error)
+      // Never reported as saved: the form stays, with Try again (#131).
+      UpdateEventResult.NotOrganizer,
+      UpdateEventResult.NotFound,
+      UpdateEventResult.UnexpectedError ->
+          CreateEventStatus.Failed(CreateEventStatus.Failed.Reason.UNEXPECTED)
+    }
+  }
 
   /**
    * After the organizer changes were refused for [error] (#443): the block itself never removes the
