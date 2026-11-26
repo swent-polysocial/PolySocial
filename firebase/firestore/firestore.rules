@@ -80,6 +80,13 @@ service cloud.firestore {
           && pair.hasAny([member]);
     }
 
+    // Read the current friendship. A batch that accepts a request cannot also send a chat
+    // message, and one that removes a friend can still send a last message.
+    function isAcceptedFriendship(pairId) {
+      let friendship = /databases/$(database)/documents/friendships/$(pairId);
+      return exists(friendship) && get(friendship).data.get('status', null) == 'accepted';
+    }
+
     // A chat message as the caller sends it, in a group's chat (#237) or a one-to-one chat (#428):
     // exactly senderId (the caller's UID), text (1 to 1000 characters, counted like the app's
     // MAX_MESSAGE_LENGTH) and the server's createdAt.
@@ -291,8 +298,7 @@ service cloud.firestore {
         function isAcceptedFriend() {
           let viewer = request.auth.uid;
           let pair = viewer < uid ? viewer + '~' + uid : uid + '~' + viewer;
-          let friendship = /databases/$(database)/documents/friendships/$(pair);
-          return exists(friendship) && get(friendship).data.get('status', null) == 'accepted';
+          return isAcceptedFriendship(pair);
         }
 
         allow get, list: if isStudent()
@@ -966,14 +972,6 @@ service cloud.firestore {
             && isPairIdOf(pairId, request.auth.uid);
       }
 
-      // A missing friendship, or one without a status, is "not friends" rather than a rule error.
-      // Read as stored before the write, as group chat reads its group: a batch that accepts a
-      // request can't also send, and one that removes a friend can still send a last message.
-      function areFriends() {
-        let friendship = /databases/$(database)/documents/friendships/$(pairId);
-        return exists(friendship) && get(friendship).data.get('status', null) == 'accepted';
-      }
-
       allow get: if isOfThePair();
       // Only a query that can return nothing but the caller's chats, such as uids array-contains
       // <own UID>. A chat whose other account was deleted holds only the remaining UID, and is
@@ -982,14 +980,14 @@ service cloud.firestore {
           && !isDeletedAccount(request.auth.uid)
           && resource.data.uids.hasAny([request.auth.uid]);
       allow create: if isOfThePair()
-          && areFriends()
+          && isAcceptedFriendship(pairId)
           && request.resource.data.keys().hasOnly(['uids'])
           && request.resource.data.uids == pairId.split('~');
 
       match /messages/{messageId} {
         allow get, list: if isOfThePair();
         allow create: if isOfThePair()
-            && areFriends()
+            && isAcceptedFriendship(pairId)
             && existsAfter(/databases/$(database)/documents/chats/$(pairId))
             && isNewMessage();
       }

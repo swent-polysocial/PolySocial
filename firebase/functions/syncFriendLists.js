@@ -19,15 +19,18 @@ async function syncFriendLists(db, pairId) {
   await db.runTransaction(async (transaction) => {
     const current = await transaction.get(friendship);
     const acceptedAt = current.get("acceptedAt");
+    const listed = await transaction.getAll(...entries);
     if (current.get("status") === "accepted" && acceptedAt instanceof Timestamp) {
-      for (const entry of await transaction.getAll(...entries)) {
+      for (const entry of listed) {
         const stored = entry.get("acceptedAt");
         if (!(stored instanceof Timestamp) || !stored.isEqual(acceptedAt)) {
           transaction.set(entry.ref, { acceptedAt });
         }
       }
     } else {
-      for (const entry of entries) transaction.delete(entry);
+      for (const entry of listed) {
+        if (entry.exists) transaction.delete(entry.ref);
+      }
     }
   });
 }

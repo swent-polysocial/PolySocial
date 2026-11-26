@@ -17,7 +17,6 @@ const { REGION, deleteAccountHandler } = require("./deleteAccountHandler");
 const { deleteUnverifiedAccountsHandler } = require("./deleteUnverifiedAccountsHandler");
 const { deleteGroupsOfDeletedEvent, deleteMessagesOfDeletedGroup } = require("./groups");
 const { TRIGGER_REGION, deleteRegistrationsOfDeletedEvent } = require("./registrations");
-
 const { syncFriendLists } = require("./syncFriendLists");
 
 initializeApp();
