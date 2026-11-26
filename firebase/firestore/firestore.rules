@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #447 under Lucas Pinto Ricardo’s supervision and approval).
 // Contributors: OpenAI Codex (GPT-6.2 Sol, high; #446 under Lucas Pinto Ricardo’s supervision and approval).
 // Contributors: OpenAI Codex (deleted-token chat access, #241).
 // Contributors: Claude (isEpflUser helper, #33; own users/{uid} rule and no catch-all, #35;
@@ -278,6 +279,28 @@ service cloud.firestore {
           && request.auth.uid == uid
           && !isDeletedAccount(uid)
           && copiesPrivateProfile();
+
+      // The profile owner is fixed by the path, so a query needs no filter. Check the live
+      // friendship for access to a private list even if the trigger has yet to remove its rows.
+      match /friends/{friendUid} {
+        function ownerIsPublic() {
+          let owner = /databases/$(database)/documents/publicProfiles/$(uid);
+          return exists(owner) && get(owner).data.get('profileVisibility', 'private') == 'public';
+        }
+
+        function isAcceptedFriend() {
+          let viewer = request.auth.uid;
+          let pair = viewer < uid ? viewer + '~' + uid : uid + '~' + viewer;
+          let friendship = /databases/$(database)/documents/friendships/$(pair);
+          return exists(friendship) && get(friendship).data.get('status', null) == 'accepted';
+        }
+
+        allow get, list: if isStudent()
+            && !isDeletedAccount(request.auth.uid)
+            && !isDeletedAccount(uid)
+            && (request.auth.uid == uid || ownerIsPublic() || isAcceptedFriend());
+        // Only syncFriendLists writes entries through the Admin SDK.
+      }
     }
 
     // Usernames (#448, decided in #366): usernames/{name} holds the uid of the student whose
