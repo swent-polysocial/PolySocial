@@ -1,7 +1,7 @@
 // Contributors: OpenAI Codex (roster, confirmation and connectivity tests, #234; chat route wiring,
 // #238).
-// Contributors: Claude Opus 5.5 (tested opening a member's profile from their row, #368);
-// Konstantinos Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude Opus 5.5 (tested opening a member's profile from their row, #368; your own
+// row too, #501); Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.group
 
 import android.content.Context
@@ -79,7 +79,10 @@ class YourGroupScreenTest {
     compose.onNodeWithText("Campus concert").assertIsDisplayed()
     compose.onNodeWithText("Test Peer").assertIsDisplayed()
     compose.onNodeWithText("SC · BA4 · Cinema").assertIsDisplayed()
-    compose.onAllNodesWithText(context.getString(R.string.your_group_you)).assertCountEquals(2)
+    // The avatar and the name both say "You"; your row is a button since #501, so its texts merge.
+    compose
+        .onAllNodesWithText(context.getString(R.string.your_group_you), useUnmergedTree = true)
+        .assertCountEquals(2)
 
     asStudent("missing") { groups.joinGroup(EVENT, group.id) }
     text(R.string.group_unknown_member).assertIsDisplayed()
@@ -93,19 +96,20 @@ class YourGroupScreenTest {
   }
 
   @Test
-  fun tappingAnotherMember_opensTheirProfile_butNotYourOwnRowOrAMissingProfile() {
+  fun tappingAMember_opensTheirProfile_yoursToo_butNotAMissingProfile() {
     val group = groups.seedGroup(EVENT, listOf(ME, "peer"))
     show()
     asStudent("missing") { groups.joinGroup(EVENT, group.id) }
 
     compose.onNodeWithTag(YourGroupTags.member("peer")).assertHasClickAction()
-    compose.onNodeWithTag(YourGroupTags.member(ME)).assertHasNoClickAction()
+    compose.onNodeWithTag(YourGroupTags.member(ME)).assertHasClickAction()
     compose.onNodeWithTag(YourGroupTags.member("missing")).assertHasNoClickAction()
-    tap(YourGroupTags.member(ME))
     tap(YourGroupTags.member("missing"))
+    tap(YourGroupTags.member(ME))
     tap(YourGroupTags.member("peer"))
 
-    assertEquals(listOf("peer"), opened)
+    // Your own row passes your UID like any other: the shell opens My profile for it (#501).
+    assertEquals(listOf(ME, "peer"), opened)
   }
 
   @Test

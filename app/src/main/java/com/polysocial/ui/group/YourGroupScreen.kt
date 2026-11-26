@@ -1,8 +1,8 @@
 // Contributors: OpenAI Codex (group roster and leave UI, #234); PolySocial Figma #227
 // (design and group_open_place.png).
 // Contributors: OpenAI Codex (connected the roster chat row, #238).
-// Contributors: Claude Opus 5.5 (another member's row opens their public profile, #368);
-// Konstantinos Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude Opus 5.5 (another member's row opens their public profile, #368; your own
+// row too, #501); Konstantinos Perdikeas (directed, reviewed and owns it).
 package com.polysocial.ui.group
 
 import androidx.compose.foundation.BorderStroke
@@ -220,8 +220,9 @@ private fun MemberRow(
             .filter(String::isNotBlank)
             .joinToString(" · ")
       }
-  // Another member with a public profile opens it (#368); your own row and a missing profile don't.
-  val opens = !isMe && profile != null
+  // A member with a public profile opens it (#368), and your own row My profile, as the shell picks
+  // for your UID (#501); a missing profile opens nothing.
+  val opens = profile != null
   Row(
       verticalAlignment = Alignment.CenterVertically,
       horizontalArrangement = Arrangement.spacedBy(12.dp),
