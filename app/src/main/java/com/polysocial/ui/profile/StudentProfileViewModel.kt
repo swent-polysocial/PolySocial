@@ -42,6 +42,8 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 /** What a student's public profile screen shows. */
 sealed interface StudentProfileUiState {
@@ -73,6 +75,7 @@ internal fun PublicProfileResult.toUiState(): StudentProfileUiState =
  * for another student's profile and for My profile (#495).
  */
 internal const val PROFILE_READ_TIMEOUT_MILLIS = 5_000L
+private const val MAX_CONCURRENT_FRIEND_READS = 8
 
 /**
  * Another student's public profile, opened from a group member's row (#368) with their UID as the
@@ -153,28 +156,29 @@ constructor(
     if (state.value == StudentProfileUiState.CouldNotLoad) load()
   }
 
-  private fun load() {
+  private fun load(refresh: Boolean = false) {
     val uid =
         uid
             ?: run {
               state.value = StudentProfileUiState.NotFound
               return
             }
-    state.value = StudentProfileUiState.Loading
+    if (refresh) {
+      friendsJob?.cancel()
+      friendsState.value = ProfileFriendsUiState.Loading
+    } else state.value = StudentProfileUiState.Loading
     viewModelScope.launch {
       val loaded = profiles.getPublicProfileWithCache(uid, PROFILE_READ_TIMEOUT_MILLIS).toUiState()
-      state.value = loaded
-      if (loaded is StudentProfileUiState.Found) {
-        card.value = cards?.cardFor(loaded.profile)
-        observeProfileFriends(loaded.profile)
-      }
+      if (!refresh || loaded != StudentProfileUiState.CouldNotLoad) state.value = loaded
+      val profile = (state.value as? StudentProfileUiState.Found)?.profile ?: return@launch
+      card.value = card.value?.copy(profile = profile) ?: cards?.cardFor(profile)
+      observeProfileFriends(profile)
     }
   }
 
-  /** Retries the list without taking the profile card off screen. */
+  /** Refreshes visibility before retrying the list and keeps the card visible during the read. */
   fun retryProfileFriends() {
-    if (friendsState.value != ProfileFriendsUiState.Error) return
-    (state.value as? StudentProfileUiState.Found)?.let { observeProfileFriends(it.profile) }
+    if (friendsState.value == ProfileFriendsUiState.Error) load(refresh = true)
   }
 
   private fun observeProfileFriends(profile: PublicProfile) {
@@ -219,16 +223,19 @@ constructor(
   /** A missing or uncached name leaves its row in place, so the count still matches the list. */
   private suspend fun friendNames(result: ProfileFriendsResult.Found): List<String?> =
       coroutineScope {
+        val limits = Semaphore(MAX_CONCURRENT_FRIEND_READS)
         result.uids
             .map { uid ->
               async {
-                (profiles.getPublicProfileWithCache(
-                        uid,
-                        PROFILE_READ_TIMEOUT_MILLIS,
-                        online = !result.fromCache,
-                    ) as? PublicProfileResult.Found)
-                    ?.profile
-                    ?.displayName
+                limits.withPermit {
+                  (profiles.getPublicProfileWithCache(
+                          uid,
+                          PROFILE_READ_TIMEOUT_MILLIS,
+                          online = !result.fromCache,
+                      ) as? PublicProfileResult.Found)
+                      ?.profile
+                      ?.displayName
+                }
               }
             }
             .awaitAll()

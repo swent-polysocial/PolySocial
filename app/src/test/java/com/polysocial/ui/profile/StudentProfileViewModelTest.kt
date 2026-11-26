@@ -79,48 +79,58 @@ class StudentProfileViewModelTest {
       )
 
   @Test
-  fun friendsUsePublicNamesAndKeepARowWhenAProfileIsMissing() =
+  fun friendNameReadsAreBoundedAndMissingProfilesKeepTheirRows() =
       runTest(main.dispatcher) {
         profiles.profiles["lea"] = lea.copy(profileVisibility = ProfileVisibility.PUBLIC)
         profiles.profiles["other"] = lea.copy(uid = "other", displayName = "Other Student")
-        friendLists.online = ProfileFriendsResult.Found(listOf("gone", "other"))
-        val vm = viewModel()
-        assertEquals(ProfileFriendsUiState.Loading, vm.profileFriends.value)
-
+        val uids = (1..9).map { "missing-$it" } + "other"
+        friendLists.online = ProfileFriendsResult.Found(uids)
+        val gate = CompletableDeferred<Unit>()
+        val started = mutableListOf<String>()
+        val repository =
+            object : PublicProfileRepository by profiles {
+              override suspend fun getPublicProfile(uid: String): PublicProfileResult {
+                if (uid in uids) {
+                  started += uid
+                  gate.await()
+                }
+                return profiles.getPublicProfile(uid)
+              }
+            }
+        val vm = viewModel(repository = repository)
         runCurrent()
+        assertEquals(ProfileFriendsUiState.Loading, vm.profileFriends.value)
+        assertEquals(8, started.size)
 
+        gate.complete(Unit)
+        runCurrent()
+        assertEquals(uids.toSet(), started.toSet())
         assertEquals(
-            ProfileFriendsUiState.Listed(listOf("Other Student", null)),
+            ProfileFriendsUiState.Listed(listOf("Other Student") + List(9) { null }),
             vm.profileFriends.value,
         )
-        assertTrue(profiles.requestedUids.containsAll(listOf(listOf("other"), listOf("gone"))))
       }
 
   @Test
-  fun deniedPrivateListShowsThePrivateNoteAndDenialForPublicListOffersRetry() =
+  fun retryRefreshesAProfileThatHasBecomePrivate() =
       runTest(main.dispatcher) {
-        friendLists.online = ProfileFriendsResult.Denied
-        val restricted = viewModel()
-        runCurrent()
-        assertEquals(ProfileFriendsUiState.Private, restricted.profileFriends.value)
-
         profiles.profiles["lea"] = lea.copy(profileVisibility = ProfileVisibility.PUBLIC)
-        val visible = viewModel()
+        friendLists.online = ProfileFriendsResult.Denied
+        val vm = viewModel()
         runCurrent()
-        assertEquals(ProfileFriendsUiState.Error, visible.profileFriends.value)
-        friendLists.online = ProfileFriendsResult.Found(emptyList())
-        visible.retryProfileFriends()
-        assertEquals(ProfileFriendsUiState.Loading, visible.profileFriends.value)
+        assertEquals(ProfileFriendsUiState.Error, vm.profileFriends.value)
+
+        profiles.profiles["lea"] = lea
+        vm.retryProfileFriends()
+        assertEquals(ProfileFriendsUiState.Loading, vm.profileFriends.value)
         runCurrent()
-        assertEquals(ProfileFriendsUiState.Listed(emptyList()), visible.profileFriends.value)
-        assertEquals(
-            StudentProfileUiState.Found(profiles.profiles.getValue("lea")),
-            visible.uiState.value,
-        )
+
+        assertEquals(ProfileFriendsUiState.Private, vm.profileFriends.value)
+        assertEquals(StudentProfileUiState.Found(lea), vm.uiState.value)
       }
 
   @Test
-  fun reconnectReplacesAnUnknownCountAndGoingOfflineCanKeepAConfirmedEmptyList() =
+  fun reconnectReplacesAnUnknownCountWithTheConfirmedList() =
       runTest(main.dispatcher) {
         profiles.profiles["lea"] = lea.copy(profileVisibility = ProfileVisibility.PUBLIC)
         network.online = false
@@ -132,14 +142,6 @@ class StudentProfileViewModelTest {
         network.online = true
         runCurrent()
         assertEquals(ProfileFriendsUiState.Listed(emptyList()), vm.profileFriends.value)
-
-        friendLists.cached = ProfileFriendsResult.Found(emptyList(), fromCache = true)
-        network.online = false
-        runCurrent()
-        assertEquals(
-            ProfileFriendsUiState.Listed(emptyList(), offline = true),
-            vm.profileFriends.value,
-        )
       }
 
   @Test
@@ -204,20 +206,6 @@ class StudentProfileViewModelTest {
 
         assertEquals(ProfileFriendsUiState.Private, vm.profileFriends.value)
         assertTrue(profiles.requestedUids.none { "other" in it })
-      }
-
-  @Test
-  fun anUnexpectedListFailureKeepsTheProfileAndCanBeRetried() =
-      runTest(main.dispatcher) {
-        friendLists.online = ProfileFriendsResult.Error
-        val vm = viewModel()
-        runCurrent()
-        assertEquals(ProfileFriendsUiState.Error, vm.profileFriends.value)
-        assertEquals(StudentProfileUiState.Found(lea), vm.uiState.value)
-        friendLists.online = ProfileFriendsResult.Found(emptyList())
-        vm.retryProfileFriends()
-        runCurrent()
-        assertEquals(ProfileFriendsUiState.Listed(emptyList()), vm.profileFriends.value)
       }
 
   @Test

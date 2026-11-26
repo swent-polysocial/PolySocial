@@ -77,16 +77,18 @@ class StudentProfileRouteTest {
   }
 
   @Test
-  fun retryReloadsTheFriendsListWithoutReopeningTheProfile() {
+  fun retryReloadsTheFriendsListWhenTheProfileRefreshFails() {
     friendLists.online = ProfileFriendsResult.Error
     show()
     compose.onNodeWithTag(C.Tag.profile_friends_status).assertTextEquals("Couldn’t load friends")
 
     friendLists.online = ProfileFriendsResult.Found(emptyList())
+    profiles.failure = FakePublicProfileRepository.Failure.Offline
     compose.onNodeWithTag(C.Tag.profile_friends_retry).performClick()
 
     compose.onNodeWithTag(C.Tag.profile_friends_count).assertTextEquals("Friends · 0")
-    assertEquals(listOf(listOf("lea")), profiles.requestedUids)
+    compose.onNodeWithTag(C.Tag.student_profile_name).assertTextEquals("Léa Martin")
+    assertEquals(listOf(listOf("lea"), listOf("lea")), profiles.requestedUids)
   }
 
   @Test
