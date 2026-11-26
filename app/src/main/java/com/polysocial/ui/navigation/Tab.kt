@@ -18,6 +18,8 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (the one-to-one chat route, #431).
 // Contributors: Claude (Opus 5.5, Anthropic) (the organizer's way to the Entrance QR, #468);
 // Konstantinos Perdikeas (directed, reviewed and owns it).
+// Contributors: Claude Opus 5.5 (your own UID opens My profile, #501); Konstantinos Perdikeas
+// (directed, reviewed and owns it).
 package com.polysocial.ui.navigation
 
 import android.net.Uri
@@ -206,6 +208,14 @@ enum class Tab(
    */
   val myProfileRoute: String
     get() = "$route/me"
+
+  /**
+   * The profile [uid] opens in this tab (#501): [myProfileRoute] for the signed-in student's own
+   * [signedInUid], so they never see themselves as another student, and [studentProfileRoute]
+   * otherwise. Every screen that opens a profile by UID goes through it, so none checks on its own.
+   */
+  fun profileRouteOf(uid: String, signedInUid: String?): String =
+      if (uid == signedInUid) myProfileRoute else studentProfileRoute(uid)
 
   /** Edit profile (#235), opened from My profile: its Save and Back return there. */
   val editProfileRoute: String
