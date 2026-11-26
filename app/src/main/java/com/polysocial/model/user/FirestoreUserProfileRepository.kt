@@ -188,7 +188,7 @@ private fun DocumentSnapshot.readUserProfile(): UserProfile? {
       // The rules only store a string; anything else reads as no username.
       username = get(USERNAME_FIELD) as? String,
       profileVisibility = readProfileVisibility(),
-      bio = getString(BIO_FIELD),
+      bio = readBio(),
   )
 }
 

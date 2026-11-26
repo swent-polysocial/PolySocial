@@ -110,11 +110,23 @@ class FirestorePublicProfileRepositoryTest {
   }
 
   @Test
-  fun getPublicProfile_reportsMalformedDetails() = runTest {
-    for (details in listOf(mapOf("profileVisibility" to 7), mapOf("bio" to listOf("text")))) {
-      documentsSee("u1", stored = mapOf("u1" to storedFields + details))
-      assertEquals(PublicProfileResult.UnexpectedError, repository.getPublicProfile("u1"))
+  fun getPublicProfile_keepsValidFieldsWhenOptionalFieldsAreMalformed() = runTest {
+    for (visibility in listOf("future-visibility", 7)) {
+      val stored = storedFields + mapOf("profileVisibility" to visibility, "bio" to "Test bio")
+      documentsSee("u1", stored = mapOf("u1" to stored))
+
+      assertEquals(
+          PublicProfileResult.Found(profile.copy(bio = "Test bio")),
+          repository.getPublicProfile("u1"),
+      )
     }
+    val stored = storedFields + mapOf("profileVisibility" to "public", "bio" to listOf("text"))
+    documentsSee("u1", stored = mapOf("u1" to stored))
+
+    assertEquals(
+        PublicProfileResult.Found(profile.copy(profileVisibility = ProfileVisibility.PUBLIC)),
+        repository.getPublicProfile("u1"),
+    )
   }
 
   // ---- the username (#448) ----
