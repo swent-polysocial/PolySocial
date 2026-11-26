@@ -1,3 +1,4 @@
+// Contributors: OpenAI Codex (GPT-6.2 Sol, high; #447 review under Lucas Pinto Ricardo’s supervision and approval).
 // Contributors: Claude (Opus 5.5, Anthropic) drafted the fake Firestore of the registrations'
 // tests, #275 and #405; moved here and made to hold documents at any depth for the deleted
 // groups' tests, #382, and other fields for the event's creator, after review.
@@ -46,6 +47,7 @@ function fakeFirestore(paths, counts = {}, fields = {}) {
     collection: (id) => collectionRef(`${path}/${id}`),
   });
   const snapshot = (path) => ({
+    ref: docRef(path),
     exists: documents.has(path),
     get: (field) =>
       field === "attendeeCount" ? state.counts.get(path) : state.fields.get(path)?.[field],
