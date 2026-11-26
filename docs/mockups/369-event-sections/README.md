@@ -2,6 +2,8 @@
 
 # Events open to some sections (#369)
 
+> **Superseded:** the frames are now drawn in the Figma file, section 03 · Discover events (Create event open to all and restricted, Edit event with its saved sections, and the detail pill). This SVG stays only as the history of the proposal.
+
 ![Create event with the sections picker, and the event detail pill](event-sections.svg)
 
 A proposal for the Figma part of #369, drawn outside Figma because the account that prepared it has a view-only seat on the PolySocial team (every write is refused). It follows the existing Create event frames (Figma section 04, Visibility as in section 10) and the profile step's interest chips. It is **not** a Figma frame: someone with an editing seat has to redraw it in the file, and a teammate has to review it before the interface part of the PR is merged, as the issue asks.
