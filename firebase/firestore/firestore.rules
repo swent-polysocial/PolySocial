@@ -225,10 +225,10 @@ service cloud.firestore {
     }
 
     // What other students see of a student (#229): exactly displayName, section, year and
-    // interests, plus username (#448), visibility and bio when set (#446), never the email. Any student reads
-    // one by its UID, to match with and show group members, but can't list the collection, so no
-    // student directory is exposed; associations read none. Only its owner writes it, a student,
-    // and only as a copy of their users/{uid} as it is after the same write (getAfter), so it is
+    // interests, plus username (#448), visibility and bio when set (#446), never the email.
+    // Any student reads one by UID, to match with and show group members. Only a student owner
+    // writes it. List queries and association reads are denied, so there is no student directory.
+    // The public copy must match users/{uid} after the same write (getAfter), so it is
     // written with the private profile and can't say anything else. Because others read them, section and year must be codes the app offers.
     // users/{uid} can't change a copied field without it (keepsPublicProfile), and a deleted
     // account can't write it again (isDeletedAccount).

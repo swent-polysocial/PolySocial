@@ -124,11 +124,21 @@ class FirestoreUserProfileRepositoryTest {
   }
 
   @Test
-  fun getProfile_reportsMalformedVisibilityOrBio() = runTest {
-    for (details in listOf(mapOf("profileVisibility" to "other"), mapOf("bio" to 7))) {
-      every { ref.get() } returns Tasks.forResult(snapshot(storedFields + details))
-      assertEquals(ProfileResult.UnexpectedError, repository.getProfile("u1"))
+  fun getProfile_keepsTheAccountReadableWithMalformedOptionalFields() = runTest {
+    for (visibility in listOf("future-visibility", 7)) {
+      val stored = storedFields + mapOf("profileVisibility" to visibility, "bio" to "Test bio")
+      every { ref.get() } returns Tasks.forResult(snapshot(stored))
+
+      val profile = (repository.getProfile("u1") as ProfileResult.Found).profile
+      assertEquals(ProfileVisibility.PRIVATE, profile.profileVisibility)
+      assertEquals("Test bio", profile.bio)
     }
+    val stored = storedFields + mapOf("profileVisibility" to "public", "bio" to 7)
+    every { ref.get() } returns Tasks.forResult(snapshot(stored))
+
+    val profile = (repository.getProfile("u1") as ProfileResult.Found).profile
+    assertEquals(ProfileVisibility.PUBLIC, profile.profileVisibility)
+    assertEquals(null, profile.bio)
   }
 
   // ---- getProfile ----

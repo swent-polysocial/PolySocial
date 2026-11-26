@@ -111,6 +111,6 @@ private fun DocumentSnapshot.readPublicProfile(): PublicProfile? {
       // The rules only store a string; anything else reads as no username.
       username = get(USERNAME_FIELD) as? String,
       profileVisibility = readProfileVisibility(),
-      bio = getString(BIO_FIELD),
+      bio = readBio(),
   )
 }

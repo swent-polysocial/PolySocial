@@ -3296,6 +3296,39 @@ test("only the student owner writes profile visibility and bio", async () => {
   await assertFails(updateDoc(doc(epflAssociationDb("verifiedClub"), "users/verifiedClub"), details));
 });
 
+test("editing a display name preserves existing mirrored profile details", async () => {
+  const db = studentDb("u5");
+  const details = { profileVisibility: "public", bio: "Test bio" };
+  await assertSucceeds(createBoth(db, "u5", details, details));
+
+  await assertSucceeds(editBothProfileDetails(db, "u5", { displayName: "New Name" }));
+
+  for (const path of ["users/u5", "publicProfiles/u5"]) {
+    const { displayName, profileVisibility, bio } = (await getDoc(doc(db, path))).data();
+    assert.deepEqual({ displayName, profileVisibility, bio }, { displayName: "New Name", ...details });
+  }
+});
+
+test("claiming a username preserves existing mirrored profile details", async () => {
+  const db = studentDb("u5");
+  const details = { profileVisibility: "public", bio: "Test bio" };
+  await assertSucceeds(createBoth(db, "u5", details, details));
+
+  await assertSucceeds(claim(db, "u5", "lea"));
+
+  for (const path of ["users/u5", "publicProfiles/u5"]) {
+    const { username, profileVisibility, bio } = (await getDoc(doc(db, path))).data();
+    assert.deepEqual({ username, profileVisibility, bio }, { username: "lea", ...details });
+  }
+  assert.deepEqual((await getDoc(doc(db, "usernames/lea"))).data(), { uid: "u5" });
+});
+
+test("a non-EPFL association cannot add a bio to its own private profile", async () => {
+  const profile = doc(associationDb("verifiedClub"), "users/verifiedClub");
+  assert.equal((await assertSucceeds(getDoc(profile))).data().isAssociationVerified, true);
+  await assertFails(updateDoc(profile, { bio: "Test bio" }));
+});
+
 // -- a private edit keeps the public copy in step (#229 review) --
 // Once a public profile exists, a change to a field it mirrors must update it in the same write,
 // or other students would keep seeing the old values.
