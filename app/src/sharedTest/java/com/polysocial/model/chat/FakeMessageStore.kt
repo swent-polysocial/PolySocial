@@ -3,7 +3,8 @@
 // Contributors: OpenAI Codex (modeled same-ID retries in the chat fake, #238).
 // Contributors: Claude (Opus 5.5, Anthropic) (moved them out of FakeMessageRepository, so the
 // one-to-one chat fake shares them, #428).
-// Contributors: Claude (Opus 5.5, Anthropic) (unsending a stored message, #435).
+// Contributors: Claude (Opus 5.5, Anthropic) (unsending a stored message, #435; its checks
+// shared with the group chat fake, #439).
 package com.polysocial.model.chat
 
 import java.time.Instant
@@ -49,6 +50,26 @@ class FakeMessageStore<K> {
     val previous = messagesOf(chat).firstOrNull { it.id == messageId } ?: return null
     return if (previous.senderId == senderId && previous.text == text) SendMessageResult.Sent
     else SendMessageResult.UnexpectedError
+  }
+
+  /**
+   * What the unsend transaction does once [uid] can read [chat] (#435, #439): a missing message
+   * [id] or another sender's is [UnsendMessageResult.UnexpectedError] and one already unsent is
+   * [UnsendMessageResult.Unsent], both without a write; otherwise the write needs [allowed] (the
+   * Security Rules' check: the friendship, or membership), and empties the text ([unsend]).
+   */
+  fun unsendAs(chat: K, uid: String, id: String, allowed: () -> Boolean): UnsendMessageResult {
+    val stored =
+        messagesOf(chat).firstOrNull { it.id == id } ?: return UnsendMessageResult.UnexpectedError
+    return when {
+      stored.senderId != uid -> UnsendMessageResult.UnexpectedError
+      stored.isUnsent -> UnsendMessageResult.Unsent
+      !allowed() -> UnsendMessageResult.UnexpectedError
+      else -> {
+        unsend(chat, id)
+        UnsendMessageResult.Unsent
+      }
+    }
   }
 
   /**

@@ -6,16 +6,21 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (moved them out of FirestoreMessageRepository, so the
 // one-to-one chat repository shares them, #428).
 // Contributors: Claude (Opus 5.5, Anthropic) (the failures of any chat write, for unsend, #435).
+// Contributors: Claude (Opus 5.5, Anthropic) (unsend's transaction and rerun, moved here from
+// FirestoreOneToOneChatRepository to share them with group chats, #439).
 package com.polysocial.model.chat
 
 import com.google.firebase.firestore.CollectionReference
+import com.google.firebase.firestore.DocumentReference
 import com.google.firebase.firestore.DocumentSnapshot.ServerTimestampBehavior
+import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.FirebaseFirestoreException
 import com.google.firebase.firestore.MetadataChanges
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.QuerySnapshot
 import com.google.firebase.firestore.TransactionOptions
 import com.polysocial.model.auth.AuthRepository
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.awaitClose
@@ -24,6 +29,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.buffer
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.tasks.await
 
 /**
  * A snapshot listener as a flow, for the chat repositories: [loading] first, then [read] of each
@@ -152,6 +158,59 @@ internal suspend fun <T> reportWriteFailures(
     } catch (_: Exception) {
       unexpected
     }
+
+/**
+ * Unsends the message [message] gives as [uid], in either kind of chat (#435, #439), after the
+ * caller checked the IDs, the user and the connection: one transaction tried once
+ * ([unsendAttempt]), its failures reported as [reportWriteFailures] does.
+ *
+ * The contracts' "for any reason but being offline" is, exactly: an attempt that read the message
+ * and failed with a [FirebaseFirestoreException] whose code isn't `UNAVAILABLE` or
+ * `DEADLINE_EXCEEDED` runs once more. Any other exception, the caller's cancellation included,
+ * isn't rerun; nor is an attempt whose read failed (for example denied under a deletion marker, or
+ * for a student out of the group).
+ */
+internal suspend fun unsendChatMessage(
+    db: FirebaseFirestore,
+    uid: String,
+    message: () -> DocumentReference,
+): UnsendMessageResult =
+    reportWriteFailures(UnsendMessageResult.NetworkError, UnsendMessageResult.UnexpectedError) {
+      val reference = message()
+      val read = AtomicBoolean(false)
+      try {
+        unsendAttempt(db, reference, uid, read)
+      } catch (e: FirebaseFirestoreException) {
+        // The student's other device unsent it in between (FAILED_PRECONDITION): the rerun reads
+        // it unsent and writes nothing. A refusal by the rules fails the rerun too.
+        if (e.isOffline() || !read.get()) throw e
+        unsendAttempt(db, reference, uid, AtomicBoolean(false))
+      }
+    }
+
+/**
+ * One attempt at unsending [message] as [uid], in a transaction tried once: it reads the message,
+ * sets [read], then empties only its text, unless it isn't [uid]'s or is already unsent.
+ */
+private suspend fun unsendAttempt(
+    db: FirebaseFirestore,
+    message: DocumentReference,
+    uid: String,
+    read: AtomicBoolean,
+): UnsendMessageResult =
+    db.runTransaction(SINGLE_ATTEMPT) { transaction ->
+          val stored = messageFromFirestore(message.id, transaction.get(message).data)
+          read.set(true)
+          when {
+            stored == null || stored.senderId != uid -> UnsendMessageResult.UnexpectedError
+            stored.isUnsent -> UnsendMessageResult.Unsent
+            else -> {
+              transaction.update(message, MESSAGE_TEXT, UNSENT_MESSAGE_TEXT)
+              UnsendMessageResult.Unsent
+            }
+          }
+        }
+        .await()
 
 /** Whether this failure means the server couldn't be reached. */
 internal fun FirebaseFirestoreException.isOffline() =
