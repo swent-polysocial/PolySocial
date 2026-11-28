@@ -12,7 +12,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (the notice's new date, what a cancelled event and a
 // group's last member leaving delete, and how long a deleted account's messages stay, #382).
 // Contributors: Claude (Opus 5.5, Anthropic) (the notice's date and its one-to-one chat sentences,
-// #433).
+// #433; unsending a one-to-one message, #436).
 // Contributors: Claude (Opus 5.5, Anthropic) (the notice's new date and matching with friends,
 // #497).
 // Contributors: Claude (Opus 5.5, Anthropic) (the notice's new date, for the number going, #407).
@@ -218,7 +218,7 @@ class PrivacyScreenTest {
     rule.onNodeWithTag(C.Tag.privacy_chats).performScrollTo().assertIsDisplayed()
     rule.onNodeWithText(text(R.string.privacy_chats_body)).assertIsDisplayed()
     rule.onNodeWithTag(C.Tag.privacy_full_notice).performScrollTo().performClick()
-    rule.onNodeWithTag(C.Tag.privacy_notice_date).assertTextEquals("Updated 25 November 2026")
+    rule.onNodeWithTag(C.Tag.privacy_notice_date).assertTextEquals("Updated 28 November 2026")
   }
 
   @Test
@@ -360,6 +360,37 @@ class PrivacyScreenTest {
             "(each chat's internal identifier still contains it)",
             "deletes those whose other account is already deleted",
             "your retained messages in group and one-to-one chats",
+        )
+  }
+
+  @Test
+  fun summaryAndNoticeSayWhatUnsendingErases_andWhatItCantTakeBack() {
+    openFromProfile()
+    rule
+        .onNodeWithText(text(R.string.privacy_chats_body))
+        .performScrollTo()
+        .says(
+            "While you're friends, you can unsend your own message",
+            "its text is erased for both of you",
+            "\"This message was deleted\", at the same time and place",
+            "your friend may already have read or copied it",
+            "but neither can send or unsend",
+        )
+    rule.onNodeWithTag(C.Tag.privacy_full_notice).performScrollTo().performClick()
+    rule
+        .onNodeWithTag(C.Tag.privacy_notice_chats)
+        .performScrollTo()
+        .says(
+            "They can send, and unsend their own messages, only while they are friends",
+            "neither can send or unsend",
+            "Unsending a message erases its text for both students",
+            "with its sender and send time",
+            "is replaced the next time that device loads the conversation online",
+            "until then it can still show the text offline",
+            "What the other student already read or copied can't be taken back.",
+            "Once you are no longer friends, or the other account is deleted, you can no longer " +
+                "unsend.",
+            "Deleting your account doesn't erase their text; only unsending does.",
         )
   }
 
