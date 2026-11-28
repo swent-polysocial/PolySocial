@@ -1,12 +1,21 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (drafted the chat message model, #237).
 // Contributors: OpenAI Codex (explicit deleted message author, #241).
 // Contributors: Claude (Opus 5.5, Anthropic) (a one-to-one chat's messages, #428).
+// Contributors: Claude (Opus 5.5, Anthropic) (the unsent text, #435).
 package com.polysocial.model.chat
 
 import java.time.Instant
 
 /** Empty senderId written only by account cleanup; it links to no account. */
 const val DELETED_MESSAGE_SENDER = ""
+
+/**
+ * The text of a message its sender unsent (#365, Architecture Diagram 3.8): the message stays, with
+ * its sender and time, and only its text is emptied, so the chat shows "This message was deleted"
+ * in its place. No send can store it (a text has 1 to [MAX_MESSAGE_LENGTH] characters), so it can't
+ * be forged, and no other field marks an unsent message.
+ */
+const val UNSENT_MESSAGE_TEXT = ""
 
 /**
  * The most characters a message's text may have, as the Security Rules check. Counted in UTF-16
@@ -20,7 +29,8 @@ const val MAX_MESSAGE_LENGTH = 1000
  * `chats/{pairId}/messages/{id}` (#365), which is its own collection, not a group.
  *
  * @property senderId the sender UID, or [DELETED_MESSAGE_SENDER] after account deletion.
- * @property text what they wrote, 1 to [MAX_MESSAGE_LENGTH] characters.
+ * @property text what they wrote, 1 to [MAX_MESSAGE_LENGTH] characters, or [UNSENT_MESSAGE_TEXT]
+ *   once its sender unsent it (see [isUnsent]).
  * @property createdAt when the server stored it, which orders the chat.
  */
 data class Message(
@@ -29,6 +39,10 @@ data class Message(
     val text: String,
     val createdAt: Instant,
 )
+
+/** Whether its sender unsent this message, which then shows "This message was deleted". */
+val Message.isUnsent: Boolean
+  get() = text == UNSENT_MESSAGE_TEXT
 
 /** Why a text can't be sent as a message. */
 enum class MessageTextError {

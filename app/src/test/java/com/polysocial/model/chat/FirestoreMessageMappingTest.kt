@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #237).
 // Contributors: OpenAI Codex (deleted-author message mapping regression, #241).
+// Contributors: Claude (Opus 5.5, Anthropic) (an unsent message, #435).
 package com.polysocial.model.chat
 
 import com.google.firebase.Timestamp
@@ -21,6 +22,15 @@ class FirestoreMessageMappingTest {
       ) + changes
 
   private fun read(data: Map<String, Any?>?) = messageFromFirestore("message-1", data)
+
+  @Test
+  fun anUnsentMessage_isReadWithItsEmptyText_andIsUnsent() {
+    val unsent = read(stored("text" to UNSENT_MESSAGE_TEXT))
+
+    assertEquals(Message("message-1", "sender", UNSENT_MESSAGE_TEXT, createdAt), unsent)
+    assertEquals(true, unsent?.isUnsent)
+    assertEquals(false, read(stored())?.isUnsent)
+  }
 
   @Test
   fun deletedAuthorsRemainReadableWithTheirTextAndTime() {
