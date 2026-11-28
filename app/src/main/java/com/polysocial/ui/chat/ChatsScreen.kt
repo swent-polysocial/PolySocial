@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (the Chats list, from #362's Figma section 16, #364;
-// one-to-one rows and the partly failed note, from #430's Figma section 25, #432).
+// one-to-one rows and the partly failed note, from #430's Figma section 25, #432; an unsent latest
+// message's placeholder, #436).
 package com.polysocial.ui.chat
 
 import androidx.compose.foundation.background
@@ -43,6 +44,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
+import com.polysocial.model.chat.UNSENT_MESSAGE_TEXT
 import com.polysocial.ui.common.ErrorState
 import com.polysocial.ui.common.LoadingState
 import com.polysocial.ui.common.OfflineBanner
@@ -185,7 +187,7 @@ private fun ChatRowItem(row: ChatRow, onClick: () -> Unit) {
         Text(
             if (latest == null) stringResource(R.string.chats_no_messages) else preview(latest),
             style = secondaryTextStyle(),
-            color = if (latest == null) Ink3 else Ink2,
+            color = if (latest == null || latest.unsent) Ink3 else Ink2,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -249,7 +251,7 @@ private fun OneToOneRowItem(row: OneToOneChatRow, onClick: () -> Unit) {
         Text(
             preview(row.latest),
             style = secondaryTextStyle(),
-            color = Ink2,
+            color = if (row.latest.unsent) Ink3 else Ink2,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -336,21 +338,30 @@ private fun members(row: ChatRow): String =
       else -> stringResource(R.string.chats_members, row.otherNames.joinToString(", "))
     }
 
-/** "Léa: …", "You: …", "Deleted account: …", or the text alone for an unnamed member. */
+/** An unsent message's empty text (#436). */
+private val LatestMessage.unsent: Boolean
+  get() = text == UNSENT_MESSAGE_TEXT
+
+/**
+ * "Léa: …", "You: …", "Deleted account: …", or the text alone for an unnamed member; an unsent
+ * message is "This message was deleted" alone, as in Figma's "Chats · deleted message row".
+ */
 @Composable
 private fun preview(latest: LatestMessage): String =
-    when (val sender = latest.sender) {
-      Sender.You ->
-          stringResource(R.string.chats_latest, stringResource(R.string.chats_you), latest.text)
-      is Sender.Named -> stringResource(R.string.chats_latest, sender.firstName, latest.text)
-      Sender.DeletedAccount ->
-          stringResource(
-              R.string.chats_latest,
-              stringResource(R.string.chat_deleted_author),
-              latest.text,
-          )
-      Sender.Unknown -> latest.text
-    }
+    if (latest.unsent) stringResource(R.string.chat_unsent)
+    else
+        when (val sender = latest.sender) {
+          Sender.You ->
+              stringResource(R.string.chats_latest, stringResource(R.string.chats_you), latest.text)
+          is Sender.Named -> stringResource(R.string.chats_latest, sender.firstName, latest.text)
+          Sender.DeletedAccount ->
+              stringResource(
+                  R.string.chats_latest,
+                  stringResource(R.string.chat_deleted_author),
+                  latest.text,
+              )
+          Sender.Unknown -> latest.text
+        }
 
 @Composable
 private fun ChatTime.label(): String =

@@ -1,5 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (the one-to-one chat screen, from #430's frames,
-// #431).
+// #431; Unsend's menu, confirmation and failure notice, #436).
 package com.polysocial.ui.chat
 
 import androidx.compose.foundation.background
@@ -50,7 +50,8 @@ internal object OneToOneChatTags {
 /**
  * The chat with a friend (#431, Figma section 25), full screen: the friend's name, the history and
  * the composer shared with the group chat ([ChatTimeline], [ChatComposer]), or the read-only note
- * in place of the composer once the two aren't friends or the other account was deleted.
+ * in place of the composer once the two aren't friends or the other account was deleted. While the
+ * student can write, a long press on one of their own messages offers Unsend (#436).
  */
 @Composable
 internal fun OneToOneChatRoute(
@@ -83,11 +84,30 @@ internal fun OneToOneChatRoute(
                 state.offline,
                 showSenders = false,
                 empty = { EmptyChat(state.friend) },
+                onUnsend = if (state.canWrite) viewModel::askUnsend else null,
             )
+      }
+      val unsend = state.unsend
+      if (unsend?.stage == ChatUnsend.Stage.OFFLINE || unsend?.stage == ChatUnsend.Stage.FAILED) {
+        UnsendNotice(
+            unsend.stage,
+            viewModel::unsend,
+            viewModel::closeUnsend,
+            Modifier.align(Alignment.BottomCenter).padding(horizontal = 20.dp, vertical = 12.dp),
+        )
       }
     }
     if (state.readOnly) ReadOnlyNote(state)
     else ChatComposer(state.draft, state.canWrite, viewModel::edit, viewModel::send)
+  }
+  if (state.unsend?.stage == ChatUnsend.Stage.CONFIRMING) {
+    val firstName = (state.friend as? ChatFriend.Named)?.firstName
+    UnsendSheet(
+        if (firstName.isNullOrEmpty()) stringResource(R.string.one_to_one_chat_unsend_body)
+        else stringResource(R.string.one_to_one_chat_unsend_body_named, firstName),
+        viewModel::unsend,
+        viewModel::closeUnsend,
+    )
   }
 }
 

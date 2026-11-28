@@ -1,5 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #364; one-to-one rows and the
-// partly failed note, #432).
+// partly failed note, #432; an unsent latest message, #436).
 package com.polysocial.ui.chat
 
 import android.app.Application
@@ -245,6 +245,27 @@ class ChatsScreenTest {
     composeTestRule
         .onNodeWithTag(ChatsTags.oneToOneRow("x~me"))
         .assert(hasText("Profile unavailable"))
+  }
+
+  @Test
+  fun anUnsentLatestMessage_saysItWasDeleted_withoutAPrefix() {
+    show(
+        ChatsUiState.Chats(
+            listOf(
+                pairRow("lea~me", ChatListFriend.Named("Léa Martin"), Sender.You, ""),
+                pairRow("tom~me", ChatListFriend.Named("Tom Rossi"), Sender.Unknown, ""),
+            ),
+            isOffline = false,
+        )
+    )
+
+    val lea = composeTestRule.onNodeWithTag(ChatsTags.oneToOneRow("lea~me"))
+    lea.assert(hasText("This message was deleted"))
+    lea.assert(hasText("20:06"))
+    composeTestRule
+        .onNodeWithTag(ChatsTags.oneToOneRow("tom~me"))
+        .assert(hasText("This message was deleted"))
+    composeTestRule.onNodeWithText("You: ", substring = true).assertDoesNotExist()
   }
 
   @Test

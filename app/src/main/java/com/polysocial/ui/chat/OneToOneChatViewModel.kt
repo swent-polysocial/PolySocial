@@ -1,14 +1,16 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (the one-to-one chat's state, from #430's frames,
 // #431; the shared history read, the name read again on Retry and its first name, from #520's
-// review).
+// review; unsending the student's own messages, #436).
 package com.polysocial.ui.chat
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.polysocial.model.auth.AuthRepository
+import com.polysocial.model.chat.Message
 import com.polysocial.model.chat.MyOneToOneChatsResult
 import com.polysocial.model.chat.OneToOneChatRepository
+import com.polysocial.model.chat.isUnsent
 import com.polysocial.model.friend.FriendRepository
 import com.polysocial.model.friend.FriendshipStatus
 import com.polysocial.model.friend.FriendshipsResult
@@ -72,6 +74,7 @@ internal data class OneToOneChatState(
     val access: ChatAccess = ChatAccess.CHECKING,
     val draft: ChatDraft = ChatDraft(),
     val offline: Boolean = false,
+    val unsend: ChatUnsend? = null,
 ) {
   val readOnly: Boolean
     get() = access == ChatAccess.NOT_FRIENDS || access == ChatAccess.ACCOUNT_DELETED
@@ -90,6 +93,10 @@ internal data class OneToOneChatState(
  * aren't friends or the other account was deleted (the chat's `otherUid` becomes null). A cached
  * "not friends" waits for the server, so a stale cache can't hide the composer. The messages fail
  * after 10 s without an answer, with Retry, as in the group chat.
+ *
+ * While the student can write, they can unsend one of their own stored messages that isn't unsent
+ * yet, after confirming ([ChatUnsends], #436); a failure keeps it, with Try again. The placeholder
+ * then comes from the message listener, for both students.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 @HiltViewModel
@@ -117,6 +124,7 @@ constructor(
 
   private val reads = MutableStateFlow(0)
   private val drafts = ChatDrafts(viewModelScope)
+  private val unsends = ChatUnsends(viewModelScope)
 
   private val deleted: Flow<Boolean> =
       chats
@@ -170,13 +178,15 @@ constructor(
               history,
               drafts.draft,
               network.observeOnline(),
-          ) { (name, deleted, friendship), history, draft, online ->
+              unsends.unsend,
+          ) { (name, deleted, friendship), history, draft, online, unsend ->
             OneToOneChatState(
                 friend = if (deleted) ChatFriend.Deleted else name,
                 history = history,
                 access = if (deleted) ChatAccess.ACCOUNT_DELETED else friendship,
                 draft = draft,
                 offline = !online,
+                unsend = unsend,
             )
           }
           .stateIn(
@@ -194,6 +204,28 @@ constructor(
   internal fun send() {
     if (!state.value.canWrite || auth.currentUser()?.uid != myUid) return
     drafts.send { text, id -> chats.sendMessage(pairId, text, id) }
+  }
+
+  /** Asks to confirm unsending [message], if it is the student's own and can still be unsent. */
+  internal fun askUnsend(message: Message) {
+    if (state.value.canWrite && message.senderId == myUid && !message.isUnsent) {
+      unsends.ask(message.id)
+    }
+  }
+
+  /** Closes Unsend's confirmation or failure notice, keeping the message. */
+  internal fun closeUnsend() = unsends.close()
+
+  /**
+   * Unsends the confirmed message, or tries a failed one again. Once the chat turned read-only or
+   * the account changed, it closes instead: the Security Rules would refuse it.
+   */
+  internal fun unsend() {
+    if (!state.value.canWrite || auth.currentUser()?.uid != myUid) {
+      unsends.close()
+      return
+    }
+    unsends.confirm { id -> chats.unsendMessage(pairId, id) }
   }
 
   /** The messages, Loading until the first answer, as the group chat's ([failingIfSilent]). */
