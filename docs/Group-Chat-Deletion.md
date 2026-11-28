@@ -1,4 +1,5 @@
 <!-- Contributors: Claude (Opus 5.5, Anthropic) (one-to-one chats and delete-for-me markers in account deletion, and a message deleted meanwhile, #429). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (a sender's unsend of a one-to-one message, #435). -->
 <!-- Contributors: Mehdi (@mehdifddl) selected retaining messages with anonymised authors on 2026-11-11; OpenAI Codex documented the implemented cleanup, retained data and deployment order for #241. -->
 <!-- Contributors: Claude (Opus 5.5, Anthropic) documented the deletion of a cancelled event's groups and of a deleted group's messages, its guards and known limits, #382. -->
 
@@ -25,7 +26,10 @@ Retained text is not redacted and can itself contain personal information. The o
 notice explains this and asks students to avoid including it. Already cached copies on
 other devices may persist until refreshed or cleared; deletion does not remotely wipe
 them. A marker removes chat read/send access immediately, before membership cleanup.
-Clients cannot forge the empty sender, edit messages or restore an author link.
+Clients cannot forge the empty sender, restore an author link or otherwise edit messages: the
+only change a client may make is a sender's unsend of their own one-to-one message while the two
+are friends (#435), which empties its `text` and nothing else. The cleanup also covers unsent
+messages: it empties their `senderId` like any other's, and their text stays empty.
 
 Membership transactions reread groups to preserve concurrent changes. Removing the last
 member deletes the group, and the `deleteGroupMessages` trigger then deletes its messages

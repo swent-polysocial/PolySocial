@@ -5,6 +5,7 @@
 // limit(1), #363).
 // Contributors: Claude (Opus 5.5, Anthropic) (moved them out of FirestoreMessageRepository, so the
 // one-to-one chat repository shares them, #428).
+// Contributors: Claude (Opus 5.5, Anthropic) (the failures of any chat write, for unsend, #435).
 package com.polysocial.model.chat
 
 import com.google.firebase.firestore.CollectionReference
@@ -125,23 +126,31 @@ internal fun retriedDraft(stored: Message?, senderId: String, text: String): Sen
     if (stored?.senderId == senderId && stored.text == text) SendMessageResult.Sent
     else SendMessageResult.UnexpectedError
 
-/**
- * Runs a send, turning its failures into results: a Firestore failure because the server can't be
- * reached is [SendMessageResult.NetworkError]; any other Firestore failure, a Firebase task
- * cancelled while the caller still runs, or any other exception is
- * [SendMessageResult.UnexpectedError]. Cancelling the caller's coroutine still cancels it.
- */
+/** Runs a send, turning its failures into results as [reportWriteFailures] does. */
 internal suspend fun reportSendFailures(send: suspend () -> SendMessageResult): SendMessageResult =
+    reportWriteFailures(SendMessageResult.NetworkError, SendMessageResult.UnexpectedError, send)
+
+/**
+ * Runs a chat write, turning its failures into results: a Firestore failure because the server
+ * can't be reached is [offline]; any other Firestore failure, a Firebase task cancelled while the
+ * caller still runs, or any other exception is [unexpected]. Cancelling the caller's coroutine
+ * still cancels it.
+ */
+internal suspend fun <T> reportWriteFailures(
+    offline: T,
+    unexpected: T,
+    write: suspend () -> T,
+): T =
     try {
-      send()
+      write()
     } catch (e: FirebaseFirestoreException) {
-      if (e.isOffline()) SendMessageResult.NetworkError else SendMessageResult.UnexpectedError
+      if (e.isOffline()) offline else unexpected
     } catch (_: CancellationException) {
       // A task cancelled while the caller still runs is a failure; a cancelled caller rethrows.
       currentCoroutineContext().ensureActive()
-      SendMessageResult.UnexpectedError
+      unexpected
     } catch (_: Exception) {
-      SendMessageResult.UnexpectedError
+      unexpected
     }
 
 /** Whether this failure means the server couldn't be reached. */

@@ -27,6 +27,7 @@ rules_version = '2';
 // Contributors: Claude (Opus 5.5, Anthropic) (usernames and their tie to the profiles, #448).
 // Contributors: Claude (Opus 5.5, Anthropic) (check-ins at the venue and the shared event() and canReadEvent(), #467).
 // Contributors: Claude (Opus 5.5, Anthropic) (the entrance code and QR check-ins, #468).
+// Contributors: Claude (Opus 5.5, Anthropic) (unsending a one-to-one message, #435).
 
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -1015,9 +1016,10 @@ service cloud.firestore {
     // Reading doesn't need the friendship, so the conversation stays readable after unfriending;
     // creating the chat and sending need friendships/{pairId} to be accepted. The first message
     // creates the chat in the same write, and no message is stored without its chat. No client
-    // updates or deletes a chat or a message: the step #429 adds to deleteAccount (Admin SDK) takes
-    // a deleted UID out of uids, or deletes the chat once nobody else is left. Each operation has
-    // its own rule, so a block check or a rate limit can be added to one later.
+    // updates or deletes a chat or a message, except a sender's unsend (#435): the step #429 adds to
+    // deleteAccount (Admin SDK) takes a deleted UID out of uids, or deletes the chat once nobody
+    // else is left. Each operation has its own rule, so a block check or a rate limit can be added
+    // to one later.
     match /chats/{pairId} {
       function isOfThePair() {
         return isStudent()
@@ -1043,6 +1045,15 @@ service cloud.firestore {
             && isAcceptedFriendship(pairId)
             && existsAfter(/databases/$(database)/documents/chats/$(pairId))
             && isNewMessage();
+        // Unsend (#435): while the two are friends, the sender empties the text of their own
+        // message, and nothing else changes. An empty text is the unsent marker, which no create
+        // can write, and a message whose senderId is empty (its author deleted) is nobody's.
+        // Writing '' again over an unsent message changes nothing and passes (a blind retry).
+        allow update: if isOfThePair()
+            && isAcceptedFriendship(pairId)
+            && resource.data.senderId == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text'])
+            && request.resource.data.text == '';
       }
     }
 

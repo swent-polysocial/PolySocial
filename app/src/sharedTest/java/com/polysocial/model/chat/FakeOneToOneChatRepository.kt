@@ -1,4 +1,4 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (wrote this fake for tests, #428).
+// Contributors: Claude (Opus 5.5, Anthropic) (wrote this fake for tests, #428; unsend, #435).
 package com.polysocial.model.chat
 
 import com.polysocial.model.event.isReadableEventId
@@ -19,11 +19,12 @@ import kotlinx.coroutines.flow.map
  * In-memory [OneToOneChatRepository] for tests. It follows the [OneToOneChatRepository] contracts
  * and checks [sendMessage] in the order the Firestore repository must: the text, the IDs and the
  * signed-in user, then [online], then [sendFailure], then the stored message under a retry ID, then
- * the friendship, as the Security Rules check the write.
+ * the friendship, as the Security Rules check the write. [unsendMessage] checks in the same order,
+ * with [unsendFailure], then the stored message, then the friendship.
  *
  * Like the Security Rules, only the two students of a pair ID read its chat, whether or not it
  * exists and whether or not they are friends, and only while their friendship (see [friendshipOf])
- * is accepted can either send; the first message creates the chat. Each call checks and writes in
+ * is accepted can either send or unsend their own message; the first message creates the chat. Each call checks and writes in
  * one step, so two first messages never race here. Unlike the Security Rules, it doesn't check
  * deletion markers or account types.
  *
@@ -46,6 +47,9 @@ class FakeOneToOneChatRepository(var currentUid: String? = "test-student") :
 
   /** When set, sending returns this result instead of writing, like a failed transaction. */
   var sendFailure: SendMessageResult? = null
+
+  /** When set, unsending returns this result instead of writing, like a failed transaction. */
+  var unsendFailure: UnsendMessageResult? = null
 
   /**
    * When set, the observe flows emit Loading, then this failure and end, like a failed listener:
@@ -194,5 +198,28 @@ class FakeOneToOneChatRepository(var currentUid: String? = "test-student") :
     if (pairId !in chats.value) seedChat(pairId)
     messages.add(pairId, uid, trimmed, messageId)
     return SendMessageResult.Sent
+  }
+
+  override suspend fun unsendMessage(pairId: String, messageId: String): UnsendMessageResult {
+    val uid = currentUid
+    if (uid == null || !isFriendshipIdOf(pairId, uid) || !isReadableEventId(messageId)) {
+      return UnsendMessageResult.UnexpectedError
+    }
+    if (!online) return UnsendMessageResult.NetworkError
+    unsendFailure?.let {
+      return it
+    }
+    // The transaction reads the message first: one already unsent is answered without a write,
+    // so the rules' friendship check never sees it.
+    val stored =
+        messages.messagesOf(pairId).firstOrNull { it.id == messageId }
+            ?: return UnsendMessageResult.UnexpectedError
+    if (stored.senderId != uid) return UnsendMessageResult.UnexpectedError
+    if (stored.isUnsent) return UnsendMessageResult.Unsent
+    if (friendshipOf(pairId)?.status != FriendshipStatus.ACCEPTED) {
+      return UnsendMessageResult.UnexpectedError
+    }
+    messages.unsend(pairId, messageId)
+    return UnsendMessageResult.Unsent
   }
 }

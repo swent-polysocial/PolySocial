@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (drafted the Firestore mapping for messages, #237).
 // Contributors: Claude (Opus 5.5, Anthropic) (shared with one-to-one chats, #428).
+// Contributors: Claude (Opus 5.5, Anthropic) (the text's field name, which unsend writes, #435).
 package com.polysocial.model.chat
 
 import com.google.firebase.Timestamp
@@ -13,6 +14,9 @@ const val MESSAGES_COLLECTION = "messages"
 
 /** The server's time in a message document, which orders the chat. */
 const val MESSAGE_CREATED_AT = "createdAt"
+
+/** A message document's text, which unsending empties ([UNSENT_MESSAGE_TEXT]). */
+const val MESSAGE_TEXT = "text"
 
 /**
  * The fields of a message [senderId] sends with [text]: exactly the sender, the text and the

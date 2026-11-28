@@ -1,4 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (drafted the one-to-one chat contract, #428).
+// Contributors: Claude (Opus 5.5, Anthropic) (unsending a message, #435).
 package com.polysocial.model.chat
 
 import kotlinx.coroutines.flow.Flow
@@ -46,9 +47,10 @@ sealed interface MyOneToOneChatsResult {
  *
  * Only the two students read a chat, friends or not, so a conversation stays readable after a
  * friend is removed. Only while they are friends (their friendship is accepted) can either start
- * the chat, which its first message creates, or send. Nobody edits or deletes a chat or a message,
- * and associations never reach them. The Security Rules enforce it, so a refused access is an
- * `UnexpectedError`. Sending is refused offline with a `NetworkError` rather than queued.
+ * the chat, which its first message creates, send, or unsend one of their own messages (its text
+ * emptied, [unsendMessage]). Nobody otherwise edits or deletes a chat or a message, and
+ * associations never reach them. The Security Rules enforce it, so a refused access is an
+ * `UnexpectedError`. Writes are refused offline with a `NetworkError` rather than queued.
  *
  * When one of the two deletes their account, `deleteAccount` takes their UID out of the chat's
  * `uids` ([OneToOneChat.otherUid] becomes null) and empties their messages' `senderId`
@@ -130,4 +132,28 @@ interface OneToOneChatRepository {
       text: String,
       messageId: String? = null,
   ): SendMessageResult
+
+  /**
+   * Unsends the signed-in student's message [messageId] of the chat [pairId] (#365): its text
+   * becomes [UNSENT_MESSAGE_TEXT] for both students, and its sender, time and place in the chat
+   * stay. Both students' message listeners then receive it with the empty text
+   * ([Message.isUnsent]).
+   *
+   * The IDs and the signed-in user are checked first ([UnsendMessageResult.UnexpectedError]:
+   * [pairId] must be the pair ID of the student and another student, see [observeMessages]), then
+   * the connection ([UnsendMessageResult.NetworkError] offline, never queued).
+   *
+   * Then one transaction, tried once, reads the message: one that is missing, can't be read or
+   * isn't the student's (another student's, or one whose author's account was deleted) is
+   * [UnsendMessageResult.UnexpectedError]; one already unsent is [UnsendMessageResult.Unsent]
+   * without a write (a retry after a lost answer); otherwise only its text is emptied. The Security
+   * Rules accept that write only while the two are friends, so after a friend is removed, while a
+   * new request is pending or once the other account was deleted, it is
+   * [UnsendMessageResult.UnexpectedError] and nothing changes.
+   *
+   * An attempt that read the message and then failed for any reason but being offline runs once
+   * more, as group writes do (#232): the student's other device may have unsent the same message in
+   * between, so the commit failed, and the rerun finds it unsent and writes nothing.
+   */
+  suspend fun unsendMessage(pairId: String, messageId: String): UnsendMessageResult
 }
