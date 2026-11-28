@@ -3,6 +3,7 @@
 // Contributors: OpenAI Codex (modeled same-ID retries in the chat fake, #238).
 // Contributors: Claude (Opus 5.5, Anthropic) (moved them out of FakeMessageRepository, so the
 // one-to-one chat fake shares them, #428).
+// Contributors: Claude (Opus 5.5, Anthropic) (unsending a stored message, #435).
 package com.polysocial.model.chat
 
 import java.time.Instant
@@ -48,6 +49,16 @@ class FakeMessageStore<K> {
     val previous = messagesOf(chat).firstOrNull { it.id == messageId } ?: return null
     return if (previous.senderId == senderId && previous.text == text) SendMessageResult.Sent
     else SendMessageResult.UnexpectedError
+  }
+
+  /**
+   * Empties the text of the stored message [id] of [chat] ([UNSENT_MESSAGE_TEXT]), keeping its
+   * sender, time and place. The caller checked that it exists and may be unsent.
+   */
+  fun unsend(chat: K, id: String) {
+    messages.value +=
+        chat to
+            messagesOf(chat).map { if (it.id == id) it.copy(text = UNSENT_MESSAGE_TEXT) else it }
   }
 
   /**

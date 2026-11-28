@@ -1,4 +1,5 @@
 // Contributors: Claude
+// Contributors: Claude (Opus 5.5, Anthropic) (unsend against the real rules, #435).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -14,11 +15,15 @@ import com.polysocial.model.chat.MyOneToOneChatsResult
 import com.polysocial.model.chat.OneToOneChat
 import com.polysocial.model.chat.OneToOneChatRepository
 import com.polysocial.model.chat.SendMessageResult
+import com.polysocial.model.chat.UnsendMessageResult
+import com.polysocial.model.chat.isUnsent
 import com.polysocial.model.friend.FRIENDSHIPS_COLLECTION
 import com.polysocial.model.friend.friendshipId
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
@@ -163,6 +168,54 @@ class FirestoreOneToOneChatRepositoryEmulatorTest {
     befriend(pair)
     assertEquals(SendMessageResult.Sent, timed { theirs.sendMessage(pair.id, "Friends again") })
     assertEquals(listOf("See you", "Friends again"), messages(pair.id).map { it.text })
+  }
+
+  @Test
+  fun unsending_emptiesTheText_andTheFriendsOpenChatReceivesItLive() = runBlocking {
+    val pair = signInPair()
+    befriend(pair)
+    assertEquals(SendMessageResult.Sent, timed { theirs.sendMessage(pair.id, "Hi") })
+    assertEquals(SendMessageResult.Sent, timed { mine.sendMessage(pair.id, "See you", DRAFT) })
+    // The friend's chat is open on the text before it is unsent.
+    val shown = CompletableDeferred<Unit>()
+    val unsent = async {
+      theirs.observeMessages(pair.id).first { result ->
+        val messages = (result as? MessagesResult.Success)?.messages.orEmpty()
+        if (messages.any { it.text == "See you" }) shown.complete(Unit)
+        messages.any { it.isUnsent }
+      }
+    }
+    timed { shown.await() }
+
+    assertEquals(UnsendMessageResult.Unsent, timed { mine.unsendMessage(pair.id, DRAFT) })
+
+    val received = (timed { unsent.await() } as MessagesResult.Success).messages
+    assertEquals(listOf("Hi", ""), received.map { it.text })
+    assertEquals(DRAFT, received.last().id)
+    assertEquals(pair.me, received.last().senderId)
+    // A retry reads it unsent and writes nothing.
+    assertEquals(UnsendMessageResult.Unsent, timed { mine.unsendMessage(pair.id, DRAFT) })
+  }
+
+  @Test
+  fun unsendingTheFriendsMessage_orAfterUnfriending_isUnexpected_andChangesNothing() = runBlocking {
+    val pair = signInPair()
+    befriend(pair)
+    assertEquals(SendMessageResult.Sent, timed { theirs.sendMessage(pair.id, "Hi", "theirs") })
+    assertEquals(SendMessageResult.Sent, timed { mine.sendMessage(pair.id, "See you", DRAFT) })
+
+    assertEquals(
+        UnsendMessageResult.UnexpectedError,
+        timed { mine.unsendMessage(pair.id, "theirs") },
+    )
+    unfriend(pair)
+    // The rules refuse the write: the attempt and its rerun both fail.
+    assertEquals(
+        UnsendMessageResult.UnexpectedError,
+        timed { mine.unsendMessage(pair.id, DRAFT) },
+    )
+
+    assertEquals(listOf("Hi", "See you"), messages(pair.id, theirs).map { it.text })
   }
 
   @Test

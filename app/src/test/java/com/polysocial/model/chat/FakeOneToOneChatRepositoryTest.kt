@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #428; the retries after a failed
 // send or read and the live account deletion, as the tester).
+// Contributors: Claude (Opus 5.5, Anthropic) (unsend, #435).
 package com.polysocial.model.chat
 
 import com.polysocial.model.friend.FakeFriendRepository
@@ -538,6 +539,105 @@ class FakeOneToOneChatRepositoryTest {
         ),
         results,
     )
+  }
+
+  // unsendMessage (#435)
+
+  /** Seeds a chat with BOB's message, then ALICE's, and returns ALICE's. */
+  private fun seedConversation(): Message {
+    repository.seedChat(PAIR)
+    repository.seedMessage(PAIR, "theirs", BOB, "Hi", Instant.parse("2030-02-01T10:00:00Z"))
+    return repository.seedMessage(
+        PAIR,
+        "mine",
+        ALICE,
+        "See you",
+        Instant.parse("2030-02-01T10:05:00Z"),
+    )
+  }
+
+  @Test
+  fun unsend_emptiesOnlyTheStudentsOwnText_inItsPlace_andTheListenersSeeIt() = runTest {
+    befriend()
+    val mine = seedConversation()
+
+    assertEquals(UnsendMessageResult.Unsent, repository.unsendMessage(PAIR, "mine"))
+
+    val unsent = mine.copy(text = UNSENT_MESSAGE_TEXT)
+    assertTrue(unsent.isUnsent)
+    assertEquals(listOf("Hi", UNSENT_MESSAGE_TEXT), repository.messagesOf(PAIR).map { it.text })
+    assertEquals(unsent, (messages() as MessagesResult.Success).messages.last())
+    assertEquals(LatestMessageResult.Success(unsent, fromCache = false), latest())
+  }
+
+  @Test
+  fun unsend_anAlreadyUnsentMessage_isUnsent_evenAfterUnfriending() = runTest {
+    befriend()
+    seedConversation()
+    repository.unsendMessage(PAIR, "mine")
+    friends.deleteFriendship(PAIR)
+
+    // A retry after a lost answer reads it unsent and writes nothing, so no friendship is needed.
+    assertEquals(UnsendMessageResult.Unsent, repository.unsendMessage(PAIR, "mine"))
+  }
+
+  @Test
+  fun unsend_withoutAnAcceptedFriendship_isUnexpected_andChangesNothing() = runTest {
+    seedConversation()
+
+    assertEquals(UnsendMessageResult.UnexpectedError, repository.unsendMessage(PAIR, "mine"))
+
+    assertEquals("See you", repository.messagesOf(PAIR).last().text)
+  }
+
+  @Test
+  fun unsend_anotherStudentsMissingOrAnonymisedMessage_isUnexpected() = runTest {
+    befriend()
+    seedConversation()
+    repository.seedMessage(
+        PAIR,
+        "anonymous",
+        DELETED_MESSAGE_SENDER,
+        "Old",
+        Instant.parse("2030-02-01T09:00:00Z"),
+    )
+
+    for (id in listOf("theirs", "anonymous", "missing")) {
+      assertEquals(id, UnsendMessageResult.UnexpectedError, repository.unsendMessage(PAIR, id))
+    }
+    assertTrue(repository.messagesOf(PAIR).none { it.isUnsent })
+  }
+
+  @Test
+  fun unsend_badIdsOrNobodySignedIn_areUnexpected_beforeTheConnection() = runTest {
+    befriend()
+    seedConversation()
+    repository.online = false
+
+    for ((pairId, messageId) in
+        listOf("bob~carol" to "mine", "alice" to "mine", PAIR to "", PAIR to "messages/m1")) {
+      assertEquals(
+          "$pairId $messageId",
+          UnsendMessageResult.UnexpectedError,
+          repository.unsendMessage(pairId, messageId),
+      )
+    }
+    repository.currentUid = null
+    assertEquals(UnsendMessageResult.UnexpectedError, repository.unsendMessage(PAIR, "mine"))
+  }
+
+  @Test
+  fun unsend_offlineOrAFailure_isReturnedBeforeTheMessage_andChangesNothing() = runTest {
+    befriend()
+    seedConversation()
+    repository.online = false
+    assertEquals(UnsendMessageResult.NetworkError, repository.unsendMessage(PAIR, "mine"))
+
+    repository.online = true
+    repository.unsendFailure = UnsendMessageResult.UnexpectedError
+    assertEquals(UnsendMessageResult.UnexpectedError, repository.unsendMessage(PAIR, "missing"))
+
+    assertEquals("See you", repository.messagesOf(PAIR).last().text)
   }
 
   @Test

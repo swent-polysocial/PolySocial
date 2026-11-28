@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (drafted the Firestore one-to-one chat repository,
 // #428).
+// Contributors: Claude (Opus 5.5, Anthropic) (unsending a message, #435).
 package com.polysocial.model.chat
 
 import com.google.firebase.firestore.CollectionReference
@@ -22,9 +23,9 @@ import kotlinx.coroutines.tasks.await
  * written with [newChatFirestoreMap] and read with [oneToOneChatFromFirestore], and their messages
  * in `chats/{pairId}/messages`, with group chat's mapping and listener (#237).
  *
- * Like `FirestoreMessageRepository`, sending checks [NetworkMonitor] first and writes in a
- * transaction tried once, which Firestore only runs against the server, so a message fails offline
- * instead of being queued.
+ * Like `FirestoreMessageRepository`, sending and unsending check [NetworkMonitor] first and write
+ * in a transaction tried once, which Firestore only runs against the server, so a write fails
+ * offline instead of being queued.
  */
 class FirestoreOneToOneChatRepository(
     private val database: () -> FirebaseFirestore,
@@ -156,6 +157,60 @@ class FirestoreOneToOneChatRepository(
               }
               transaction.set(draft.message, newMessageFirestoreMap(draft.senderId, draft.text))
               SendMessageResult.Sent
+            }
+          }
+          .await()
+
+  /**
+   * Checks the IDs, the user and the connection, then unsends in one transaction tried once (see
+   * [unsendAttempt]).
+   *
+   * The contract's "for any reason but being offline" is, exactly: an attempt that read the message
+   * (it set `read`) and failed with a [FirebaseFirestoreException] whose code isn't `UNAVAILABLE`
+   * or `DEADLINE_EXCEEDED` runs once more. Any other exception, the caller's cancellation included,
+   * isn't rerun; nor is an attempt whose read failed (for example denied under a deletion marker).
+   */
+  override suspend fun unsendMessage(pairId: String, messageId: String): UnsendMessageResult {
+    if (!isReadableEventId(messageId)) return UnsendMessageResult.UnexpectedError
+    val uid = auth.currentUser()?.uid ?: return UnsendMessageResult.UnexpectedError
+    if (!isFriendshipIdOf(pairId, uid)) return UnsendMessageResult.UnexpectedError
+    if (!network.isOnline()) return UnsendMessageResult.NetworkError
+    return reportWriteFailures(
+        UnsendMessageResult.NetworkError,
+        UnsendMessageResult.UnexpectedError,
+    ) {
+      val message = chat(pairId).collection(MESSAGES_COLLECTION).document(messageId)
+      val read = AtomicBoolean(false)
+      try {
+        unsendAttempt(message, uid, read)
+      } catch (e: FirebaseFirestoreException) {
+        // The student's other device unsent it in between (FAILED_PRECONDITION): the rerun reads
+        // it unsent and writes nothing. A refusal by the rules fails the rerun too.
+        if (e.isOffline() || !read.get()) throw e
+        unsendAttempt(message, uid, AtomicBoolean(false))
+      }
+    }
+  }
+
+  /**
+   * One attempt at unsending [message] as [uid], in a transaction tried once: it reads the message,
+   * sets [read], then empties only its text, unless it isn't [uid]'s or is already unsent.
+   */
+  private suspend fun unsendAttempt(
+      message: DocumentReference,
+      uid: String,
+      read: AtomicBoolean,
+  ): UnsendMessageResult =
+      db.runTransaction(SINGLE_ATTEMPT) { transaction ->
+            val stored = messageFromFirestore(message.id, transaction.get(message).data)
+            read.set(true)
+            when {
+              stored == null || stored.senderId != uid -> UnsendMessageResult.UnexpectedError
+              stored.isUnsent -> UnsendMessageResult.Unsent
+              else -> {
+                transaction.update(message, MESSAGE_TEXT, UNSENT_MESSAGE_TEXT)
+                UnsendMessageResult.Unsent
+              }
             }
           }
           .await()

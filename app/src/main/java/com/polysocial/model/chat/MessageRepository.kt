@@ -2,6 +2,7 @@
 // Contributors: OpenAI Codex (added the retry ID and removed its legacy Kotlin bridge, #238).
 // Contributors: Claude (Fable 5.2, Anthropic) (a group's latest message, for the chat list, #363).
 // Contributors: Claude (Opus 5.5, Anthropic) (the results shared with one-to-one chats, #428).
+// Contributors: Claude (Opus 5.5, Anthropic) (the unsend result, #435).
 package com.polysocial.model.chat
 
 import kotlinx.coroutines.flow.Flow
@@ -91,6 +92,21 @@ sealed interface SendMessageResult {
    * was written.
    */
   data object UnexpectedError : SendMessageResult
+}
+
+/** Outcome of [OneToOneChatRepository.unsendMessage], shared with a group chat's unsend (#439). */
+sealed interface UnsendMessageResult {
+  /** The message's text is now [UNSENT_MESSAGE_TEXT], or already was. */
+  data object Unsent : UnsendMessageResult
+
+  /** The server could not be reached. Nothing was written or queued. */
+  data object NetworkError : UnsendMessageResult
+
+  /**
+   * Any other failure, for example a message that doesn't exist or isn't the student's, or a write
+   * the Security Rules deny because the two students aren't friends any more. Nothing was written.
+   */
+  data object UnexpectedError : UnsendMessageResult
 }
 
 /**
