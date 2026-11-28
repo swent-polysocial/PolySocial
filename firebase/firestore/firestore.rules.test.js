@@ -10,6 +10,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (check-in tests, written test-first, #467).
 // Contributors: Claude (Opus 5.5, Anthropic) (entrance code and QR check-in tests, written test-first, #468).
 // Contributors: Claude (Opus 5.5, Anthropic) (unsend tests for one-to-one chats, #435).
+// Contributors: Claude (Opus 5.5, Anthropic) (unsend tests for group chats, #439).
 // Contributors: Claude (Opus 5.5, Anthropic) (one-to-one chat tests and the message helpers both chats share, #428, from #365's prototype tests by Claude (Fable 5.2 and Opus 5.5, Anthropic); the refused messages both chats share, and cases a mutation check found missing, from a test review, #428).
 const { after, before, beforeEach, test } = require("node:test");
 // Contributors: OpenAI Codex (deleted-token membership creation/join regression, #241).
@@ -4753,7 +4754,8 @@ test("a student deletes a marker whose group no longer has them", async () => {
 
 // ---- events/{eventId}/groups/{groupId}/messages/{id} (#237) ----
 // A message has exactly senderId (the sender's UID), text (1 to 1000 characters) and the
-// server's createdAt. Only the group's members read and send; nobody edits or deletes one.
+// server's createdAt. Only the group's members read and send; nobody deletes one, and the only
+// edit is the sender's unsend while still a member (#439).
 
 /** A message as the app sends it: [uid] as its sender, [text], the server's time. */
 function newMessage(uid, text = "See you at 6?") {
@@ -4780,6 +4782,28 @@ const REFUSED_MESSAGE_CHANGES = [
   ["a createdAt in the future", { createdAt: Timestamp.fromDate(new Date("2099-01-01T00:00:00Z")) }],
   ["no createdAt", { createdAt: undefined }],
   ["another field", { editedAt: serverTimestamp() }],
+];
+
+/**
+ * The unsends both kinds of chat refuse (#435, #439), each as its name and the update a sender
+ * writes to their own message: anything but the text, and the text to anything but ''.
+ */
+const REFUSED_UNSEND_CHANGES = [
+  ["another text", { text: "Edited" }],
+  ["a blank text", { text: " " }],
+  ["a line break", { text: "\n" }],
+  ["a null text", { text: null }],
+  ["a number", { text: 0 }],
+  ["a boolean", { text: false }],
+  ["a list", { text: [] }],
+  ["the text removed", { text: deleteField() }],
+  ["senderId emptied", { text: "", senderId: "" }],
+  ["senderId changed", { text: "", senderId: "u2" }],
+  ["createdAt changed", { text: "", createdAt: Timestamp.fromMillis(0) }],
+  ["createdAt set to the server's time again", { text: "", createdAt: serverTimestamp() }],
+  ["createdAt removed", { text: "", createdAt: deleteField() }],
+  ["a deletedAt field added", { text: "", deletedAt: serverTimestamp() }],
+  ["a flag added", { text: "", unsent: true }],
 ];
 
 /** newMessage([uid]) with [changes]; a change to undefined removes that field. */
@@ -5020,6 +5044,10 @@ for (const verified of [false, true]) {
         await assertFails(getDocs(chatOf(db(), eventId, "g1")));
         await assertFails(sendAs(db(), eventId, "g1", newMessage(uid)));
         await expectNoMessage(eventId, "g1");
+        // Not even its own message, stored with the rules off (#439).
+        await seedMessage(eventId, "g1", "own", uid);
+        await assertFails(emptyGroupText(db(), eventId, "g1", "own"));
+        assert.equal((await storedMessage(eventId, "g1", "own")).text, "Seeded");
       }
     });
   }
@@ -5038,6 +5066,10 @@ for (const [name, db] of [
     await assertFails(getDocs(chatOf(db(), "e1", "g1")));
     await assertFails(sendAs(db(), "e1", "g1", newMessage("u1")));
     await expectNoMessage("e1", "g1");
+    // No unsend either, of a message stored under its UID (#439).
+    await seedMessage("e1", "g1", "own", "u1");
+    await assertFails(emptyGroupText(db(), "e1", "g1", "own"));
+    assert.equal((await storedMessage("e1", "g1", "own")).text, "Seeded");
   });
 }
 
@@ -5097,22 +5129,150 @@ test("the text limit allows 1 and 1000 characters, and 500 emoji", async () => {
   await assertSucceeds(sendAs(db, "e1", "g1", newMessage("u1", "\u{1F600}".repeat(500)), "emoji"));
 });
 
-// -- nobody edits or deletes --
+// -- nobody edits or deletes, except the sender's unsend --
 
-test("nobody edits or deletes a message, not even its sender", async () => {
+test("nobody edits a message other than by unsending it, and nobody deletes one, its sender included", async () => {
   await seedGroup("e1", "g1", ["u2", "u1"]);
   await seedMessage("e1", "g1", "m1", "u1");
   for (const uid of ["u1", "u2"]) {
     const message = doc(studentDb(uid), messagePath("e1", "g1", "m1"));
     await assertFails(updateDoc(message, { text: "Edited" }));
-    // Not even emptied by its sender: group chat's unsend comes with #439, which turns this
-    // line into the sender's unsend.
-    await assertFails(updateDoc(message, { text: "" }));
     await assertFails(setDoc(message, newMessage("u1", "Overwritten")));
     await assertFails(deleteDoc(message));
   }
   const stored = await storedMessage("e1", "g1", "m1");
   if (stored.text !== "Seeded") throw new Error(`The message changed: ${JSON.stringify(stored)}`);
+});
+
+// -- unsending (#439, Architecture Diagram 3.8: "Allowed" 13, "Denied" 21 and 24) --
+
+/** Unsends the group message [id] as the repository does (see unsendAt). */
+function unsendInGroupAs(db, eventId, groupId, id) {
+  return unsendAt(db, messagePath(eventId, groupId, id));
+}
+
+/** Empties the text of the group message [id] with a plain update, without a read. */
+function emptyGroupText(db, eventId, groupId, id) {
+  return updateDoc(doc(db, messagePath(eventId, groupId, id)), { text: "" });
+}
+
+test("a member unsends their own message: only its text is emptied, for every member", async () => {
+  await seedGroup("e1", "g1", ["u1", "u2", "u3"]);
+  await seedMessage("e1", "g1", "theirs", "u2", 1_790_000_000_000);
+  await seedMessage("e1", "g1", "mine", "u1", 1_790_000_060_000);
+  const db = studentDb("u1");
+
+  assert.equal(await assertSucceeds(unsendInGroupAs(db, "e1", "g1", "mine")), "unsent");
+
+  assert.deepEqual(await storedMessage("e1", "g1", "mine"), {
+    senderId: "u1",
+    text: "",
+    createdAt: Timestamp.fromMillis(1_790_000_060_000),
+  });
+  for (const uid of ["u1", "u2", "u3"]) {
+    const reader = studentDb(uid);
+    const history = await assertSucceeds(getDocs(chatOf(reader, "e1", "g1")));
+    assert.deepEqual(history.docs.map((message) => [message.id, message.data().text]), [
+      ["theirs", "Seeded"],
+      ["mine", ""],
+    ]);
+    // Still the latest message, at its own time.
+    const latest = await assertSucceeds(getDocs(latestMessageOf(reader, "e1", "g1")));
+    assert.deepEqual(latest.docs.map((message) => [message.id, message.data().text]), [["mine", ""]]);
+  }
+  // A retry reads it already unsent and writes nothing; a blind "" again changes nothing and passes.
+  assert.equal(await assertSucceeds(unsendInGroupAs(db, "e1", "g1", "mine")), "already unsent");
+  await assertSucceeds(emptyGroupText(db, "e1", "g1", "mine"));
+  assert.equal((await storedMessage("e1", "g1", "theirs")).text, "Seeded");
+});
+
+test("a member removed from a private event still unsends their message, like they keep the chat", async () => {
+  await seedGroup("private", "g1", ["u2", "u3"]);
+  await seedMessage("private", "g1", "m1", "u3");
+  await removeU3FromPrivateEvent();
+  assert.equal(await assertSucceeds(unsendInGroupAs(studentDb("u3"), "private", "g1", "m1")), "unsent");
+  assert.equal((await storedMessage("private", "g1", "m1")).text, "");
+});
+
+test("nobody unsends another member's message: not another member, a member of another group or an outsider", async () => {
+  await seedGroup("e1", "g1", ["u1", "u2"]);
+  await seedGroup("e1", "g2", ["u3"]);
+  await seedMessage("e1", "g1", "m1", "u1");
+  // u2 is in the group; u3 is in another group of the event; u4 in none.
+  for (const uid of ["u2", "u3", "u4"]) {
+    await assertFails(unsendInGroupAs(studentDb(uid), "e1", "g1", "m1"));
+    await assertFails(emptyGroupText(studentDb(uid), "e1", "g1", "m1"));
+  }
+  assert.equal((await storedMessage("e1", "g1", "m1")).text, "Seeded");
+});
+
+test("a member who left can't unsend, and can again after rejoining", async () => {
+  await seedGroup("e1", "g1", ["u2", "u1"]);
+  await seedMessage("e1", "g1", "m1", "u1");
+  const db = studentDb("u1");
+  await assertSucceeds(leaveAs(db, "u1", "e1", "g1"));
+  await assertFails(unsendInGroupAs(db, "e1", "g1", "m1"));
+  await assertFails(emptyGroupText(db, "e1", "g1", "m1"));
+  assert.equal((await storedMessage("e1", "g1", "m1")).text, "Seeded");
+
+  await assertSucceeds(joinAs(db, "u1", "e1", "g1"));
+  assert.equal(await assertSucceeds(unsendInGroupAs(db, "e1", "g1", "m1")), "unsent");
+});
+
+test("the rules read the group before the request: leaving and unsending in one batch passes, rejoining and unsending doesn't", async () => {
+  await seedGroup("e1", "g1", ["u2", "u1"]);
+  await seedMessage("e1", "g1", "m1", "u1");
+  await seedMessage("e1", "g1", "m2", "u1");
+  const db = studentDb("u1");
+  await assertSucceeds(writeMembers(db, "e1", "g1", ["u2"], (batch, marker) => {
+    batch.delete(marker("u1"));
+    batch.update(doc(db, messagePath("e1", "g1", "m1")), { text: "" });
+  }));
+  assert.equal((await storedMessage("e1", "g1", "m1")).text, "");
+  assert.deepEqual(await storedMembers("e1", "g1"), ["u2"]);
+
+  await assertFails(writeMembers(db, "e1", "g1", ["u2", "u1"], (batch, marker) => {
+    batch.set(marker("u1"), { groupId: "g1" });
+    batch.update(doc(db, messagePath("e1", "g1", "m2")), { text: "" });
+  }));
+  // Refused as a whole: still out, and the message kept.
+  assert.deepEqual(await storedMembers("e1", "g1"), ["u2"]);
+  assert.equal((await storedMessage("e1", "g1", "m2")).text, "Seeded");
+});
+
+test("nobody unsends in a group that was deleted", async () => {
+  await seedGroup("e1", "g1", ["u1"]);
+  await seedMessage("e1", "g1", "m1", "u1");
+  const db = studentDb("u1");
+  // The last member leaving deletes the group; its messages stay.
+  await assertSucceeds(leaveAs(db, "u1", "e1", "g1"));
+  await assertFails(unsendInGroupAs(db, "e1", "g1", "m1"));
+  await assertFails(emptyGroupText(db, "e1", "g1", "m1"));
+  assert.equal((await storedMessage("e1", "g1", "m1")).text, "Seeded");
+});
+
+for (const [name, changes] of REFUSED_UNSEND_CHANGES) {
+  test(`a member's unsend of their group message can't have ${name}`, async () => {
+    await seedGroup("e1", "g1", ["u1", "u2"]);
+    await seedMessage("e1", "g1", "m1", "u1");
+    await assertFails(updateDoc(doc(studentDb("u1"), messagePath("e1", "g1", "m1")), changes));
+    assert.equal((await storedMessage("e1", "g1", "m1")).text, "Seeded");
+  });
+}
+
+test("an unsent group message's text can't be restored or replaced, and nobody deletes it", async () => {
+  await seedGroup("e1", "g1", ["u1", "u2"]);
+  await seedMessage("e1", "g1", "m1", "u1");
+  const db = studentDb("u1");
+  await assertSucceeds(unsendInGroupAs(db, "e1", "g1", "m1"));
+  const message = doc(db, messagePath("e1", "g1", "m1"));
+  await assertFails(updateDoc(message, { text: "Seeded" }));
+  await assertFails(updateDoc(message, { text: "Something else" }));
+  await assertFails(setDoc(message, newMessage("u1", "Back")));
+  for (const uid of ["u1", "u2"]) {
+    await assertFails(deleteDoc(doc(studentDb(uid), messagePath("e1", "g1", "m1"))));
+  }
+  assert.equal((await storedMessage("e1", "g1", "m1")).text, "");
 });
 
 
@@ -5124,6 +5284,9 @@ test("deleted tokens lose chat access before membership cleanup; active members 
   await assertFails(getDoc(doc(studentDb("u1"), messagePath("e1", "g1", "m1"))));
   await assertFails(getDocs(chatOf(studentDb("u1"), "e1", "g1")));
   await assertFails(sendAs(studentDb("u1"), "e1", "g1", newMessage("u1")));
+  // No unsend either (#439), though it is still listed in the group.
+  await assertFails(emptyGroupText(studentDb("u1"), "e1", "g1", "m1"));
+  assert.equal((await storedMessage("e1", "g1", "m1")).text, "Seeded");
   await assertSucceeds(getDocs(chatOf(studentDb("u2"), "e1", "g1")));
   await assertSucceeds(sendAs(studentDb("u2"), "e1", "g1", newMessage("u2")));
 });
@@ -5139,6 +5302,11 @@ test("members read retained messages but cannot forge or reverse a deleted autho
   await assertFails(updateDoc(ref, {senderId: "u1"}));
   await assertFails(updateDoc(ref, {text: "Changed"}));
   await assertFails(deleteDoc(ref));
+  // Nobody unsends a message whose author was deleted (#439).
+  for (const uid of ["u1", "u2"]) {
+    await assertFails(emptyGroupText(studentDb(uid), "e1", "g1", "anonymous"));
+  }
+  assert.equal((await storedMessage("e1", "g1", "anonymous")).text, "Seeded");
 });
 
 // ---- friendships/{pairId} (#357, designed in #338) ----
@@ -5629,10 +5797,19 @@ function setChatMessage(db, pairId, message, id = "new") {
  * unless it is already empty. Returns "unsent" or "already unsent".
  */
 function unsendAs(db, pairId, id) {
+  return unsendAt(db, chatMessagePath(pairId, id));
+}
+
+/**
+ * Unsends the message at [path] as the chat repositories do (#435, #439): one transaction, tried
+ * once, that reads it and empties only its text, unless it is already empty. Returns "unsent" or
+ * "already unsent".
+ */
+function unsendAt(db, path) {
   return runTransaction(
     db,
     async (transaction) => {
-      const message = doc(db, chatMessagePath(pairId, id));
+      const message = doc(db, path);
       if ((await transaction.get(message)).data().text === "") return "already unsent";
       transaction.update(message, { text: "" });
       return "unsent";
@@ -6252,23 +6429,7 @@ test("nobody unsends another student's message, nor one whose author's account w
   assert.equal((await storedAt(chatMessagePath("u1~u2", "anonymous"))).text, "Seeded");
 });
 
-for (const [name, changes] of [
-  ["another text", { text: "Edited" }],
-  ["a blank text", { text: " " }],
-  ["a line break", { text: "\n" }],
-  ["a null text", { text: null }],
-  ["a number", { text: 0 }],
-  ["a boolean", { text: false }],
-  ["a list", { text: [] }],
-  ["the text removed", { text: deleteField() }],
-  ["senderId emptied", { text: "", senderId: "" }],
-  ["senderId changed", { text: "", senderId: "u2" }],
-  ["createdAt changed", { text: "", createdAt: Timestamp.fromMillis(0) }],
-  ["createdAt set to the server's time again", { text: "", createdAt: serverTimestamp() }],
-  ["createdAt removed", { text: "", createdAt: deleteField() }],
-  ["a deletedAt field added", { text: "", deletedAt: serverTimestamp() }],
-  ["a flag added", { text: "", unsent: true }],
-]) {
+for (const [name, changes] of REFUSED_UNSEND_CHANGES) {
   test(`the sender's unsend can't have ${name}`, async () => {
     await seedFriends("u1", "u2");
     await seedChat("u1~u2");
