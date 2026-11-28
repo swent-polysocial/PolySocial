@@ -1,6 +1,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (group chat repository tests against the rules, #237).
 // Contributors: OpenAI Codex (verified same-ID retry against Firestore rules, #238).
 // Contributors: Claude (Fable 5.2, Anthropic) (a group's latest message, #363).
+// Contributors: Claude (Opus 5.5, Anthropic) (unsend against the real rules, #439).
 package com.polysocial.emulator
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -10,6 +11,8 @@ import com.polysocial.model.chat.MESSAGES_COLLECTION
 import com.polysocial.model.chat.Message
 import com.polysocial.model.chat.MessagesResult
 import com.polysocial.model.chat.SendMessageResult
+import com.polysocial.model.chat.UnsendMessageResult
+import com.polysocial.model.chat.isUnsent
 import com.polysocial.model.event.Coordinates
 import com.polysocial.model.event.EVENTS_COLLECTION
 import com.polysocial.model.event.Event
@@ -18,9 +21,13 @@ import com.polysocial.model.event.toFirestoreMap
 import com.polysocial.model.group.GROUPS_COLLECTION
 import com.polysocial.model.group.GROUP_CAPACITY
 import java.time.Instant
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withTimeout
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -31,13 +38,16 @@ import org.junit.runner.RunWith
 /**
  * Tests [FirestoreMessageRepository] against the Firestore and Auth emulators, so the message rules
  * (#237) and the server's ordering run on the real Firestore. The event, the group and other
- * members' messages are seeded as an admin would, bypassing the rules.
+ * members' messages are seeded as an admin would, bypassing the rules. For unsend (#439), another
+ * member signs in on one of [StudentApps], so both are signed in at once.
  */
 @EmulatorTest
 @RunWith(AndroidJUnit4::class)
 class FirestoreMessageRepositoryEmulatorTest {
 
   @get:Rule val emulator = FirebaseEmulator()
+
+  @After fun signOutTheOtherMember() = StudentApps.signOutAll()
 
   /** Always online, so the offline test reaches the transaction instead of the network check. */
   private val repository by lazy {
@@ -53,6 +63,11 @@ class FirestoreMessageRepositoryEmulatorTest {
   /** Stores a public event with the group [GROUP], whose members are [members]. */
   private suspend fun seedGroup(members: List<String>) {
     emulator.createAsAdmin(EVENTS_COLLECTION, EVENT, event().toFirestoreMap())
+    storeGroup(members)
+  }
+
+  /** Stores the group [GROUP] with [members], as an admin would. */
+  private suspend fun storeGroup(members: List<String>) {
     emulator.createAsAdmin(
         "$EVENTS_COLLECTION/$EVENT/$GROUPS_COLLECTION",
         GROUP,
@@ -150,6 +165,84 @@ class FirestoreMessageRepositoryEmulatorTest {
     assertEquals(uid, message.senderId)
   }
 
+  // unsendMessage (#439)
+
+  private val otherApp
+    get() = StudentApps.all.first()
+
+  /** The other member's repository, on their own signed-in app. */
+  private val others by lazy {
+    FirestoreMessageRepository(
+        db = otherApp.firestore,
+        auth = EmulatorSignedInUser(emulator, otherApp.auth),
+        network = AlwaysOnline,
+    )
+  }
+
+  private suspend fun signInOtherMember(): String =
+      emulator.signInVerifiedUser(OUTSIDER_EMAIL, auth = otherApp.auth).uid
+
+  private suspend fun unsend(id: String) =
+      withTimeout(TIMEOUT_MS) { repository.unsendMessage(EVENT, GROUP, id) }
+
+  @Test
+  fun unsending_emptiesTheText_andAnotherMembersChatAndLatestMessageReceiveIt() = runBlocking {
+    val uid = signIn(STUDENT_EMAIL)
+    val other = signInOtherMember()
+    seedGroup(listOf(other, uid))
+    seedMessage("theirs", other, "Who's coming?", Instant.parse("2026-01-01T10:00:00Z"))
+    assertEquals(
+        SendMessageResult.Sent,
+        withTimeout(TIMEOUT_MS) { repository.sendMessage(EVENT, GROUP, "Me!", DRAFT) },
+    )
+    // The other member's chat and Chats row are open on the text before it is unsent.
+    val shown = CompletableDeferred<Unit>()
+    val unsentInChat = async {
+      others.observeMessages(EVENT, GROUP).first { result ->
+        val messages = (result as? MessagesResult.Success)?.messages.orEmpty()
+        if (messages.any { it.text == "Me!" }) shown.complete(Unit)
+        messages.any { it.isUnsent }
+      }
+    }
+    val unsentAsLatest = async {
+      others.observeLatestMessage(EVENT, GROUP).first {
+        (it as? LatestMessageResult.Success)?.message?.isUnsent == true
+      }
+    }
+    withTimeout(TIMEOUT_MS) { shown.await() }
+
+    assertEquals(UnsendMessageResult.Unsent, unsend(DRAFT))
+
+    val received = (withTimeout(TIMEOUT_MS) { unsentInChat.await() } as MessagesResult.Success)
+    assertEquals(listOf("Who's coming?", ""), received.messages.map { it.text })
+    assertEquals(DRAFT, received.messages.last().id)
+    assertEquals(uid, received.messages.last().senderId)
+    val latest = withTimeout(TIMEOUT_MS) { unsentAsLatest.await() } as LatestMessageResult.Success
+    assertEquals(DRAFT, latest.message?.id)
+    // A retry reads it unsent and writes nothing.
+    assertEquals(UnsendMessageResult.Unsent, unsend(DRAFT))
+  }
+
+  @Test
+  fun unsendingAnotherMembersMessage_orAfterLeaving_isUnexpected_andChangesNothing() = runBlocking {
+    val uid = signIn(STUDENT_EMAIL)
+    seedGroup(listOf(OTHER_UID, uid))
+    seedMessage("theirs", OTHER_UID, "Who's coming?", Instant.parse("2026-01-01T10:00:00Z"))
+    seedMessage("mine", uid, "Me!", Instant.parse("2026-01-01T10:01:00Z"))
+
+    assertEquals(UnsendMessageResult.UnexpectedError, unsend("theirs"))
+
+    // Out of the group, the rules refuse even the read.
+    emulator.deleteAsAdmin("$EVENTS_COLLECTION/$EVENT/$GROUPS_COLLECTION", GROUP)
+    storeGroup(listOf(OTHER_UID))
+    assertEquals(UnsendMessageResult.UnexpectedError, unsend("mine"))
+
+    // Back in the group, both messages are unchanged.
+    emulator.deleteAsAdmin("$EVENTS_COLLECTION/$EVENT/$GROUPS_COLLECTION", GROUP)
+    storeGroup(listOf(OTHER_UID, uid))
+    assertEquals(listOf("Who's coming?", "Me!"), messages().map { it.text })
+  }
+
   @Test
   fun aStudentOutsideTheGroup_cannotReadOrSend() = runBlocking {
     val member = signIn(STUDENT_EMAIL)
@@ -199,6 +292,7 @@ class FirestoreMessageRepositoryEmulatorTest {
     const val ORGANIZER_UID = "fictional-organizer"
     const val EVENT = "public"
     const val GROUP = "group"
+    const val DRAFT = "draft-1"
     const val TIMEOUT_MS = 15_000L
     const val OFFLINE_TIMEOUT_MS = 30_000L
 

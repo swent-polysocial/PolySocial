@@ -1,4 +1,5 @@
-// Contributors: Claude (Opus 5.5, Anthropic) (wrote this fake for tests, #428; unsend, #435).
+// Contributors: Claude (Opus 5.5, Anthropic) (wrote this fake for tests, #428; unsend, #435, its
+// checks shared with the group chat fake, #439).
 package com.polysocial.model.chat
 
 import com.polysocial.model.event.isReadableEventId
@@ -211,15 +212,8 @@ class FakeOneToOneChatRepository(var currentUid: String? = "test-student") :
     }
     // The transaction reads the message first: one already unsent is answered without a write,
     // so the rules' friendship check never sees it.
-    val stored =
-        messages.messagesOf(pairId).firstOrNull { it.id == messageId }
-            ?: return UnsendMessageResult.UnexpectedError
-    if (stored.senderId != uid) return UnsendMessageResult.UnexpectedError
-    if (stored.isUnsent) return UnsendMessageResult.Unsent
-    if (friendshipOf(pairId)?.status != FriendshipStatus.ACCEPTED) {
-      return UnsendMessageResult.UnexpectedError
+    return messages.unsendAs(pairId, uid, messageId) {
+      friendshipOf(pairId)?.status == FriendshipStatus.ACCEPTED
     }
-    messages.unsend(pairId, messageId)
-    return UnsendMessageResult.Unsent
   }
 }

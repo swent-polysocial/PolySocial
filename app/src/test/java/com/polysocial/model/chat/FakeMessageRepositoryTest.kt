@@ -2,6 +2,7 @@
 // Contributors: Claude (Fable 5.2, Anthropic) (tests of a group's latest message, #363).
 // Contributors: Claude (Opus 5.5, Anthropic) (tests of the members read from the groups, after
 // review, #363).
+// Contributors: Claude (Opus 5.5, Anthropic) (unsend tests, #439).
 package com.polysocial.model.chat
 
 import com.polysocial.model.group.FakeGroupRepository
@@ -299,6 +300,103 @@ class FakeMessageRepositoryTest {
     repository.membersOf = { _, _ -> listOf("outsider") }
     repository.currentUid = "outsider"
     assertEquals(MessagesResult.UnexpectedError, messages())
+  }
+
+  // unsendMessage (#439)
+
+  private val time: Instant = Instant.parse("2030-01-01T10:00:00Z")
+
+  @Test
+  fun unsend_emptiesOnlyTheText_live_andARetryIsUnsentToo() =
+      runTest(UnconfinedTestDispatcher()) {
+        repository.seedMessage(EVENT, GROUP, "theirs", "other", "Hi", time)
+        repository.seedMessage(EVENT, GROUP, "mine", "student", "See you", time.plusSeconds(60))
+        val latest = mutableListOf<LatestMessageResult>()
+        val listening = launch { repository.observeLatestMessage(EVENT, GROUP).toList(latest) }
+
+        assertEquals(UnsendMessageResult.Unsent, repository.unsendMessage(EVENT, GROUP, "mine"))
+        assertEquals(UnsendMessageResult.Unsent, repository.unsendMessage(EVENT, GROUP, "mine"))
+
+        val stored = repository.messagesOf(EVENT, GROUP)
+        assertEquals(listOf("theirs", "mine"), stored.map { it.id })
+        assertEquals(
+            Message("mine", "student", UNSENT_MESSAGE_TEXT, time.plusSeconds(60)),
+            stored[1],
+        )
+        assertEquals("Hi", stored[0].text)
+        // Another member's latest message receives the empty text.
+        assertEquals(
+            LatestMessageResult.Success(stored[1], fromCache = false),
+            latest.last(),
+        )
+        listening.cancel()
+      }
+
+  @Test
+  fun unsend_anotherMembersMissingOrAnonymisedMessage_isUnexpected_withoutAWrite() = runTest {
+    repository.seedMessage(EVENT, GROUP, "theirs", "other", "Hi", time)
+    repository.seedMessage(EVENT, GROUP, "anonymous", DELETED_MESSAGE_SENDER, "Bye", time)
+
+    for (id in listOf("theirs", "anonymous", "missing")) {
+      assertEquals(
+          id,
+          UnsendMessageResult.UnexpectedError,
+          repository.unsendMessage(EVENT, GROUP, id),
+      )
+    }
+    assertEquals(listOf("Bye", "Hi"), repository.messagesOf(EVENT, GROUP).map { it.text })
+  }
+
+  @Test
+  fun unsend_outOfTheGroup_isUnexpected_andAgainAllowedOnceBack() = runTest {
+    repository.seedMessage(EVENT, GROUP, "mine", "student", "See you", time)
+    repository.setMembers(EVENT, GROUP, setOf("other"))
+
+    assertEquals(
+        UnsendMessageResult.UnexpectedError,
+        repository.unsendMessage(EVENT, GROUP, "mine"),
+    )
+    assertEquals("See you", repository.messagesOf(EVENT, GROUP).single().text)
+
+    repository.setMembers(EVENT, GROUP, setOf("other", "student"))
+    assertEquals(UnsendMessageResult.Unsent, repository.unsendMessage(EVENT, GROUP, "mine"))
+  }
+
+  @Test
+  fun unsend_checksTheIdsAndUser_thenOnline_thenTheFailure_thenMembership() = runTest {
+    repository.seedMessage(EVENT, GROUP, "mine", "student", "See you", time)
+    repository.online = false
+    repository.unsendFailure = UnsendMessageResult.UnexpectedError
+    repository.setMembers(EVENT, GROUP, emptySet())
+
+    for (ids in
+        listOf(
+            listOf("", GROUP, "mine"),
+            listOf(EVENT, "a/b", "mine"),
+            listOf(EVENT, GROUP, " "),
+        )) {
+      assertEquals(
+          ids.toString(),
+          UnsendMessageResult.UnexpectedError,
+          repository.unsendMessage(ids[0], ids[1], ids[2]),
+      )
+    }
+    assertEquals(UnsendMessageResult.NetworkError, repository.unsendMessage(EVENT, GROUP, "mine"))
+    repository.online = true
+    repository.unsendFailure = UnsendMessageResult.NetworkError
+    assertEquals(UnsendMessageResult.NetworkError, repository.unsendMessage(EVENT, GROUP, "mine"))
+    repository.unsendFailure = null
+    assertEquals(
+        UnsendMessageResult.UnexpectedError,
+        repository.unsendMessage(EVENT, GROUP, "mine"),
+    )
+    repository.currentUid = null
+    repository.setMembers(EVENT, GROUP, setOf("student"))
+    assertEquals(
+        UnsendMessageResult.UnexpectedError,
+        repository.unsendMessage(EVENT, GROUP, "mine"),
+    )
+    assertEquals("See you", repository.messagesOf(EVENT, GROUP).single().text)
   }
 
   private companion object {
