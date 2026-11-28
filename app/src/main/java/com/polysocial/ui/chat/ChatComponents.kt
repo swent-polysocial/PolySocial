@@ -1,11 +1,14 @@
 // Contributors: OpenAI Codex (group chat UI and Figma avatar colors, #236 and #238; neutral
 // deleted author label, #241); Claude (Opus 5.5, Anthropic) (moved here from GroupChatScreen.kt to
 // share them with the one-to-one chat, #431; their tags moved here, from the #519 review; the
-// timeline without sender names and with its own empty state, for the one-to-one chat, #431).
+// timeline without sender names and with its own empty state, for the one-to-one chat, #431; the
+// unsent placeholder and Unsend's menu on the student's own messages, #436).
 package com.polysocial.ui.chat
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +26,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -31,34 +36,41 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.polysocial.R
 import com.polysocial.model.chat.DELETED_MESSAGE_SENDER
 import com.polysocial.model.chat.Message
+import com.polysocial.model.chat.isUnsent
 import com.polysocial.ui.common.OfflineBanner
 import com.polysocial.ui.group.GroupMember
 import com.polysocial.ui.group.MemberAvatar
 import com.polysocial.ui.group.OTHERS_COLORS
 import com.polysocial.ui.group.initials
+import com.polysocial.ui.profile.privacyTextStyle
 import com.polysocial.ui.theme.Accent
 import com.polysocial.ui.theme.AccentText
 import com.polysocial.ui.theme.Bg
 import com.polysocial.ui.theme.Border
 import com.polysocial.ui.theme.Ink
 import com.polysocial.ui.theme.Ink2
+import com.polysocial.ui.theme.Ink3
 import com.polysocial.ui.theme.Surface
 import java.time.LocalDate
 import java.time.ZoneId
@@ -81,6 +93,10 @@ internal object ChatTags {
  * being sent at the end. [members] name and color the other senders; a deleted author gets the
  * neutral label (#241). Without [showSenders] (a one-to-one chat, whose header names the friend),
  * the other student's bubbles have no name or avatar. [empty] shows while there is no message.
+ *
+ * An unsent message ([Message.isUnsent]) shows "This message was deleted" in place, at its time and
+ * on its sender's side. With [onUnsend], a long press on one of the student's own stored messages
+ * that isn't unsent opens a menu with Unsend, which calls it (#436); without, there is no menu.
  */
 @Composable
 internal fun ChatTimeline(
@@ -95,6 +111,7 @@ internal fun ChatTimeline(
     empty: @Composable () -> Unit = {
       ChatMessageState(R.string.chat_empty, R.string.chat_empty_body)
     },
+    onUnsend: ((Message) -> Unit)? = null,
 ) {
   val pending = draft.takeIf { it.stage == ChatDraft.Stage.SENDING }
   val shown = messages.filterNot { pending?.id == it.id }
@@ -148,7 +165,19 @@ internal fun ChatTimeline(
                   peers.getOrNull(peerIndex)?.profile?.displayName
                       ?: stringResource(R.string.group_unknown_member)
           val color = OTHERS_COLORS.getOrElse(peerIndex) { OTHERS_COLORS.first() }
-          ChatBubble(message.text, mine, name, avatarColor = color, avatarSpace = showSenders)
+          ChatBubble(
+              message.text,
+              mine,
+              name,
+              avatarColor = color,
+              avatarSpace = showSenders,
+              unsent = message.isUnsent,
+              onUnsend =
+                  onUnsend
+                      ?.takeIf { mine && !message.isUnsent }
+                      ?.let { unsend -> { unsend(message) } },
+              tag = ChatUnsendTags.bubble(message.id),
+          )
         }
         if (pending != null)
             item { ChatBubble(pending.text.trim(), mine = true, name = null, sending = true) }
@@ -165,6 +194,9 @@ private fun ChatBubble(
     sending: Boolean = false,
     avatarColor: Int = OTHERS_COLORS.first(),
     avatarSpace: Boolean = true,
+    unsent: Boolean = false,
+    onUnsend: (() -> Unit)? = null,
+    tag: String? = null,
 ) {
   Column(
       Modifier.fillMaxWidth(),
@@ -190,14 +222,59 @@ private fun ChatBubble(
               bottomStart = if (mine) 16.dp else 4.dp,
               bottomEnd = if (mine) 4.dp else 16.dp,
           )
-      Text(
-          text,
-          Modifier.widthIn(max = 250.dp)
-              .background(if (sending) Ink2 else if (mine) Ink else Bg, shape)
-              .padding(horizontal = 12.dp, vertical = 10.dp),
-          color = if (mine) Bg else Ink,
-          style = MaterialTheme.typography.bodyMedium,
-      )
+      var menu by remember { mutableStateOf(false) }
+      val unsendLabel = stringResource(R.string.chat_unsend)
+      Box {
+        Text(
+            if (unsent) stringResource(R.string.chat_unsent) else text,
+            Modifier.widthIn(max = 250.dp)
+                .then(
+                    // Figma's placeholder: outlined, on the chat's background.
+                    if (unsent) Modifier.border(1.dp, Border, shape)
+                    else Modifier.background(if (sending) Ink2 else if (mine) Ink else Bg, shape)
+                )
+                .then(
+                    if (onUnsend == null) Modifier
+                    else
+                        Modifier.pointerInput(Unit) {
+                              detectTapGestures(onLongPress = { menu = true })
+                            }
+                            .semantics {
+                              onLongClick(unsendLabel) {
+                                menu = true
+                                true
+                              }
+                            }
+                )
+                .padding(horizontal = 12.dp, vertical = 10.dp)
+                .then(if (tag == null) Modifier else Modifier.testTag(tag)),
+            color = if (unsent) Ink3 else if (mine) Bg else Ink,
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        if (onUnsend != null) {
+          DropdownMenu(
+              expanded = menu,
+              onDismissRequest = { menu = false },
+              shape = RoundedCornerShape(14.dp),
+              containerColor = Bg,
+          ) {
+            DropdownMenuItem(
+                text = {
+                  Text(
+                      unsendLabel,
+                      style = privacyTextStyle(14, 18f, FontWeight.Bold),
+                      color = Ink,
+                  )
+                },
+                onClick = {
+                  menu = false
+                  onUnsend()
+                },
+                modifier = Modifier.testTag(ChatUnsendTags.MENU),
+            )
+          }
+        }
+      }
     }
     if (sending)
         Text(

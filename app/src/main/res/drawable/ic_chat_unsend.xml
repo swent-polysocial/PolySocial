@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Contributors: PolySocial Figma #430 (Unsend icon); Claude (Opus 5.5, Anthropic) (Android vector conversion, #436). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="25dp" android:height="25dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path android:pathData="M9 14L4 9L9 4"
+        android:strokeColor="#B3202A" android:strokeWidth="1.9"
+        android:strokeLineCap="round" android:strokeLineJoin="round" />
+    <path android:pathData="M4 9H14.5C17.5376 9 20 11.4624 20 14.5C20 17.5376 17.5376 20 14.5 20H11"
+        android:strokeColor="#B3202A" android:strokeWidth="1.9"
+        android:strokeLineCap="round" android:strokeLineJoin="round" />
+</vector>

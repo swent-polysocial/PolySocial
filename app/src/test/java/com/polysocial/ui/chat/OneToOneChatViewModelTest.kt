@@ -1,5 +1,5 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #431; the name read again on
-// Retry, from #520's review).
+// Retry, from #520's review; unsending, #436).
 package com.polysocial.ui.chat
 
 import androidx.lifecycle.SavedStateHandle
@@ -10,6 +10,8 @@ import com.polysocial.model.chat.FakeOneToOneChatRepository
 import com.polysocial.model.chat.MessagesResult
 import com.polysocial.model.chat.OneToOneChatRepository
 import com.polysocial.model.chat.SendMessageResult
+import com.polysocial.model.chat.UnsendMessageResult
+import com.polysocial.model.chat.isUnsent
 import com.polysocial.model.friend.FakeFriendRepository
 import com.polysocial.model.friend.Friendship
 import com.polysocial.model.friend.FriendshipStatus
@@ -32,6 +34,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -266,6 +269,165 @@ class OneToOneChatViewModelTest {
         assertEquals(emptyList<Any>(), chats.messagesOf(PAIR))
       }
 
+  // ---- Unsending ----
+
+  /** A friends' chat with the student's message [MINE] and the friend's [THEIRS], started. */
+  private fun TestScope.chatWithMessages(): OneToOneChatViewModel {
+    befriend()
+    chats.seedChat(PAIR)
+    chats.seedMessage(PAIR, THEIRS, FRIEND, "Meet at 20:00?", NOW)
+    chats.seedMessage(PAIR, MINE, ME, "Perfect, see you there!", NOW.plusSeconds(60))
+    return started()
+  }
+
+  private fun OneToOneChatViewModel.message(id: String) = history().messages.single { it.id == id }
+
+  @Test
+  fun aConfirmedUnsend_emptiesTheMessage_forTheHistoryToo() =
+      runTest(main.dispatcher) {
+        val viewModel = chatWithMessages()
+
+        viewModel.askUnsend(viewModel.message(MINE))
+        runCurrent()
+        assertEquals(
+            ChatUnsend(MINE, ChatUnsend.Stage.CONFIRMING),
+            viewModel.state.value.unsend,
+        )
+        viewModel.unsend()
+        runCurrent()
+
+        assertNull(viewModel.state.value.unsend)
+        assertTrue(chats.messagesOf(PAIR).single { it.id == MINE }.isUnsent)
+        // The listener brings the placeholder, in place: same order, sender and time.
+        assertEquals(listOf(THEIRS, MINE), viewModel.history().messages.map { it.id })
+        val unsent = viewModel.message(MINE)
+        assertTrue(unsent.isUnsent)
+        assertEquals(ME, unsent.senderId)
+        assertEquals(NOW.plusSeconds(60), unsent.createdAt)
+      }
+
+  @Test
+  fun cancellingTheConfirmation_keepsTheMessage() =
+      runTest(main.dispatcher) {
+        val viewModel = chatWithMessages()
+
+        viewModel.askUnsend(viewModel.message(MINE))
+        viewModel.closeUnsend()
+        runCurrent()
+
+        assertNull(viewModel.state.value.unsend)
+        assertEquals("Perfect, see you there!", viewModel.message(MINE).text)
+      }
+
+  @Test
+  fun unsendIsntOffered_onTheFriendsMessage_orAnUnsentOne() =
+      runTest(main.dispatcher) {
+        val viewModel = chatWithMessages()
+        chats.seedMessage(PAIR, "gone", ME, "", NOW.plusSeconds(120))
+        runCurrent()
+
+        viewModel.askUnsend(viewModel.message(THEIRS))
+        viewModel.askUnsend(viewModel.message("gone"))
+        runCurrent()
+
+        assertNull(viewModel.state.value.unsend)
+      }
+
+  @Test
+  fun unsendIsntOffered_inAReadOnlyChat() =
+      runTest(main.dispatcher) {
+        val viewModel = chatWithMessages()
+        friends.deleteFriendship(PAIR)
+        runCurrent()
+
+        viewModel.askUnsend(viewModel.message(MINE))
+        runCurrent()
+
+        assertNull(viewModel.state.value.unsend)
+      }
+
+  @Test
+  fun anOfflineUnsend_keepsTheMessage_andTryAgainUnsendsIt() =
+      runTest(main.dispatcher) {
+        val viewModel = chatWithMessages()
+        chats.online = false
+        viewModel.askUnsend(viewModel.message(MINE))
+
+        viewModel.unsend()
+        runCurrent()
+        assertEquals(ChatUnsend(MINE, ChatUnsend.Stage.OFFLINE), viewModel.state.value.unsend)
+        assertEquals("Perfect, see you there!", viewModel.message(MINE).text)
+
+        chats.online = true
+        viewModel.unsend()
+        runCurrent()
+
+        assertNull(viewModel.state.value.unsend)
+        assertTrue(viewModel.message(MINE).isUnsent)
+      }
+
+  @Test
+  fun aFailedUnsend_keepsTheMessage_withTryAgain_andClosingDropsTheNotice() =
+      runTest(main.dispatcher) {
+        val viewModel = chatWithMessages()
+        chats.unsendFailure = UnsendMessageResult.UnexpectedError
+        viewModel.askUnsend(viewModel.message(MINE))
+
+        viewModel.unsend()
+        runCurrent()
+        assertEquals(ChatUnsend(MINE, ChatUnsend.Stage.FAILED), viewModel.state.value.unsend)
+        assertEquals("Perfect, see you there!", viewModel.message(MINE).text)
+
+        viewModel.closeUnsend()
+        runCurrent()
+
+        assertNull(viewModel.state.value.unsend)
+        assertEquals("Perfect, see you there!", viewModel.message(MINE).text)
+      }
+
+  @Test
+  fun aChatThatTurnedReadOnly_beforeTheConfirmation_unsendsNothing() =
+      runTest(main.dispatcher) {
+        val viewModel = chatWithMessages()
+        viewModel.askUnsend(viewModel.message(MINE))
+        friends.deleteFriendship(PAIR)
+        runCurrent()
+
+        viewModel.unsend()
+        runCurrent()
+
+        assertNull(viewModel.state.value.unsend)
+        assertEquals("Perfect, see you there!", viewModel.message(MINE).text)
+      }
+
+  @Test
+  fun afterTheAccountChanged_nothingIsUnsent() =
+      runTest(main.dispatcher) {
+        val viewModel = chatWithMessages()
+        viewModel.askUnsend(viewModel.message(MINE))
+        auth.user = AuthUser("another-account", "other@epfl.ch", true)
+
+        viewModel.unsend()
+        runCurrent()
+
+        assertNull(viewModel.state.value.unsend)
+        assertEquals("Perfect, see you there!", viewModel.message(MINE).text)
+      }
+
+  @Test
+  fun theFriendUnsendingTheirMessage_showsLive() =
+      runTest(main.dispatcher) {
+        val viewModel = chatWithMessages()
+
+        // The friend's device unsends: the student's open chat follows its listener.
+        chats.currentUid = FRIEND
+        assertEquals(UnsendMessageResult.Unsent, chats.unsendMessage(PAIR, THEIRS))
+        runCurrent()
+
+        assertTrue(viewModel.message(THEIRS).isUnsent)
+        assertEquals(listOf(THEIRS, MINE), viewModel.history().messages.map { it.id })
+      }
+
   // ---- Read-only ----
 
   @Test
@@ -366,6 +528,8 @@ class OneToOneChatViewModelTest {
   private companion object {
     const val ME = "me-uid"
     const val FRIEND = "lea-uid"
+    const val MINE = "m-mine"
+    const val THEIRS = "m-theirs"
     val PAIR = checkNotNull(friendshipId(ME, FRIEND))
     val NOW: Instant = Instant.parse("2030-02-01T12:00:00Z")
   }

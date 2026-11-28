@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Contributors: OpenAI Codex (deleted message author label, #241). -->
 <!-- Contributors: OpenAI Codex (group chat copy from the approved #236 design, #238). -->
+<!-- Contributors: Claude (Opus 5.5, Anthropic) (Unsend's shared copy, from #430's Figma section
+     25, #436). -->
 <resources>
     <string name="chat_header_summary">%1$s · %2$s · %3$s</string>
     <plurals name="chat_members">
@@ -21,4 +23,11 @@
     <string name="chat_send">Send</string>
     <string name="chat_sending">Sending…</string>
     <string name="chat_deleted_author">Deleted account</string>
+    <string name="chat_unsent">This message was deleted</string>
+    <string name="chat_unsend">Unsend</string>
+    <string name="chat_unsend_title">Unsend this message?</string>
+    <string name="chat_unsend_cancel">Cancel</string>
+    <string name="chat_unsend_offline">You’re offline. Nothing changed.</string>
+    <string name="chat_unsend_failed">Couldn’t unsend the message</string>
+    <string name="chat_unsend_try_again">Try again</string>
 </resources>

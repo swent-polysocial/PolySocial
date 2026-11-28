@@ -1,5 +1,6 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (wrote these tests, #364; one-to-one chats in the
-// list, #432; one-to-one chats that don't answer in time, from #521's review).
+// list, #432; one-to-one chats that don't answer in time, from #521's review; an unsent latest
+// message, #436).
 package com.polysocial.ui.chat
 
 import com.polysocial.model.auth.AuthUser
@@ -9,6 +10,8 @@ import com.polysocial.model.chat.FakeMessageRepository
 import com.polysocial.model.chat.FakeOneToOneChatRepository
 import com.polysocial.model.chat.MyOneToOneChatsResult
 import com.polysocial.model.chat.OneToOneChatRepository
+import com.polysocial.model.chat.UNSENT_MESSAGE_TEXT
+import com.polysocial.model.chat.UnsendMessageResult
 import com.polysocial.model.event.EventCategory
 import com.polysocial.model.event.FakeEventRepository
 import com.polysocial.model.event.validEvent
@@ -28,6 +31,7 @@ import java.time.ZoneId
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -372,6 +376,39 @@ class ChatsViewModelTest {
                 leaChat,
                 ChatListFriend.Named("Léa Martin"),
                 LatestMessage(Sender.You, "On my way, 5 min", ChatTime.Today(LocalTime.of(12, 0))),
+            ),
+            OneToOneChatRow(
+                tomChat,
+                ChatListFriend.Named("Tom Rossi"),
+                LatestMessage(Sender.Unknown, "Thanks!", ChatTime.Today(LocalTime.of(11, 59))),
+            ),
+        ),
+        viewModel.oneToOneRows(),
+    )
+  }
+
+  @Test
+  fun unsendingTheLatestMessage_updatesItsRowLive_withoutChangingTheOrder() {
+    oneToOne.seedChat(leaChat)
+    oneToOne.seedMessage(leaChat, "p1", ME, "On my way, 5 min", NOON)
+    oneToOne.seedChat(tomChat)
+    oneToOne.seedMessage(tomChat, "p2", "tom", "Thanks!", NOON.minusSeconds(60))
+    val viewModel = viewModel()
+    runPending()
+
+    friends.seedAcceptedFriendship("lea", ME)
+    assertEquals(
+        UnsendMessageResult.Unsent,
+        runBlocking { oneToOne.unsendMessage(leaChat, "p1") },
+    )
+    runPending()
+
+    assertEquals(
+        listOf(
+            OneToOneChatRow(
+                leaChat,
+                ChatListFriend.Named("Léa Martin"),
+                LatestMessage(Sender.You, UNSENT_MESSAGE_TEXT, ChatTime.Today(LocalTime.of(12, 0))),
             ),
             OneToOneChatRow(
                 tomChat,
