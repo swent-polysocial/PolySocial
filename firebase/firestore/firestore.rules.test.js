@@ -9,6 +9,7 @@
 // Contributors: Claude (Opus 5.5, Anthropic) (attendeeCount rows and the counted registration writes, #373, from #372's prototype by Claude (Fable 5.2 and Opus 5.5, Anthropic)).
 // Contributors: Claude (Opus 5.5, Anthropic) (check-in tests, written test-first, #467).
 // Contributors: Claude (Opus 5.5, Anthropic) (entrance code and QR check-in tests, written test-first, #468).
+// Contributors: Claude (Opus 5.5, Anthropic) (unsend tests for one-to-one chats, #435).
 // Contributors: Claude (Opus 5.5, Anthropic) (one-to-one chat tests and the message helpers both chats share, #428, from #365's prototype tests by Claude (Fable 5.2 and Opus 5.5, Anthropic); the refused messages both chats share, and cases a mutation check found missing, from a test review, #428).
 const { after, before, beforeEach, test } = require("node:test");
 // Contributors: OpenAI Codex (deleted-token membership creation/join regression, #241).
@@ -5104,6 +5105,9 @@ test("nobody edits or deletes a message, not even its sender", async () => {
   for (const uid of ["u1", "u2"]) {
     const message = doc(studentDb(uid), messagePath("e1", "g1", "m1"));
     await assertFails(updateDoc(message, { text: "Edited" }));
+    // Not even emptied by its sender: group chat's unsend comes with #439, which turns this
+    // line into the sender's unsend.
+    await assertFails(updateDoc(message, { text: "" }));
     await assertFails(setDoc(message, newMessage("u1", "Overwritten")));
     await assertFails(deleteDoc(message));
   }
@@ -5619,6 +5623,29 @@ function setChatMessage(db, pairId, message, id = "new") {
   return setDoc(doc(db, chatMessagePath(pairId, id)), message);
 }
 
+/**
+ * Unsends the message [id] of chats/[pairId] the way the repository does (#435, Architecture
+ * Diagram 3.8): one transaction, tried once, that reads the message and empties only its text,
+ * unless it is already empty. Returns "unsent" or "already unsent".
+ */
+function unsendAs(db, pairId, id) {
+  return runTransaction(
+    db,
+    async (transaction) => {
+      const message = doc(db, chatMessagePath(pairId, id));
+      if ((await transaction.get(message)).data().text === "") return "already unsent";
+      transaction.update(message, { text: "" });
+      return "unsent";
+    },
+    { maxAttempts: 1 },
+  );
+}
+
+/** Empties the text of the message [id] of chats/[pairId] with a plain update, without a read. */
+function emptyText(db, pairId, id) {
+  return updateDoc(doc(db, chatMessagePath(pairId, id)), { text: "" });
+}
+
 // -- the whole flow, through the rules --
 
 test("two students chat once friends, read-only after unfriending, in the same chat once friends again", async () => {
@@ -5766,8 +5793,11 @@ for (const [name, id] of [
       await assertFails(getDocs(chatHistory(other, id)));
       await assertFails(getDocs(chatLatest(other, id)));
       await assertFails(setChatMessage(other, id, newMessage(uid)));
+      // Unsending too (#435), u2's own message included.
+      await assertFails(emptyText(other, id, "m1"));
     }
     await expectMissing(chatMessagePath(id, "new"));
+    assert.equal((await storedAt(chatMessagePath(id, "m1"))).text, "Seeded");
   });
 }
 
@@ -6146,6 +6176,137 @@ test("nobody edits, overwrites or deletes a one-to-one message, not even its sen
   assert.equal((await storedAt(chatMessagePath("u1~u2", "m1"))).text, "Seeded");
 });
 
+// -- unsend (#435) --
+
+test("while friends, the sender unsends their own message: only its text is emptied, for both", async () => {
+  await seedFriends("u1", "u2");
+  await seedChat("u1~u2");
+  await seedChatMessage("u1~u2", "theirs", "u2", 1_790_000_000_000);
+  await seedChatMessage("u1~u2", "mine", "u1", 1_790_000_060_000);
+  const db = studentDb("u1");
+
+  assert.equal(await assertSucceeds(unsendAs(db, "u1~u2", "mine")), "unsent");
+
+  assert.deepEqual(await storedAt(chatMessagePath("u1~u2", "mine")), {
+    senderId: "u1",
+    text: "",
+    createdAt: Timestamp.fromMillis(1_790_000_060_000),
+  });
+  for (const uid of ["u1", "u2"]) {
+    const reader = studentDb(uid);
+    const history = await assertSucceeds(getDocs(chatHistory(reader, "u1~u2")));
+    assert.deepEqual(history.docs.map((message) => [message.id, message.data().text]), [
+      ["theirs", "Seeded"],
+      ["mine", ""],
+    ]);
+    // Still the latest message, at its own time.
+    const latest = await assertSucceeds(getDocs(chatLatest(reader, "u1~u2")));
+    assert.deepEqual(latest.docs.map((message) => [message.id, message.data().text]), [["mine", ""]]);
+  }
+  // A retry reads it already unsent and writes nothing; a blind "" again changes nothing and passes.
+  assert.equal(await assertSucceeds(unsendAs(db, "u1~u2", "mine")), "already unsent");
+  await assertSucceeds(emptyText(db, "u1~u2", "mine"));
+  // The other student's message is untouched.
+  assert.equal((await storedAt(chatMessagePath("u1~u2", "theirs"))).text, "Seeded");
+});
+
+test("unsending needs the friendship: refused after unfriending and while a new request is pending, allowed once accepted again", async () => {
+  await seedFriends("u1", "u2");
+  await seedChat("u1~u2");
+  await seedChatMessage("u1~u2", "a", "u1");
+  await seedChatMessage("u1~u2", "b", "u2");
+  await assertSucceeds(deleteDoc(friendshipRef(studentDb("u2"), "u1~u2")));
+  await assertFails(unsendAs(studentDb("u1"), "u1~u2", "a"));
+  await assertFails(unsendAs(studentDb("u2"), "u1~u2", "b"));
+  await seedFriends("u2", "u1", "pending");
+  for (const db of [studentDb("u1"), studentDb("u2")]) {
+    await assertFails(emptyText(db, "u1~u2", "a"));
+    await assertFails(emptyText(db, "u1~u2", "b"));
+  }
+  assert.equal((await storedAt(chatMessagePath("u1~u2", "a"))).text, "Seeded");
+  assert.equal((await storedAt(chatMessagePath("u1~u2", "b"))).text, "Seeded");
+
+  // Accepted again: both send and unsend in the same chat, after its earlier messages.
+  await seedFriends("u2", "u1");
+  assert.equal(await assertSucceeds(unsendAs(studentDb("u1"), "u1~u2", "a")), "unsent");
+  assert.equal(await assertSucceeds(unsendAs(studentDb("u2"), "u1~u2", "b")), "unsent");
+  assert.equal(await assertSucceeds(sendToFriendAs(studentDb("u1"), "u1~u2", newMessage("u1"))), "sent");
+});
+
+test("nobody unsends another student's message, nor one whose author's account was deleted", async () => {
+  await seedFriends("u1", "u2");
+  await seedFriends("u1", "u3");
+  await seedFriends("u2", "u3");
+  await seedChat("u1~u2");
+  await seedChatMessage("u1~u2", "m1", "u1");
+  await seedChatMessage("u1~u2", "anonymous", "");
+  // The other participant and a third student, even a friend of both.
+  for (const uid of ["u2", "u3"]) {
+    await assertFails(unsendAs(studentDb(uid), "u1~u2", "m1"));
+    await assertFails(emptyText(studentDb(uid), "u1~u2", "m1"));
+  }
+  for (const uid of ["u1", "u2", "u3"]) {
+    await assertFails(emptyText(studentDb(uid), "u1~u2", "anonymous"));
+  }
+  assert.equal((await storedAt(chatMessagePath("u1~u2", "m1"))).text, "Seeded");
+  assert.equal((await storedAt(chatMessagePath("u1~u2", "anonymous"))).text, "Seeded");
+});
+
+for (const [name, changes] of [
+  ["another text", { text: "Edited" }],
+  ["a blank text", { text: " " }],
+  ["a line break", { text: "\n" }],
+  ["a null text", { text: null }],
+  ["a number", { text: 0 }],
+  ["a boolean", { text: false }],
+  ["a list", { text: [] }],
+  ["the text removed", { text: deleteField() }],
+  ["senderId emptied", { text: "", senderId: "" }],
+  ["senderId changed", { text: "", senderId: "u2" }],
+  ["createdAt changed", { text: "", createdAt: Timestamp.fromMillis(0) }],
+  ["createdAt set to the server's time again", { text: "", createdAt: serverTimestamp() }],
+  ["createdAt removed", { text: "", createdAt: deleteField() }],
+  ["a deletedAt field added", { text: "", deletedAt: serverTimestamp() }],
+  ["a flag added", { text: "", unsent: true }],
+]) {
+  test(`the sender's unsend can't have ${name}`, async () => {
+    await seedFriends("u1", "u2");
+    await seedChat("u1~u2");
+    await seedChatMessage("u1~u2", "m1", "u1");
+    await assertFails(updateDoc(doc(studentDb("u1"), chatMessagePath("u1~u2", "m1")), changes));
+    assert.equal((await storedAt(chatMessagePath("u1~u2", "m1"))).text, "Seeded");
+  });
+}
+
+test("an unsent message's text can't be restored or replaced, and nobody deletes a message", async () => {
+  await seedFriends("u1", "u2");
+  await seedChat("u1~u2");
+  await seedChatMessage("u1~u2", "m1", "u1");
+  const db = studentDb("u1");
+  await assertSucceeds(unsendAs(db, "u1~u2", "m1"));
+  const message = doc(db, chatMessagePath("u1~u2", "m1"));
+  await assertFails(updateDoc(message, { text: "Seeded" }));
+  await assertFails(updateDoc(message, { text: "Something else" }));
+  await assertFails(setDoc(message, newMessage("u1", "Back")));
+  for (const uid of ["u1", "u2"]) {
+    await assertFails(deleteDoc(doc(studentDb(uid), chatMessagePath("u1~u2", "m1"))));
+  }
+  assert.equal((await storedAt(chatMessagePath("u1~u2", "m1"))).text, "");
+});
+
+test("a sender under a deletion marker can't unsend, even while the friendship is still stored", async () => {
+  await seedFriends("u1", "u2");
+  await seedChat("u1~u2");
+  await seedChatMessage("u1~u2", "m1", "u1");
+  await seedChatMessage("u1~u2", "m2", "u2");
+  await seedDeletedAccount("u1");
+  await assertFails(unsendAs(studentDb("u1"), "u1~u2", "m1"));
+  await assertFails(emptyText(studentDb("u1"), "u1~u2", "m1"));
+  assert.equal((await storedAt(chatMessagePath("u1~u2", "m1"))).text, "Seeded");
+  // The other student still unsends their own until deleteAccount deletes the friendship.
+  assert.equal(await assertSucceeds(unsendAs(studentDb("u2"), "u1~u2", "m2")), "unsent");
+});
+
 // -- deleted accounts --
 
 test("a caller under a deletion marker can't read, list, create or send; the other student still reads", async () => {
@@ -6204,6 +6365,8 @@ test("once the other account is deleted, the remaining student lists and reads t
   assert.deepEqual(history.docs.map((message) => message.data().senderId), ["", "u2"]);
   assert.deepEqual(idsOf(await assertSucceeds(getDocs(chatLatest(db, "u1~u2")))), ["mine"]);
   await assertFails(sendToFriendAs(db, "u1~u2", newMessage("u2")));
+  // Nor unsend their own message (#435): the friendship is gone.
+  await assertFails(unsendAs(db, "u1~u2", "mine"));
   await assertFails(updateDoc(doc(db, chatMessagePath("u1~u2", "theirs")), { senderId: "u1" }));
   await assertFails(updateDoc(doc(db, "chats/u1~u2"), { uids: ["u1", "u2"] }));
   await assertFails(deleteDoc(doc(db, "chats/u1~u2")));
@@ -6241,6 +6404,10 @@ for (const verified of [false, true]) {
       await assertFails(getDocs(chatLatest(db(), pairId)));
       await assertFails(setChatMessage(db(), pairId, newMessage(uid)));
       await expectMissing(chatMessagePath(pairId, "new"));
+      // Not even its own message, stored with the rules off (#435).
+      await seedChatMessage(pairId, "own", uid);
+      await assertFails(emptyText(db(), pairId, "own"));
+      assert.equal((await storedAt(chatMessagePath(pairId, "own"))).text, "Seeded");
     });
   }
 }
@@ -6265,6 +6432,10 @@ for (const [name, db] of [
     await assertFails(getDocs(chatHistory(db(), "u1~u2")));
     await assertFails(setChatMessage(db(), "u1~u2", newMessage("u1")));
     await expectMissing(chatMessagePath("u1~u2", "new"));
+    // No unsend either, of a message stored under its UID (#435).
+    await seedChatMessage("u1~u2", "own", "u1");
+    await assertFails(emptyText(db(), "u1~u2", "own"));
+    assert.equal((await storedAt(chatMessagePath("u1~u2", "own"))).text, "Seeded");
   });
 }
 
