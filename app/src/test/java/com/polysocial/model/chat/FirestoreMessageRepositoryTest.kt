@@ -4,6 +4,7 @@
 // more from a test audit).
 // Contributors: Claude (Opus 5.5, Anthropic) (its Firestore mocks moved to FirestoreChatMocks.kt,
 // #428).
+// Contributors: Claude (Opus 5.5, Anthropic) (unsend tests, #439).
 package com.polysocial.model.chat
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -275,6 +276,162 @@ class FirestoreMessageRepositoryTest {
 
     assertTrue(call.isCancelled)
     assertEquals(null, result)
+  }
+
+  // unsendMessage (#439): the transaction and its rerun are FirestoreChatMessages.kt's, shared
+  // with the one-to-one chat, whose tests cover every failure; these check the group's path, its
+  // checks, and the shared paths once.
+
+  private val sentMessage = mockk<DocumentReference>()
+
+  /** What the message holds when each attempt reads it, null for nothing. */
+  private var stored: Map<String, Any?>? = null
+
+  /** How each attempt's commit fails, in order; an attempt beyond them commits. */
+  private val commitFailures = ArrayDeque<Exception>()
+  private var afterFailedCommit: () -> Unit = {}
+  private val unsendAttempts = mutableListOf<TransactionOptions>()
+  private val unsendWrites = mutableListOf<Pair<DocumentReference, Map<String, Any?>>>()
+
+  private fun stubUnsend() {
+    every { messages.document(SENT) } returns sentMessage
+    every { sentMessage.id } returns SENT
+    every { transaction.get(sentMessage) } answers
+        {
+          val data = stored
+          mockk<DocumentSnapshot>().also {
+            every { it.exists() } returns (data != null)
+            every { it.data } returns data
+          }
+        }
+    every {
+      transaction.update(any<DocumentReference>(), any<String>(), any(), *anyVararg())
+    } answers
+        {
+          unsendWrites +=
+              firstArg<DocumentReference>() to mapOf(secondArg<String>() to thirdArg<Any?>())
+          transaction
+        }
+    // Typed on Any?, like the one-to-one tests, so the result isn't cast to a send's.
+    every {
+      db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Any?>>())
+    } answers
+        {
+          unsendAttempts += firstArg<TransactionOptions>()
+          val written = unsendWrites.size
+          val result = secondArg<Transaction.Function<Any?>>().apply(transaction)
+          val failure = commitFailures.removeFirstOrNull()
+          if (failure == null) Tasks.forResult(result)
+          else {
+            while (unsendWrites.size > written) unsendWrites.removeAt(unsendWrites.lastIndex)
+            afterFailedCommit()
+            Tasks.forException(failure)
+          }
+        }
+  }
+
+  @Test
+  fun unsend_emptiesOnlyTheGroupMessagesText_inOneTransactionTriedOnce() = runTest {
+    stubUnsend()
+    stored = storedMessage(STUDENT, "See you")
+
+    assertEquals(UnsendMessageResult.Unsent, repository.unsendMessage(EVENT, GROUP, SENT))
+
+    verify { group.collection(MESSAGES_COLLECTION) }
+    assertEquals(listOf(sentMessage to mapOf(MESSAGE_TEXT to UNSENT_MESSAGE_TEXT)), unsendWrites)
+    assertEquals(listOf(1), unsendAttempts.map { it.maxAttempts })
+  }
+
+  @Test
+  fun unsend_anAlreadyUnsentMessage_isUnsent_andAnotherMembersIsUnexpected_withoutAWrite() =
+      runTest {
+        stubUnsend()
+        stored = storedMessage(STUDENT, UNSENT_MESSAGE_TEXT)
+        assertEquals(UnsendMessageResult.Unsent, repository.unsendMessage(EVENT, GROUP, SENT))
+
+        for (other in
+            listOf(
+                storedMessage("other", "Hi"),
+                storedMessage(DELETED_MESSAGE_SENDER, "Hi"),
+                null,
+            )) {
+          stored = other
+          assertEquals(
+              other.toString(),
+              UnsendMessageResult.UnexpectedError,
+              repository.unsendMessage(EVENT, GROUP, SENT),
+          )
+        }
+        assertTrue("Nothing may be written: $unsendWrites", unsendWrites.isEmpty())
+      }
+
+  @Test
+  fun unsend_badIdsOrNobodySignedIn_areUnexpected_andOffline_isANetworkError_withoutFirestore() =
+      runTest {
+        stubUnsend()
+        online = false
+        for (ids in
+            listOf(
+                listOf("", GROUP, SENT),
+                listOf(EVENT, "a/b", SENT),
+                listOf(EVENT, GROUP, " "),
+            )) {
+          assertEquals(
+              ids.toString(),
+              UnsendMessageResult.UnexpectedError,
+              repository.unsendMessage(ids[0], ids[1], ids[2]),
+          )
+        }
+        assertEquals(UnsendMessageResult.NetworkError, repository.unsendMessage(EVENT, GROUP, SENT))
+        auth.user = null
+        assertEquals(
+            UnsendMessageResult.UnexpectedError,
+            repository.unsendMessage(EVENT, GROUP, SENT),
+        )
+
+        verify(exactly = 0) { db.collection(any()) }
+        assertTrue(unsendAttempts.isEmpty())
+      }
+
+  @Test
+  fun unsend_theOtherDeviceUnsendingItInBetween_runsOnceMore_andWritesNothing() = runTest {
+    stubUnsend()
+    stored = storedMessage(STUDENT, "See you")
+    commitFailures += firestoreFailure(FirebaseFirestoreException.Code.FAILED_PRECONDITION)
+    afterFailedCommit = { stored = storedMessage(STUDENT, UNSENT_MESSAGE_TEXT) }
+
+    assertEquals(UnsendMessageResult.Unsent, repository.unsendMessage(EVENT, GROUP, SENT))
+
+    assertEquals(2, unsendAttempts.size)
+    assertTrue("Nothing may be written: $unsendWrites", unsendWrites.isEmpty())
+  }
+
+  @Test
+  fun unsend_losingTheConnection_isANetworkError() = runTest {
+    stubUnsend()
+    stored = storedMessage(STUDENT, "See you")
+    commitFailures += firestoreFailure(FirebaseFirestoreException.Code.UNAVAILABLE)
+
+    assertEquals(UnsendMessageResult.NetworkError, repository.unsendMessage(EVENT, GROUP, SENT))
+    assertEquals(1, unsendAttempts.size)
+  }
+
+  @Test
+  fun unsend_aReadTheRulesRefuse_outOfTheGroup_isUnexpected_andNotRunAgain() = runTest {
+    every {
+      db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Any?>>())
+    } returns
+        Tasks.forException(firestoreFailure(FirebaseFirestoreException.Code.PERMISSION_DENIED))
+    every { messages.document(SENT) } returns sentMessage
+
+    assertEquals(
+        UnsendMessageResult.UnexpectedError,
+        repository.unsendMessage(EVENT, GROUP, SENT),
+    )
+
+    verify(exactly = 1) {
+      db.runTransaction(any<TransactionOptions>(), any<Transaction.Function<Any?>>())
+    }
   }
 
   // observeMessages
@@ -614,5 +771,6 @@ class FirestoreMessageRepositoryTest {
     const val STUDENT = "student"
     const val EVENT = "event-1"
     const val GROUP = "group-1"
+    const val SENT = "sent-1"
   }
 }

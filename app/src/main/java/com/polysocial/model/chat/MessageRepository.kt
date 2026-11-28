@@ -2,7 +2,8 @@
 // Contributors: OpenAI Codex (added the retry ID and removed its legacy Kotlin bridge, #238).
 // Contributors: Claude (Fable 5.2, Anthropic) (a group's latest message, for the chat list, #363).
 // Contributors: Claude (Opus 5.5, Anthropic) (the results shared with one-to-one chats, #428).
-// Contributors: Claude (Opus 5.5, Anthropic) (the unsend result, #435).
+// Contributors: Claude (Opus 5.5, Anthropic) (the unsend result, #435; a group chat's unsend,
+// #439).
 package com.polysocial.model.chat
 
 import kotlinx.coroutines.flow.Flow
@@ -94,7 +95,7 @@ sealed interface SendMessageResult {
   data object UnexpectedError : SendMessageResult
 }
 
-/** Outcome of [OneToOneChatRepository.unsendMessage], shared with a group chat's unsend (#439). */
+/** Outcome of [OneToOneChatRepository.unsendMessage] and [MessageRepository.unsendMessage]. */
 sealed interface UnsendMessageResult {
   /** The message's text is now [UNSENT_MESSAGE_TEXT], or already was. */
   data object Unsent : UnsendMessageResult
@@ -104,7 +105,8 @@ sealed interface UnsendMessageResult {
 
   /**
    * Any other failure, for example a message that doesn't exist or isn't the student's, or a write
-   * the Security Rules deny because the two students aren't friends any more. Nothing was written.
+   * the Security Rules deny because the two students aren't friends any more or the student isn't
+   * in the group any more. Nothing was written.
    */
   data object UnexpectedError : UnsendMessageResult
 }
@@ -113,9 +115,10 @@ sealed interface UnsendMessageResult {
  * Stores a group's chat (#237) in `events/{eventId}/groups/{groupId}/messages/{id}`: each message
  * has its sender's UID, its text and the server's time.
  *
- * Only the group's members read and send, each message as themselves, and nobody edits or deletes
- * one; associations never reach messages. The Security Rules enforce it, so a non-member's read or
- * send fails with an `UnexpectedError`.
+ * Only the group's members read and send, each message as themselves, and nobody deletes one; the
+ * only edit is a member unsending their own message ([unsendMessage], #439). Associations never
+ * reach messages. The Security Rules enforce it, so a non-member's read, send or unsend fails with
+ * an `UnexpectedError`.
  *
  * All callers compile with the app, so the default argument needs only the interface's JVM
  * implementation.
@@ -173,4 +176,32 @@ interface MessageRepository {
       text: String,
       messageId: String? = null,
   ): SendMessageResult
+
+  /**
+   * Unsends the signed-in student's message [messageId] of the group [groupId] of the event
+   * [eventId] (#439, decided in #365): its text becomes [UNSENT_MESSAGE_TEXT] for every member, and
+   * its sender, time and place in the chat stay. Every member's message listener and latest message
+   * ([observeLatestMessage]) then receive it with the empty text ([Message.isUnsent]).
+   *
+   * The IDs and the signed-in user are checked first ([UnsendMessageResult.UnexpectedError]), then
+   * the connection ([UnsendMessageResult.NetworkError] offline, never queued).
+   *
+   * Then one transaction, tried once, reads the message: one that is missing, can't be read or
+   * isn't the student's (another member's, or one whose author's account was deleted) is
+   * [UnsendMessageResult.UnexpectedError]; one already unsent is [UnsendMessageResult.Unsent]
+   * without a write (a retry after a lost answer); otherwise only its text is emptied. The Security
+   * Rules allow it only while the student is a member of the group, so after leaving it (or once
+   * the group is deleted) it is [UnsendMessageResult.UnexpectedError] and nothing changes;
+   * rejoining allows it again. A member removed from a private event keeps their group (#295), so
+   * they can still unsend.
+   *
+   * An attempt that read the message and then failed for any reason but being offline runs once
+   * more, as for [OneToOneChatRepository.unsendMessage]: the student's other device may have unsent
+   * the same message in between, and the rerun finds it unsent and writes nothing.
+   */
+  suspend fun unsendMessage(
+      eventId: String,
+      groupId: String,
+      messageId: String,
+  ): UnsendMessageResult
 }

@@ -4,6 +4,7 @@
 // latest message with limit(1), #363).
 // Contributors: Claude (Opus 5.5, Anthropic) (the listener and send failures moved to
 // FirestoreChatMessages.kt, to share them with one-to-one chats, #428).
+// Contributors: Claude (Opus 5.5, Anthropic) (unsending a message, #439).
 package com.polysocial.model.chat
 
 import com.google.firebase.firestore.CollectionReference
@@ -24,10 +25,11 @@ import kotlinx.coroutines.tasks.await
  * [MessageRepository] backed by Firestore: messages in `events/{eventId}/groups/{groupId}/messages`
  * (see [MESSAGES_COLLECTION]), with `senderId`, `text` and the server's `createdAt`.
  *
- * Like `FirestoreEventRepository.createEvent`, sending checks [NetworkMonitor] first and writes in
- * a transaction tried once: Firestore only runs transactions against the server, so a message fails
- * offline instead of being queued. With an explicit ID, the transaction reads the document before
- * writing. It creates a missing message or checks that a stored message matches the draft.
+ * Like `FirestoreEventRepository.createEvent`, sending and unsending check [NetworkMonitor] first
+ * and write in a transaction tried once: Firestore only runs transactions against the server, so a
+ * message fails offline instead of being queued. With an explicit ID, the transaction reads the
+ * document before writing. It creates a missing message or checks that a stored message matches the
+ * draft.
  */
 class FirestoreMessageRepository(
     private val database: () -> FirebaseFirestore,
@@ -128,5 +130,23 @@ class FirestoreMessageRepository(
           }
           .await()
     }
+  }
+
+  /**
+   * Checks the IDs, the user and the connection, then unsends with [unsendChatMessage], shared with
+   * one-to-one chats. A student out of the group can't read the message, so their attempt fails at
+   * its read and isn't run again.
+   */
+  override suspend fun unsendMessage(
+      eventId: String,
+      groupId: String,
+      messageId: String,
+  ): UnsendMessageResult {
+    if (!listOf(eventId, groupId, messageId).all(::isReadableEventId)) {
+      return UnsendMessageResult.UnexpectedError
+    }
+    val uid = auth.currentUser()?.uid ?: return UnsendMessageResult.UnexpectedError
+    if (!network.isOnline()) return UnsendMessageResult.NetworkError
+    return unsendChatMessage(db, uid) { messages(eventId, groupId).document(messageId) }
   }
 }

@@ -3,6 +3,7 @@
 // Contributors: Claude (Fable 5.2, Anthropic) (a group's latest message, #363).
 // Contributors: Claude (Opus 5.5, Anthropic) (members read from the groups, after review, #363).
 // Contributors: Claude (Opus 5.5, Anthropic) (stored messages moved to FakeMessageStore, #428).
+// Contributors: Claude (Opus 5.5, Anthropic) (unsending a message, #439).
 package com.polysocial.model.chat
 
 import com.polysocial.model.event.isReadableEventId
@@ -16,11 +17,14 @@ import kotlinx.coroutines.flow.map
 /**
  * In-memory [MessageRepository] for tests. It follows the [MessageRepository] contracts and checks
  * in the same order as `FirestoreMessageRepository`: the text, the IDs, the signed-in user, then
- * [online], then [sendFailure], then membership.
+ * [online], then [sendFailure], then membership. [unsendMessage] checks the IDs and the user, then
+ * [online], then [unsendFailure], then membership (the rules refuse a non-member's read), then the
+ * stored message.
  *
- * Like the Security Rules, only a group's members (see [setMembers] and [membersOf]) read and send
- * its messages: anyone else's [observeMessages] ends with [MessagesResult.UnexpectedError], and
- * their [sendMessage] returns [SendMessageResult.UnexpectedError]. [observeMessages] reads
+ * Like the Security Rules, only a group's members (see [setMembers] and [membersOf]) read, send
+ * and unsend their own messages: anyone else's [observeMessages] ends with
+ * [MessagesResult.UnexpectedError], and their [sendMessage] and [unsendMessage] return an
+ * `UnexpectedError`. [observeMessages] reads
  * [currentUid], [readFailure] and the members when its collection starts, as the real listener
  * reads the user and is checked by the rules then, and keeps emitting for that user: changing
  * [currentUid] later doesn't affect a running collection, so a ViewModel test can't simulate an
@@ -41,6 +45,9 @@ class FakeMessageRepository(var currentUid: String? = "test-student") : MessageR
 
   /** When set, sending returns this result instead of writing, like a failed transaction. */
   var sendFailure: SendMessageResult? = null
+
+  /** When set, unsending returns this result instead of writing, like a failed transaction. */
+  var unsendFailure: UnsendMessageResult? = null
 
   /** When set, the observe flows emit Loading, then this failure and end, like a failed listener. */
   var readFailure: ReadFailure? = null
@@ -148,6 +155,25 @@ class FakeMessageRepository(var currentUid: String? = "test-student") : MessageR
     }
     messages.add(key, uid, trimmed, messageId)
     return SendMessageResult.Sent
+  }
+
+  override suspend fun unsendMessage(
+      eventId: String,
+      groupId: String,
+      messageId: String,
+  ): UnsendMessageResult {
+    if (!listOf(eventId, groupId, messageId).all(::isReadableEventId)) {
+      return UnsendMessageResult.UnexpectedError
+    }
+    val uid = currentUid ?: return UnsendMessageResult.UnexpectedError
+    if (!online) return UnsendMessageResult.NetworkError
+    unsendFailure?.let {
+      return it
+    }
+    val key = GroupKey(eventId, groupId)
+    // A non-member's read of the message is refused, so nothing past it is checked.
+    if (!isMember(key, uid)) return UnsendMessageResult.UnexpectedError
+    return messages.unsendAs(key, uid, messageId) { true }
   }
 
   private fun isMember(key: GroupKey, uid: String?) =
