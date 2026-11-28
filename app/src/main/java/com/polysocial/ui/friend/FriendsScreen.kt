@@ -3,7 +3,8 @@
 // profile-link modifier, and review fixes for fallback copy and confirmation).
 // Contributors: Claude (Opus 5.5, Anthropic) (Add by @username above the list, and its card, #452);
 // Konstantinos Perdikeas (directed, reviewed and owns it).
-// Contributors: Claude (Opus 5.5, Anthropic) (the Message action opening the chat, #431).
+// Contributors: Claude (Opus 5.5, Anthropic) (the Message action opening the chat, #431; the
+// confirmation sheet, badge and pill moved to ui/common to share them with Unsend, #436).
 package com.polysocial.ui.friend
 
 import androidx.activity.compose.BackHandler
@@ -63,16 +64,17 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.polysocial.R
-import com.polysocial.ui.common.ConfirmationSheet
+import com.polysocial.ui.common.CenteredConfirmationSheet
 import com.polysocial.ui.common.ErrorState
+import com.polysocial.ui.common.IconBadge
 import com.polysocial.ui.common.LoadingState
+import com.polysocial.ui.common.OutlinePill
 import com.polysocial.ui.common.PrimaryButton
 import com.polysocial.ui.group.GroupHeader
 import com.polysocial.ui.group.initials
 import com.polysocial.ui.profile.privacyTextStyle
 import com.polysocial.ui.profile.profileDetails
 import com.polysocial.ui.theme.AccentSoft
-import com.polysocial.ui.theme.AccentText
 import com.polysocial.ui.theme.Bg
 import com.polysocial.ui.theme.Border
 import com.polysocial.ui.theme.Disabled
@@ -542,7 +544,7 @@ private fun FriendsEmpty(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically),
     ) {
-      FriendsBadge(icon)
+      IconBadge(icon)
       Text(
           stringResource(title),
           style = privacyTextStyle(22, 28f, FontWeight.ExtraBold),
@@ -557,16 +559,6 @@ private fun FriendsEmpty(
           textAlign = TextAlign.Center,
       )
     }
-  }
-}
-
-@Composable
-private fun FriendsBadge(@DrawableRes icon: Int, background: Color = Surface) {
-  Box(
-      Modifier.size(56.dp).background(background, RoundedCornerShape(17.dp)),
-      contentAlignment = Alignment.Center,
-  ) {
-    Icon(painterResource(icon), null, Modifier.size(25.dp), tint = Color.Unspecified)
   }
 }
 
@@ -602,72 +594,21 @@ private fun OfflineFriendsBanner() {
 
 @Composable
 private fun RemoveFriendSheet(row: FriendRow, actions: FriendsActions) {
-  var confirming by remember { mutableStateOf(false) }
   val firstName =
       row.profile?.displayName?.let { it.trim().substringBefore(' ').takeIf(String::isNotEmpty) }
-  val title =
-      if (firstName != null) stringResource(R.string.friends_remove_named, firstName)
-      else stringResource(R.string.friends_remove_unnamed)
-  ConfirmationSheet(
-      locked = false,
-      onDismissRequest = { if (confirming) actions.onConfirm() else actions.onKeep() },
-      centerHandle = true,
-  ) { dismiss ->
-    Column(
-        Modifier.fillMaxWidth(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(14.dp),
-    ) {
-      FriendsBadge(R.drawable.ic_friends_remove, AccentSoft)
-      Text(
-          title,
-          style = privacyTextStyle(22, 28f, FontWeight.ExtraBold),
-          color = Ink,
-          textAlign = TextAlign.Center,
-          modifier = Modifier.semantics { heading() },
-      )
-      Text(
-          stringResource(R.string.friends_remove_body),
-          style = privacyTextStyle(14, 18f),
-          color = Ink3,
-          textAlign = TextAlign.Center,
-          modifier = Modifier.padding(horizontal = 12.dp),
-      )
-      PrimaryButton(
-          stringResource(R.string.friends_remove),
-          enabled = !confirming,
-          tag = FriendsTags.CONFIRM,
-          color = AccentText,
-          textStyle = privacyTextStyle(13, 17f, FontWeight.Bold),
-          onClick = {
-            confirming = true
-            dismiss()
-          },
-      )
-      OutlinePill(R.string.friends_keep, FriendsTags.KEEP, dismiss)
-    }
-  }
-}
-
-@Composable
-private fun OutlinePill(@StringRes label: Int, tag: String, onClick: () -> Unit) {
-  Box(
-      Modifier.fillMaxWidth()
-          .heightIn(min = 52.dp)
-          .clip(CircleShape)
-          .border(1.dp, Border, CircleShape)
-          .clickable(role = Role.Button, onClick = onClick)
-          .testTag(tag)
-          .padding(horizontal = 16.dp, vertical = 8.dp),
-      contentAlignment = Alignment.Center,
-  ) {
-    Text(
-        stringResource(label),
-        color = Ink,
-        style = privacyTextStyle(15, 19f, FontWeight.Bold),
-        textAlign = TextAlign.Center,
-    )
-  }
+  CenteredConfirmationSheet(
+      icon = R.drawable.ic_friends_remove,
+      title =
+          if (firstName != null) stringResource(R.string.friends_remove_named, firstName)
+          else stringResource(R.string.friends_remove_unnamed),
+      body = stringResource(R.string.friends_remove_body),
+      confirm = stringResource(R.string.friends_remove),
+      keep = R.string.friends_keep,
+      confirmTag = FriendsTags.CONFIRM,
+      keepTag = FriendsTags.KEEP,
+      onConfirm = actions.onConfirm,
+      onKeep = actions.onKeep,
+  )
 }
 
 @Composable

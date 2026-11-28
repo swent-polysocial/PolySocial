@@ -1,12 +1,15 @@
 // Contributors: OpenAI Codex (6.2 Sol, high; centered handle variant for Friends, #360).
 // Contributors: Claude (Opus 5.5, Anthropic) shared the Cancel event and Delete account sheets'
 // parts, #296.
+// Contributors: Claude (Opus 5.5, Anthropic) (the Friends sheet, badge and pill moved here from
+// FriendsScreen.kt to share them with Unsend, #436).
 package com.polysocial.ui.common
 
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,8 +32,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -43,13 +49,19 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.polysocial.ui.profile.privacyTextStyle
 import com.polysocial.ui.theme.AccentPale
+import com.polysocial.ui.theme.AccentSoft
+import com.polysocial.ui.theme.AccentText
 import com.polysocial.ui.theme.Bg
 import com.polysocial.ui.theme.Border
 import com.polysocial.ui.theme.Ink
+import com.polysocial.ui.theme.Ink3
+import com.polysocial.ui.theme.Surface
 import com.polysocial.ui.theme.exact
 import kotlinx.coroutines.launch
 
@@ -165,6 +177,99 @@ fun SheetSecondaryButton(
       contentAlignment = Alignment.Center,
   ) {
     Text(stringResource(text), style = MaterialTheme.typography.titleSmall, color = Ink)
+  }
+}
+
+/**
+ * The Friends design's confirmation sheet (Remove friend, #360; Unsend, #436): a centered handle,
+ * [icon]'s badge, [title], [body], a red [confirm] button and an outlined [keep] pill. Confirming
+ * slides the sheet away, then calls [onConfirm]; Keep, Back, a swipe or the scrim slide it away and
+ * call [onKeep].
+ */
+@Composable
+fun CenteredConfirmationSheet(
+    @DrawableRes icon: Int,
+    title: String,
+    body: String,
+    confirm: String,
+    @StringRes keep: Int,
+    confirmTag: String,
+    keepTag: String,
+    onConfirm: () -> Unit,
+    onKeep: () -> Unit,
+) {
+  var confirming by remember { mutableStateOf(false) }
+  ConfirmationSheet(
+      locked = false,
+      onDismissRequest = { if (confirming) onConfirm() else onKeep() },
+      centerHandle = true,
+  ) { dismiss ->
+    Column(
+        Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(14.dp),
+    ) {
+      IconBadge(icon, AccentSoft)
+      Text(
+          title,
+          style = privacyTextStyle(22, 28f, FontWeight.ExtraBold),
+          color = Ink,
+          textAlign = TextAlign.Center,
+          modifier = Modifier.semantics { heading() },
+      )
+      Text(
+          body,
+          style = privacyTextStyle(14, 18f),
+          color = Ink3,
+          textAlign = TextAlign.Center,
+          modifier = Modifier.padding(horizontal = 12.dp),
+      )
+      PrimaryButton(
+          confirm,
+          enabled = !confirming,
+          tag = confirmTag,
+          color = AccentText,
+          textStyle = privacyTextStyle(13, 17f, FontWeight.Bold),
+          onClick = {
+            confirming = true
+            dismiss()
+          },
+      )
+      OutlinePill(keep, keepTag, dismiss)
+    }
+  }
+}
+
+/** The Friends design's 56 dp rounded badge, with [icon] in its own colors on [background]. */
+@Composable
+fun IconBadge(@DrawableRes icon: Int, background: Color = Surface) {
+  Box(
+      Modifier.size(56.dp).background(background, RoundedCornerShape(17.dp)),
+      contentAlignment = Alignment.Center,
+  ) {
+    Icon(painterResource(icon), null, Modifier.size(25.dp), tint = Color.Unspecified)
+  }
+}
+
+/** The Friends design's outlined full-width pill button, at least 52 dp high. */
+@Composable
+fun OutlinePill(@StringRes label: Int, tag: String, onClick: () -> Unit) {
+  Box(
+      Modifier.fillMaxWidth()
+          .heightIn(min = 52.dp)
+          .clip(CircleShape)
+          .border(1.dp, Border, CircleShape)
+          .clickable(role = Role.Button, onClick = onClick)
+          .testTag(tag)
+          .padding(horizontal = 16.dp, vertical = 8.dp),
+      contentAlignment = Alignment.Center,
+  ) {
+    Text(
+        stringResource(label),
+        color = Ink,
+        style = privacyTextStyle(15, 19f, FontWeight.Bold),
+        textAlign = TextAlign.Center,
+    )
   }
 }
 
